@@ -223,7 +223,7 @@
                         <ComboBox Grid.Row="2"
                                   Grid.Column="1"
                                   ItemsSource="{Binding TrafficTypeNameOptions}"
-                                  SelectedItem="{Binding SelectedNodeTrafficProfile.TrafficType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  SelectedItem="{Binding SelectedNodeTrafficType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
                         <TextBlock Grid.Row="4"
                                    VerticalAlignment="Center"
@@ -232,8 +232,8 @@
                                    Text="Role" />
                         <ComboBox Grid.Row="4"
                                   Grid.Column="1"
-                                  ItemsSource="{Binding SelectedNodeTrafficProfile.RoleOptions}"
-                                  SelectedItem="{Binding SelectedNodeTrafficProfile.SelectedRoleName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  ItemsSource="{Binding SelectedNodeRoleOptions}"
+                                  SelectedItem="{Binding SelectedNodeRoleName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
                         <TextBlock Grid.Row="6"
                                    VerticalAlignment="Center"
@@ -242,8 +242,8 @@
                                    Text="Production" />
                         <TextBox Grid.Row="6"
                                  Grid.Column="1"
-                                 IsEnabled="{Binding SelectedNodeTrafficProfile.IsProducer}"
-                                 Text="{Binding SelectedNodeTrafficProfile.Production, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                 IsEnabled="{Binding IsSelectedNodeProducer}"
+                                 Text="{Binding SelectedNodeProduction, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
                         <TextBlock Grid.Row="8"
                                    VerticalAlignment="Center"
@@ -252,8 +252,8 @@
                                    Text="Consumption" />
                         <TextBox Grid.Row="8"
                                  Grid.Column="1"
-                                 IsEnabled="{Binding SelectedNodeTrafficProfile.IsConsumer}"
-                                 Text="{Binding SelectedNodeTrafficProfile.Consumption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                 IsEnabled="{Binding IsSelectedNodeConsumer}"
+                                 Text="{Binding SelectedNodeConsumption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     </Grid>
 
                     <Border Grid.Row="6"
@@ -266,11 +266,11 @@
                             <TextBlock FontSize="12"
                                        FontWeight="SemiBold"
                                        Foreground="{StaticResource AccentStrongBrush}"
-                                       Text="{Binding SelectedNodeTrafficProfile.SelectionLabel}" />
+                                       Text="{Binding SelectedNodeTrafficSelectionLabel}" />
                             <TextBlock Margin="0,6,0,0"
                                        FontSize="12"
                                        Foreground="{StaticResource MutedForegroundBrush}"
-                                       Text="{Binding SelectedNodeTrafficProfile.RoleSummary}" />
+                                       Text="{Binding SelectedNodeTrafficRoleSummary}" />
                         </StackPanel>
                     </Border>
                 </Grid>

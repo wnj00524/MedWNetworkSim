@@ -25,6 +25,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private NodeTrafficProfileViewModel? selectedNodeTrafficProfile;
     private EdgeViewModel? selectedEdge;
     private TrafficTypeDefinitionEditorViewModel? selectedTrafficDefinition;
+    private bool isNormalizingNodeTrafficProfiles;
     private double workspaceWidth = 1600d;
     private double workspaceHeight = 1000d;
     private bool hasNetwork;
@@ -149,12 +150,121 @@ public sealed class MainWindowViewModel : ObservableObject
     public NodeTrafficProfileViewModel? SelectedNodeTrafficProfile
     {
         get => selectedNodeTrafficProfile;
-        set => SetProperty(ref selectedNodeTrafficProfile, value);
+        set
+        {
+            if (ReferenceEquals(selectedNodeTrafficProfile, value))
+            {
+                return;
+            }
+
+            if (selectedNodeTrafficProfile is not null)
+            {
+                selectedNodeTrafficProfile.PropertyChanged -= HandleSelectedNodeTrafficProfilePropertyChanged;
+            }
+
+            if (!SetProperty(ref selectedNodeTrafficProfile, value))
+            {
+                return;
+            }
+
+            if (selectedNodeTrafficProfile is not null)
+            {
+                selectedNodeTrafficProfile.PropertyChanged += HandleSelectedNodeTrafficProfilePropertyChanged;
+            }
+
+            RaiseSelectedNodeTrafficEditorPropertiesChanged();
+        }
     }
 
     public string SelectedNodeTrafficRoleHeadline => SelectedNode is null
         ? "Traffic Roles"
         : $"Traffic Roles For {SelectedNode.Name}";
+
+    public IReadOnlyList<string> SelectedNodeRoleOptions => SelectedNodeTrafficProfile?.RoleOptions ?? [];
+
+    public string? SelectedNodeTrafficType
+    {
+        get => SelectedNodeTrafficProfile?.TrafficType;
+        set
+        {
+            if (SelectedNodeTrafficProfile is null || string.IsNullOrWhiteSpace(value))
+            {
+                return;
+            }
+
+            if (Comparer.Equals(SelectedNodeTrafficProfile.TrafficType, value))
+            {
+                return;
+            }
+
+            SelectedNodeTrafficProfile.TrafficType = value;
+        }
+    }
+
+    public string? SelectedNodeRoleName
+    {
+        get => SelectedNodeTrafficProfile?.SelectedRoleName;
+        set
+        {
+            if (SelectedNodeTrafficProfile is null || string.IsNullOrWhiteSpace(value))
+            {
+                return;
+            }
+
+            if (string.Equals(SelectedNodeTrafficProfile.SelectedRoleName, value, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            SelectedNodeTrafficProfile.SelectedRoleName = value;
+        }
+    }
+
+    public bool IsSelectedNodeProducer => SelectedNodeTrafficProfile?.IsProducer ?? false;
+
+    public bool IsSelectedNodeConsumer => SelectedNodeTrafficProfile?.IsConsumer ?? false;
+
+    public double SelectedNodeProduction
+    {
+        get => SelectedNodeTrafficProfile?.Production ?? 0d;
+        set
+        {
+            if (SelectedNodeTrafficProfile is null)
+            {
+                return;
+            }
+
+            if (Math.Abs(SelectedNodeTrafficProfile.Production - value) < 0.000001d)
+            {
+                return;
+            }
+
+            SelectedNodeTrafficProfile.Production = value;
+        }
+    }
+
+    public double SelectedNodeConsumption
+    {
+        get => SelectedNodeTrafficProfile?.Consumption ?? 0d;
+        set
+        {
+            if (SelectedNodeTrafficProfile is null)
+            {
+                return;
+            }
+
+            if (Math.Abs(SelectedNodeTrafficProfile.Consumption - value) < 0.000001d)
+            {
+                return;
+            }
+
+            SelectedNodeTrafficProfile.Consumption = value;
+        }
+    }
+
+    public string SelectedNodeTrafficSelectionLabel => SelectedNodeTrafficProfile?.SelectionLabel ?? "No traffic role selected";
+
+    public string SelectedNodeTrafficRoleSummary => SelectedNodeTrafficProfile?.RoleSummary ?? "Choose or add a traffic role entry.";
 
     public EdgeViewModel? SelectedEdge
     {
@@ -268,8 +378,30 @@ public sealed class MainWindowViewModel : ObservableObject
             return;
         }
 
-        var arranged = fileService.AutoArrange(BuildValidatedNetwork());
-        LoadNetwork(arranged, ActiveFileLabel, "Auto-arranged all node positions.");
+        var current = BuildValidatedNetwork();
+        var arranged = fileService.AutoArrange(current);
+        var arrangedNodesById = arranged.Nodes.ToDictionary(node => node.Id, Comparer);
+
+        foreach (var node in Nodes)
+        {
+            if (!arrangedNodesById.TryGetValue(node.Id, out var arrangedNode))
+            {
+                continue;
+            }
+
+            if (arrangedNode.X.HasValue)
+            {
+                node.X = arrangedNode.X.Value;
+            }
+
+            if (arrangedNode.Y.HasValue)
+            {
+                node.Y = arrangedNode.Y.Value;
+            }
+        }
+
+        RecalculateWorkspace();
+        StatusMessage = "Auto-arranged all node positions.";
     }
 
     public void AddTrafficDefinition()
@@ -630,6 +762,16 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void HandleNodeDefinitionChanged(object? sender, EventArgs e)
     {
+        if (isNormalizingNodeTrafficProfiles)
+        {
+            return;
+        }
+
+        if (!isNormalizingNodeTrafficProfiles && sender is NodeViewModel node)
+        {
+            NormalizeNodeTrafficProfiles(node);
+        }
+
         OnPropertyChanged(nameof(SelectedNodeTrafficRoleHeadline));
         RefreshDerivedStateAfterStructureChange("Updated node data.");
     }
@@ -655,6 +797,11 @@ public sealed class MainWindowViewModel : ObservableObject
     private void HandleEdgeDefinitionChanged(object? sender, EventArgs e)
     {
         RefreshDerivedStateAfterStructureChange("Updated edge data.");
+    }
+
+    private void HandleSelectedNodeTrafficProfilePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        RaiseSelectedNodeTrafficEditorPropertiesChanged();
     }
 
     private void HandleTrafficDefinitionPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -796,6 +943,41 @@ public sealed class MainWindowViewModel : ObservableObject
         return orderedNames;
     }
 
+    private void NormalizeNodeTrafficProfiles(NodeViewModel node)
+    {
+        isNormalizingNodeTrafficProfiles = true;
+
+        try
+        {
+            foreach (var duplicateGroup in node.TrafficProfiles
+                         .Where(profile => !string.IsNullOrWhiteSpace(profile.TrafficType))
+                         .GroupBy(profile => profile.TrafficType.Trim(), Comparer)
+                         .Where(group => group.Count() > 1)
+                         .ToList())
+            {
+                var primaryProfile = duplicateGroup.First();
+
+                foreach (var duplicateProfile in duplicateGroup.Skip(1).ToList())
+                {
+                    primaryProfile.Production += duplicateProfile.Production;
+                    primaryProfile.Consumption += duplicateProfile.Consumption;
+                    primaryProfile.CanTransship |= duplicateProfile.CanTransship;
+
+                    if (ReferenceEquals(SelectedNodeTrafficProfile, duplicateProfile))
+                    {
+                        SelectedNodeTrafficProfile = primaryProfile;
+                    }
+
+                    node.RemoveTrafficProfile(duplicateProfile);
+                }
+            }
+        }
+        finally
+        {
+            isNormalizingNodeTrafficProfiles = false;
+        }
+    }
+
     private void RecalculateWorkspace()
     {
         if (Nodes.Count == 0)
@@ -885,5 +1067,18 @@ public sealed class MainWindowViewModel : ObservableObject
 
             index++;
         }
+    }
+
+    private void RaiseSelectedNodeTrafficEditorPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(SelectedNodeRoleOptions));
+        OnPropertyChanged(nameof(SelectedNodeTrafficType));
+        OnPropertyChanged(nameof(SelectedNodeRoleName));
+        OnPropertyChanged(nameof(IsSelectedNodeProducer));
+        OnPropertyChanged(nameof(IsSelectedNodeConsumer));
+        OnPropertyChanged(nameof(SelectedNodeProduction));
+        OnPropertyChanged(nameof(SelectedNodeConsumption));
+        OnPropertyChanged(nameof(SelectedNodeTrafficSelectionLabel));
+        OnPropertyChanged(nameof(SelectedNodeTrafficRoleSummary));
     }
 }

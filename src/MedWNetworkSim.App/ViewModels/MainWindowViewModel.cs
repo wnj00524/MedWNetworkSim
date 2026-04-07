@@ -796,7 +796,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void HandleEdgeDefinitionChanged(object? sender, EventArgs e)
     {
-        RefreshDerivedStateAfterStructureChange("Updated edge data.");
+        RefreshDerivedStateAfterEdgeChange("Updated edge data.");
     }
 
     private void HandleSelectedNodeTrafficProfilePropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -871,6 +871,14 @@ public sealed class MainWindowViewModel : ObservableObject
         RefreshTrafficSummariesFromCurrentState();
         RecalculateWorkspace();
         RefreshCounts();
+        InvalidateSimulationResults(message);
+    }
+
+    private void RefreshDerivedStateAfterEdgeChange(string message)
+    {
+        // Edge edits do not change the available node/traffic dropdown options, so avoid rebuilding them mid-edit.
+        RefreshEdgeBindings();
+        RecalculateWorkspace();
         InvalidateSimulationResults(message);
     }
 
@@ -1105,8 +1113,29 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private static void SynchronizeCollection(ObservableCollection<string> target, IEnumerable<string> values)
     {
+        var nextValues = values.ToList();
+        if (target.Count == nextValues.Count)
+        {
+            var hasDifference = false;
+            for (var index = 0; index < target.Count; index++)
+            {
+                if (string.Equals(target[index], nextValues[index], StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                hasDifference = true;
+                break;
+            }
+
+            if (!hasDifference)
+            {
+                return;
+            }
+        }
+
         target.Clear();
-        foreach (var value in values)
+        foreach (var value in nextValues)
         {
             target.Add(value);
         }

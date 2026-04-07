@@ -27,6 +27,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private TrafficTypeDefinitionEditorViewModel? selectedTrafficDefinition;
     private bool isNormalizingNodeTrafficProfiles;
     private bool isAdjustingTrafficDefinitionNames;
+    private bool isBulkUpdatingTrafficProfiles;
     private double workspaceWidth = 1600d;
     private double workspaceHeight = 1000d;
     private bool hasNetwork;
@@ -761,7 +762,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void HandleNodeDefinitionChanged(object? sender, EventArgs e)
     {
-        if (isNormalizingNodeTrafficProfiles)
+        if (isNormalizingNodeTrafficProfiles || isBulkUpdatingTrafficProfiles)
         {
             return;
         }
@@ -849,14 +850,25 @@ public sealed class MainWindowViewModel : ObservableObject
             return;
         }
 
-        foreach (var node in Nodes)
+        isBulkUpdatingTrafficProfiles = true;
+
+        try
         {
-            foreach (var profile in node.TrafficProfiles
-                         .Where(profile => Comparer.Equals(profile.TrafficType, oldValue))
-                         .ToList())
+            foreach (var node in Nodes)
             {
-                profile.TrafficType = normalizedName;
+                foreach (var profile in node.TrafficProfiles
+                             .Where(profile => Comparer.Equals(profile.TrafficType, oldValue))
+                             .ToList())
+                {
+                    profile.TrafficType = normalizedName;
+                }
+
+                NormalizeNodeTrafficProfiles(node);
             }
+        }
+        finally
+        {
+            isBulkUpdatingTrafficProfiles = false;
         }
 
         RefreshDerivedStateAfterStructureChange("Renamed a traffic type and updated matching node profiles.");

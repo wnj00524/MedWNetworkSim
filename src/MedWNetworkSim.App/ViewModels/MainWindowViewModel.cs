@@ -886,6 +886,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void RefreshTrafficTypeNameOptions()
     {
+        var selectedTrafficType = SelectedNodeTrafficProfile?.TrafficType;
         var trafficTypeNames = TrafficDefinitions
             .Select(definition => definition.Name)
             .Concat(Nodes.SelectMany(node => node.TrafficProfiles).Select(profile => profile.TrafficType))
@@ -894,6 +895,12 @@ public sealed class MainWindowViewModel : ObservableObject
             .OrderBy(name => name, Comparer);
 
         SynchronizeCollection(TrafficTypeNameOptions, trafficTypeNames);
+
+        // Re-announce the current selection after rebuilding the options collection so WPF restores the combo value.
+        if (!string.IsNullOrWhiteSpace(selectedTrafficType))
+        {
+            OnPropertyChanged(nameof(SelectedNodeTrafficType));
+        }
     }
 
     private void RefreshEdgeBindings()

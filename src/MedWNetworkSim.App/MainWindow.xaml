@@ -6,15 +6,15 @@
         xmlns:vm="clr-namespace:MedWNetworkSim.App.ViewModels"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}"
-        Width="1600"
-        Height="980"
-        MinWidth="1280"
-        MinHeight="840">
+        Width="1680"
+        Height="1040"
+        MinWidth="1380"
+        MinHeight="900">
     <Grid Margin="22">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="300" />
+            <RowDefinition Height="370" />
         </Grid.RowDefinitions>
 
         <Border Padding="22"
@@ -33,16 +33,25 @@
                                FontWeight="SemiBold"
                                Foreground="{StaticResource AccentStrongBrush}"
                                Text="MedW Network Simulator" />
-                    <TextBlock Margin="0,8,0,0"
-                               FontSize="28"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource StrongForegroundBrush}"
-                               Text="{Binding NetworkName}" />
-                    <TextBlock Margin="0,10,0,0"
-                               FontSize="14"
-                               Foreground="{StaticResource MutedForegroundBrush}"
-                               Text="{Binding NetworkDescription}"
-                               TextWrapping="Wrap" />
+                    <TextBox Margin="0,10,0,0"
+                             Padding="10,8"
+                             FontSize="28"
+                             FontWeight="SemiBold"
+                             Background="#FFFDF9F3"
+                             BorderBrush="{StaticResource BorderBrush}"
+                             BorderThickness="1"
+                             Text="{Binding NetworkName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBox Margin="0,10,0,0"
+                             MinHeight="64"
+                             Padding="10,8"
+                             FontSize="14"
+                             Background="#FFFDF9F3"
+                             BorderBrush="{StaticResource BorderBrush}"
+                             BorderThickness="1"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto"
+                             Text="{Binding NetworkDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     <TextBlock Margin="0,10,0,0"
                                FontSize="12"
                                Foreground="{StaticResource MutedForegroundBrush}"
@@ -53,6 +62,7 @@
                 <WrapPanel Grid.Column="1"
                            HorizontalAlignment="Right"
                            VerticalAlignment="Top">
+                    <Button Content="New Network" Click="NewNetwork_Click" />
                     <Button Content="Load Sample" Click="LoadSample_Click" />
                     <Button Content="Open JSON..." Click="OpenFile_Click" />
                     <Button Content="Auto Arrange"
@@ -245,7 +255,7 @@
                         <TextBlock Margin="0,10,0,0"
                                    FontSize="13"
                                    Foreground="{StaticResource MutedForegroundBrush}"
-                                   Text="Load a JSON network, drag nodes directly on the canvas, then run the simulation. Select a traffic type in the list to filter the routed movements table below."
+                                   Text="Create a new network or load an existing JSON file. Use the Network Editor tab to add traffic types, nodes, node traffic profiles, and edges directly in the app, then drag nodes on the canvas and run the simulation."
                                    TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
@@ -301,7 +311,8 @@
                                                   Stroke="{StaticResource EdgeBrush}"
                                                   StrokeThickness="3"
                                                   StrokeStartLineCap="Round"
-                                                  StrokeEndLineCap="Round" />
+                                                  StrokeEndLineCap="Round"
+                                                  Visibility="{Binding EdgeVisibility}" />
 
                                             <Polygon Points="{Binding ArrowPoints}"
                                                      Fill="{StaticResource EdgeBrush}"
@@ -315,7 +326,8 @@
                                                     Background="{StaticResource EdgeLabelBrush}"
                                                     BorderBrush="{StaticResource BorderBrush}"
                                                     BorderThickness="1"
-                                                    CornerRadius="14">
+                                                    CornerRadius="14"
+                                                    Visibility="{Binding EdgeVisibility}">
                                                 <StackPanel>
                                                     <TextBlock FontSize="11"
                                                                FontWeight="SemiBold"
@@ -442,11 +454,11 @@
                 <DockPanel>
                     <TextBlock FontSize="18"
                                FontWeight="SemiBold"
-                               Text="Simulation Outputs" />
+                               Text="Simulation And Editing" />
                     <TextBlock DockPanel.Dock="Right"
                                FontSize="12"
                                Foreground="{StaticResource MutedForegroundBrush}"
-                               Text="Select a traffic type to filter both tabs" />
+                               Text="Select a traffic type to filter simulation outputs" />
                 </DockPanel>
 
                 <TabControl Grid.Row="2">
@@ -521,6 +533,192 @@
                                     </DataGridTemplateColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem Header="Network Editor">
+                        <Grid Margin="10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="8" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock FontSize="12"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Text="Create a network, maintain traffic types, edit nodes and their traffic roles, and edit edges directly in the app." />
+
+                            <Grid Grid.Row="2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1.1*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="1.25*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="1.15*" />
+                                </Grid.ColumnDefinitions>
+
+                                <Border Padding="12"
+                                        Background="#FFFFFBF4"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="16">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock FontSize="16"
+                                                   FontWeight="SemiBold"
+                                                   Text="Traffic Types" />
+
+                                        <WrapPanel Grid.Row="2">
+                                            <Button Content="Add Traffic Type" Click="AddTrafficType_Click" />
+                                            <Button Content="Remove Selected" Click="RemoveTrafficType_Click" />
+                                        </WrapPanel>
+
+                                        <TextBlock Grid.Row="4"
+                                                   FontSize="11"
+                                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                                   Text="Traffic type definitions control routing preference and capacity bidding defaults." />
+
+                                        <DataGrid Grid.Row="6"
+                                                  ItemsSource="{Binding TrafficDefinitions}"
+                                                  SelectedItem="{Binding SelectedTrafficDefinition, Mode=TwoWay}"
+                                                  AutoGenerateColumns="False"
+                                                  SelectionMode="Single"
+                                                  SelectionUnit="FullRow">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Binding="{Binding Name, Mode=TwoWay}" Header="Name" Width="95" />
+                                                <DataGridComboBoxColumn Header="Preference"
+                                                                        Width="110"
+                                                                        SelectedItemBinding="{Binding RoutingPreference, Mode=TwoWay}"
+                                                                        ItemsSource="{Binding DataContext.RoutingPreferences, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                <DataGridTextColumn Binding="{Binding CapacityBidPerUnit, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="Bid / Unit" Width="90" />
+                                                <DataGridTextColumn Binding="{Binding Description, Mode=TwoWay}" Header="Description" Width="*" />
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </Grid>
+                                </Border>
+
+                                <Border Grid.Column="2"
+                                        Padding="12"
+                                        Background="#FFFFFBF4"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="16">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="125" />
+                                            <RowDefinition Height="10" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock FontSize="16"
+                                                   FontWeight="SemiBold"
+                                                   Text="Nodes" />
+
+                                        <WrapPanel Grid.Row="2">
+                                            <Button Content="Add Node" Click="AddNode_Click" />
+                                            <Button Content="Remove Selected" Click="RemoveNode_Click" />
+                                        </WrapPanel>
+
+                                        <DataGrid Grid.Row="4"
+                                                  ItemsSource="{Binding Nodes}"
+                                                  SelectedItem="{Binding SelectedNode, Mode=TwoWay}"
+                                                  AutoGenerateColumns="False"
+                                                  SelectionMode="Single"
+                                                  SelectionUnit="FullRow">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Binding="{Binding Id, Mode=TwoWay}" Header="Id" Width="85" />
+                                                <DataGridTextColumn Binding="{Binding Name, Mode=TwoWay}" Header="Name" Width="*" />
+                                                <DataGridTextColumn Binding="{Binding X, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="X" Width="60" />
+                                                <DataGridTextColumn Binding="{Binding Y, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="Y" Width="60" />
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+
+                                        <TextBlock Grid.Row="6"
+                                                   FontSize="16"
+                                                   FontWeight="SemiBold"
+                                                   Text="Selected Node Traffic Profiles" />
+
+                                        <WrapPanel Grid.Row="8">
+                                            <Button Content="Add Profile" Click="AddTrafficProfile_Click" />
+                                            <Button Content="Remove Selected" Click="RemoveTrafficProfile_Click" />
+                                        </WrapPanel>
+
+                                        <DataGrid Grid.Row="10"
+                                                  ItemsSource="{Binding SelectedNode.TrafficProfiles}"
+                                                  SelectedItem="{Binding SelectedNodeTrafficProfile, Mode=TwoWay}"
+                                                  AutoGenerateColumns="False"
+                                                  SelectionMode="Single"
+                                                  SelectionUnit="FullRow">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Binding="{Binding TrafficType, Mode=TwoWay}" Header="Traffic Type" Width="*" />
+                                                <DataGridTextColumn Binding="{Binding Production, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="Production" Width="82" />
+                                                <DataGridTextColumn Binding="{Binding Consumption, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="Consumption" Width="90" />
+                                                <DataGridCheckBoxColumn Binding="{Binding CanTransship, Mode=TwoWay}" Header="Transship" Width="75" />
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </Grid>
+                                </Border>
+
+                                <Border Grid.Column="4"
+                                        Padding="12"
+                                        Background="#FFFFFBF4"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="16">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="8" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
+
+                                        <TextBlock FontSize="16"
+                                                   FontWeight="SemiBold"
+                                                   Text="Edges" />
+
+                                        <WrapPanel Grid.Row="2">
+                                            <Button Content="Add Edge" Click="AddEdge_Click" />
+                                            <Button Content="Remove Selected" Click="RemoveEdge_Click" />
+                                        </WrapPanel>
+
+                                        <DataGrid Grid.Row="4"
+                                                  ItemsSource="{Binding Edges}"
+                                                  SelectedItem="{Binding SelectedEdge, Mode=TwoWay}"
+                                                  AutoGenerateColumns="False"
+                                                  SelectionMode="Single"
+                                                  SelectionUnit="FullRow">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Binding="{Binding Id, Mode=TwoWay}" Header="Id" Width="70" />
+                                                <DataGridTextColumn Binding="{Binding FromNodeId, Mode=TwoWay}" Header="From" Width="82" />
+                                                <DataGridTextColumn Binding="{Binding ToNodeId, Mode=TwoWay}" Header="To" Width="82" />
+                                                <DataGridTextColumn Binding="{Binding Time, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="Time" Width="68" />
+                                                <DataGridTextColumn Binding="{Binding Cost, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="Cost" Width="68" />
+                                                <DataGridTextColumn Binding="{Binding Capacity, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="Capacity" Width="80" />
+                                                <DataGridCheckBoxColumn Binding="{Binding IsBidirectional, Mode=TwoWay}" Header="2-way" Width="60" />
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </Grid>
+                                </Border>
+                            </Grid>
                         </Grid>
                     </TabItem>
                 </TabControl>

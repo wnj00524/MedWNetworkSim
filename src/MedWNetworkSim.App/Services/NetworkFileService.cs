@@ -92,7 +92,7 @@ public sealed class NetworkFileService
                 Name = string.IsNullOrWhiteSpace(node.Name) ? nodeId : node.Name.Trim(),
                 X = node.X,
                 Y = node.Y,
-                TrafficProfiles = NormalizeProfiles(node.TrafficProfiles)
+                TrafficProfiles = NormalizeProfiles(node.TrafficProfiles, nodeId)
             });
         }
 
@@ -129,6 +129,16 @@ public sealed class NetworkFileService
                 throw new InvalidOperationException($"Duplicate edge id '{edgeId}' was found.");
             }
 
+            if (double.IsNaN(edge.Time) || double.IsInfinity(edge.Time) || edge.Time < 0d)
+            {
+                throw new InvalidOperationException($"Edge '{edgeId}' has an invalid time value. Use a finite number >= 0.");
+            }
+
+            if (double.IsNaN(edge.Cost) || double.IsInfinity(edge.Cost) || edge.Cost < 0d)
+            {
+                throw new InvalidOperationException($"Edge '{edgeId}' has an invalid cost value. Use a finite number >= 0.");
+            }
+
             if (capacity.HasValue && (double.IsNaN(capacity.Value) || double.IsInfinity(capacity.Value) || capacity.Value < 0d))
             {
                 throw new InvalidOperationException($"Edge '{edgeId}' has an invalid capacity value. Use a number >= 0 or omit the property for unlimited capacity.");
@@ -159,19 +169,44 @@ public sealed class NetworkFileService
         };
     }
 
-    private static List<NodeTrafficProfile> NormalizeProfiles(IEnumerable<NodeTrafficProfile>? profiles)
+    private static List<NodeTrafficProfile> NormalizeProfiles(IEnumerable<NodeTrafficProfile>? profiles, string nodeId)
     {
-        // Duplicate traffic rows on the same node are collapsed into one persisted profile per traffic type.
-        return (profiles ?? [])
-            .Where(profile => !string.IsNullOrWhiteSpace(profile.TrafficType))
-            .GroupBy(profile => profile.TrafficType.Trim(), Comparer)
-            .Select(group => new NodeTrafficProfile
+        var normalizedProfiles = new Dictionary<string, NodeTrafficProfile>(Comparer);
+
+        foreach (var profile in profiles ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(profile.TrafficType))
             {
-                TrafficType = group.Key,
-                Production = group.Sum(profile => profile.Production),
-                Consumption = group.Sum(profile => profile.Consumption),
-                CanTransship = group.Any(profile => profile.CanTransship)
-            })
+                throw new InvalidOperationException($"Node '{nodeId}' contains a traffic profile with a blank trafficType.");
+            }
+
+            if (double.IsNaN(profile.Production) || double.IsInfinity(profile.Production) || profile.Production < 0d)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has an invalid production value for traffic '{profile.TrafficType}'. Use a finite number >= 0.");
+            }
+
+            if (double.IsNaN(profile.Consumption) || double.IsInfinity(profile.Consumption) || profile.Consumption < 0d)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has an invalid consumption value for traffic '{profile.TrafficType}'. Use a finite number >= 0.");
+            }
+
+            var trafficType = profile.TrafficType.Trim();
+            if (!normalizedProfiles.TryGetValue(trafficType, out var normalizedProfile))
+            {
+                normalizedProfile = new NodeTrafficProfile
+                {
+                    TrafficType = trafficType
+                };
+                normalizedProfiles[trafficType] = normalizedProfile;
+            }
+
+            normalizedProfile.Production += profile.Production;
+            normalizedProfile.Consumption += profile.Consumption;
+            normalizedProfile.CanTransship |= profile.CanTransship;
+        }
+
+        // Duplicate traffic rows on the same node are collapsed into one persisted profile per traffic type.
+        return normalizedProfiles.Values
             .OrderBy(profile => profile.TrafficType, Comparer)
             .ToList();
     }

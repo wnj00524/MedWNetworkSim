@@ -2,15 +2,24 @@ using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
 
+/// <summary>
+/// Simulates movement through a network, including route scoring, capacity sharing, and bid competition.
+/// </summary>
 public sealed class NetworkSimulationEngine
 {
     private const double Epsilon = 0.000001d;
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
 
+    /// <summary>
+    /// Runs the routing simulation for every traffic type present in the network.
+    /// </summary>
+    /// <param name="network">The network to simulate.</param>
+    /// <returns>The per-traffic routing outcomes.</returns>
     public IReadOnlyList<TrafficSimulationOutcome> Simulate(NetworkModel network)
     {
         ArgumentNullException.ThrowIfNull(network);
 
+        // Build shared graph data once, then route every traffic type against the same pool of edge capacity.
         var adjacency = BuildAdjacency(network);
         var definitionsByTraffic = network.TrafficTypes
             .ToDictionary(definition => definition.Name, definition => definition, Comparer);
@@ -45,11 +54,13 @@ public sealed class NetworkSimulationEngine
                 context.Notes.Add("No consumer nodes were defined for this traffic type.");
             }
 
+            // Same-node supply satisfies same-node demand before any network routing is attempted.
             ApplyLocalAllocations(context);
         }
 
         while (true)
         {
+            // Capacity bidding is resolved globally: every traffic type competes for the next best route.
             var nextCandidate = contexts
                 .SelectMany(context => BuildCandidateRoutes(context, adjacency, remainingCapacityByEdgeId))
                 .OrderByDescending(candidate => candidate.CapacityBidPerUnit)
@@ -161,6 +172,11 @@ public sealed class NetworkSimulationEngine
             .ToList();
     }
 
+    /// <summary>
+    /// Aggregates route allocations into landed-cost summaries for each consumer node and traffic type.
+    /// </summary>
+    /// <param name="outcomes">The traffic outcomes produced by <see cref="Simulate"/>.</param>
+    /// <returns>The consumer cost summaries.</returns>
     public IReadOnlyList<ConsumerCostSummary> SummarizeConsumerCosts(IEnumerable<TrafficSimulationOutcome> outcomes)
     {
         return outcomes
@@ -206,6 +222,7 @@ public sealed class NetworkSimulationEngine
 
     private static TrafficContext BuildContext(NetworkModel network, TrafficTypeDefinition definition)
     {
+        // Each traffic type sees its own supply/demand profile, but references the same underlying node set.
         var profilesByNodeId = network.Nodes.ToDictionary(
             node => node.Id,
             node => node.TrafficProfiles.FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, definition.Name)),
@@ -307,6 +324,7 @@ public sealed class NetworkSimulationEngine
         IReadOnlyDictionary<string, List<GraphArc>> adjacency,
         IDictionary<string, double> remainingCapacityByEdgeId)
     {
+        // A Dijkstra pass finds the best currently-feasible route under this traffic type's scoring rule.
         var distances = new Dictionary<string, double>(Comparer)
         {
             [producerNodeId] = 0d
@@ -402,6 +420,7 @@ public sealed class NetworkSimulationEngine
             return true;
         }
 
+        // Intermediate nodes must explicitly allow transhipment for the current traffic type.
         return profilesByNodeId.TryGetValue(nodeId, out var profile) && profile?.CanTransship == true;
     }
 
@@ -454,6 +473,7 @@ public sealed class NetworkSimulationEngine
         double quantity,
         double routeCapacity)
     {
+        // Bid cost is only charged when the chosen movement fully consumes a finite bottleneck on the route.
         if (capacityBidPerUnit <= Epsilon ||
             quantity <= Epsilon ||
             double.IsPositiveInfinity(routeCapacity) ||

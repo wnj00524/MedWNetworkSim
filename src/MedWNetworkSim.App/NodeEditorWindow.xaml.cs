@@ -9,6 +9,7 @@ public partial class NodeEditorWindow : Window
     {
         InitializeComponent();
         ViewModel = viewModel;
+        // The window edits the same shared view model as the main screen, so changes are live immediately.
         DataContext = ViewModel;
     }
 

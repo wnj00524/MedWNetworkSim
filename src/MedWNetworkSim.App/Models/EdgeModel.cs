@@ -1,18 +1,42 @@
 namespace MedWNetworkSim.App.Models;
 
+/// <summary>
+/// Represents a connection between two nodes, including routing attributes and optional capacity.
+/// </summary>
 public sealed class EdgeModel
 {
+    /// <summary>
+    /// Gets or sets the unique identifier for the edge.
+    /// </summary>
     public string Id { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Gets or sets the source node identifier.
+    /// </summary>
     public string FromNodeId { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Gets or sets the destination node identifier.
+    /// </summary>
     public string ToNodeId { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Gets or sets the time cost used when traffic prioritizes speed or total cost.
+    /// </summary>
     public double Time { get; set; }
 
+    /// <summary>
+    /// Gets or sets the monetary or general routing cost used when traffic prioritizes cost or total cost.
+    /// </summary>
     public double Cost { get; set; }
 
+    /// <summary>
+    /// Gets or sets the optional shared capacity of the edge. Null means unlimited capacity.
+    /// </summary>
     public double? Capacity { get; set; }
 
+    /// <summary>
+    /// Gets or sets a value indicating whether traffic can travel in both directions on this edge.
+    /// </summary>
     public bool IsBidirectional { get; set; } = true;
 }

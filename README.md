@@ -5,6 +5,7 @@ WPF network simulator for modelling multi-traffic movement across producer, cons
 ## What It Does
 
 - Loads a JSON network file.
+- Lets users create a new network and edit traffic types, nodes, node roles, and edges directly in the app.
 - Draws the network on a draggable canvas.
 - Auto-positions nodes when `x` and `y` are omitted from the input file.
 - Includes an `Auto Arrange` action to regenerate node positions for the whole network.
@@ -17,6 +18,20 @@ WPF network simulator for modelling multi-traffic movement across producer, cons
   - `totalCost`: minimise `time + cost`
 - Simulates routed movements from producers to consumers through valid transhipment nodes.
 - Saves the current network, including updated node positions, back to JSON.
+
+## Editing In App
+
+- Use `New Network` to start from an empty model.
+- Maintain traffic types in the `Network Editor` tab, including routing preference and optional `capacityBidPerUnit`.
+- Add and remove nodes in the main editor grid.
+- Open `Open Node Editor...` to edit one node in a dedicated window.
+- In the node editor, choose the node, then choose one of its traffic-role entries, then set:
+  - `Traffic Type`
+  - `Role`
+  - `Production`
+  - `Consumption`
+- Add and remove edges in the `Edges` grid. `From` and `To` are chosen from the existing node list rather than typed freehand.
+- Drag nodes on the canvas to refine the layout visually, or use `Auto Arrange` to regenerate positions.
 
 ## Run It
 
@@ -95,3 +110,14 @@ The app uses a simple custom JSON format:
 - Omit `capacity` on an edge when you want it to behave as unlimited.
 - The consumer-cost view shows local and imported movement costs separately, plus the blended movement cost seen at each consumer node.
 - Routing is path-based and allocates producer supply to consumer demand using the best available routes under the chosen traffic preference and capacity bidding.
+- `Auto Arrange` only updates node positions. It does not throw away in-memory edits to nodes, roles, or traffic types.
+
+## Code Structure
+
+- [MainWindow.xaml](/C:/Users/jdwil/source/repos/Codex/MedWNetworkSim/src/MedWNetworkSim.App/MainWindow.xaml) defines the main shell: canvas, summary panes, simulation results, and the in-app editor grids.
+- [MainWindowViewModel.cs](/C:/Users/jdwil/source/repos/Codex/MedWNetworkSim/src/MedWNetworkSim.App/ViewModels/MainWindowViewModel.cs) is the application coordinator. It loads/saves networks, keeps editor selections in sync, and triggers simulation.
+- [NodeEditorWindow.xaml](/C:/Users/jdwil/source/repos/Codex/MedWNetworkSim/src/MedWNetworkSim.App/NodeEditorWindow.xaml) provides the dedicated dropdown-driven node editing workflow.
+- [NetworkFileService.cs](/C:/Users/jdwil/source/repos/Codex/MedWNetworkSim/src/MedWNetworkSim.App/Services/NetworkFileService.cs) normalizes and validates JSON data and applies automatic layout.
+- [NetworkSimulationEngine.cs](/C:/Users/jdwil/source/repos/Codex/MedWNetworkSim/src/MedWNetworkSim.App/Services/NetworkSimulationEngine.cs) performs routing, capacity competition, bid-cost calculation, and consumer-cost summarization.
+- The `Models` folder contains the persisted JSON shape.
+- The `ViewModels` folder contains the editable UI state and display helpers used by WPF binding.

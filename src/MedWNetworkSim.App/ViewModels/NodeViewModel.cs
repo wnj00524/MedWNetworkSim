@@ -24,6 +24,7 @@ public sealed class NodeViewModel : ObservableObject
             model.TrafficProfiles.Select(profile => new NodeTrafficProfileViewModel(profile)));
         TrafficProfiles.CollectionChanged += HandleTrafficProfilesChanged;
 
+        // Bubble traffic-profile edits up as node-definition changes so the rest of the UI can refresh once.
         foreach (var profile in TrafficProfiles)
         {
             profile.PropertyChanged += HandleTrafficProfilePropertyChanged;
@@ -134,6 +135,7 @@ public sealed class NodeViewModel : ObservableObject
 
     public void MoveBy(double deltaX, double deltaY)
     {
+        // Keep the node on the positive canvas while preserving drag semantics from the node center.
         X = Math.Max(Width / 2d, X + deltaX);
         Y = Math.Max(Height / 2d, Y + deltaY);
     }

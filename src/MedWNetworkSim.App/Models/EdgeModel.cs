@@ -12,5 +12,7 @@ public sealed class EdgeModel
 
     public double Cost { get; set; }
 
+    public double? Capacity { get; set; }
+
     public bool IsBidirectional { get; set; } = true;
 }

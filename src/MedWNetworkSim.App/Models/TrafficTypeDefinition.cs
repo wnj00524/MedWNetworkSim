@@ -7,4 +7,6 @@ public sealed class TrafficTypeDefinition
     public string Description { get; set; } = string.Empty;
 
     public RoutingPreference RoutingPreference { get; set; } = RoutingPreference.TotalCost;
+
+    public double? CapacityBidPerUnit { get; set; }
 }

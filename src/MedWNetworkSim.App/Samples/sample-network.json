@@ -1,0 +1,95 @@
+{
+  "name": "Medical Waste and Supply Routing Demo",
+  "description": "Sample multi-traffic network showing producers, consumers, and transhipment behaviour across the same set of nodes.",
+  "trafficTypes": [
+    {
+      "name": "Infectious Waste",
+      "description": "Time-sensitive waste moved to treatment facilities.",
+      "routingPreference": "speed"
+    },
+    {
+      "name": "Recyclables",
+      "description": "Traffic that prefers low direct cost over raw speed.",
+      "routingPreference": "cost"
+    },
+    {
+      "name": "Sterile Supplies",
+      "description": "Traffic routed on combined time plus cost.",
+      "routingPreference": "totalCost"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "HOSP-A",
+      "name": "Clinic East",
+      "trafficProfiles": [
+        { "trafficType": "Infectious Waste", "production": 42, "consumption": 0, "canTransship": false },
+        { "trafficType": "Recyclables", "production": 18, "consumption": 0, "canTransship": false },
+        { "trafficType": "Sterile Supplies", "production": 0, "consumption": 20, "canTransship": false }
+      ]
+    },
+    {
+      "id": "HOSP-B",
+      "name": "Hospital West",
+      "trafficProfiles": [
+        { "trafficType": "Infectious Waste", "production": 30, "consumption": 0, "canTransship": false },
+        { "trafficType": "Recyclables", "production": 12, "consumption": 0, "canTransship": false },
+        { "trafficType": "Sterile Supplies", "production": 0, "consumption": 15, "canTransship": false }
+      ]
+    },
+    {
+      "id": "HUB-N",
+      "name": "North Logistics Hub",
+      "trafficProfiles": [
+        { "trafficType": "Infectious Waste", "production": 0, "consumption": 0, "canTransship": true },
+        { "trafficType": "Recyclables", "production": 4, "consumption": 2, "canTransship": true },
+        { "trafficType": "Sterile Supplies", "production": 0, "consumption": 0, "canTransship": true }
+      ]
+    },
+    {
+      "id": "AUTO-1",
+      "name": "Autoclave Centre",
+      "trafficProfiles": [
+        { "trafficType": "Infectious Waste", "production": 0, "consumption": 55, "canTransship": false },
+        { "trafficType": "Sterile Supplies", "production": 25, "consumption": 0, "canTransship": true }
+      ]
+    },
+    {
+      "id": "REC-1",
+      "name": "Recovery Facility",
+      "trafficProfiles": [
+        { "trafficType": "Recyclables", "production": 0, "consumption": 40, "canTransship": false }
+      ]
+    },
+    {
+      "id": "PORT-1",
+      "name": "Intermodal Port",
+      "trafficProfiles": [
+        { "trafficType": "Infectious Waste", "production": 0, "consumption": 0, "canTransship": true },
+        { "trafficType": "Recyclables", "production": 0, "consumption": 0, "canTransship": true },
+        { "trafficType": "Sterile Supplies", "production": 0, "consumption": 0, "canTransship": true }
+      ]
+    },
+    {
+      "id": "LAB-1",
+      "name": "Regional Lab",
+      "trafficProfiles": [
+        { "trafficType": "Infectious Waste", "production": 0, "consumption": 10, "canTransship": false },
+        { "trafficType": "Sterile Supplies", "production": 20, "consumption": 0, "canTransship": false }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "E1", "fromNodeId": "HOSP-A", "toNodeId": "HUB-N", "time": 3.2, "cost": 4.5, "isBidirectional": true },
+    { "id": "E2", "fromNodeId": "HOSP-B", "toNodeId": "HUB-N", "time": 3.8, "cost": 5.1, "isBidirectional": true },
+    { "id": "E3", "fromNodeId": "HUB-N", "toNodeId": "AUTO-1", "time": 4.9, "cost": 7.2, "isBidirectional": false },
+    { "id": "E4", "fromNodeId": "HUB-N", "toNodeId": "REC-1", "time": 4.0, "cost": 4.0, "isBidirectional": false },
+    { "id": "E5", "fromNodeId": "HUB-N", "toNodeId": "PORT-1", "time": 5.4, "cost": 3.6, "isBidirectional": true },
+    { "id": "E6", "fromNodeId": "PORT-1", "toNodeId": "REC-1", "time": 2.6, "cost": 2.0, "isBidirectional": true },
+    { "id": "E7", "fromNodeId": "PORT-1", "toNodeId": "LAB-1", "time": 2.2, "cost": 6.4, "isBidirectional": true },
+    { "id": "E8", "fromNodeId": "AUTO-1", "toNodeId": "PORT-1", "time": 2.0, "cost": 3.0, "isBidirectional": true },
+    { "id": "E9", "fromNodeId": "AUTO-1", "toNodeId": "LAB-1", "time": 3.1, "cost": 4.2, "isBidirectional": true },
+    { "id": "E10", "fromNodeId": "LAB-1", "toNodeId": "HOSP-A", "time": 2.4, "cost": 5.0, "isBidirectional": true },
+    { "id": "E11", "fromNodeId": "LAB-1", "toNodeId": "HOSP-B", "time": 2.7, "cost": 5.0, "isBidirectional": true }
+  ]
+}

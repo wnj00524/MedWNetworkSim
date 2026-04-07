@@ -1,0 +1,331 @@
+using System.IO;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using MedWNetworkSim.App.Models;
+
+namespace MedWNetworkSim.App.Services;
+
+public sealed class NetworkFileService
+{
+    private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+
+    private readonly JsonSerializerOptions serializerOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+    };
+
+    public NetworkModel Load(string path)
+    {
+        var json = File.ReadAllText(path);
+        var model = JsonSerializer.Deserialize<NetworkModel>(json, serializerOptions)
+            ?? throw new InvalidOperationException("The selected file could not be deserialized into a network.");
+
+        return NormalizeAndValidate(model);
+    }
+
+    public void Save(NetworkModel model, string path)
+    {
+        var normalized = NormalizeAndValidate(model);
+        var json = JsonSerializer.Serialize(normalized, serializerOptions);
+        File.WriteAllText(path, json);
+    }
+
+    public NetworkModel AutoArrange(NetworkModel model)
+    {
+        return NormalizeAndValidate(model, forceLayoutAllNodes: true);
+    }
+
+    public NetworkModel NormalizeAndValidate(NetworkModel model)
+    {
+        return NormalizeAndValidate(model, forceLayoutAllNodes: false);
+    }
+
+    private NetworkModel NormalizeAndValidate(NetworkModel model, bool forceLayoutAllNodes)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        var normalizedNodes = new List<NodeModel>();
+        var nodeIds = new HashSet<string>(Comparer);
+
+        foreach (var node in model.Nodes ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(node.Id))
+            {
+                throw new InvalidOperationException("Each node must have a non-empty id.");
+            }
+
+            var nodeId = node.Id.Trim();
+            if (!nodeIds.Add(nodeId))
+            {
+                throw new InvalidOperationException($"Duplicate node id '{nodeId}' was found.");
+            }
+
+            normalizedNodes.Add(new NodeModel
+            {
+                Id = nodeId,
+                Name = string.IsNullOrWhiteSpace(node.Name) ? nodeId : node.Name.Trim(),
+                X = node.X,
+                Y = node.Y,
+                TrafficProfiles = NormalizeProfiles(node.TrafficProfiles)
+            });
+        }
+
+        var normalizedEdges = new List<EdgeModel>();
+        var edgeIds = new HashSet<string>(Comparer);
+
+        foreach (var edge in model.Edges ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(edge.FromNodeId) || string.IsNullOrWhiteSpace(edge.ToNodeId))
+            {
+                throw new InvalidOperationException("Each edge must have both fromNodeId and toNodeId values.");
+            }
+
+            var fromNodeId = edge.FromNodeId.Trim();
+            var toNodeId = edge.ToNodeId.Trim();
+
+            if (!nodeIds.Contains(fromNodeId))
+            {
+                throw new InvalidOperationException($"Edge '{edge.Id}' references missing source node '{fromNodeId}'.");
+            }
+
+            if (!nodeIds.Contains(toNodeId))
+            {
+                throw new InvalidOperationException($"Edge '{edge.Id}' references missing target node '{toNodeId}'.");
+            }
+
+            var edgeId = string.IsNullOrWhiteSpace(edge.Id)
+                ? $"{fromNodeId}-{toNodeId}-{normalizedEdges.Count + 1}"
+                : edge.Id.Trim();
+
+            if (!edgeIds.Add(edgeId))
+            {
+                throw new InvalidOperationException($"Duplicate edge id '{edgeId}' was found.");
+            }
+
+            normalizedEdges.Add(new EdgeModel
+            {
+                Id = edgeId,
+                FromNodeId = fromNodeId,
+                ToNodeId = toNodeId,
+                Time = edge.Time,
+                Cost = edge.Cost,
+                IsBidirectional = edge.IsBidirectional
+            });
+        }
+
+        var trafficDefinitions = NormalizeTrafficDefinitions(model.TrafficTypes, normalizedNodes);
+        ApplyAutomaticLayout(normalizedNodes, normalizedEdges, forceLayoutAllNodes);
+
+        return new NetworkModel
+        {
+            Name = string.IsNullOrWhiteSpace(model.Name) ? "Untitled Network" : model.Name.Trim(),
+            Description = model.Description?.Trim() ?? string.Empty,
+            Nodes = normalizedNodes,
+            Edges = normalizedEdges,
+            TrafficTypes = trafficDefinitions
+        };
+    }
+
+    private static List<NodeTrafficProfile> NormalizeProfiles(IEnumerable<NodeTrafficProfile>? profiles)
+    {
+        return (profiles ?? [])
+            .Where(profile => !string.IsNullOrWhiteSpace(profile.TrafficType))
+            .GroupBy(profile => profile.TrafficType.Trim(), Comparer)
+            .Select(group => new NodeTrafficProfile
+            {
+                TrafficType = group.Key,
+                Production = group.Sum(profile => profile.Production),
+                Consumption = group.Sum(profile => profile.Consumption),
+                CanTransship = group.Any(profile => profile.CanTransship)
+            })
+            .OrderBy(profile => profile.TrafficType, Comparer)
+            .ToList();
+    }
+
+    private static List<TrafficTypeDefinition> NormalizeTrafficDefinitions(
+        IEnumerable<TrafficTypeDefinition>? definitions,
+        IEnumerable<NodeModel> nodes)
+    {
+        var result = new Dictionary<string, TrafficTypeDefinition>(Comparer);
+
+        foreach (var definition in definitions ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(definition.Name))
+            {
+                continue;
+            }
+
+            var name = definition.Name.Trim();
+            result[name] = new TrafficTypeDefinition
+            {
+                Name = name,
+                Description = definition.Description?.Trim() ?? string.Empty,
+                RoutingPreference = definition.RoutingPreference
+            };
+        }
+
+        foreach (var trafficName in nodes
+                     .SelectMany(node => node.TrafficProfiles)
+                     .Select(profile => profile.TrafficType)
+                     .Distinct(Comparer))
+        {
+            if (!result.ContainsKey(trafficName))
+            {
+                result[trafficName] = new TrafficTypeDefinition
+                {
+                    Name = trafficName,
+                    RoutingPreference = RoutingPreference.TotalCost
+                };
+            }
+        }
+
+        return result.Values
+            .OrderBy(definition => definition.Name, Comparer)
+            .ToList();
+    }
+
+    private static void ApplyAutomaticLayout(
+        IList<NodeModel> nodes,
+        IReadOnlyList<EdgeModel> edges,
+        bool forceLayoutAllNodes)
+    {
+        if (nodes.Count == 0)
+        {
+            return;
+        }
+
+        if (forceLayoutAllNodes)
+        {
+            ApplyRoleBasedLayout(nodes, edges);
+            return;
+        }
+
+        var nodesMissingCoordinates = nodes
+            .Where(node => !node.X.HasValue || !node.Y.HasValue)
+            .ToList();
+
+        if (nodesMissingCoordinates.Count == 0)
+        {
+            return;
+        }
+
+        if (nodesMissingCoordinates.Count == nodes.Count)
+        {
+            ApplyRoleBasedLayout(nodes, edges);
+            return;
+        }
+
+        ApplySupplementalLayout(nodes, edges, nodesMissingCoordinates);
+    }
+
+    private static void ApplyRoleBasedLayout(IList<NodeModel> nodes, IReadOnlyList<EdgeModel> edges)
+    {
+        var degreeByNodeId = BuildDegreeLookup(edges);
+        var layers = nodes
+            .GroupBy(GetLayoutLayer)
+            .OrderBy(group => group.Key);
+
+        const double leftMargin = 180d;
+        const double topMargin = 160d;
+        const double layerSpacing = 360d;
+        const double subColumnSpacing = 220d;
+        const double rowSpacing = 180d;
+        const int rowsPerSubColumn = 5;
+
+        foreach (var layer in layers)
+        {
+            var orderedNodes = layer
+                .OrderByDescending(node => degreeByNodeId.GetValueOrDefault(node.Id, 0))
+                .ThenBy(node => node.Name, Comparer)
+                .ToList();
+
+            for (var index = 0; index < orderedNodes.Count; index++)
+            {
+                var subColumn = index / rowsPerSubColumn;
+                var row = index % rowsPerSubColumn;
+
+                orderedNodes[index].X = leftMargin + (layer.Key * layerSpacing) + (subColumn * subColumnSpacing);
+                orderedNodes[index].Y = topMargin + (row * rowSpacing);
+            }
+        }
+    }
+
+    private static void ApplySupplementalLayout(
+        IList<NodeModel> nodes,
+        IReadOnlyList<EdgeModel> edges,
+        IReadOnlyList<NodeModel> nodesMissingCoordinates)
+    {
+        var explicitNodes = nodes
+            .Where(node => node.X.HasValue && node.Y.HasValue)
+            .ToList();
+
+        if (explicitNodes.Count == 0)
+        {
+            ApplyRoleBasedLayout(nodes, edges);
+            return;
+        }
+
+        var degreeByNodeId = BuildDegreeLookup(edges);
+        var orderedMissingNodes = nodesMissingCoordinates
+            .OrderBy(GetLayoutLayer)
+            .ThenByDescending(node => degreeByNodeId.GetValueOrDefault(node.Id, 0))
+            .ThenBy(node => node.Name, Comparer)
+            .ToList();
+
+        var startX = explicitNodes.Max(node => node.X ?? 0d) + 260d;
+        var startY = Math.Max(140d, explicitNodes.Min(node => node.Y ?? 0d));
+        const double columnSpacing = 220d;
+        const double rowSpacing = 180d;
+        const int rowsPerColumn = 5;
+
+        for (var index = 0; index < orderedMissingNodes.Count; index++)
+        {
+            var column = index / rowsPerColumn;
+            var row = index % rowsPerColumn;
+            var generatedX = startX + (column * columnSpacing);
+            var generatedY = startY + (row * rowSpacing);
+
+            orderedMissingNodes[index].X ??= generatedX;
+            orderedMissingNodes[index].Y ??= generatedY;
+        }
+    }
+
+    private static Dictionary<string, int> BuildDegreeLookup(IEnumerable<EdgeModel> edges)
+    {
+        var degreeByNodeId = new Dictionary<string, int>(Comparer);
+
+        foreach (var edge in edges)
+        {
+            degreeByNodeId[edge.FromNodeId] = degreeByNodeId.GetValueOrDefault(edge.FromNodeId) + 1;
+            degreeByNodeId[edge.ToNodeId] = degreeByNodeId.GetValueOrDefault(edge.ToNodeId) + 1;
+        }
+
+        return degreeByNodeId;
+    }
+
+    private static int GetLayoutLayer(NodeModel node)
+    {
+        var hasTransshipment = node.TrafficProfiles.Any(profile => profile.CanTransship);
+        if (hasTransshipment)
+        {
+            return 1;
+        }
+
+        var totalProduction = node.TrafficProfiles.Sum(profile => profile.Production);
+        var totalConsumption = node.TrafficProfiles.Sum(profile => profile.Consumption);
+
+        if (totalProduction > totalConsumption)
+        {
+            return 0;
+        }
+
+        if (totalConsumption > totalProduction)
+        {
+            return 2;
+        }
+
+        return 1;
+    }
+}

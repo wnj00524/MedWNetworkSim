@@ -16,6 +16,11 @@ public partial class MainWindow : Window
 
     public MainWindowViewModel ViewModel { get; }
 
+    private void NewNetwork_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.CreateNewNetwork);
+    }
+
     private void OpenFile_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog
@@ -65,6 +70,46 @@ public partial class MainWindow : Window
     private void AutoArrange_Click(object sender, RoutedEventArgs e)
     {
         ExecuteWithErrorHandling(ViewModel.AutoArrangeNodes);
+    }
+
+    private void AddTrafficType_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.AddTrafficDefinition);
+    }
+
+    private void RemoveTrafficType_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.RemoveSelectedTrafficDefinition);
+    }
+
+    private void AddNode_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.AddNode);
+    }
+
+    private void RemoveNode_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.RemoveSelectedNode);
+    }
+
+    private void AddTrafficProfile_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.AddTrafficProfileToSelectedNode);
+    }
+
+    private void RemoveTrafficProfile_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.RemoveSelectedTrafficProfileFromNode);
+    }
+
+    private void AddEdge_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.AddEdge);
+    }
+
+    private void RemoveEdge_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.RemoveSelectedEdge);
     }
 
     private void NodeThumb_OnDragDelta(object sender, DragDeltaEventArgs e)

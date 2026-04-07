@@ -2,15 +2,76 @@ using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.ViewModels;
 
-public sealed class NodeTrafficProfileViewModel(NodeTrafficProfile profile) : ObservableObject
+public sealed class NodeTrafficProfileViewModel : ObservableObject
 {
-    public string TrafficType { get; } = profile.TrafficType;
+    private string trafficType;
+    private double production;
+    private double consumption;
+    private bool canTransship;
 
-    public double Production { get; } = profile.Production;
+    public NodeTrafficProfileViewModel(NodeTrafficProfile profile)
+    {
+        trafficType = profile.TrafficType;
+        production = profile.Production;
+        consumption = profile.Consumption;
+        canTransship = profile.CanTransship;
+    }
 
-    public double Consumption { get; } = profile.Consumption;
+    public string TrafficType
+    {
+        get => trafficType;
+        set
+        {
+            if (!SetProperty(ref trafficType, value))
+            {
+                return;
+            }
 
-    public bool CanTransship { get; } = profile.CanTransship;
+            OnPropertyChanged(nameof(RoleSummary));
+        }
+    }
+
+    public double Production
+    {
+        get => production;
+        set
+        {
+            if (!SetProperty(ref production, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(RoleSummary));
+        }
+    }
+
+    public double Consumption
+    {
+        get => consumption;
+        set
+        {
+            if (!SetProperty(ref consumption, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(RoleSummary));
+        }
+    }
+
+    public bool CanTransship
+    {
+        get => canTransship;
+        set
+        {
+            if (!SetProperty(ref canTransship, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(RoleSummary));
+        }
+    }
 
     public string RoleSummary
     {

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.ViewModels;
@@ -8,24 +9,62 @@ public sealed class NodeViewModel : ObservableObject
     public const double DefaultWidth = 176d;
     public const double DefaultHeight = 118d;
 
+    private string id;
+    private string name;
     private double x;
     private double y;
 
     public NodeViewModel(NodeModel model)
     {
-        Id = model.Id;
-        Name = model.Name;
+        id = model.Id;
+        name = model.Name;
         x = model.X ?? 0d;
         y = model.Y ?? 0d;
         TrafficProfiles = new ObservableCollection<NodeTrafficProfileViewModel>(
             model.TrafficProfiles.Select(profile => new NodeTrafficProfileViewModel(profile)));
+        TrafficProfiles.CollectionChanged += HandleTrafficProfilesChanged;
+
+        foreach (var profile in TrafficProfiles)
+        {
+            profile.PropertyChanged += HandleTrafficProfilePropertyChanged;
+        }
     }
 
     public event EventHandler? PositionChanged;
 
-    public string Id { get; }
+    public event EventHandler? DefinitionChanged;
 
-    public string Name { get; }
+    public event EventHandler<ValueChangedEventArgs<string>>? IdChanged;
+
+    public string Id
+    {
+        get => id;
+        set
+        {
+            var oldValue = id;
+            if (!SetProperty(ref id, value))
+            {
+                return;
+            }
+
+            IdChanged?.Invoke(this, new ValueChangedEventArgs<string>(oldValue, value));
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public string Name
+    {
+        get => name;
+        set
+        {
+            if (!SetProperty(ref name, value))
+            {
+                return;
+            }
+
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     public double Width => DefaultWidth;
 
@@ -34,7 +73,7 @@ public sealed class NodeViewModel : ObservableObject
     public double X
     {
         get => x;
-        private set
+        set
         {
             if (!SetProperty(ref x, value))
             {
@@ -50,7 +89,7 @@ public sealed class NodeViewModel : ObservableObject
     public double Y
     {
         get => y;
-        private set
+        set
         {
             if (!SetProperty(ref y, value))
             {
@@ -83,6 +122,16 @@ public sealed class NodeViewModel : ObservableObject
         Environment.NewLine,
         TrafficProfiles.Select(profile => $"{profile.TrafficType}: {profile.RoleSummary}"));
 
+    public void AddTrafficProfile(NodeTrafficProfileViewModel profile)
+    {
+        TrafficProfiles.Add(profile);
+    }
+
+    public void RemoveTrafficProfile(NodeTrafficProfileViewModel profile)
+    {
+        TrafficProfiles.Remove(profile);
+    }
+
     public void MoveBy(double deltaX, double deltaY)
     {
         X = Math.Max(Width / 2d, X + deltaX);
@@ -107,5 +156,28 @@ public sealed class NodeViewModel : ObservableObject
                 })
                 .ToList()
         };
+    }
+
+    private void HandleTrafficProfilesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        foreach (var profile in e.NewItems?.OfType<NodeTrafficProfileViewModel>() ?? [])
+        {
+            profile.PropertyChanged += HandleTrafficProfilePropertyChanged;
+        }
+
+        foreach (var profile in e.OldItems?.OfType<NodeTrafficProfileViewModel>() ?? [])
+        {
+            profile.PropertyChanged -= HandleTrafficProfilePropertyChanged;
+        }
+
+        OnPropertyChanged(nameof(TrafficProfileCountLabel));
+        OnPropertyChanged(nameof(FullTrafficSummary));
+        DefinitionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void HandleTrafficProfilePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(FullTrafficSummary));
+        DefinitionChanged?.Invoke(this, EventArgs.Empty);
     }
 }

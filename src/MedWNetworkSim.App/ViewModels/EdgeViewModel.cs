@@ -10,33 +10,149 @@ public sealed class EdgeViewModel : ObservableObject
     private const double LabelWidth = 176d;
     private const double LabelHeight = 58d;
 
-    public EdgeViewModel(EdgeModel model, NodeViewModel sourceNode, NodeViewModel targetNode)
-    {
-        Model = model;
-        SourceNode = sourceNode;
-        TargetNode = targetNode;
+    private string id;
+    private string fromNodeId;
+    private string toNodeId;
+    private double time;
+    private double cost;
+    private double? capacity;
+    private bool isBidirectional;
+    private NodeViewModel? sourceNode;
+    private NodeViewModel? targetNode;
 
-        SourceNode.PropertyChanged += HandleEndpointChanged;
-        TargetNode.PropertyChanged += HandleEndpointChanged;
+    public EdgeViewModel(EdgeModel model, NodeViewModel? sourceNode, NodeViewModel? targetNode)
+    {
+        id = model.Id;
+        fromNodeId = model.FromNodeId;
+        toNodeId = model.ToNodeId;
+        time = model.Time;
+        cost = model.Cost;
+        capacity = model.Capacity;
+        isBidirectional = model.IsBidirectional;
+        UpdateResolvedNodes(sourceNode, targetNode);
     }
 
-    public EdgeModel Model { get; }
+    public event EventHandler? DefinitionChanged;
 
-    public NodeViewModel SourceNode { get; }
+    public string Id
+    {
+        get => id;
+        set
+        {
+            if (!SetProperty(ref id, value))
+            {
+                return;
+            }
 
-    public NodeViewModel TargetNode { get; }
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
-    public double Time => Model.Time;
+    public string FromNodeId
+    {
+        get => fromNodeId;
+        set
+        {
+            if (!SetProperty(ref fromNodeId, value))
+            {
+                return;
+            }
 
-    public double Cost => Model.Cost;
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
-    public double? Capacity => Model.Capacity;
+    public string ToNodeId
+    {
+        get => toNodeId;
+        set
+        {
+            if (!SetProperty(ref toNodeId, value))
+            {
+                return;
+            }
 
-    public bool IsBidirectional => Model.IsBidirectional;
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public double Time
+    {
+        get => time;
+        set
+        {
+            if (!SetProperty(ref time, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(TotalCost));
+            OnPropertyChanged(nameof(SummaryLabel));
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public double Cost
+    {
+        get => cost;
+        set
+        {
+            if (!SetProperty(ref cost, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(TotalCost));
+            OnPropertyChanged(nameof(SummaryLabel));
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public double? Capacity
+    {
+        get => capacity;
+        set
+        {
+            if (!SetProperty(ref capacity, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(CapacityLabel));
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public bool IsBidirectional
+    {
+        get => isBidirectional;
+        set
+        {
+            if (!SetProperty(ref isBidirectional, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(DirectionLabel));
+            OnPropertyChanged(nameof(ArrowVisibility));
+            OnPropertyChanged(nameof(ArrowPoints));
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public double TotalCost => Time + Cost;
 
     public string DirectionLabel => IsBidirectional ? "2-way" : "1-way";
 
-    public double TotalCost => Time + Cost;
+    public string SummaryLabel => $"t {Time:0.##} | c {Cost:0.##} | tc {TotalCost:0.##}";
+
+    public string CapacityLabel => Capacity.HasValue
+        ? $"cap {Capacity.Value:0.##}"
+        : "cap inf";
+
+    public Visibility ArrowVisibility => IsBidirectional || !HasValidEndpoints ? Visibility.Collapsed : Visibility.Visible;
+
+    public Visibility EdgeVisibility => HasValidEndpoints ? Visibility.Visible : Visibility.Collapsed;
 
     public double X1 => GetSegmentEndpoints().start.X;
 
@@ -50,19 +166,11 @@ public sealed class EdgeViewModel : ObservableObject
 
     public double LabelTop => ((Y1 + Y2) / 2d) - (LabelHeight / 2d);
 
-    public string SummaryLabel => $"t {Time:0.##} | c {Cost:0.##} | tc {TotalCost:0.##}";
-
-    public string CapacityLabel => Capacity.HasValue
-        ? $"cap {Capacity.Value:0.##}"
-        : "cap inf";
-
-    public Visibility ArrowVisibility => IsBidirectional ? Visibility.Collapsed : Visibility.Visible;
-
     public string ArrowPoints
     {
         get
         {
-            if (IsBidirectional)
+            if (IsBidirectional || !HasValidEndpoints)
             {
                 return string.Empty;
             }
@@ -97,27 +205,76 @@ public sealed class EdgeViewModel : ObservableObject
         }
     }
 
+    public void ResolveNodes(IReadOnlyDictionary<string, NodeViewModel> nodeMap)
+    {
+        nodeMap.TryGetValue(FromNodeId, out var resolvedSourceNode);
+        nodeMap.TryGetValue(ToNodeId, out var resolvedTargetNode);
+        UpdateResolvedNodes(resolvedSourceNode, resolvedTargetNode);
+    }
+
     public EdgeModel ToModel()
     {
         return new EdgeModel
         {
-            Id = Model.Id,
-            FromNodeId = Model.FromNodeId,
-            ToNodeId = Model.ToNodeId,
-            Time = Model.Time,
-            Cost = Model.Cost,
-            Capacity = Model.Capacity,
-            IsBidirectional = Model.IsBidirectional
+            Id = Id,
+            FromNodeId = FromNodeId,
+            ToNodeId = ToNodeId,
+            Time = Time,
+            Cost = Cost,
+            Capacity = Capacity,
+            IsBidirectional = IsBidirectional
         };
+    }
+
+    private bool HasValidEndpoints => sourceNode is not null && targetNode is not null;
+
+    private void UpdateResolvedNodes(NodeViewModel? newSourceNode, NodeViewModel? newTargetNode)
+    {
+        if (ReferenceEquals(sourceNode, newSourceNode) && ReferenceEquals(targetNode, newTargetNode))
+        {
+            return;
+        }
+
+        if (sourceNode is not null)
+        {
+            sourceNode.PropertyChanged -= HandleEndpointChanged;
+        }
+
+        if (targetNode is not null)
+        {
+            targetNode.PropertyChanged -= HandleEndpointChanged;
+        }
+
+        sourceNode = newSourceNode;
+        targetNode = newTargetNode;
+
+        if (sourceNode is not null)
+        {
+            sourceNode.PropertyChanged += HandleEndpointChanged;
+        }
+
+        if (targetNode is not null)
+        {
+            targetNode.PropertyChanged += HandleEndpointChanged;
+        }
+
+        OnGeometryChanged();
+        OnPropertyChanged(nameof(EdgeVisibility));
+        OnPropertyChanged(nameof(ArrowVisibility));
     }
 
     private (Point start, Point end) GetSegmentEndpoints()
     {
-        var source = new Point(SourceNode.CenterX, SourceNode.CenterY);
-        var target = new Point(TargetNode.CenterX, TargetNode.CenterY);
+        if (sourceNode is null || targetNode is null)
+        {
+            return (new Point(0d, 0d), new Point(0d, 0d));
+        }
 
-        var outbound = FindRectangleIntersection(source, target, SourceNode.Width / 2d, SourceNode.Height / 2d);
-        var inbound = FindRectangleIntersection(target, source, TargetNode.Width / 2d, TargetNode.Height / 2d);
+        var source = new Point(sourceNode.CenterX, sourceNode.CenterY);
+        var target = new Point(targetNode.CenterX, targetNode.CenterY);
+
+        var outbound = FindRectangleIntersection(source, target, sourceNode.Width / 2d, sourceNode.Height / 2d);
+        var inbound = FindRectangleIntersection(target, source, targetNode.Width / 2d, targetNode.Height / 2d);
         return (outbound, inbound);
     }
 
@@ -145,6 +302,11 @@ public sealed class EdgeViewModel : ObservableObject
             return;
         }
 
+        OnGeometryChanged();
+    }
+
+    private void OnGeometryChanged()
+    {
         OnPropertyChanged(nameof(X1));
         OnPropertyChanged(nameof(Y1));
         OnPropertyChanged(nameof(X2));

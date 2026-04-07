@@ -26,6 +26,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private EdgeViewModel? selectedEdge;
     private TrafficTypeDefinitionEditorViewModel? selectedTrafficDefinition;
     private bool isNormalizingNodeTrafficProfiles;
+    private bool isAdjustingTrafficDefinitionNames;
     private double workspaceWidth = 1600d;
     private double workspaceHeight = 1000d;
     private bool hasNetwork;
@@ -410,14 +411,7 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         EnsureNetworkExists();
 
-        var definition = new TrafficTypeDefinitionEditorViewModel(new TrafficTypeDefinition
-        {
-            Name = GetNextUniqueName("Traffic", TrafficDefinitions.Select(item => item.Name)),
-            RoutingPreference = RoutingPreference.TotalCost
-        });
-
-        RegisterTrafficDefinition(definition);
-        SelectedTrafficDefinition = definition;
+        CreateTrafficDefinition();
         RefreshDerivedStateAfterStructureChange("Added a new traffic type.");
     }
 
@@ -499,6 +493,14 @@ public sealed class MainWindowViewModel : ObservableObject
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .FirstOrDefault(name => SelectedNode.TrafficProfiles.All(profile => !Comparer.Equals(profile.TrafficType, name)))
             ?? primaryTrafficDefinition.Name;
+
+        var createdTrafficDefinition = false;
+        if (SelectedNode.TrafficProfiles.Any(profile => Comparer.Equals(profile.TrafficType, trafficName)))
+        {
+            trafficName = CreateTrafficDefinition().Name;
+            createdTrafficDefinition = true;
+        }
+
         var profile = new NodeTrafficProfileViewModel(new NodeTrafficProfile
         {
             TrafficType = trafficName
@@ -506,7 +508,10 @@ public sealed class MainWindowViewModel : ObservableObject
 
         SelectedNode.AddTrafficProfile(profile);
         SelectedNodeTrafficProfile = profile;
-        RefreshDerivedStateAfterStructureChange("Added a traffic profile to the selected node.");
+        RefreshDerivedStateAfterStructureChange(
+            createdTrafficDefinition
+                ? "Added a traffic profile to the selected node and created a new traffic type for it."
+                : "Added a traffic profile to the selected node.");
     }
 
     public void RemoveSelectedTrafficProfileFromNode()
@@ -585,15 +590,7 @@ public sealed class MainWindowViewModel : ObservableObject
             return existingDefinition;
         }
 
-        var definition = new TrafficTypeDefinitionEditorViewModel(new TrafficTypeDefinition
-        {
-            Name = GetNextUniqueName("Traffic", TrafficDefinitions.Select(item => item.Name)),
-            RoutingPreference = RoutingPreference.TotalCost
-        });
-
-        RegisterTrafficDefinition(definition);
-        SelectedTrafficDefinition = definition;
-        return definition;
+        return CreateTrafficDefinition();
     }
 
     private void LoadBundledSampleIfAvailable()
@@ -819,11 +816,44 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void HandleTrafficDefinitionNameChanged(object? sender, ValueChangedEventArgs<string> e)
     {
+        if (isAdjustingTrafficDefinitionNames || sender is not TrafficTypeDefinitionEditorViewModel definition)
+        {
+            return;
+        }
+
+        var oldValue = e.OldValue?.Trim() ?? string.Empty;
+        var requestedName = definition.Name;
+        var normalizedName = requestedName.Trim();
+
+        if (string.IsNullOrWhiteSpace(normalizedName))
+        {
+            RestoreTrafficDefinitionName(definition, oldValue);
+            StatusMessage = "Traffic type names cannot be blank.";
+            return;
+        }
+
+        if (TrafficDefinitions.Any(other => !ReferenceEquals(other, definition) && Comparer.Equals(other.Name, normalizedName)))
+        {
+            RestoreTrafficDefinitionName(definition, oldValue);
+            StatusMessage = $"Traffic type '{normalizedName}' already exists.";
+            return;
+        }
+
+        if (!string.Equals(requestedName, normalizedName, StringComparison.Ordinal))
+        {
+            RestoreTrafficDefinitionName(definition, normalizedName);
+        }
+
+        if (string.Equals(oldValue, normalizedName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
         foreach (var node in Nodes)
         {
-            foreach (var profile in node.TrafficProfiles.Where(profile => Comparer.Equals(profile.TrafficType, e.OldValue)))
+            foreach (var profile in node.TrafficProfiles.Where(profile => Comparer.Equals(profile.TrafficType, oldValue)))
             {
-                profile.TrafficType = e.NewValue;
+                profile.TrafficType = normalizedName;
             }
         }
 
@@ -1070,6 +1100,33 @@ public sealed class MainWindowViewModel : ObservableObject
             }
 
             index++;
+        }
+    }
+
+    private TrafficTypeDefinitionEditorViewModel CreateTrafficDefinition()
+    {
+        var definition = new TrafficTypeDefinitionEditorViewModel(new TrafficTypeDefinition
+        {
+            Name = GetNextUniqueName("Traffic", TrafficDefinitions.Select(item => item.Name)),
+            RoutingPreference = RoutingPreference.TotalCost
+        });
+
+        RegisterTrafficDefinition(definition);
+        SelectedTrafficDefinition = definition;
+        return definition;
+    }
+
+    private void RestoreTrafficDefinitionName(TrafficTypeDefinitionEditorViewModel definition, string name)
+    {
+        isAdjustingTrafficDefinitionNames = true;
+
+        try
+        {
+            definition.Name = name;
+        }
+        finally
+        {
+            isAdjustingTrafficDefinitionNames = false;
         }
     }
 

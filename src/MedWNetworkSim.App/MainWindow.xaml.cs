@@ -1,6 +1,7 @@
 using Microsoft.Win32;
 using System.Windows;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using MedWNetworkSim.App.ViewModels;
 
 namespace MedWNetworkSim.App;
@@ -87,6 +88,16 @@ public partial class MainWindow : Window
         ExecuteWithErrorHandling(ViewModel.AddNode);
     }
 
+    private void EditSelectedNode_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new NodeEditorWindow(ViewModel)
+        {
+            Owner = this
+        };
+
+        window.ShowDialog();
+    }
+
     private void RemoveNode_Click(object sender, RoutedEventArgs e)
     {
         ExecuteWithErrorHandling(ViewModel.RemoveSelectedNode);
@@ -117,6 +128,14 @@ public partial class MainWindow : Window
         if (sender is Thumb { DataContext: NodeViewModel node })
         {
             ViewModel.MoveNode(node, e.HorizontalChange, e.VerticalChange);
+        }
+    }
+
+    private void NodeThumb_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is Thumb { DataContext: NodeViewModel node })
+        {
+            ViewModel.SelectedNode = node;
         }
     }
 

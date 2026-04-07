@@ -84,6 +84,7 @@ public sealed class NetworkFileService
 
             var fromNodeId = edge.FromNodeId.Trim();
             var toNodeId = edge.ToNodeId.Trim();
+            var capacity = edge.Capacity;
 
             if (!nodeIds.Contains(fromNodeId))
             {
@@ -104,6 +105,11 @@ public sealed class NetworkFileService
                 throw new InvalidOperationException($"Duplicate edge id '{edgeId}' was found.");
             }
 
+            if (capacity.HasValue && (double.IsNaN(capacity.Value) || double.IsInfinity(capacity.Value) || capacity.Value < 0d))
+            {
+                throw new InvalidOperationException($"Edge '{edgeId}' has an invalid capacity value. Use a number >= 0 or omit the property for unlimited capacity.");
+            }
+
             normalizedEdges.Add(new EdgeModel
             {
                 Id = edgeId,
@@ -111,6 +117,7 @@ public sealed class NetworkFileService
                 ToNodeId = toNodeId,
                 Time = edge.Time,
                 Cost = edge.Cost,
+                Capacity = capacity,
                 IsBidirectional = edge.IsBidirectional
             });
         }
@@ -158,11 +165,19 @@ public sealed class NetworkFileService
             }
 
             var name = definition.Name.Trim();
+            var capacityBidPerUnit = definition.CapacityBidPerUnit;
+            if (capacityBidPerUnit.HasValue &&
+                (double.IsNaN(capacityBidPerUnit.Value) || double.IsInfinity(capacityBidPerUnit.Value) || capacityBidPerUnit.Value < 0d))
+            {
+                throw new InvalidOperationException($"Traffic type '{name}' has an invalid capacityBidPerUnit. Use a number >= 0 or omit it.");
+            }
+
             result[name] = new TrafficTypeDefinition
             {
                 Name = name,
                 Description = definition.Description?.Trim() ?? string.Empty,
-                RoutingPreference = definition.RoutingPreference
+                RoutingPreference = definition.RoutingPreference,
+                CapacityBidPerUnit = capacityBidPerUnit
             };
         }
 

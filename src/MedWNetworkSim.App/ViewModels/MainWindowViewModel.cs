@@ -13,6 +13,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly NetworkFileService fileService = new();
     private readonly NetworkSimulationEngine simulationEngine = new();
     private readonly List<RouteAllocationRowViewModel> allAllocations = [];
+    private readonly List<ConsumerCostSummaryRowViewModel> allConsumerCostSummaries = [];
 
     private NetworkModel currentNetwork = new();
     private string activeFileLabel = "Bundled sample";
@@ -36,6 +37,8 @@ public sealed class MainWindowViewModel : ObservableObject
     public ObservableCollection<TrafficSummaryViewModel> TrafficTypes { get; } = [];
 
     public ObservableCollection<RouteAllocationRowViewModel> VisibleAllocations { get; } = [];
+
+    public ObservableCollection<ConsumerCostSummaryRowViewModel> VisibleConsumerCostSummaries { get; } = [];
 
     public string WindowTitle => HasNetwork ? $"MedW Network Simulator - {NetworkName}" : "MedW Network Simulator";
 
@@ -110,13 +113,19 @@ public sealed class MainWindowViewModel : ObservableObject
             }
 
             OnPropertyChanged(nameof(VisibleAllocationHeadline));
+            OnPropertyChanged(nameof(VisibleConsumerCostHeadline));
             RefreshVisibleAllocations();
+            RefreshVisibleConsumerCostSummaries();
         }
     }
 
     public string VisibleAllocationHeadline => SelectedTraffic is null
         ? $"{VisibleAllocations.Count} routed movement(s) across all traffic"
         : $"{VisibleAllocations.Count} routed movement(s) for {SelectedTraffic.Name}";
+
+    public string VisibleConsumerCostHeadline => SelectedTraffic is null
+        ? $"{VisibleConsumerCostSummaries.Count} consumer cost row(s) across all traffic"
+        : $"{VisibleConsumerCostSummaries.Count} consumer cost row(s) for {SelectedTraffic.Name}";
 
     public string SuggestedFileName
     {
@@ -180,7 +189,12 @@ public sealed class MainWindowViewModel : ObservableObject
 
         allAllocations.Clear();
         allAllocations.AddRange(outcomes.SelectMany(outcome => outcome.Allocations).Select(allocation => new RouteAllocationRowViewModel(allocation)));
+        allConsumerCostSummaries.Clear();
+        allConsumerCostSummaries.AddRange(
+            simulationEngine.SummarizeConsumerCosts(outcomes)
+                .Select(summary => new ConsumerCostSummaryRowViewModel(summary)));
         RefreshVisibleAllocations();
+        RefreshVisibleConsumerCostSummaries();
 
         var totalDelivered = outcomes.Sum(outcome => outcome.TotalDelivered);
         StatusMessage = $"Simulation complete. Routed {allAllocations.Count} movement(s) delivering {totalDelivered:0.##} unit(s).";
@@ -230,7 +244,9 @@ public sealed class MainWindowViewModel : ObservableObject
         Edges.Clear();
         TrafficTypes.Clear();
         VisibleAllocations.Clear();
+        VisibleConsumerCostSummaries.Clear();
         allAllocations.Clear();
+        allConsumerCostSummaries.Clear();
         SelectedTraffic = null;
 
         var nodeMap = new Dictionary<string, NodeViewModel>(Comparer);
@@ -277,16 +293,9 @@ public sealed class MainWindowViewModel : ObservableObject
         var definitionsByTraffic = network.TrafficTypes
             .ToDictionary(definition => definition.Name, definition => definition, Comparer);
 
-        var trafficNames = network.TrafficTypes
-            .Select(definition => definition.Name)
-            .Concat(network.Nodes.SelectMany(node => node.TrafficProfiles).Select(profile => profile.TrafficType))
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Distinct(Comparer)
-            .OrderBy(name => name, Comparer);
-
         var summaries = new List<TrafficSummaryViewModel>();
 
-        foreach (var trafficName in trafficNames)
+        foreach (var trafficName in GetOrderedTrafficNames(network))
         {
             var profiles = network.Nodes
                 .Select(node => node.TrafficProfiles.FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, trafficName)))
@@ -314,6 +323,30 @@ public sealed class MainWindowViewModel : ObservableObject
         return summaries;
     }
 
+    private IEnumerable<string> GetOrderedTrafficNames(NetworkModel network)
+    {
+        var orderedNames = new List<string>();
+        var seen = new HashSet<string>(Comparer);
+
+        foreach (var definition in network.TrafficTypes)
+        {
+            if (!string.IsNullOrWhiteSpace(definition.Name) && seen.Add(definition.Name))
+            {
+                orderedNames.Add(definition.Name);
+            }
+        }
+
+        var undeclaredNames = network.Nodes
+            .SelectMany(node => node.TrafficProfiles)
+            .Select(profile => profile.TrafficType)
+            .Where(name => !string.IsNullOrWhiteSpace(name) && !seen.Contains(name))
+            .Distinct(Comparer)
+            .OrderBy(name => name, Comparer);
+
+        orderedNames.AddRange(undeclaredNames);
+        return orderedNames;
+    }
+
     private NetworkModel BuildCurrentNetwork()
     {
         currentNetwork = fileService.NormalizeAndValidate(new NetworkModel
@@ -325,7 +358,8 @@ public sealed class MainWindowViewModel : ObservableObject
                 {
                     Name = definition.Name,
                     Description = definition.Description,
-                    RoutingPreference = definition.RoutingPreference
+                    RoutingPreference = definition.RoutingPreference,
+                    CapacityBidPerUnit = definition.CapacityBidPerUnit
                 })
                 .ToList(),
             Nodes = Nodes.Select(node => node.ToModel()).ToList(),
@@ -370,5 +404,21 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(VisibleAllocationHeadline));
+    }
+
+    private void RefreshVisibleConsumerCostSummaries()
+    {
+        VisibleConsumerCostSummaries.Clear();
+
+        var source = SelectedTraffic is null
+            ? allConsumerCostSummaries
+            : allConsumerCostSummaries.Where(summary => Comparer.Equals(summary.TrafficType, SelectedTraffic.Name));
+
+        foreach (var summary in source)
+        {
+            VisibleConsumerCostSummaries.Add(summary);
+        }
+
+        OnPropertyChanged(nameof(VisibleConsumerCostHeadline));
     }
 }

@@ -7,8 +7,8 @@ namespace MedWNetworkSim.App.ViewModels;
 
 public sealed class EdgeViewModel : ObservableObject
 {
-    private const double LabelWidth = 150d;
-    private const double LabelHeight = 44d;
+    private const double LabelWidth = 176d;
+    private const double LabelHeight = 58d;
 
     public EdgeViewModel(EdgeModel model, NodeViewModel sourceNode, NodeViewModel targetNode)
     {
@@ -30,6 +30,8 @@ public sealed class EdgeViewModel : ObservableObject
 
     public double Cost => Model.Cost;
 
+    public double? Capacity => Model.Capacity;
+
     public bool IsBidirectional => Model.IsBidirectional;
 
     public string DirectionLabel => IsBidirectional ? "2-way" : "1-way";
@@ -49,6 +51,10 @@ public sealed class EdgeViewModel : ObservableObject
     public double LabelTop => ((Y1 + Y2) / 2d) - (LabelHeight / 2d);
 
     public string SummaryLabel => $"t {Time:0.##} | c {Cost:0.##} | tc {TotalCost:0.##}";
+
+    public string CapacityLabel => Capacity.HasValue
+        ? $"cap {Capacity.Value:0.##}"
+        : "cap inf";
 
     public Visibility ArrowVisibility => IsBidirectional ? Visibility.Collapsed : Visibility.Visible;
 
@@ -100,6 +106,7 @@ public sealed class EdgeViewModel : ObservableObject
             ToNodeId = Model.ToNodeId,
             Time = Model.Time,
             Cost = Model.Cost,
+            Capacity = Model.Capacity,
             IsBidirectional = Model.IsBidirectional
         };
     }

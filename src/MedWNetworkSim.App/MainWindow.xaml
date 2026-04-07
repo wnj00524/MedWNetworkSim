@@ -309,8 +309,8 @@
 
                                             <Border Canvas.Left="{Binding LabelLeft}"
                                                     Canvas.Top="{Binding LabelTop}"
-                                                    Width="150"
-                                                    Height="44"
+                                                    Width="176"
+                                                    Height="58"
                                                     Padding="10,6"
                                                     Background="{StaticResource EdgeLabelBrush}"
                                                     BorderBrush="{StaticResource BorderBrush}"
@@ -324,6 +324,9 @@
                                                     <TextBlock FontSize="11"
                                                                Foreground="{StaticResource StrongForegroundBrush}"
                                                                Text="{Binding SummaryLabel}" />
+                                                    <TextBlock FontSize="11"
+                                                               Foreground="{StaticResource MutedForegroundBrush}"
+                                                               Text="{Binding CapacityLabel}" />
                                                 </StackPanel>
                                             </Border>
                                         </Canvas>
@@ -439,37 +442,88 @@
                 <DockPanel>
                     <TextBlock FontSize="18"
                                FontWeight="SemiBold"
-                               Text="Routed Movements" />
+                               Text="Simulation Outputs" />
                     <TextBlock DockPanel.Dock="Right"
                                FontSize="12"
                                Foreground="{StaticResource MutedForegroundBrush}"
-                               Text="{Binding VisibleAllocationHeadline}" />
+                               Text="Select a traffic type to filter both tabs" />
                 </DockPanel>
 
-                <DataGrid Grid.Row="2"
-                          ItemsSource="{Binding VisibleAllocations}"
-                          AutoGenerateColumns="False"
-                          IsReadOnly="True"
-                          SelectionMode="Single"
-                          SelectionUnit="FullRow">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Binding="{Binding TrafficType}" Header="Traffic" Width="140" />
-                        <DataGridTextColumn Binding="{Binding RoutingPreferenceLabel}" Header="Preference" Width="110" />
-                        <DataGridTextColumn Binding="{Binding ProducerName}" Header="Producer" Width="150" />
-                        <DataGridTextColumn Binding="{Binding ConsumerName}" Header="Consumer" Width="150" />
-                        <DataGridTextColumn Binding="{Binding Quantity, StringFormat={}{0:0.##}}" Header="Qty" Width="70" />
-                        <DataGridTextColumn Binding="{Binding TotalTime, StringFormat={}{0:0.##}}" Header="Time" Width="80" />
-                        <DataGridTextColumn Binding="{Binding TotalCost, StringFormat={}{0:0.##}}" Header="Cost" Width="80" />
-                        <DataGridTextColumn Binding="{Binding TotalScore, StringFormat={}{0:0.##}}" Header="Score" Width="90" />
-                        <DataGridTemplateColumn Header="Path" Width="*">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate DataType="{x:Type vm:RouteAllocationRowViewModel}">
-                                    <TextBlock Text="{Binding PathDescription}" TextWrapping="Wrap" />
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                    </DataGrid.Columns>
-                </DataGrid>
+                <TabControl Grid.Row="2">
+                    <TabItem Header="Consumer Costs">
+                        <Grid Margin="10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="8" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock FontSize="12"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Text="{Binding VisibleConsumerCostHeadline}" />
+
+                            <DataGrid Grid.Row="2"
+                                      ItemsSource="{Binding VisibleConsumerCostSummaries}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      SelectionMode="Single"
+                                      SelectionUnit="FullRow">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Binding="{Binding TrafficType}" Header="Traffic" Width="140" />
+                                    <DataGridTextColumn Binding="{Binding ConsumerName}" Header="Consumer" Width="170" />
+                                    <DataGridTextColumn Binding="{Binding LocalQuantity, StringFormat={}{0:0.##}}" Header="Local Qty" Width="90" />
+                                    <DataGridTextColumn Binding="{Binding LocalUnitCost, StringFormat={}{0:0.##}}" Header="Local Unit Cost" Width="110" />
+                                    <DataGridTextColumn Binding="{Binding ImportedQuantity, StringFormat={}{0:0.##}}" Header="Imported Qty" Width="100" />
+                                    <DataGridTextColumn Binding="{Binding ImportedUnitCost, StringFormat={}{0:0.##}}" Header="Imported Unit Cost" Width="125" />
+                                    <DataGridTextColumn Binding="{Binding BlendedUnitCost, StringFormat={}{0:0.##}}" Header="Blended Unit Cost" Width="125" />
+                                    <DataGridTextColumn Binding="{Binding TotalMovementCost, StringFormat={}{0:0.##}}" Header="Total Movement Cost" Width="140" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem Header="Routed Movements">
+                        <Grid Margin="10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="8" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock FontSize="12"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Text="{Binding VisibleAllocationHeadline}" />
+
+                            <DataGrid Grid.Row="2"
+                                      ItemsSource="{Binding VisibleAllocations}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      SelectionMode="Single"
+                                      SelectionUnit="FullRow">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Binding="{Binding TrafficType}" Header="Traffic" Width="120" />
+                                    <DataGridTextColumn Binding="{Binding RoutingPreferenceLabel}" Header="Preference" Width="95" />
+                                    <DataGridTextColumn Binding="{Binding SourceLabel}" Header="Source" Width="85" />
+                                    <DataGridTextColumn Binding="{Binding ProducerName}" Header="Producer" Width="135" />
+                                    <DataGridTextColumn Binding="{Binding ConsumerName}" Header="Consumer" Width="135" />
+                                    <DataGridTextColumn Binding="{Binding Quantity, StringFormat={}{0:0.##}}" Header="Qty" Width="65" />
+                                    <DataGridTextColumn Binding="{Binding TotalTime, StringFormat={}{0:0.##}}" Header="Time" Width="70" />
+                                    <DataGridTextColumn Binding="{Binding TransitCostPerUnit, StringFormat={}{0:0.##}}" Header="Transit / Unit" Width="95" />
+                                    <DataGridTextColumn Binding="{Binding BidCostPerUnit, StringFormat={}{0:0.##}}" Header="Bid / Unit" Width="80" />
+                                    <DataGridTextColumn Binding="{Binding DeliveredCostPerUnit, StringFormat={}{0:0.##}}" Header="Landed / Unit" Width="95" />
+                                    <DataGridTextColumn Binding="{Binding TotalMovementCost, StringFormat={}{0:0.##}}" Header="Total Cost" Width="90" />
+                                    <DataGridTemplateColumn Header="Path" Width="*">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate DataType="{x:Type vm:RouteAllocationRowViewModel}">
+                                                <TextBlock Text="{Binding PathDescription}" TextWrapping="Wrap" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </TabItem>
+                </TabControl>
 
                 <TextBlock Grid.Row="4"
                            FontSize="13"

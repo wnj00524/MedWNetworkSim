@@ -19,9 +19,17 @@ public sealed class RouteAllocation
 
     public double Quantity { get; init; }
 
+    public bool IsLocalSupply { get; init; }
+
     public double TotalTime { get; init; }
 
     public double TotalCost { get; init; }
+
+    public double BidCostPerUnit { get; init; }
+
+    public double DeliveredCostPerUnit { get; init; }
+
+    public double TotalMovementCost { get; init; }
 
     public double TotalScore { get; init; }
 

@@ -22,9 +22,17 @@ public sealed class RouteAllocationRowViewModel(RouteAllocation allocation) : Ob
 
     public double Quantity { get; } = allocation.Quantity;
 
+    public string SourceLabel { get; } = allocation.IsLocalSupply ? "Local" : "Imported";
+
     public double TotalTime { get; } = allocation.TotalTime;
 
-    public double TotalCost { get; } = allocation.TotalCost;
+    public double TransitCostPerUnit { get; } = allocation.TotalCost;
+
+    public double BidCostPerUnit { get; } = allocation.BidCostPerUnit;
+
+    public double DeliveredCostPerUnit { get; } = allocation.DeliveredCostPerUnit;
+
+    public double TotalMovementCost { get; } = allocation.TotalMovementCost;
 
     public double TotalScore { get; } = allocation.TotalScore;
 

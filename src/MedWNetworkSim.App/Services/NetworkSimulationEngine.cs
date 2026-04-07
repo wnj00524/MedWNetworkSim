@@ -11,197 +11,272 @@ public sealed class NetworkSimulationEngine
     {
         ArgumentNullException.ThrowIfNull(network);
 
+        var adjacency = BuildAdjacency(network);
         var definitionsByTraffic = network.TrafficTypes
             .ToDictionary(definition => definition.Name, definition => definition, Comparer);
-
-        var trafficNames = network.TrafficTypes
-            .Select(definition => definition.Name)
-            .Concat(network.Nodes.SelectMany(node => node.TrafficProfiles).Select(profile => profile.TrafficType))
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Distinct(Comparer)
-            .OrderBy(name => name, Comparer)
-            .ToList();
-
-        return trafficNames
-            .Select(trafficName =>
+        var contexts = GetOrderedTrafficNames(network)
+            .Select(trafficType =>
             {
-                var definition = definitionsByTraffic.GetValueOrDefault(trafficName)
+                var definition = definitionsByTraffic.GetValueOrDefault(trafficType)
                     ?? new TrafficTypeDefinition
                     {
-                        Name = trafficName,
+                        Name = trafficType,
                         RoutingPreference = RoutingPreference.TotalCost
                     };
 
-                return SimulateTraffic(network, trafficName, definition.RoutingPreference);
+                return BuildContext(network, definition);
+            })
+            .ToList();
+        var remainingCapacityByEdgeId = network.Edges.ToDictionary(
+            edge => edge.Id,
+            edge => edge.Capacity ?? double.PositiveInfinity,
+            Comparer);
+        var hasFiniteCapacities = network.Edges.Any(edge => edge.Capacity.HasValue);
+
+        foreach (var context in contexts)
+        {
+            if (context.TotalProduction <= Epsilon)
+            {
+                context.Notes.Add("No producer nodes were defined for this traffic type.");
+            }
+
+            if (context.TotalConsumption <= Epsilon)
+            {
+                context.Notes.Add("No consumer nodes were defined for this traffic type.");
+            }
+
+            ApplyLocalAllocations(context);
+        }
+
+        while (true)
+        {
+            var nextCandidate = contexts
+                .SelectMany(context => BuildCandidateRoutes(context, adjacency, remainingCapacityByEdgeId))
+                .OrderByDescending(candidate => candidate.CapacityBidPerUnit)
+                .ThenBy(candidate => candidate.TotalScore)
+                .ThenBy(candidate => candidate.TotalTime)
+                .ThenBy(candidate => candidate.TransitCostPerUnit)
+                .ThenBy(candidate => candidate.ProducerNodeId, Comparer)
+                .ThenBy(candidate => candidate.ConsumerNodeId, Comparer)
+                .FirstOrDefault();
+
+            if (nextCandidate is null)
+            {
+                break;
+            }
+
+            var context = nextCandidate.Context;
+            var remainingSupply = context.Supply.TryGetValue(nextCandidate.ProducerNodeId, out var supplyValue) ? supplyValue : 0d;
+            var remainingDemand = context.Demand.TryGetValue(nextCandidate.ConsumerNodeId, out var demandValue) ? demandValue : 0d;
+            var quantity = Math.Min(remainingSupply, remainingDemand);
+            var routeCapacity = GetPathRemainingCapacity(nextCandidate.PathEdgeIds, remainingCapacityByEdgeId);
+
+            if (!double.IsPositiveInfinity(routeCapacity))
+            {
+                quantity = Math.Min(quantity, routeCapacity);
+            }
+
+            if (quantity <= Epsilon)
+            {
+                break;
+            }
+
+            var bidCostPerUnit = CalculateBidCostPerUnit(
+                nextCandidate.PathEdgeIds,
+                remainingCapacityByEdgeId,
+                nextCandidate.CapacityBidPerUnit,
+                quantity,
+                routeCapacity);
+            var deliveredCostPerUnit = nextCandidate.TransitCostPerUnit + bidCostPerUnit;
+
+            context.Allocations.Add(new RouteAllocation
+            {
+                TrafficType = context.TrafficType,
+                RoutingPreference = context.RoutingPreference,
+                ProducerNodeId = nextCandidate.ProducerNodeId,
+                ProducerName = context.NodesById[nextCandidate.ProducerNodeId].Name,
+                ConsumerNodeId = nextCandidate.ConsumerNodeId,
+                ConsumerName = context.NodesById[nextCandidate.ConsumerNodeId].Name,
+                Quantity = quantity,
+                IsLocalSupply = false,
+                TotalTime = nextCandidate.TotalTime,
+                TotalCost = nextCandidate.TransitCostPerUnit,
+                BidCostPerUnit = bidCostPerUnit,
+                DeliveredCostPerUnit = deliveredCostPerUnit,
+                TotalMovementCost = deliveredCostPerUnit * quantity,
+                TotalScore = nextCandidate.TotalScore,
+                PathNodeNames = nextCandidate.PathNodeIds.Select(nodeId => context.NodesById[nodeId].Name).ToList()
+            });
+
+            context.Supply[nextCandidate.ProducerNodeId] -= quantity;
+            context.Demand[nextCandidate.ConsumerNodeId] -= quantity;
+            ReserveCapacity(nextCandidate.PathEdgeIds, remainingCapacityByEdgeId, quantity);
+        }
+
+        foreach (var context in contexts)
+        {
+            var unusedSupply = context.Supply.Values.Sum(value => Math.Max(0d, value));
+            var unmetDemand = context.Demand.Values.Sum(value => Math.Max(0d, value));
+
+            if (unusedSupply > Epsilon)
+            {
+                context.Notes.Add($"Unused supply remains after routing: {unusedSupply:0.##} unit(s).");
+            }
+
+            if (unmetDemand > Epsilon)
+            {
+                context.Notes.Add($"Unmet demand remains after routing: {unmetDemand:0.##} unit(s).");
+            }
+
+            if (hasFiniteCapacities && (unusedSupply > Epsilon || unmetDemand > Epsilon))
+            {
+                context.Notes.Add("Shared edge capacity limits may have prevented additional routing.");
+            }
+
+            var totalBidCost = context.Allocations.Sum(allocation => allocation.BidCostPerUnit * allocation.Quantity);
+            if (totalBidCost > Epsilon)
+            {
+                context.Notes.Add($"Capacity bidding added {totalBidCost:0.##} in extra movement cost.");
+            }
+
+            if (context.Allocations.Count == 0 && context.TotalProduction > Epsilon && context.TotalConsumption > Epsilon)
+            {
+                context.Notes.Add("No feasible producer-to-consumer routes were found with the current node roles, edge directions, capacities, and bidding rules.");
+            }
+        }
+
+        return contexts
+            .Select(context => new TrafficSimulationOutcome
+            {
+                TrafficType = context.TrafficType,
+                RoutingPreference = context.RoutingPreference,
+                TotalProduction = context.TotalProduction,
+                TotalConsumption = context.TotalConsumption,
+                TotalDelivered = context.Allocations.Sum(allocation => allocation.Quantity),
+                UnusedSupply = context.Supply.Values.Sum(value => Math.Max(0d, value)),
+                UnmetDemand = context.Demand.Values.Sum(value => Math.Max(0d, value)),
+                Allocations = context.Allocations.ToList(),
+                Notes = context.Notes.ToList()
             })
             .ToList();
     }
 
-    private static TrafficSimulationOutcome SimulateTraffic(
-        NetworkModel network,
-        string trafficType,
-        RoutingPreference routingPreference)
+    public IReadOnlyList<ConsumerCostSummary> SummarizeConsumerCosts(IEnumerable<TrafficSimulationOutcome> outcomes)
     {
-        var nodesById = network.Nodes.ToDictionary(node => node.Id, node => node, Comparer);
+        return outcomes
+            .SelectMany(outcome => outcome.Allocations)
+            .GroupBy(allocation => new { allocation.TrafficType, allocation.ConsumerNodeId, allocation.ConsumerName })
+            .Select(group =>
+            {
+                var localAllocations = group.Where(allocation => allocation.IsLocalSupply).ToList();
+                var importedAllocations = group.Where(allocation => !allocation.IsLocalSupply).ToList();
+                var localQuantity = localAllocations.Sum(allocation => allocation.Quantity);
+                var importedQuantity = importedAllocations.Sum(allocation => allocation.Quantity);
+                var totalMovementCost = group.Sum(allocation => allocation.TotalMovementCost);
+                var totalQuantity = group.Sum(allocation => allocation.Quantity);
+
+                return new ConsumerCostSummary
+                {
+                    TrafficType = group.Key.TrafficType,
+                    ConsumerNodeId = group.Key.ConsumerNodeId,
+                    ConsumerName = group.Key.ConsumerName,
+                    LocalQuantity = localQuantity,
+                    LocalUnitCost = CalculateAverageUnitCost(localAllocations),
+                    ImportedQuantity = importedQuantity,
+                    ImportedUnitCost = CalculateAverageUnitCost(importedAllocations),
+                    BlendedUnitCost = totalQuantity > Epsilon ? totalMovementCost / totalQuantity : 0d,
+                    TotalMovementCost = totalMovementCost
+                };
+            })
+            .OrderBy(summary => summary.TrafficType, Comparer)
+            .ThenBy(summary => summary.ConsumerName, Comparer)
+            .ToList();
+    }
+
+    private static double CalculateAverageUnitCost(IReadOnlyCollection<RouteAllocation> allocations)
+    {
+        var quantity = allocations.Sum(allocation => allocation.Quantity);
+        if (quantity <= Epsilon)
+        {
+            return 0d;
+        }
+
+        return allocations.Sum(allocation => allocation.TotalMovementCost) / quantity;
+    }
+
+    private static TrafficContext BuildContext(NetworkModel network, TrafficTypeDefinition definition)
+    {
         var profilesByNodeId = network.Nodes.ToDictionary(
             node => node.Id,
-            node => node.TrafficProfiles.FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, trafficType)),
+            node => node.TrafficProfiles.FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, definition.Name)),
             Comparer);
-
+        var nodesById = network.Nodes.ToDictionary(node => node.Id, node => node, Comparer);
         var supply = profilesByNodeId
             .Where(pair => pair.Value?.Production > Epsilon)
             .ToDictionary(pair => pair.Key, pair => pair.Value!.Production, Comparer);
-
         var demand = profilesByNodeId
             .Where(pair => pair.Value?.Consumption > Epsilon)
             .ToDictionary(pair => pair.Key, pair => pair.Value!.Consumption, Comparer);
 
-        var totalProduction = supply.Values.Sum();
-        var totalConsumption = demand.Values.Sum();
-        var notes = new List<string>();
-        var allocations = new List<RouteAllocation>();
-
-        if (totalProduction <= Epsilon)
-        {
-            notes.Add("No producer nodes were defined for this traffic type.");
-        }
-
-        if (totalConsumption <= Epsilon)
-        {
-            notes.Add("No consumer nodes were defined for this traffic type.");
-        }
-
-        ApplyLocalAllocations(trafficType, routingPreference, nodesById, supply, demand, allocations);
-
-        if (supply.Values.Sum() > Epsilon && demand.Values.Sum() > Epsilon)
-        {
-            var adjacency = BuildAdjacency(network);
-            var candidateRoutes = BuildCandidateRoutes(
-                trafficType,
-                routingPreference,
-                nodesById,
-                profilesByNodeId,
-                adjacency,
-                supply,
-                demand);
-
-            foreach (var route in candidateRoutes)
-            {
-                if (!supply.TryGetValue(route.ProducerNodeId, out var remainingSupply) ||
-                    !demand.TryGetValue(route.ConsumerNodeId, out var remainingDemand))
-                {
-                    continue;
-                }
-
-                var quantity = Math.Min(remainingSupply, remainingDemand);
-                if (quantity <= Epsilon)
-                {
-                    continue;
-                }
-
-                allocations.Add(new RouteAllocation
-                {
-                    TrafficType = trafficType,
-                    RoutingPreference = routingPreference,
-                    ProducerNodeId = route.ProducerNodeId,
-                    ProducerName = nodesById[route.ProducerNodeId].Name,
-                    ConsumerNodeId = route.ConsumerNodeId,
-                    ConsumerName = nodesById[route.ConsumerNodeId].Name,
-                    Quantity = quantity,
-                    TotalTime = route.TotalTime,
-                    TotalCost = route.TotalCost,
-                    TotalScore = route.TotalScore,
-                    PathNodeNames = route.PathNodeIds.Select(nodeId => nodesById[nodeId].Name).ToList()
-                });
-
-                supply[route.ProducerNodeId] -= quantity;
-                demand[route.ConsumerNodeId] -= quantity;
-            }
-        }
-
-        var unusedSupply = supply.Values.Sum(value => Math.Max(0d, value));
-        var unmetDemand = demand.Values.Sum(value => Math.Max(0d, value));
-
-        if (unusedSupply > Epsilon)
-        {
-            notes.Add($"Unused supply remains after routing: {unusedSupply:0.##} unit(s).");
-        }
-
-        if (unmetDemand > Epsilon)
-        {
-            notes.Add($"Unmet demand remains after routing: {unmetDemand:0.##} unit(s).");
-        }
-
-        if (allocations.Count == 0 && totalProduction > Epsilon && totalConsumption > Epsilon)
-        {
-            notes.Add("No feasible producer-to-consumer routes were found with the current node roles and edge directions.");
-        }
-
-        return new TrafficSimulationOutcome
-        {
-            TrafficType = trafficType,
-            RoutingPreference = routingPreference,
-            TotalProduction = totalProduction,
-            TotalConsumption = totalConsumption,
-            TotalDelivered = allocations.Sum(allocation => allocation.Quantity),
-            UnusedSupply = unusedSupply,
-            UnmetDemand = unmetDemand,
-            Allocations = allocations,
-            Notes = notes
-        };
+        return new TrafficContext(
+            definition.Name,
+            definition.RoutingPreference,
+            GetCapacityBidPerUnit(definition),
+            nodesById,
+            profilesByNodeId,
+            supply,
+            demand,
+            supply.Values.Sum(),
+            demand.Values.Sum(),
+            [],
+            []);
     }
 
-    private static void ApplyLocalAllocations(
-        string trafficType,
-        RoutingPreference routingPreference,
-        IReadOnlyDictionary<string, NodeModel> nodesById,
-        IDictionary<string, double> supply,
-        IDictionary<string, double> demand,
-        ICollection<RouteAllocation> allocations)
+    private static void ApplyLocalAllocations(TrafficContext context)
     {
-        foreach (var nodeId in supply.Keys.Intersect(demand.Keys, Comparer).ToList())
+        foreach (var nodeId in context.Supply.Keys.Intersect(context.Demand.Keys, Comparer).ToList())
         {
-            var quantity = Math.Min(supply[nodeId], demand[nodeId]);
+            var quantity = Math.Min(context.Supply[nodeId], context.Demand[nodeId]);
             if (quantity <= Epsilon)
             {
                 continue;
             }
 
-            var node = nodesById[nodeId];
-            allocations.Add(new RouteAllocation
+            var node = context.NodesById[nodeId];
+            context.Allocations.Add(new RouteAllocation
             {
-                TrafficType = trafficType,
-                RoutingPreference = routingPreference,
+                TrafficType = context.TrafficType,
+                RoutingPreference = context.RoutingPreference,
                 ProducerNodeId = nodeId,
                 ProducerName = node.Name,
                 ConsumerNodeId = nodeId,
                 ConsumerName = node.Name,
                 Quantity = quantity,
+                IsLocalSupply = true,
                 TotalTime = 0d,
                 TotalCost = 0d,
+                BidCostPerUnit = 0d,
+                DeliveredCostPerUnit = 0d,
+                TotalMovementCost = 0d,
                 TotalScore = 0d,
                 PathNodeNames = [node.Name]
             });
 
-            supply[nodeId] -= quantity;
-            demand[nodeId] -= quantity;
+            context.Supply[nodeId] -= quantity;
+            context.Demand[nodeId] -= quantity;
         }
     }
 
-    private static List<CandidateRoute> BuildCandidateRoutes(
-        string trafficType,
-        RoutingPreference routingPreference,
-        IReadOnlyDictionary<string, NodeModel> nodesById,
-        IReadOnlyDictionary<string, NodeTrafficProfile?> profilesByNodeId,
+    private static List<RouteCandidate> BuildCandidateRoutes(
+        TrafficContext context,
         IReadOnlyDictionary<string, List<GraphArc>> adjacency,
-        IReadOnlyDictionary<string, double> supply,
-        IReadOnlyDictionary<string, double> demand)
+        IDictionary<string, double> remainingCapacityByEdgeId)
     {
-        var routes = new List<CandidateRoute>();
+        var routes = new List<RouteCandidate>();
 
-        foreach (var producerNodeId in supply.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
+        foreach (var producerNodeId in context.Supply.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
         {
-            foreach (var consumerNodeId in demand.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
+            foreach (var consumerNodeId in context.Demand.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
             {
                 if (Comparer.Equals(producerNodeId, consumerNodeId))
                 {
@@ -209,34 +284,28 @@ public sealed class NetworkSimulationEngine
                 }
 
                 var route = FindBestRoute(
+                    context,
                     producerNodeId,
                     consumerNodeId,
-                    routingPreference,
-                    profilesByNodeId,
-                    adjacency);
+                    adjacency,
+                    remainingCapacityByEdgeId);
 
                 if (route is not null)
                 {
-                    routes.Add(route with { TrafficType = trafficType });
+                    routes.Add(route);
                 }
             }
         }
 
-        return routes
-            .OrderBy(route => route.TotalScore)
-            .ThenBy(route => route.TotalTime)
-            .ThenBy(route => route.TotalCost)
-            .ThenBy(route => route.ProducerNodeId, Comparer)
-            .ThenBy(route => route.ConsumerNodeId, Comparer)
-            .ToList();
+        return routes;
     }
 
-    private static CandidateRoute? FindBestRoute(
+    private static RouteCandidate? FindBestRoute(
+        TrafficContext context,
         string producerNodeId,
         string consumerNodeId,
-        RoutingPreference routingPreference,
-        IReadOnlyDictionary<string, NodeTrafficProfile?> profilesByNodeId,
-        IReadOnlyDictionary<string, List<GraphArc>> adjacency)
+        IReadOnlyDictionary<string, List<GraphArc>> adjacency,
+        IDictionary<string, double> remainingCapacityByEdgeId)
     {
         var distances = new Dictionary<string, double>(Comparer)
         {
@@ -266,12 +335,18 @@ public sealed class NetworkSimulationEngine
 
             foreach (var arc in arcs)
             {
-                if (!CanTraverseNode(arc.ToNodeId, producerNodeId, consumerNodeId, profilesByNodeId))
+                if (!remainingCapacityByEdgeId.TryGetValue(arc.EdgeId, out var remainingCapacity) ||
+                    remainingCapacity <= Epsilon)
                 {
                     continue;
                 }
 
-                var proposedDistance = currentDistance + Score(arc.Time, arc.Cost, routingPreference);
+                if (!CanTraverseNode(arc.ToNodeId, producerNodeId, consumerNodeId, context.ProfilesByNodeId))
+                {
+                    continue;
+                }
+
+                var proposedDistance = currentDistance + Score(arc.Time, arc.Cost, context.RoutingPreference);
                 if (distances.TryGetValue(arc.ToNodeId, out var existingDistance) &&
                     proposedDistance >= existingDistance - Epsilon)
                 {
@@ -304,14 +379,16 @@ public sealed class NetworkSimulationEngine
         pathNodeIds.Reverse();
         pathArcs.Reverse();
 
-        return new CandidateRoute(
-            string.Empty,
+        return new RouteCandidate(
+            context,
             producerNodeId,
             consumerNodeId,
             pathNodeIds,
+            pathArcs.Select(arc => arc.EdgeId).ToList(),
             pathArcs.Sum(arc => arc.Time),
             pathArcs.Sum(arc => arc.Cost),
-            pathArcs.Sum(arc => Score(arc.Time, arc.Cost, routingPreference)));
+            pathArcs.Sum(arc => Score(arc.Time, arc.Cost, context.RoutingPreference)),
+            context.CapacityBidPerUnit);
     }
 
     private static bool CanTraverseNode(
@@ -355,6 +432,95 @@ public sealed class NetworkSimulationEngine
         return adjacency;
     }
 
+    private static double GetPathRemainingCapacity(
+        IReadOnlyList<string> pathEdgeIds,
+        IDictionary<string, double> remainingCapacityByEdgeId)
+    {
+        if (pathEdgeIds.Count == 0)
+        {
+            return double.PositiveInfinity;
+        }
+
+        return pathEdgeIds
+            .Select(edgeId => remainingCapacityByEdgeId.TryGetValue(edgeId, out var remainingCapacity) ? remainingCapacity : 0d)
+            .DefaultIfEmpty(0d)
+            .Min();
+    }
+
+    private static double CalculateBidCostPerUnit(
+        IReadOnlyList<string> pathEdgeIds,
+        IDictionary<string, double> remainingCapacityByEdgeId,
+        double capacityBidPerUnit,
+        double quantity,
+        double routeCapacity)
+    {
+        if (capacityBidPerUnit <= Epsilon ||
+            quantity <= Epsilon ||
+            double.IsPositiveInfinity(routeCapacity) ||
+            quantity < routeCapacity - Epsilon)
+        {
+            return 0d;
+        }
+
+        var bottleneckEdgeCount = pathEdgeIds.Count(edgeId =>
+            remainingCapacityByEdgeId.TryGetValue(edgeId, out var remainingCapacity) &&
+            !double.IsPositiveInfinity(remainingCapacity) &&
+            remainingCapacity <= routeCapacity + Epsilon);
+
+        return bottleneckEdgeCount * capacityBidPerUnit;
+    }
+
+    private static void ReserveCapacity(
+        IEnumerable<string> pathEdgeIds,
+        IDictionary<string, double> remainingCapacityByEdgeId,
+        double quantity)
+    {
+        foreach (var edgeId in pathEdgeIds)
+        {
+            if (!remainingCapacityByEdgeId.TryGetValue(edgeId, out var remainingCapacity) ||
+                double.IsPositiveInfinity(remainingCapacity))
+            {
+                continue;
+            }
+
+            remainingCapacityByEdgeId[edgeId] = Math.Max(0d, remainingCapacity - quantity);
+        }
+    }
+
+    private static List<string> GetOrderedTrafficNames(NetworkModel network)
+    {
+        var orderedTrafficNames = new List<string>();
+        var seen = new HashSet<string>(Comparer);
+
+        foreach (var definition in network.TrafficTypes)
+        {
+            if (!string.IsNullOrWhiteSpace(definition.Name) && seen.Add(definition.Name))
+            {
+                orderedTrafficNames.Add(definition.Name);
+            }
+        }
+
+        var undeclaredTrafficNames = network.Nodes
+            .SelectMany(node => node.TrafficProfiles)
+            .Select(profile => profile.TrafficType)
+            .Where(name => !string.IsNullOrWhiteSpace(name) && !seen.Contains(name))
+            .Distinct(Comparer)
+            .OrderBy(name => name, Comparer);
+
+        orderedTrafficNames.AddRange(undeclaredTrafficNames);
+        return orderedTrafficNames;
+    }
+
+    private static double GetCapacityBidPerUnit(TrafficTypeDefinition definition)
+    {
+        if (definition.CapacityBidPerUnit.HasValue)
+        {
+            return Math.Max(0d, definition.CapacityBidPerUnit.Value);
+        }
+
+        return definition.RoutingPreference == RoutingPreference.Speed ? 1d : 0d;
+    }
+
     private static double Score(double time, double cost, RoutingPreference routingPreference)
     {
         return routingPreference switch
@@ -374,12 +540,27 @@ public sealed class NetworkSimulationEngine
 
     private sealed record PreviousStep(string PreviousNodeId, GraphArc Arc);
 
-    private sealed record CandidateRoute(
-        string TrafficType,
+    private sealed record RouteCandidate(
+        TrafficContext Context,
         string ProducerNodeId,
         string ConsumerNodeId,
         IReadOnlyList<string> PathNodeIds,
+        IReadOnlyList<string> PathEdgeIds,
         double TotalTime,
-        double TotalCost,
-        double TotalScore);
+        double TransitCostPerUnit,
+        double TotalScore,
+        double CapacityBidPerUnit);
+
+    private sealed record TrafficContext(
+        string TrafficType,
+        RoutingPreference RoutingPreference,
+        double CapacityBidPerUnit,
+        IReadOnlyDictionary<string, NodeModel> NodesById,
+        IReadOnlyDictionary<string, NodeTrafficProfile?> ProfilesByNodeId,
+        IDictionary<string, double> Supply,
+        IDictionary<string, double> Demand,
+        double TotalProduction,
+        double TotalConsumption,
+        List<RouteAllocation> Allocations,
+        List<string> Notes);
 }

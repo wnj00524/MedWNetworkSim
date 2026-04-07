@@ -90,6 +90,7 @@ public partial class MainWindow : Window
 
     private void EditSelectedNode_Click(object sender, RoutedEventArgs e)
     {
+        // The dedicated window keeps node-role editing simpler than trying to fit every selector into the main pane.
         var window = new NodeEditorWindow(ViewModel)
         {
             Owner = this

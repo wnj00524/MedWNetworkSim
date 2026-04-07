@@ -5,6 +5,9 @@ using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
 
+/// <summary>
+/// Loads, saves, normalizes, validates, and optionally auto-lays out network files.
+/// </summary>
 public sealed class NetworkFileService
 {
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
@@ -16,6 +19,11 @@ public sealed class NetworkFileService
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
     };
 
+    /// <summary>
+    /// Loads a network file from disk and returns a normalized, validated model.
+    /// </summary>
+    /// <param name="path">The JSON file to load.</param>
+    /// <returns>The normalized network model.</returns>
     public NetworkModel Load(string path)
     {
         var json = File.ReadAllText(path);
@@ -25,6 +33,11 @@ public sealed class NetworkFileService
         return NormalizeAndValidate(model);
     }
 
+    /// <summary>
+    /// Saves a network model to disk after normalizing and validating it.
+    /// </summary>
+    /// <param name="model">The network model to persist.</param>
+    /// <param name="path">The destination JSON file path.</param>
     public void Save(NetworkModel model, string path)
     {
         var normalized = NormalizeAndValidate(model);
@@ -32,11 +45,21 @@ public sealed class NetworkFileService
         File.WriteAllText(path, json);
     }
 
+    /// <summary>
+    /// Recomputes coordinates for every node in the supplied model.
+    /// </summary>
+    /// <param name="model">The network model to arrange.</param>
+    /// <returns>A normalized model with fresh node coordinates.</returns>
     public NetworkModel AutoArrange(NetworkModel model)
     {
         return NormalizeAndValidate(model, forceLayoutAllNodes: true);
     }
 
+    /// <summary>
+    /// Normalizes and validates a network model without forcing a full re-layout of every node.
+    /// </summary>
+    /// <param name="model">The network model to check.</param>
+    /// <returns>The normalized network model.</returns>
     public NetworkModel NormalizeAndValidate(NetworkModel model)
     {
         return NormalizeAndValidate(model, forceLayoutAllNodes: false);
@@ -46,6 +69,7 @@ public sealed class NetworkFileService
     {
         ArgumentNullException.ThrowIfNull(model);
 
+        // Rebuild the model into a predictable, validated shape before either rendering or saving it.
         var normalizedNodes = new List<NodeModel>();
         var nodeIds = new HashSet<string>(Comparer);
 
@@ -137,6 +161,7 @@ public sealed class NetworkFileService
 
     private static List<NodeTrafficProfile> NormalizeProfiles(IEnumerable<NodeTrafficProfile>? profiles)
     {
+        // Duplicate traffic rows on the same node are collapsed into one persisted profile per traffic type.
         return (profiles ?? [])
             .Where(profile => !string.IsNullOrWhiteSpace(profile.TrafficType))
             .GroupBy(profile => profile.TrafficType.Trim(), Comparer)
@@ -181,6 +206,7 @@ public sealed class NetworkFileService
             };
         }
 
+        // Traffic types referenced by nodes are back-filled even if the file omits an explicit definition.
         foreach (var trafficName in nodes
                      .SelectMany(node => node.TrafficProfiles)
                      .Select(profile => profile.TrafficType)
@@ -213,6 +239,7 @@ public sealed class NetworkFileService
 
         if (forceLayoutAllNodes)
         {
+            // Auto Arrange deliberately relays out every node, even if it already has saved coordinates.
             ApplyRoleBasedLayout(nodes, edges);
             return;
         }
@@ -237,6 +264,7 @@ public sealed class NetworkFileService
 
     private static void ApplyRoleBasedLayout(IList<NodeModel> nodes, IReadOnlyList<EdgeModel> edges)
     {
+        // Producers trend left, consumers trend right, and transhipment-capable nodes sit in the middle layer.
         var degreeByNodeId = BuildDegreeLookup(edges);
         var layers = nodes
             .GroupBy(GetLayoutLayer)
@@ -272,6 +300,7 @@ public sealed class NetworkFileService
         IReadOnlyList<EdgeModel> edges,
         IReadOnlyList<NodeModel> nodesMissingCoordinates)
     {
+        // When only some nodes are missing positions, preserve the explicit coordinates and append the rest nearby.
         var explicitNodes = nodes
             .Where(node => node.X.HasValue && node.Y.HasValue)
             .ToList();

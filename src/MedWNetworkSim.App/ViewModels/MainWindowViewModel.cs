@@ -172,6 +172,7 @@ public sealed class MainWindowViewModel : ObservableObject
                 selectedNodeTrafficProfile.PropertyChanged += HandleSelectedNodeTrafficProfilePropertyChanged;
             }
 
+            // The node editor binds through these proxy properties so profile swaps do not confuse nested WPF bindings.
             RaiseSelectedNodeTrafficEditorPropertiesChanged();
         }
     }
@@ -382,6 +383,7 @@ public sealed class MainWindowViewModel : ObservableObject
         var arranged = fileService.AutoArrange(current);
         var arrangedNodesById = arranged.Nodes.ToDictionary(node => node.Id, Comparer);
 
+        // Keep the existing node view models and only update coordinates so in-memory edits are preserved.
         foreach (var node in Nodes)
         {
             if (!arrangedNodesById.TryGetValue(node.Id, out var arrangedNode))
@@ -769,6 +771,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
         if (!isNormalizingNodeTrafficProfiles && sender is NodeViewModel node)
         {
+            // Editing can temporarily create duplicate traffic rows; fold them back into one profile per traffic type.
             NormalizeNodeTrafficProfiles(node);
         }
 
@@ -829,6 +832,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void RefreshDerivedStateAfterStructureChange(string message)
     {
+        // Centralize all the "network shape changed" refresh work so the UI stays consistent after edits.
         RefreshNodeIdOptions();
         RefreshTrafficTypeNameOptions();
         RefreshEdgeBindings();

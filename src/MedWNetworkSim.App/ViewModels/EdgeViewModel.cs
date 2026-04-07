@@ -191,6 +191,7 @@ public sealed class EdgeViewModel : ObservableObject
             const double arrowLength = 18d;
             const double arrowWidth = 8d;
 
+            // Build the arrowhead from the edge direction vector so it tracks node dragging automatically.
             var baseX = end.X - (ux * arrowLength);
             var baseY = end.Y - (uy * arrowLength);
 
@@ -273,6 +274,7 @@ public sealed class EdgeViewModel : ObservableObject
         var source = new Point(sourceNode.CenterX, sourceNode.CenterY);
         var target = new Point(targetNode.CenterX, targetNode.CenterY);
 
+        // Edges connect to the border of each node card rather than the center to keep the canvas readable.
         var outbound = FindRectangleIntersection(source, target, sourceNode.Width / 2d, sourceNode.Height / 2d);
         var inbound = FindRectangleIntersection(target, source, targetNode.Width / 2d, targetNode.Height / 2d);
         return (outbound, inbound);

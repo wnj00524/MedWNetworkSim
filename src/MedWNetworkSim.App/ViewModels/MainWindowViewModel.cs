@@ -851,7 +851,9 @@ public sealed class MainWindowViewModel : ObservableObject
 
         foreach (var node in Nodes)
         {
-            foreach (var profile in node.TrafficProfiles.Where(profile => Comparer.Equals(profile.TrafficType, oldValue)))
+            foreach (var profile in node.TrafficProfiles
+                         .Where(profile => Comparer.Equals(profile.TrafficType, oldValue))
+                         .ToList())
             {
                 profile.TrafficType = normalizedName;
             }
@@ -896,11 +898,28 @@ public sealed class MainWindowViewModel : ObservableObject
 
         SynchronizeCollection(TrafficTypeNameOptions, trafficTypeNames);
 
-        // Re-announce the current selection after rebuilding the options collection so WPF restores the combo value.
-        if (!string.IsNullOrWhiteSpace(selectedTrafficType))
+        if (SelectedNodeTrafficProfile is null || string.IsNullOrWhiteSpace(selectedTrafficType))
         {
-            OnPropertyChanged(nameof(SelectedNodeTrafficType));
+            return;
         }
+
+        var matchedTrafficType = TrafficTypeNameOptions
+            .FirstOrDefault(option => Comparer.Equals(option, selectedTrafficType));
+
+        if (matchedTrafficType is null)
+        {
+            return;
+        }
+
+        if (!string.Equals(SelectedNodeTrafficProfile.TrafficType, matchedTrafficType, StringComparison.Ordinal))
+        {
+            // Snap the profile value to the exact option text so WPF can restore the combo box selection.
+            SelectedNodeTrafficProfile.TrafficType = matchedTrafficType;
+            return;
+        }
+
+        // Re-announce the current selection after rebuilding the options collection so WPF restores the combo value.
+        OnPropertyChanged(nameof(SelectedNodeTrafficType));
     }
 
     private void RefreshEdgeBindings()

@@ -40,7 +40,7 @@ dotnet build MedWNetworkSim.slnx
 dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj
 ```
 
-The app ships with a bundled sample file at [sample-network.json](/C:/Users/jdwil/source/repos/Codex/MedWNetworkSim/src/MedWNetworkSim.App/Samples/sample-network.json).
+The app ships with a bundled sample file at [sample-network.json](src/MedWNetworkSim.App/Samples/sample-network.json).
 
 ## JSON Format
 
@@ -114,10 +114,10 @@ The app uses a simple custom JSON format:
 
 ## Code Structure
 
-- [MainWindow.xaml](/C:/Users/jdwil/source/repos/Codex/MedWNetworkSim/src/MedWNetworkSim.App/MainWindow.xaml) defines the main shell: canvas, summary panes, simulation results, and the in-app editor grids.
-- [MainWindowViewModel.cs](/C:/Users/jdwil/source/repos/Codex/MedWNetworkSim/src/MedWNetworkSim.App/ViewModels/MainWindowViewModel.cs) is the application coordinator. It loads/saves networks, keeps editor selections in sync, and triggers simulation.
-- [NodeEditorWindow.xaml](/C:/Users/jdwil/source/repos/Codex/MedWNetworkSim/src/MedWNetworkSim.App/NodeEditorWindow.xaml) provides the dedicated dropdown-driven node editing workflow.
-- [NetworkFileService.cs](/C:/Users/jdwil/source/repos/Codex/MedWNetworkSim/src/MedWNetworkSim.App/Services/NetworkFileService.cs) normalizes and validates JSON data and applies automatic layout.
-- [NetworkSimulationEngine.cs](/C:/Users/jdwil/source/repos/Codex/MedWNetworkSim/src/MedWNetworkSim.App/Services/NetworkSimulationEngine.cs) performs routing, capacity competition, bid-cost calculation, and consumer-cost summarization.
+- [MainWindow.xaml](src/MedWNetworkSim.App/MainWindow.xaml) defines the main shell: canvas, summary panes, simulation results, and the in-app editor grids.
+- [MainWindowViewModel.cs](src/MedWNetworkSim.App/ViewModels/MainWindowViewModel.cs) is the application coordinator. It loads/saves networks, keeps editor selections in sync, and triggers simulation.
+- [NodeEditorWindow.xaml](src/MedWNetworkSim.App/NodeEditorWindow.xaml) provides the dedicated dropdown-driven node editing workflow.
+- [NetworkFileService.cs](src/MedWNetworkSim.App/Services/NetworkFileService.cs) normalizes and validates JSON data and applies automatic layout.
+- [NetworkSimulationEngine.cs](src/MedWNetworkSim.App/Services/NetworkSimulationEngine.cs) performs routing, capacity competition, bid-cost calculation, and consumer-cost summarization.
 - The `Models` folder contains the persisted JSON shape.
 - The `ViewModels` folder contains the editable UI state and display helpers used by WPF binding.

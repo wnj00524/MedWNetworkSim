@@ -141,7 +141,8 @@ public sealed class MainWindowViewModel : ObservableObject
                 return;
             }
 
-            SelectedNodeTrafficProfile = null;
+            SelectedNodeTrafficProfile = value?.TrafficProfiles.FirstOrDefault();
+            OnPropertyChanged(nameof(SelectedNodeTrafficRoleHeadline));
         }
     }
 
@@ -150,6 +151,10 @@ public sealed class MainWindowViewModel : ObservableObject
         get => selectedNodeTrafficProfile;
         set => SetProperty(ref selectedNodeTrafficProfile, value);
     }
+
+    public string SelectedNodeTrafficRoleHeadline => SelectedNode is null
+        ? "Traffic Roles"
+        : $"Traffic Roles For {SelectedNode.Name}";
 
     public EdgeViewModel? SelectedEdge
     {
@@ -299,6 +304,8 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         EnsureNetworkExists();
 
+        var primaryTrafficDefinition = EnsurePrimaryTrafficDefinition();
+
         var nodeIndex = Nodes.Count + 1;
         var node = new NodeViewModel(new NodeModel
         {
@@ -307,9 +314,16 @@ public sealed class MainWindowViewModel : ObservableObject
             X = 220d + ((nodeIndex - 1) % 4 * 220d),
             Y = 180d + ((nodeIndex - 1) / 4 * 170d)
         });
+        var initialProfile = new NodeTrafficProfileViewModel(new NodeTrafficProfile
+        {
+            TrafficType = primaryTrafficDefinition.Name
+        });
+
+        node.AddTrafficProfile(initialProfile);
 
         RegisterNode(node);
         SelectedNode = node;
+        SelectedNodeTrafficProfile = initialProfile;
         RefreshDerivedStateAfterStructureChange("Added a new node.");
     }
 
@@ -345,12 +359,12 @@ public sealed class MainWindowViewModel : ObservableObject
             throw new InvalidOperationException("Select a node before adding a traffic profile.");
         }
 
-        if (TrafficDefinitions.Count == 0)
-        {
-            AddTrafficDefinition();
-        }
-
-        var trafficName = TrafficTypeNameOptions.FirstOrDefault() ?? "Traffic 1";
+        var primaryTrafficDefinition = EnsurePrimaryTrafficDefinition();
+        var trafficName = TrafficDefinitions
+            .Select(definition => definition.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .FirstOrDefault(name => SelectedNode.TrafficProfiles.All(profile => !Comparer.Equals(profile.TrafficType, name)))
+            ?? primaryTrafficDefinition.Name;
         var profile = new NodeTrafficProfileViewModel(new NodeTrafficProfile
         {
             TrafficType = trafficName
@@ -369,7 +383,7 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         SelectedNode.RemoveTrafficProfile(SelectedNodeTrafficProfile);
-        SelectedNodeTrafficProfile = null;
+        SelectedNodeTrafficProfile = SelectedNode.TrafficProfiles.FirstOrDefault();
         RefreshDerivedStateAfterStructureChange("Removed the selected traffic profile.");
     }
 
@@ -427,6 +441,25 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             CreateNewNetwork();
         }
+    }
+
+    private TrafficTypeDefinitionEditorViewModel EnsurePrimaryTrafficDefinition()
+    {
+        var existingDefinition = TrafficDefinitions.FirstOrDefault(definition => !string.IsNullOrWhiteSpace(definition.Name));
+        if (existingDefinition is not null)
+        {
+            return existingDefinition;
+        }
+
+        var definition = new TrafficTypeDefinitionEditorViewModel(new TrafficTypeDefinition
+        {
+            Name = GetNextUniqueName("Traffic", TrafficDefinitions.Select(item => item.Name)),
+            RoutingPreference = RoutingPreference.TotalCost
+        });
+
+        RegisterTrafficDefinition(definition);
+        SelectedTrafficDefinition = definition;
+        return definition;
     }
 
     private void LoadBundledSampleIfAvailable()
@@ -597,6 +630,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void HandleNodeDefinitionChanged(object? sender, EventArgs e)
     {
+        OnPropertyChanged(nameof(SelectedNodeTrafficRoleHeadline));
         RefreshDerivedStateAfterStructureChange("Updated node data.");
     }
 

@@ -1,0 +1,291 @@
+<Window x:Class="MedWNetworkSim.App.NodeEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:MedWNetworkSim.App.ViewModels"
+        mc:Ignorable="d"
+        Title="Node Editor"
+        Width="820"
+        Height="680"
+        MinWidth="760"
+        MinHeight="620"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Padding="16"
+                Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="18">
+            <StackPanel>
+                <TextBlock FontSize="18"
+                           FontWeight="SemiBold"
+                           Text="Node Editor" />
+                <TextBlock Margin="0,8,0,0"
+                           FontSize="12"
+                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Text="Choose a node, choose one of its traffic-role entries, then set the traffic type and role from dropdown lists."
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.05*" />
+                <ColumnDefinition Width="14" />
+                <ColumnDefinition Width="1.25*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Padding="14"
+                    Background="{StaticResource PanelBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="18">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="Node Details" />
+
+                    <WrapPanel Grid.Row="2">
+                        <Button Content="Add Node" Click="AddNode_Click" />
+                        <Button Content="Remove Selected" Click="RemoveNode_Click" />
+                    </WrapPanel>
+
+                    <Grid Grid.Row="4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="Node" />
+                        <ComboBox Grid.Column="1"
+                                  MinWidth="220"
+                                  ItemsSource="{Binding Nodes}"
+                                  SelectedItem="{Binding SelectedNode, Mode=TwoWay}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:NodeViewModel}">
+                                    <TextBlock>
+                                        <Run Text="{Binding Name}" />
+                                        <Run Text=" (" />
+                                        <Run Text="{Binding Id}" />
+                                        <Run Text=")" />
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+
+                        <TextBlock Grid.Row="2"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="Id" />
+                        <TextBox Grid.Row="2"
+                                 Grid.Column="1"
+                                 Margin="0,0,0,0"
+                                 Text="{Binding SelectedNode.Id, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Grid.Row="4"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="Name" />
+                        <TextBox Grid.Row="4"
+                                 Grid.Column="1"
+                                 Text="{Binding SelectedNode.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <Grid Grid.Row="6" Grid.ColumnSpan="2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="120" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock VerticalAlignment="Center"
+                                       FontSize="11"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Text="X" />
+                            <TextBox Grid.Column="1"
+                                     Text="{Binding SelectedNode.X, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Grid.Column="3"
+                                       VerticalAlignment="Center"
+                                       FontSize="11"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Text="Y" />
+                            <TextBox Grid.Column="4"
+                                     Text="{Binding SelectedNode.Y, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </Grid>
+                    </Grid>
+
+                    <Border Grid.Row="6"
+                            Padding="12"
+                            Background="#FFF8F1E7"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12">
+                        <TextBlock FontSize="12"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="Tip: select a node on the canvas or in the main node table, then use this window to manage its traffic-role entries with dropdowns."
+                                   TextWrapping="Wrap" />
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2"
+                    Padding="14"
+                    Background="{StaticResource PanelBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="18">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="Traffic Role Entry" />
+
+                    <WrapPanel Grid.Row="2">
+                        <Button Content="Add Traffic Role" Click="AddTrafficRole_Click" />
+                        <Button Content="Remove Selected" Click="RemoveTrafficRole_Click" />
+                    </WrapPanel>
+
+                    <Grid Grid.Row="4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="Entry" />
+                        <ComboBox Grid.Column="1"
+                                  MinWidth="260"
+                                  ItemsSource="{Binding SelectedNode.TrafficProfiles}"
+                                  SelectedItem="{Binding SelectedNodeTrafficProfile, Mode=TwoWay}"
+                                  DisplayMemberPath="SelectionLabel" />
+
+                        <TextBlock Grid.Row="2"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="Traffic Type" />
+                        <ComboBox Grid.Row="2"
+                                  Grid.Column="1"
+                                  ItemsSource="{Binding TrafficTypeNameOptions}"
+                                  SelectedItem="{Binding SelectedNodeTrafficProfile.TrafficType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Grid.Row="4"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="Role" />
+                        <ComboBox Grid.Row="4"
+                                  Grid.Column="1"
+                                  ItemsSource="{Binding SelectedNodeTrafficProfile.RoleOptions}"
+                                  SelectedItem="{Binding SelectedNodeTrafficProfile.SelectedRoleName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Grid.Row="6"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="Production" />
+                        <TextBox Grid.Row="6"
+                                 Grid.Column="1"
+                                 IsEnabled="{Binding SelectedNodeTrafficProfile.IsProducer}"
+                                 Text="{Binding SelectedNodeTrafficProfile.Production, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Grid.Row="8"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="Consumption" />
+                        <TextBox Grid.Row="8"
+                                 Grid.Column="1"
+                                 IsEnabled="{Binding SelectedNodeTrafficProfile.IsConsumer}"
+                                 Text="{Binding SelectedNodeTrafficProfile.Consumption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </Grid>
+
+                    <Border Grid.Row="6"
+                            Padding="12"
+                            Background="#FFF8F1E7"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12">
+                        <StackPanel>
+                            <TextBlock FontSize="12"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource AccentStrongBrush}"
+                                       Text="{Binding SelectedNodeTrafficProfile.SelectionLabel}" />
+                            <TextBlock Margin="0,6,0,0"
+                                       FontSize="12"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Text="{Binding SelectedNodeTrafficProfile.RoleSummary}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <DockPanel Grid.Row="4">
+            <TextBlock VerticalAlignment="Center"
+                       FontSize="12"
+                       Foreground="{StaticResource MutedForegroundBrush}"
+                       Text="{Binding StatusMessage}" />
+            <Button DockPanel.Dock="Right"
+                    Margin="12,0,0,0"
+                    Content="Close"
+                    Click="Close_Click" />
+        </DockPanel>
+    </Grid>
+</Window>

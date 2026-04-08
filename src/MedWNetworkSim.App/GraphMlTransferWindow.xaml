@@ -20,8 +20,8 @@
         </Grid.RowDefinitions>
 
         <Border Padding="16"
-                Background="{StaticResource PanelBrush}"
-                BorderBrush="{StaticResource BorderBrush}"
+                Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
                 CornerRadius="18">
             <StackPanel>
@@ -30,7 +30,7 @@
                            Text="GraphML Import / Export" />
                 <TextBlock Margin="0,8,0,0"
                            FontSize="12"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="Import a generic GraphML graph into the simulator or export the current network as GraphML. The defaults below are used only when a GraphML node does not already carry MedW-specific traffic data."
                            TextWrapping="Wrap" />
             </StackPanel>
@@ -38,8 +38,8 @@
 
         <Border Grid.Row="2"
                 Padding="16"
-                Background="{StaticResource PanelBrush}"
-                BorderBrush="{StaticResource BorderBrush}"
+                Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
                 CornerRadius="18">
             <Grid>
@@ -77,12 +77,12 @@
                 <Border Grid.Row="2"
                         Grid.ColumnSpan="2"
                         Padding="12"
-                        Background="{StaticResource InfoPanelBrush}"
-                        BorderBrush="{StaticResource BorderBrush}"
+                        Background="{DynamicResource InfoPanelBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="1"
                         CornerRadius="12">
                     <TextBlock FontSize="12"
-                               Foreground="{StaticResource MutedForegroundBrush}"
+                               Foreground="{DynamicResource MutedForegroundBrush}"
                                Text="Choose a GraphML file to load into the simulator, or choose a destination file to save the current network. You can type a path directly or use Browse."
                                TextWrapping="Wrap" />
                 </Border>
@@ -90,7 +90,7 @@
                 <TextBlock Grid.Row="4"
                            VerticalAlignment="Center"
                            FontSize="12"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="Import File" />
                 <Grid Grid.Row="4"
                       Grid.Column="1">
@@ -115,7 +115,7 @@
                 <TextBlock Grid.Row="6"
                            VerticalAlignment="Center"
                            FontSize="12"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="Export File" />
                 <Grid Grid.Row="6"
                       Grid.Column="1">
@@ -141,7 +141,7 @@
                 <TextBlock Grid.Row="8"
                            Grid.ColumnSpan="2"
                            FontSize="11"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="{Binding SuggestedExportFileName, StringFormat=Suggested export filename: {0}}"
                            TextWrapping="Wrap" />
 
@@ -154,7 +154,7 @@
                 <TextBlock Grid.Row="12"
                            VerticalAlignment="Center"
                            FontSize="12"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="Traffic Type" />
                 <ComboBox Grid.Row="12"
                           Grid.Column="1"
@@ -166,7 +166,7 @@
                 <TextBlock Grid.Row="14"
                            VerticalAlignment="Center"
                            FontSize="12"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="Role" />
                 <ComboBox Grid.Row="14"
                           Grid.Column="1"
@@ -176,7 +176,7 @@
                 <TextBlock Grid.Row="16"
                            VerticalAlignment="Center"
                            FontSize="12"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="Capacity" />
                 <TextBox Grid.Row="16"
                          Grid.Column="1"
@@ -185,18 +185,18 @@
                 <Border Grid.Row="18"
                         Grid.ColumnSpan="2"
                         Padding="12"
-                        Background="{StaticResource InfoPanelBrush}"
-                        BorderBrush="{StaticResource BorderBrush}"
+                        Background="{DynamicResource InfoPanelBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="1"
                         CornerRadius="12">
                     <StackPanel>
                         <TextBlock FontSize="12"
                                    FontWeight="SemiBold"
-                                   Foreground="{StaticResource AccentStrongBrush}"
+                                   Foreground="{DynamicResource AccentStrongBrush}"
                                    Text="How the defaults are used" />
                         <TextBlock Margin="0,8,0,0"
                                    FontSize="12"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Leave traffic type or role on none when you want imported nodes to stay structural only. When the default role includes transhipment, the capacity becomes that node's shared transhipment limit. Producer or consumer defaults still fall back to 1 unit if they need a starter quantity and no amount is available in the GraphML data."
                                    TextWrapping="Wrap" />
                     </StackPanel>
@@ -207,7 +207,7 @@
         <DockPanel Grid.Row="4">
             <TextBlock VerticalAlignment="Center"
                        FontSize="12"
-                       Foreground="{StaticResource MutedForegroundBrush}"
+                       Foreground="{DynamicResource MutedForegroundBrush}"
                        Text="Import replaces the current network. Save GraphML writes the currently loaded network to the chosen GraphML file." />
             <WrapPanel DockPanel.Dock="Right"
                        Margin="12,0,0,0">

@@ -14,14 +14,15 @@ public sealed class NodeViewModel : ObservableObject
     private const double UtilizationTrackWidth = 92d;
     private const double Epsilon = 0.000001d;
 
-    private static readonly Brush DefaultNodeBorder = CreateFrozenBrush("#FFC7B27C");
     private static readonly Brush IdleBrush = CreateFrozenBrush("#FFD7C7B1");
     private static readonly Brush LowUsageBrush = CreateFrozenBrush("#FF9BAA76");
     private static readonly Brush MediumUsageBrush = CreateFrozenBrush("#FFC48B4B");
     private static readonly Brush HighUsageBrush = CreateFrozenBrush("#FFC56245");
+    private static Brush DefaultNodeBorder => GetThemeBrush("NodeBorderBrush", "#FFC7B27C");
 
     private string id;
     private string name;
+    private NodeVisualShape shape;
     private double x;
     private double y;
     private double? transhipmentCapacity;
@@ -42,6 +43,7 @@ public sealed class NodeViewModel : ObservableObject
     {
         id = model.Id;
         name = model.Name;
+        shape = model.Shape;
         x = model.X ?? 0d;
         y = model.Y ?? 0d;
         transhipmentCapacity = model.TranshipmentCapacity;
@@ -92,9 +94,31 @@ public sealed class NodeViewModel : ObservableObject
         }
     }
 
+    public NodeVisualShape Shape
+    {
+        get => shape;
+        set
+        {
+            if (!SetProperty(ref shape, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(NodeCornerRadius));
+            OnPropertyChanged(nameof(SquareNodeVisibility));
+            OnPropertyChanged(nameof(CircularNodeVisibility));
+            OnPropertyChanged(nameof(OutlineShapeVisibility));
+            OnPropertyChanged(nameof(ShapeWatermarkVisibility));
+            OnPropertyChanged(nameof(ShapeIconGeometry));
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     public double Width => DefaultWidth;
 
     public double Height => DefaultHeight;
+
+    public IReadOnlyList<NodeVisualShape> ShapeOptions { get; } = Enum.GetValues<NodeVisualShape>();
 
     public double X
     {
@@ -135,6 +159,33 @@ public sealed class NodeViewModel : ObservableObject
     public double CenterX => X;
 
     public double CenterY => Y;
+
+    public CornerRadius NodeCornerRadius => new(8d);
+
+    public Visibility SquareNodeVisibility => Shape == NodeVisualShape.Square
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility CircularNodeVisibility => Shape == NodeVisualShape.Circle
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility OutlineShapeVisibility => Shape is NodeVisualShape.Person or NodeVisualShape.Car or NodeVisualShape.Building
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility ShapeWatermarkVisibility => Shape is NodeVisualShape.Person or NodeVisualShape.Car or NodeVisualShape.Building
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+
+    public string ShapeIconGeometry => Shape switch
+    {
+        NodeVisualShape.Circle => "M 50,8 A 42,42 0 1 1 49.99,8 Z",
+        NodeVisualShape.Person => "M50,10 A12,12 0 1 1 49.99,10 Z M26,42 C26,31 74,31 74,42 L74,68 26,68 Z M20,86 C20,72 80,72 80,86 L80,92 20,92 Z",
+        NodeVisualShape.Car => "M20,58 L30,34 70,34 80,58 88,58 88,74 80,74 A8,8 0 1 1 64,74 L36,74 A8,8 0 1 1 20,74 12,74 12,58 Z M28,42 L72,42 78,54 22,54 Z",
+        NodeVisualShape.Building => "M18,92 L18,36 42,20 42,32 58,32 58,12 82,12 82,92 Z M28,42 L36,42 36,50 28,50 Z M46,42 L54,42 54,50 46,50 Z M64,42 L72,42 72,50 64,50 Z M28,58 L36,58 36,66 28,66 Z M46,58 L54,58 54,66 46,66 Z M64,58 L72,58 72,66 64,66 Z M46,76 L54,76 54,92 46,92 Z",
+        _ => "M12,12 H88 V88 H12 Z"
+    };
 
     public double? TranshipmentCapacity
     {
@@ -372,6 +423,7 @@ public sealed class NodeViewModel : ObservableObject
         {
             Id = Id,
             Name = Name,
+            Shape = Shape,
             X = X,
             Y = Y,
             TranshipmentCapacity = TranshipmentCapacity,
@@ -428,7 +480,7 @@ public sealed class NodeViewModel : ObservableObject
             transhipmentQuantity > Epsilon || routedOutboundQuantity > Epsilon || routedInboundQuantity > Epsilon || localQuantity > Epsilon);
         nodeBorderDisplayBrush = HasSimulationDetails
             ? simulationBrush
-            : DefaultNodeBorder;
+            : GetThemeBrush("NodeBorderBrush", "#FFC7B27C");
 
         OnPropertyChanged(nameof(FlowSummaryLabel));
         OnPropertyChanged(nameof(TranshipmentUsageLabel));
@@ -469,5 +521,10 @@ public sealed class NodeViewModel : ObservableObject
         var brush = (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
         brush.Freeze();
         return brush;
+    }
+
+    private static Brush GetThemeBrush(string resourceKey, string fallbackHex)
+    {
+        return Application.Current?.TryFindResource(resourceKey) as Brush ?? CreateFrozenBrush(fallbackHex);
     }
 }

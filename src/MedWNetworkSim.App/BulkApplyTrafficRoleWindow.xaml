@@ -20,8 +20,8 @@
         </Grid.RowDefinitions>
 
         <Border Padding="16"
-                Background="{StaticResource PanelBrush}"
-                BorderBrush="{StaticResource BorderBrush}"
+                Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
                 CornerRadius="18">
             <StackPanel>
@@ -30,7 +30,7 @@
                            Text="Apply Traffic Role To All Nodes" />
                 <TextBlock Margin="0,8,0,0"
                            FontSize="12"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="Stamp the same traffic role onto every node in the current network. You can create or update one traffic-role entry per node in a single step."
                            TextWrapping="Wrap" />
             </StackPanel>
@@ -38,8 +38,8 @@
 
         <Border Grid.Row="2"
                 Padding="16"
-                Background="{StaticResource PanelBrush}"
-                BorderBrush="{StaticResource BorderBrush}"
+                Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
                 CornerRadius="18">
             <Grid>
@@ -74,7 +74,7 @@
                 <TextBlock Grid.Row="2"
                            VerticalAlignment="Center"
                            FontSize="12"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="Traffic Type" />
                 <ComboBox Grid.Row="2"
                           Grid.Column="1"
@@ -86,7 +86,7 @@
                 <TextBlock Grid.Row="4"
                            VerticalAlignment="Center"
                            FontSize="12"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="Role" />
                 <ComboBox Grid.Row="4"
                           Grid.Column="1"
@@ -96,7 +96,7 @@
                 <TextBlock Grid.Row="6"
                            VerticalAlignment="Center"
                            FontSize="12"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="Production Amount" />
                 <TextBox Grid.Row="6"
                          Grid.Column="1"
@@ -106,7 +106,7 @@
                 <TextBlock Grid.Row="8"
                            VerticalAlignment="Center"
                            FontSize="12"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="Consumption Amount" />
                 <TextBox Grid.Row="8"
                          Grid.Column="1"
@@ -116,7 +116,7 @@
                 <TextBlock Grid.Row="10"
                            VerticalAlignment="Center"
                            FontSize="12"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="Transhipment Capacity" />
                 <StackPanel Grid.Row="10"
                             Grid.Column="1">
@@ -128,7 +128,7 @@
                              Text="{Binding TranshipmentCapacityText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     <TextBlock Margin="0,6,0,0"
                                FontSize="11"
-                               Foreground="{StaticResource MutedForegroundBrush}"
+                               Foreground="{DynamicResource MutedForegroundBrush}"
                                Text="Leave the capacity box blank to clear any existing shared transhipment limit when the checkbox is enabled."
                                TextWrapping="Wrap" />
                 </StackPanel>
@@ -136,18 +136,18 @@
                 <Border Grid.Row="12"
                         Grid.ColumnSpan="2"
                         Padding="12"
-                        Background="{StaticResource InfoPanelBrush}"
-                        BorderBrush="{StaticResource BorderBrush}"
+                        Background="{DynamicResource InfoPanelBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="1"
                         CornerRadius="12">
                     <StackPanel>
                         <TextBlock FontSize="12"
                                    FontWeight="SemiBold"
-                                   Foreground="{StaticResource AccentStrongBrush}"
+                                   Foreground="{DynamicResource AccentStrongBrush}"
                                    Text="What happens when you apply" />
                         <TextBlock Margin="0,8,0,0"
                                    FontSize="12"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="{Binding ApplySummary}"
                                    TextWrapping="Wrap" />
                     </StackPanel>
@@ -156,7 +156,7 @@
                 <TextBlock Grid.Row="14"
                            Grid.ColumnSpan="2"
                            FontSize="11"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="Traffic type is required. Producer and consumer roles need positive amounts. Shared transhipment capacity is only updated when the checkbox above is enabled."
                            TextWrapping="Wrap" />
             </Grid>
@@ -165,7 +165,7 @@
         <DockPanel Grid.Row="4">
             <TextBlock VerticalAlignment="Center"
                        FontSize="12"
-                       Foreground="{StaticResource MutedForegroundBrush}"
+                       Foreground="{DynamicResource MutedForegroundBrush}"
                        Text="This updates every node in the currently loaded network." />
             <WrapPanel DockPanel.Dock="Right"
                        Margin="12,0,0,0">

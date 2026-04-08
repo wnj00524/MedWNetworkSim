@@ -18,6 +18,11 @@ public sealed class NodeModel
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the visual shape used to represent this node on the canvas.
+    /// </summary>
+    public NodeVisualShape Shape { get; set; } = NodeVisualShape.Square;
+
+    /// <summary>
     /// Gets or sets the optional horizontal canvas position of the node center.
     /// </summary>
     public double? X { get; set; }

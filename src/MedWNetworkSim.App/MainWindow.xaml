@@ -19,8 +19,8 @@
         </Grid.RowDefinitions>
 
         <Border Padding="22"
-                Background="{StaticResource PanelBrush}"
-                BorderBrush="{StaticResource BorderBrush}"
+                Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
                 CornerRadius="22">
             <Grid>
@@ -32,61 +32,138 @@
                 <StackPanel Margin="0,0,24,0">
                     <TextBlock FontSize="14"
                                FontWeight="SemiBold"
-                               Foreground="{StaticResource AccentStrongBrush}"
+                               Foreground="{DynamicResource AccentStrongBrush}"
                                Text="MedW Network Simulator" />
                     <TextBox Margin="0,10,0,0"
                              Padding="10,8"
                              FontSize="28"
                              FontWeight="SemiBold"
-                             Background="#FFFDF9F3"
-                             BorderBrush="{StaticResource BorderBrush}"
+                             Background="{DynamicResource InputBrush}"
+                             BorderBrush="{DynamicResource BorderBrush}"
                              BorderThickness="1"
                              Text="{Binding NetworkName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBox Margin="0,10,0,0"
-                             MinHeight="64"
-                             Padding="10,8"
-                             FontSize="14"
-                             Background="#FFFDF9F3"
-                             BorderBrush="{StaticResource BorderBrush}"
-                             BorderThickness="1"
-                             AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             VerticalScrollBarVisibility="Auto"
-                             Text="{Binding NetworkDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBlock Margin="0,10,0,0"
-                               FontSize="12"
-                               Foreground="{StaticResource MutedForegroundBrush}"
-                               Text="{Binding ActiveFileLabel}"
-                               TextWrapping="Wrap" />
                 </StackPanel>
 
                 <WrapPanel Grid.Column="1"
                            HorizontalAlignment="Right"
-                           VerticalAlignment="Top">
-                    <Button Content="New Network" Click="NewNetwork_Click" />
-                    <Button Content="Load Sample" Click="LoadSample_Click" />
-                    <Button Content="Open JSON..." Click="OpenFile_Click" />
-                    <Button Content="GraphML..." Click="GraphMl_Click" />
-                    <Button Content="Traffic Types..." Click="EditTrafficTypes_Click" />
-                    <Button Content="Edges..." Click="EditEdges_Click" />
-                    <Button Content="{Binding CanvasOnlyButtonLabel}"
-                            Click="ToggleCanvasOnly_Click"
-                            IsEnabled="{Binding HasNetwork}" />
-                    <Button Content="Auto Arrange"
-                            Click="AutoArrange_Click"
-                            IsEnabled="{Binding HasNetwork}" />
-                    <Button Content="Save JSON..."
-                            Click="SaveFile_Click"
-                            IsEnabled="{Binding HasNetwork}" />
-                    <Button Content="Run Simulation"
-                            Click="RunSimulation_Click"
-                            IsEnabled="{Binding HasNetwork}" />
-                    <Button Content="Reset Timeline"
-                            Click="ResetTimeline_Click"
-                            IsEnabled="{Binding HasNetwork}" />
-                    <Button Content="Next Period"
-                            Click="NextTimelinePeriod_Click"
-                            IsEnabled="{Binding HasNetwork}" />
+                           VerticalAlignment="Top"
+                           ItemWidth="Auto"
+                           Margin="0,-4,0,0">
+                    <Border Margin="0,4,10,0"
+                            Padding="12"
+                            Background="{DynamicResource SectionBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="14">
+                        <StackPanel>
+                            <TextBlock FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource AccentStrongBrush}"
+                                       Text="Network" />
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button Content="New Network" Click="NewNetwork_Click" />
+                                <Button Content="Load Sample" Click="LoadSample_Click" />
+                                <Button Content="Open JSON..." Click="OpenFile_Click" />
+                                <Button Content="Save JSON..."
+                                        Click="SaveFile_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="GraphML..." Click="GraphMl_Click" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,4,10,0"
+                            Padding="12"
+                            Background="{DynamicResource SectionBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="14">
+                        <StackPanel>
+                            <TextBlock FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource AccentStrongBrush}"
+                                       Text="Editors" />
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button Content="Traffic Types..." Click="EditTrafficTypes_Click" />
+                                <Button Content="Edges..." Click="EditEdges_Click" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,4,10,0"
+                            Padding="12"
+                            Background="{DynamicResource SectionBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="14">
+                        <StackPanel>
+                            <TextBlock FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource AccentStrongBrush}"
+                                       Text="Workspace" />
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button Content="{Binding CanvasOnlyButtonLabel}"
+                                        Click="ToggleCanvasOnly_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="Auto Arrange"
+                                        Click="AutoArrange_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,4,10,0"
+                            Padding="12"
+                            Background="{DynamicResource SectionBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="14">
+                        <StackPanel>
+                            <TextBlock FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource AccentStrongBrush}"
+                                       Text="Simulation" />
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button Content="Run Simulation"
+                                        Click="RunSimulation_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="Reset Timeline"
+                                        Click="ResetTimeline_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="Next Period"
+                                        Click="NextTimelinePeriod_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,4,0,0"
+                            Padding="12"
+                            Background="{DynamicResource SectionBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="14">
+                        <StackPanel>
+                            <TextBlock FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource AccentStrongBrush}"
+                                       Text="Appearance" />
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="150" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock VerticalAlignment="Center"
+                                           Margin="0,0,10,0"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Theme" />
+                                <ComboBox Grid.Column="1"
+                                          ItemsSource="{Binding ThemeOptions}"
+                                          SelectedItem="{Binding SelectedTheme, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </WrapPanel>
             </Grid>
         </Border>
@@ -100,8 +177,8 @@
 
             <Border Grid.Column="0"
                     Padding="20"
-                    Background="{StaticResource PanelBrush}"
-                    BorderBrush="{StaticResource BorderBrush}"
+                    Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1"
                     CornerRadius="22">
                 <Grid>
@@ -120,11 +197,11 @@
                                    VerticalAlignment="Center"
                                    FontSize="12"
                                    FontWeight="SemiBold"
-                                   Foreground="{StaticResource AccentStrongBrush}"
+                                   Foreground="{DynamicResource AccentStrongBrush}"
                                    Text="{Binding TimelineHeadline}" />
                         <TextBlock DockPanel.Dock="Right"
                                    FontSize="12"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Primary workspace: drag node cards to reposition them. Canvas flow visuals follow the selected traffic filter after a simulation run." />
                     </DockPanel>
 
@@ -144,14 +221,14 @@
                                 </ContextMenu>
                             </Grid.ContextMenu>
 
-                            <Border Background="{StaticResource CanvasGridBrush}"
-                                    BorderBrush="#33B18A63"
+                            <Border Background="{DynamicResource CanvasGridBrush}"
+                                    BorderBrush="{DynamicResource CanvasLineBrush}"
                                     BorderThickness="1"
                                     CornerRadius="20" />
 
                             <Line x:Name="EdgeCreationPreviewLine"
                                   IsHitTestVisible="False"
-                                  Stroke="{StaticResource AccentStrongBrush}"
+                                  Stroke="{DynamicResource AccentStrongBrush}"
                                   StrokeThickness="3"
                                   StrokeDashArray="6,4"
                                   StrokeStartLineCap="Round"
@@ -172,7 +249,7 @@
                                                   Y1="{Binding Y1}"
                                                   X2="{Binding X2}"
                                                   Y2="{Binding Y2}"
-                                                  Stroke="{StaticResource EdgeBrush}"
+                                                  Stroke="{DynamicResource EdgeBrush}"
                                                   StrokeThickness="3"
                                                   StrokeStartLineCap="Round"
                                                   StrokeEndLineCap="Round"
@@ -190,7 +267,7 @@
                                                   Visibility="{Binding FlowOverlayVisibility}" />
 
                                             <Polygon Points="{Binding ArrowPoints}"
-                                                     Fill="{StaticResource EdgeBrush}"
+                                                     Fill="{DynamicResource EdgeBrush}"
                                                      Visibility="{Binding ArrowVisibility}" />
 
                                             <Polygon Points="{Binding ArrowPoints}"
@@ -203,18 +280,18 @@
                                                     Width="{Binding LabelWidth}"
                                                     Height="{Binding LabelHeight}"
                                                     Padding="10,6"
-                                                    Background="{StaticResource EdgeLabelBrush}"
-                                                    BorderBrush="{StaticResource BorderBrush}"
+                                                    Background="{DynamicResource EdgeLabelBrush}"
+                                                    BorderBrush="{DynamicResource BorderBrush}"
                                                     BorderThickness="1"
                                                     CornerRadius="14"
                                                     Visibility="{Binding EdgeVisibility}">
                                                 <StackPanel>
                                                     <TextBlock FontSize="11"
                                                                FontWeight="SemiBold"
-                                                               Foreground="{StaticResource AccentStrongBrush}"
+                                                               Foreground="{DynamicResource AccentStrongBrush}"
                                                                Text="{Binding DirectionLabel}" />
                                                     <TextBlock FontSize="11"
-                                                               Foreground="{StaticResource StrongForegroundBrush}"
+                                                               Foreground="{DynamicResource StrongForegroundBrush}"
                                                                Text="{Binding SummaryLabel}" />
                                                     <TextBlock FontSize="11"
                                                                FontWeight="SemiBold"
@@ -222,12 +299,12 @@
                                                                Text="{Binding FlowSummaryLabel}"
                                                                Visibility="{Binding FlowSummaryVisibility}" />
                                                     <TextBlock FontSize="11"
-                                                               Foreground="{StaticResource MutedForegroundBrush}"
+                                                               Foreground="{DynamicResource MutedForegroundBrush}"
                                                                Text="{Binding CapacityDisplayLabel}" />
                                                     <Grid Margin="0,4,0,0"
                                                           Visibility="{Binding UtilizationBarVisibility}">
                                                         <Border Height="6"
-                                                                Background="#FFE7DCCB"
+                                                                Background="{DynamicResource TrackBrush}"
                                                                 CornerRadius="3" />
                                                         <Border Width="{Binding UtilizationBarWidth}"
                                                                 Height="6"
@@ -265,12 +342,38 @@
                                                ToolTip="{Binding FullTrafficSummary}">
                                             <Thumb.Template>
                                                 <ControlTemplate TargetType="Thumb">
-                                                    <Border Padding="12"
-                                                            Background="{StaticResource NodeBrush}"
-                                                            BorderBrush="{Binding NodeBorderDisplayBrush}"
-                                                            BorderThickness="1.4"
-                                                            CornerRadius="20">
-                                                        <Grid>
+                                                    <Grid>
+                                                        <Border Padding="12"
+                                                                Background="{DynamicResource NodeBrush}"
+                                                                BorderBrush="{Binding NodeBorderDisplayBrush}"
+                                                                BorderThickness="1.4"
+                                                                CornerRadius="{Binding NodeCornerRadius}"
+                                                                Visibility="{Binding SquareNodeVisibility}" />
+                                                        <Ellipse Fill="{DynamicResource NodeBrush}"
+                                                                 Stroke="{Binding NodeBorderDisplayBrush}"
+                                                                 StrokeThickness="1.4"
+                                                                 Visibility="{Binding CircularNodeVisibility}" />
+                                                        <Viewbox Visibility="{Binding OutlineShapeVisibility}"
+                                                                 IsHitTestVisible="False">
+                                                            <Path Data="{Binding ShapeIconGeometry}"
+                                                                  Fill="{DynamicResource NodeBrush}"
+                                                                  Stroke="{Binding NodeBorderDisplayBrush}"
+                                                                  StrokeThickness="1.4"
+                                                                  Stretch="Uniform" />
+                                                        </Viewbox>
+                                                        <Viewbox Width="56"
+                                                                 Height="56"
+                                                                 Margin="0,10,10,0"
+                                                                 HorizontalAlignment="Right"
+                                                                 VerticalAlignment="Top"
+                                                                 Opacity="0.22"
+                                                                 IsHitTestVisible="False"
+                                                                 Visibility="{Binding ShapeWatermarkVisibility}">
+                                                            <Path Data="{Binding ShapeIconGeometry}"
+                                                                  Fill="{DynamicResource NodeWatermarkBrush}"
+                                                                  Stretch="Uniform" />
+                                                        </Viewbox>
+                                                        <Grid Margin="12">
                                                             <Grid.RowDefinitions>
                                                                 <RowDefinition Height="Auto" />
                                                                 <RowDefinition Height="Auto" />
@@ -279,19 +382,23 @@
                                                             </Grid.RowDefinitions>
 
                                                             <StackPanel>
-                                                                <TextBlock FontSize="15"
-                                                                           FontWeight="SemiBold"
-                                                                           Text="{Binding Name}" />
-                                                                <TextBlock FontSize="11"
-                                                                           Foreground="{StaticResource MutedForegroundBrush}"
-                                                                           Text="{Binding Id}" />
+                                                                <DockPanel LastChildFill="False">
+                                                                    <StackPanel DockPanel.Dock="Left">
+                                                                        <TextBlock FontSize="15"
+                                                                                   FontWeight="SemiBold"
+                                                                                   Text="{Binding Name}" />
+                                                                        <TextBlock FontSize="11"
+                                                                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                                                                   Text="{Binding Id}" />
+                                                                    </StackPanel>
+                                                                </DockPanel>
                                                             </StackPanel>
 
                                                             <DockPanel Grid.Row="1"
                                                                        Margin="0,8,0,8">
                                                                 <Border Padding="10,3"
                                                                         HorizontalAlignment="Left"
-                                                                        Background="#FFF0E6D6"
+                                                                        Background="{DynamicResource CardAltBrush}"
                                                                         CornerRadius="12">
                                                                     <TextBlock FontSize="11"
                                                                                FontWeight="SemiBold"
@@ -301,14 +408,14 @@
                                                                 <TextBlock DockPanel.Dock="Right"
                                                                            VerticalAlignment="Center"
                                                                            FontSize="11"
-                                                                           Foreground="{StaticResource MutedForegroundBrush}"
+                                                                           Foreground="{DynamicResource MutedForegroundBrush}"
                                                                            Text="{Binding TranshipmentCapacityLabel}" />
                                                             </DockPanel>
 
                                                             <Border Grid.Row="2"
                                                                     Margin="0,0,0,8"
                                                                     Padding="8"
-                                                                    Background="#FFF6EEE2"
+                                                                    Background="{DynamicResource CardBrush}"
                                                                     BorderBrush="{Binding SimulationBrush}"
                                                                     BorderThickness="1"
                                                                     CornerRadius="12"
@@ -321,14 +428,14 @@
                                                                                TextWrapping="Wrap" />
                                                                     <TextBlock Margin="0,6,0,0"
                                                                                FontSize="11"
-                                                                               Foreground="{StaticResource MutedForegroundBrush}"
+                                                                               Foreground="{DynamicResource MutedForegroundBrush}"
                                                                                Text="{Binding TranshipmentUsageLabel}"
                                                                                TextWrapping="Wrap"
                                                                                Visibility="{Binding TranshipmentUsageVisibility}" />
                                                                     <Grid Margin="0,4,0,0"
                                                                           Visibility="{Binding TranshipmentUsageBarVisibility}">
                                                                         <Border Height="6"
-                                                                                Background="#FFE7DCCB"
+                                                                                Background="{DynamicResource TrackBrush}"
                                                                                 CornerRadius="3" />
                                                                         <Border Width="{Binding TranshipmentUtilizationBarWidth}"
                                                                                 Height="6"
@@ -342,14 +449,14 @@
                                                             <Border Grid.Row="2"
                                                                     Margin="0,0,0,8"
                                                                     Padding="8"
-                                                                    Background="#FFF3ECE0"
-                                                                    BorderBrush="{StaticResource BorderBrush}"
+                                                                    Background="{DynamicResource CardAltBrush}"
+                                                                    BorderBrush="{DynamicResource BorderBrush}"
                                                                     BorderThickness="1"
                                                                     CornerRadius="12"
                                                                     VerticalAlignment="Bottom"
                                                                     Visibility="{Binding TimelinePanelVisibility}">
                                                                 <TextBlock FontSize="11"
-                                                                           Foreground="{StaticResource AccentStrongBrush}"
+                                                                           Foreground="{DynamicResource AccentStrongBrush}"
                                                                            Text="{Binding TimelineSummaryLabel}"
                                                                            TextWrapping="Wrap" />
                                                             </Border>
@@ -370,7 +477,7 @@
                                                                                            Text="{Binding TrafficType}" />
                                                                                 <TextBlock Grid.Column="1"
                                                                                            FontSize="11"
-                                                                                           Foreground="{StaticResource MutedForegroundBrush}"
+                                                                                           Foreground="{DynamicResource MutedForegroundBrush}"
                                                                                            Text="{Binding RoleSummary}" />
                                                                             </Grid>
                                                                         </DataTemplate>
@@ -378,7 +485,7 @@
                                                                 </ItemsControl>
                                                             </ScrollViewer>
                                                         </Grid>
-                                                    </Border>
+                                                    </Grid>
                                                 </ControlTemplate>
                                             </Thumb.Template>
                                         </Thumb>
@@ -396,8 +503,8 @@
                           Visibility="{Binding DataContext.RightRailVisibility, ElementName=RootWindow}">
                 <StackPanel>
                     <Border Padding="18"
-                            Background="{StaticResource PanelBrush}"
-                            BorderBrush="{StaticResource BorderBrush}"
+                            Background="{DynamicResource PanelBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
                             CornerRadius="22">
                         <Expander IsExpanded="True">
@@ -410,11 +517,11 @@
                             <UniformGrid Margin="0,18,0,0" Columns="3">
                                 <Border Margin="0,0,8,0"
                                         Padding="12"
-                                        Background="#FFF7EEE2"
+                                        Background="{DynamicResource CardBrush}"
                                         CornerRadius="16">
                                     <StackPanel>
                                         <TextBlock FontSize="12"
-                                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                                    Text="Nodes" />
                                         <TextBlock FontSize="24"
                                                    FontWeight="SemiBold"
@@ -424,11 +531,11 @@
 
                                 <Border Margin="0,0,8,0"
                                         Padding="12"
-                                        Background="#FFF7EEE2"
+                                        Background="{DynamicResource CardBrush}"
                                         CornerRadius="16">
                                     <StackPanel>
                                         <TextBlock FontSize="12"
-                                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                                    Text="Edges" />
                                         <TextBlock FontSize="24"
                                                    FontWeight="SemiBold"
@@ -437,11 +544,11 @@
                                 </Border>
 
                                 <Border Padding="12"
-                                        Background="#FFF7EEE2"
+                                        Background="{DynamicResource CardBrush}"
                                         CornerRadius="16">
                                     <StackPanel>
                                         <TextBlock FontSize="12"
-                                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                                    Text="Traffic Types" />
                                         <TextBlock FontSize="24"
                                                    FontWeight="SemiBold"
@@ -454,8 +561,8 @@
 
                     <Border Margin="0,16,0,0"
                             Padding="18"
-                            Background="{StaticResource PanelBrush}"
-                            BorderBrush="{StaticResource BorderBrush}"
+                            Background="{DynamicResource PanelBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
                             CornerRadius="22">
                         <Expander IsExpanded="True">
@@ -474,8 +581,8 @@
                                     <DataTemplate DataType="{x:Type vm:TrafficSummaryViewModel}">
                                         <Border x:Name="TrafficCard"
                                                 Padding="14"
-                                                Background="#FFFFFBF4"
-                                                BorderBrush="{StaticResource BorderBrush}"
+                                                Background="{DynamicResource CardBrush}"
+                                                BorderBrush="{DynamicResource BorderBrush}"
                                                 BorderThickness="1"
                                                 CornerRadius="18">
                                             <Grid>
@@ -495,7 +602,7 @@
                                                                Text="{Binding Name}" />
                                                     <Border DockPanel.Dock="Right"
                                                             Padding="10,4"
-                                                            Background="#FFF2E3D2"
+                                                            Background="{DynamicResource CardAltBrush}"
                                                             CornerRadius="12">
                                                         <TextBlock FontSize="11"
                                                                    FontWeight="SemiBold"
@@ -505,20 +612,20 @@
 
                                                 <TextBlock Grid.Row="2"
                                                            FontSize="12"
-                                                           Foreground="{StaticResource MutedForegroundBrush}"
+                                                           Foreground="{DynamicResource MutedForegroundBrush}"
                                                            Text="{Binding SupplyDemandSummary}"
                                                            TextWrapping="Wrap" />
 
                                                 <TextBlock Grid.Row="4"
                                                            FontSize="12"
                                                            FontWeight="SemiBold"
-                                                           Foreground="{StaticResource AccentStrongBrush}"
+                                                           Foreground="{DynamicResource AccentStrongBrush}"
                                                            Text="{Binding OutcomeSummary}"
                                                            TextWrapping="Wrap" />
 
                                                 <TextBlock Grid.Row="6"
                                                            FontSize="11"
-                                                           Foreground="{StaticResource MutedForegroundBrush}"
+                                                           Foreground="{DynamicResource MutedForegroundBrush}"
                                                            Text="{Binding NotesSummary}"
                                                            TextWrapping="Wrap" />
                                             </Grid>
@@ -527,8 +634,8 @@
                                         <DataTemplate.Triggers>
                                             <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
                                                          Value="True">
-                                                <Setter TargetName="TrafficCard" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-                                                <Setter TargetName="TrafficCard" Property="Background" Value="#FFFDF1E6" />
+                                                <Setter TargetName="TrafficCard" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                                <Setter TargetName="TrafficCard" Property="Background" Value="{DynamicResource CardBrush}" />
                                             </DataTrigger>
                                         </DataTemplate.Triggers>
                                     </DataTemplate>
@@ -539,8 +646,8 @@
 
                     <Border Margin="0,16,0,0"
                             Padding="18"
-                            Background="{StaticResource PanelBrush}"
-                            BorderBrush="{StaticResource BorderBrush}"
+                            Background="{DynamicResource PanelBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
                             CornerRadius="22">
                         <Expander IsExpanded="True">
@@ -552,7 +659,7 @@
 
                             <TextBlock Margin="0,10,0,0"
                                        FontSize="13"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="Create a new network or load an existing JSON file. Use the Network Editor tab to add traffic types, nodes, node traffic profiles, and edges directly in the app, then drag nodes on the canvas and run the simulation."
                                        TextWrapping="Wrap" />
                         </Expander>
@@ -564,8 +671,8 @@
 
         <Border Grid.Row="2"
                 Padding="18"
-                Background="{StaticResource PanelBrush}"
-                BorderBrush="{StaticResource BorderBrush}"
+                Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
                 CornerRadius="22"
                 MaxHeight="360"
@@ -579,7 +686,7 @@
                                        Text="Simulation And Editing" />
                             <TextBlock Margin="0,4,0,0"
                                        FontSize="12"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="Select a traffic type to filter simulation outputs, or collapse this section while arranging the network."
                                        TextWrapping="Wrap" />
                         </StackPanel>
@@ -587,7 +694,7 @@
                                    VerticalAlignment="Center"
                                    FontSize="12"
                                    FontWeight="SemiBold"
-                                   Foreground="{StaticResource AccentStrongBrush}"
+                                   Foreground="{DynamicResource AccentStrongBrush}"
                                    Text="Canvas Focus Mode" />
                     </DockPanel>
                 </Expander.Header>
@@ -610,7 +717,7 @@
                             </Grid.RowDefinitions>
 
                             <TextBlock FontSize="12"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="{Binding VisibleConsumerCostHeadline}" />
 
                             <DataGrid Grid.Row="2"
@@ -642,7 +749,7 @@
                             </Grid.RowDefinitions>
 
                             <TextBlock FontSize="12"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="{Binding VisibleAllocationHeadline}" />
 
                             <DataGrid Grid.Row="2"
@@ -687,7 +794,7 @@
                             </Grid.RowDefinitions>
 
                             <TextBlock FontSize="12"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="Choose the node and traffic-role entry from dropdown lists here, then open the dedicated node editor window to make changes."
                                        TextWrapping="Wrap" />
 
@@ -733,8 +840,8 @@
 
                             <Border Grid.Row="4"
                                     Padding="14"
-                                    Background="#FFFFFBF4"
-                                    BorderBrush="{StaticResource BorderBrush}"
+                                    Background="{DynamicResource CardBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
                                     BorderThickness="1"
                                     CornerRadius="14">
                                 <StackPanel>
@@ -743,7 +850,7 @@
                                                Text="Use The Node Editor Window" />
                                     <TextBlock Margin="0,8,0,0"
                                                FontSize="12"
-                                               Foreground="{StaticResource MutedForegroundBrush}"
+                                               Foreground="{DynamicResource MutedForegroundBrush}"
                                                Text="The dedicated node editor provides dropdowns for node, traffic role, traffic type, and role, and keeps the amount fields together in a single place."
                                                TextWrapping="Wrap" />
                                     <WrapPanel Margin="0,14,0,0">
@@ -755,11 +862,11 @@
                                     <TextBlock Margin="0,14,0,0"
                                                FontSize="12"
                                                FontWeight="SemiBold"
-                                               Foreground="{StaticResource AccentStrongBrush}"
+                                               Foreground="{DynamicResource AccentStrongBrush}"
                                                Text="{Binding SelectedNodeTrafficProfile.SelectionLabel}" />
                                     <TextBlock Margin="0,4,0,0"
                                                FontSize="12"
-                                               Foreground="{StaticResource MutedForegroundBrush}"
+                                               Foreground="{DynamicResource MutedForegroundBrush}"
                                                Text="{Binding SelectedNodeTrafficProfile.RoleSummary}" />
                                 </StackPanel>
                             </Border>
@@ -775,7 +882,7 @@
                             </Grid.RowDefinitions>
 
                             <TextBlock FontSize="12"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="Create a network, maintain traffic types, edit nodes and their traffic roles, and edit edges directly in the app." />
 
                             <Grid Grid.Row="2">
@@ -788,8 +895,8 @@
                                 </Grid.ColumnDefinitions>
 
                                 <Border Padding="12"
-                                        Background="#FFFFFBF4"
-                                        BorderBrush="{StaticResource BorderBrush}"
+                                        Background="{DynamicResource CardBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}"
                                         BorderThickness="1"
                                         CornerRadius="16">
                                     <Grid>
@@ -815,7 +922,7 @@
 
                                         <TextBlock Grid.Row="4"
                                                    FontSize="11"
-                                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                                    Text="Traffic type definitions control routing preference and shared capacity bidding defaults for both edges and node transhipment." />
 
                                         <DataGrid Grid.Row="6"
@@ -854,8 +961,8 @@
 
                                 <Border Grid.Column="2"
                                         Padding="12"
-                                        Background="#FFFFFBF4"
-                                        BorderBrush="{StaticResource BorderBrush}"
+                                        Background="{DynamicResource CardBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}"
                                         BorderThickness="1"
                                         CornerRadius="16">
                                     <Grid>
@@ -895,6 +1002,20 @@
                                             <DataGrid.Columns>
                                                 <DataGridTextColumn Binding="{Binding Id, Mode=TwoWay}" Header="Id" Width="85" />
                                                 <DataGridTextColumn Binding="{Binding Name, Mode=TwoWay}" Header="Name" Width="*" />
+                                                <DataGridTemplateColumn Header="Shape" Width="96">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate DataType="{x:Type vm:NodeViewModel}">
+                                                            <TextBlock VerticalAlignment="Center"
+                                                                       Text="{Binding Shape}" />
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                    <DataGridTemplateColumn.CellEditingTemplate>
+                                                        <DataTemplate DataType="{x:Type vm:NodeViewModel}">
+                                                            <ComboBox ItemsSource="{Binding ShapeOptions}"
+                                                                      SelectedItem="{Binding Shape, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellEditingTemplate>
+                                                </DataGridTemplateColumn>
                                                 <DataGridTextColumn Binding="{Binding X, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="X" Width="60" />
                                                 <DataGridTextColumn Binding="{Binding Y, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="Y" Width="60" />
                                                 <DataGridTextColumn Binding="{Binding TranshipmentCapacity, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="Tranship Cap" Width="92" />
@@ -912,23 +1033,23 @@
 
                                         <Border Grid.Row="10"
                                                 Padding="12"
-                                                Background="#FFF8F1E7"
-                                                BorderBrush="{StaticResource BorderBrush}"
+                                                Background="{DynamicResource InfoPanelBrush}"
+                                                BorderBrush="{DynamicResource BorderBrush}"
                                                 BorderThickness="1"
                                                 CornerRadius="12">
                                             <StackPanel>
                                                 <TextBlock FontSize="12"
-                                                           Foreground="{StaticResource MutedForegroundBrush}"
+                                                           Foreground="{DynamicResource MutedForegroundBrush}"
                                                            Text="Use the dedicated node editor window to choose nodes, set optional shared transhipment capacity, manage traffic-role entries from dropdown lists, or stamp one traffic role across every node in a single step."
                                                            TextWrapping="Wrap" />
                                                 <TextBlock Margin="0,10,0,0"
                                                            FontSize="12"
                                                            FontWeight="SemiBold"
-                                                           Foreground="{StaticResource AccentStrongBrush}"
+                                                           Foreground="{DynamicResource AccentStrongBrush}"
                                                            Text="{Binding SelectedNodeTrafficProfile.SelectionLabel}" />
                                                 <TextBlock Margin="0,4,0,0"
                                                            FontSize="12"
-                                                           Foreground="{StaticResource MutedForegroundBrush}"
+                                                           Foreground="{DynamicResource MutedForegroundBrush}"
                                                            Text="{Binding SelectedNodeTrafficProfile.RoleSummary}" />
                                             </StackPanel>
                                         </Border>
@@ -937,8 +1058,8 @@
 
                                 <Border Grid.Column="4"
                                         Padding="12"
-                                        Background="#FFFFFBF4"
-                                        BorderBrush="{StaticResource BorderBrush}"
+                                        Background="{DynamicResource CardBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}"
                                         BorderThickness="1"
                                         CornerRadius="16">
                                     <Grid>
@@ -1014,7 +1135,7 @@
 
                     <TextBlock Grid.Row="2"
                                FontSize="13"
-                               Foreground="{StaticResource MutedForegroundBrush}"
+                               Foreground="{DynamicResource MutedForegroundBrush}"
                                Text="{Binding StatusMessage}"
                                TextWrapping="Wrap" />
                 </Grid>

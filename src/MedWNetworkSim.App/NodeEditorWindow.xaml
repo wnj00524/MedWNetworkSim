@@ -21,8 +21,8 @@
         </Grid.RowDefinitions>
 
         <Border Padding="16"
-                Background="{StaticResource PanelBrush}"
-                BorderBrush="{StaticResource BorderBrush}"
+                Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
                 CornerRadius="18">
             <StackPanel>
@@ -31,7 +31,7 @@
                            Text="Node Editor" />
                 <TextBlock Margin="0,8,0,0"
                            FontSize="12"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="Choose a node, set any shared transhipment capacity, then choose one of its traffic-role entries and set the traffic type and role from dropdown lists. You can also bulk-apply one traffic role to every node from this window."
                            TextWrapping="Wrap" />
             </StackPanel>
@@ -45,8 +45,8 @@
             </Grid.ColumnDefinitions>
 
             <Border Padding="14"
-                    Background="{StaticResource PanelBrush}"
-                    BorderBrush="{StaticResource BorderBrush}"
+                    Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1"
                     CornerRadius="18">
                 <Grid>
@@ -90,11 +90,13 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="10" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <TextBlock VerticalAlignment="Center"
                                    FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Node" />
                         <ComboBox Grid.Column="1"
                                   MinWidth="220"
@@ -115,7 +117,7 @@
                         <TextBlock Grid.Row="2"
                                    VerticalAlignment="Center"
                                    FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Id" />
                         <TextBox Grid.Row="2"
                                  Grid.Column="1"
@@ -125,7 +127,7 @@
                         <TextBlock Grid.Row="4"
                                    VerticalAlignment="Center"
                                    FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Name" />
                         <TextBox Grid.Row="4"
                                  Grid.Column="1"
@@ -134,13 +136,23 @@
                         <TextBlock Grid.Row="6"
                                    VerticalAlignment="Center"
                                    FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Shape" />
+                        <ComboBox Grid.Row="6"
+                                  Grid.Column="1"
+                                  ItemsSource="{Binding SelectedNodeShapeOptions}"
+                                  SelectedItem="{Binding SelectedNodeShape, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Grid.Row="8"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Transhipment Capacity" />
-                        <TextBox Grid.Row="6"
+                        <TextBox Grid.Row="8"
                                  Grid.Column="1"
                                  Text="{Binding SelectedNode.TranshipmentCapacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
-                        <Grid Grid.Row="8" Grid.ColumnSpan="2">
+                        <Grid Grid.Row="10" Grid.ColumnSpan="2">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="120" />
@@ -151,14 +163,14 @@
 
                             <TextBlock VerticalAlignment="Center"
                                        FontSize="11"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="X" />
                             <TextBox Grid.Column="1"
                                      Text="{Binding SelectedNode.X, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <TextBlock Grid.Column="3"
                                        VerticalAlignment="Center"
                                        FontSize="11"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="Y" />
                             <TextBox Grid.Column="4"
                                      Text="{Binding SelectedNode.Y, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -167,12 +179,12 @@
 
                     <Border Grid.Row="6"
                             Padding="12"
-                            Background="#FFF8F1E7"
-                            BorderBrush="{StaticResource BorderBrush}"
+                            Background="{DynamicResource InfoPanelBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
                             CornerRadius="12">
                         <TextBlock FontSize="12"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Tip: select a node on the canvas or in the main node table, then use this window to manage its traffic-role entries with dropdowns."
                                    TextWrapping="Wrap" />
                     </Border>
@@ -181,8 +193,8 @@
 
             <Border Grid.Column="2"
                     Padding="14"
-                    Background="{StaticResource PanelBrush}"
-                    BorderBrush="{StaticResource BorderBrush}"
+                    Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1"
                     CornerRadius="18">
                 <Grid>
@@ -234,7 +246,7 @@
 
                             <TextBlock VerticalAlignment="Center"
                                        FontSize="11"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="Entry" />
                             <ComboBox Grid.Column="1"
                                       MinWidth="260"
@@ -245,7 +257,7 @@
                             <TextBlock Grid.Row="2"
                                        VerticalAlignment="Center"
                                        FontSize="11"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="Traffic Type" />
                             <ComboBox Grid.Row="2"
                                       Grid.Column="1"
@@ -255,7 +267,7 @@
                             <TextBlock Grid.Row="4"
                                        VerticalAlignment="Center"
                                        FontSize="11"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="Role" />
                             <ComboBox Grid.Row="4"
                                       Grid.Column="1"
@@ -265,7 +277,7 @@
                             <TextBlock Grid.Row="6"
                                        VerticalAlignment="Center"
                                        FontSize="11"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="Production" />
                             <TextBox Grid.Row="6"
                                      Grid.Column="1"
@@ -275,7 +287,7 @@
                             <TextBlock Grid.Row="8"
                                        VerticalAlignment="Center"
                                        FontSize="11"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="Consumption" />
                             <TextBox Grid.Row="8"
                                      Grid.Column="1"
@@ -293,14 +305,14 @@
 
                             <TextBlock VerticalAlignment="Center"
                                        FontSize="11"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="Prod From" />
                             <TextBox Grid.Column="1"
                                      Text="{Binding SelectedNodeProductionStartPeriod, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <TextBlock Grid.Column="3"
                                        VerticalAlignment="Center"
                                        FontSize="11"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="To" />
                             <TextBox Grid.Column="4"
                                      Text="{Binding SelectedNodeProductionEndPeriod, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -317,14 +329,14 @@
 
                             <TextBlock VerticalAlignment="Center"
                                        FontSize="11"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="Cons From" />
                             <TextBox Grid.Column="1"
                                      Text="{Binding SelectedNodeConsumptionStartPeriod, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <TextBlock Grid.Column="3"
                                        VerticalAlignment="Center"
                                        FontSize="11"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="To" />
                             <TextBox Grid.Column="4"
                                      Text="{Binding SelectedNodeConsumptionEndPeriod, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -349,18 +361,18 @@
 
                     <Border Grid.Row="6"
                             Padding="12"
-                            Background="#FFF8F1E7"
-                            BorderBrush="{StaticResource BorderBrush}"
+                            Background="{DynamicResource InfoPanelBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
                             CornerRadius="12">
                         <StackPanel>
                             <TextBlock FontSize="12"
                                        FontWeight="SemiBold"
-                                       Foreground="{StaticResource AccentStrongBrush}"
+                                       Foreground="{DynamicResource AccentStrongBrush}"
                                        Text="{Binding SelectedNodeTrafficSelectionLabel}" />
                             <TextBlock Margin="0,6,0,0"
                                        FontSize="12"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="{Binding SelectedNodeTrafficRoleSummary}" />
                         </StackPanel>
                     </Border>
@@ -371,7 +383,7 @@
         <DockPanel Grid.Row="4">
             <TextBlock VerticalAlignment="Center"
                        FontSize="12"
-                       Foreground="{StaticResource MutedForegroundBrush}"
+                       Foreground="{DynamicResource MutedForegroundBrush}"
                        Text="{Binding StatusMessage}" />
             <Button DockPanel.Dock="Right"
                     Margin="12,0,0,0"

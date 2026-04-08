@@ -10,6 +10,7 @@ namespace MedWNetworkSim.App.ViewModels;
 public sealed class MainWindowViewModel : ObservableObject
 {
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+    private const string BundledSampleResourceName = "MedWNetworkSim.App.Samples.sample-network.json";
 
     private readonly NetworkFileService fileService = new();
     private readonly GraphMlFileService graphMlFileService = new();
@@ -363,13 +364,22 @@ public sealed class MainWindowViewModel : ObservableObject
     public void LoadBundledSample()
     {
         var samplePath = Path.Combine(AppContext.BaseDirectory, "Samples", "sample-network.json");
-        if (!File.Exists(samplePath))
+        if (File.Exists(samplePath))
+        {
+            var fileNetwork = fileService.Load(samplePath);
+            LoadNetwork(fileNetwork, samplePath, "Loaded the bundled sample network.");
+            return;
+        }
+
+        using var stream = typeof(MainWindowViewModel).Assembly.GetManifestResourceStream(BundledSampleResourceName);
+        if (stream is null)
         {
             throw new FileNotFoundException("The bundled sample network was not found.", samplePath);
         }
 
-        var network = fileService.Load(samplePath);
-        LoadNetwork(network, samplePath, "Loaded the bundled sample network.");
+        using var reader = new StreamReader(stream);
+        var resourceNetwork = fileService.LoadJson(reader.ReadToEnd());
+        LoadNetwork(resourceNetwork, "Bundled sample", "Loaded the bundled sample network.");
     }
 
     public void RunSimulation()

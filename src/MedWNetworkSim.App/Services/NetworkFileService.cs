@@ -26,9 +26,18 @@ public sealed class NetworkFileService
     /// <returns>The normalized network model.</returns>
     public NetworkModel Load(string path)
     {
-        var json = File.ReadAllText(path);
+        return LoadJson(File.ReadAllText(path));
+    }
+
+    /// <summary>
+    /// Loads a network model from JSON text and returns a normalized, validated model.
+    /// </summary>
+    /// <param name="json">The raw network JSON payload.</param>
+    /// <returns>The normalized network model.</returns>
+    public NetworkModel LoadJson(string json)
+    {
         var model = JsonSerializer.Deserialize<NetworkModel>(json, serializerOptions)
-            ?? throw new InvalidOperationException("The selected file could not be deserialized into a network.");
+            ?? throw new InvalidOperationException("The selected JSON could not be deserialized into a network.");
 
         return NormalizeAndValidate(model);
     }

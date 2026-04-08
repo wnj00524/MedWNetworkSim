@@ -3,3 +3,4 @@ obj/
 .vs/
 *.user
 *.suo
+scripts/Convert-RepoTextFilesToPdf.ps1

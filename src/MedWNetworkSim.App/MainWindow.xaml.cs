@@ -83,6 +83,11 @@ public partial class MainWindow : Window
         ExecuteWithErrorHandling(ViewModel.AutoArrangeNodes);
     }
 
+    private void ToggleCanvasOnly_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.ToggleCanvasOnlyMode);
+    }
+
     private void AddTrafficType_Click(object sender, RoutedEventArgs e)
     {
         ExecuteWithErrorHandling(ViewModel.AddTrafficDefinition);

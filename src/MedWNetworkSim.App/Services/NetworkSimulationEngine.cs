@@ -127,7 +127,9 @@ public sealed class NetworkSimulationEngine
                 DeliveredCostPerUnit = deliveredCostPerUnit,
                 TotalMovementCost = deliveredCostPerUnit * quantity,
                 TotalScore = nextCandidate.TotalScore,
-                PathNodeNames = nextCandidate.PathNodeIds.Select(nodeId => context.NodesById[nodeId].Name).ToList()
+                PathNodeNames = nextCandidate.PathNodeIds.Select(nodeId => context.NodesById[nodeId].Name).ToList(),
+                PathNodeIds = nextCandidate.PathNodeIds.ToList(),
+                PathEdgeIds = nextCandidate.PathEdgeIds.ToList()
             });
 
             context.Supply[nextCandidate.ProducerNodeId] -= quantity;
@@ -292,7 +294,9 @@ public sealed class NetworkSimulationEngine
                 DeliveredCostPerUnit = 0d,
                 TotalMovementCost = 0d,
                 TotalScore = 0d,
-                PathNodeNames = [node.Name]
+                PathNodeNames = [node.Name],
+                PathNodeIds = [nodeId],
+                PathEdgeIds = []
             });
 
             context.Supply[nodeId] -= quantity;

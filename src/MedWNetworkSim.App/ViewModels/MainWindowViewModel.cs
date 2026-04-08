@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Windows;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Services;
 
@@ -9,11 +10,14 @@ namespace MedWNetworkSim.App.ViewModels;
 
 public sealed class MainWindowViewModel : ObservableObject
 {
+    private const double Epsilon = 0.000001d;
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+    private const string BundledSampleResourceName = "MedWNetworkSim.App.Samples.sample-network.json";
 
     private readonly NetworkFileService fileService = new();
     private readonly GraphMlFileService graphMlFileService = new();
     private readonly NetworkSimulationEngine simulationEngine = new();
+    private readonly List<RouteAllocation> allAllocationModels = [];
     private readonly List<RouteAllocationRowViewModel> allAllocations = [];
     private readonly List<ConsumerCostSummaryRowViewModel> allConsumerCostSummaries = [];
 
@@ -29,9 +33,11 @@ public sealed class MainWindowViewModel : ObservableObject
     private bool isNormalizingNodeTrafficProfiles;
     private bool isAdjustingTrafficDefinitionNames;
     private bool isBulkUpdatingTrafficProfiles;
+    private bool hasSimulationSnapshot;
     private double workspaceWidth = 1600d;
     private double workspaceHeight = 1000d;
     private bool hasNetwork;
+    private bool isCanvasOnlyMode;
 
     public MainWindowViewModel()
     {
@@ -102,11 +108,50 @@ public sealed class MainWindowViewModel : ObservableObject
         }
     }
 
+    public bool IsCanvasOnlyMode
+    {
+        get => isCanvasOnlyMode;
+        private set
+        {
+            if (SetProperty(ref isCanvasOnlyMode, value))
+            {
+                OnPropertyChanged(nameof(CanvasOnlyButtonLabel));
+                OnPropertyChanged(nameof(RightRailColumnWidth));
+                OnPropertyChanged(nameof(RightRailSpacerColumnWidth));
+                OnPropertyChanged(nameof(RightRailVisibility));
+                OnPropertyChanged(nameof(BottomWorkspaceVisibility));
+            }
+        }
+    }
+
+    public string CanvasOnlyButtonLabel => IsCanvasOnlyMode ? "Exit Canvas Only" : "Canvas Only";
+
+    public GridLength RightRailColumnWidth => IsCanvasOnlyMode
+        ? new GridLength(0d)
+        : new GridLength(300d);
+
+    public GridLength RightRailSpacerColumnWidth => IsCanvasOnlyMode
+        ? new GridLength(0d)
+        : new GridLength(18d);
+
+    public Visibility RightRailVisibility => IsCanvasOnlyMode
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+
+    public Visibility BottomWorkspaceVisibility => IsCanvasOnlyMode
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+
     public int NodeCount => Nodes.Count;
 
     public int EdgeCount => Edges.Count;
 
     public int TrafficTypeCount => TrafficDefinitions.Count;
+
+    public void ToggleCanvasOnlyMode()
+    {
+        IsCanvasOnlyMode = !IsCanvasOnlyMode;
+    }
 
     public double WorkspaceWidth
     {
@@ -134,6 +179,7 @@ public sealed class MainWindowViewModel : ObservableObject
             OnPropertyChanged(nameof(VisibleConsumerCostHeadline));
             RefreshVisibleAllocations();
             RefreshVisibleConsumerCostSummaries();
+            RefreshFlowVisuals();
         }
     }
 
@@ -363,13 +409,22 @@ public sealed class MainWindowViewModel : ObservableObject
     public void LoadBundledSample()
     {
         var samplePath = Path.Combine(AppContext.BaseDirectory, "Samples", "sample-network.json");
-        if (!File.Exists(samplePath))
+        if (File.Exists(samplePath))
+        {
+            var fileNetwork = fileService.Load(samplePath);
+            LoadNetwork(fileNetwork, samplePath, "Loaded the bundled sample network.");
+            return;
+        }
+
+        using var stream = typeof(MainWindowViewModel).Assembly.GetManifestResourceStream(BundledSampleResourceName);
+        if (stream is null)
         {
             throw new FileNotFoundException("The bundled sample network was not found.", samplePath);
         }
 
-        var network = fileService.Load(samplePath);
-        LoadNetwork(network, samplePath, "Loaded the bundled sample network.");
+        using var reader = new StreamReader(stream);
+        var resourceNetwork = fileService.LoadJson(reader.ReadToEnd());
+        LoadNetwork(resourceNetwork, "Bundled sample", "Loaded the bundled sample network.");
     }
 
     public void RunSimulation()
@@ -392,14 +447,18 @@ public sealed class MainWindowViewModel : ObservableObject
             }
         }
 
+        hasSimulationSnapshot = true;
+        allAllocationModels.Clear();
+        allAllocationModels.AddRange(outcomes.SelectMany(outcome => outcome.Allocations));
         allAllocations.Clear();
-        allAllocations.AddRange(outcomes.SelectMany(outcome => outcome.Allocations).Select(allocation => new RouteAllocationRowViewModel(allocation)));
+        allAllocations.AddRange(allAllocationModels.Select(allocation => new RouteAllocationRowViewModel(allocation)));
         allConsumerCostSummaries.Clear();
         allConsumerCostSummaries.AddRange(
             simulationEngine.SummarizeConsumerCosts(outcomes)
                 .Select(summary => new ConsumerCostSummaryRowViewModel(summary)));
         RefreshVisibleAllocations();
         RefreshVisibleConsumerCostSummaries();
+        RefreshFlowVisuals();
 
         var totalDelivered = outcomes.Sum(outcome => outcome.TotalDelivered);
         StatusMessage = $"Simulation complete. Routed {allAllocations.Count} movement(s) delivering {totalDelivered:0.##} unit(s).";
@@ -617,6 +676,94 @@ public sealed class MainWindowViewModel : ObservableObject
             .ToList();
     }
 
+    public void ApplyTrafficRoleToAllNodes(BulkApplyTrafficRoleOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        EnsureNetworkExists();
+        if (Nodes.Count == 0)
+        {
+            throw new InvalidOperationException("Add at least one node before applying a traffic role to all nodes.");
+        }
+
+        var normalizedTrafficType = options.TrafficType.Trim();
+        var normalizedRoleName = string.IsNullOrWhiteSpace(options.RoleName)
+            ? NodeTrafficRoleCatalog.NoTrafficRole
+            : options.RoleName.Trim();
+        var hasRoleFlags = NodeTrafficRoleCatalog.TryParseFlags(normalizedRoleName, out var roleFlags);
+        var clearsTrafficRole = !hasRoleFlags || (!roleFlags.IsProducer && !roleFlags.IsConsumer && !roleFlags.CanTransship);
+
+        if (!clearsTrafficRole)
+        {
+            EnsureTrafficDefinition(normalizedTrafficType);
+        }
+
+        isBulkUpdatingTrafficProfiles = true;
+
+        try
+        {
+            foreach (var node in Nodes)
+            {
+                var matchingProfiles = node.TrafficProfiles
+                    .Where(profile => Comparer.Equals(profile.TrafficType, normalizedTrafficType))
+                    .ToList();
+
+                if (clearsTrafficRole)
+                {
+                    foreach (var matchingProfile in matchingProfiles)
+                    {
+                        if (ReferenceEquals(SelectedNode, node) && ReferenceEquals(SelectedNodeTrafficProfile, matchingProfile))
+                        {
+                            SelectedNodeTrafficProfile = null;
+                        }
+
+                        node.RemoveTrafficProfile(matchingProfile);
+                    }
+
+                    continue;
+                }
+
+                var profile = matchingProfiles.FirstOrDefault();
+                if (profile is null)
+                {
+                    profile = new NodeTrafficProfileViewModel(new NodeTrafficProfile
+                    {
+                        TrafficType = normalizedTrafficType
+                    });
+                    node.AddTrafficProfile(profile);
+                }
+
+                profile.TrafficType = normalizedTrafficType;
+                profile.Production = roleFlags.IsProducer ? options.ProductionAmount : 0d;
+                profile.Consumption = roleFlags.IsConsumer ? options.ConsumptionAmount : 0d;
+                profile.CanTransship = roleFlags.CanTransship;
+
+                if (options.ApplyTranshipmentCapacity && roleFlags.CanTransship)
+                {
+                    node.TranshipmentCapacity = options.TranshipmentCapacity;
+                }
+
+                NormalizeNodeTrafficProfiles(node);
+            }
+        }
+        finally
+        {
+            isBulkUpdatingTrafficProfiles = false;
+        }
+
+        if (SelectedNode is not null)
+        {
+            SelectedNodeTrafficProfile = SelectedNode.TrafficProfiles
+                .FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, normalizedTrafficType))
+                ?? SelectedNode.TrafficProfiles.FirstOrDefault();
+        }
+
+        var statusMessage = clearsTrafficRole
+            ? $"Removed traffic type '{normalizedTrafficType}' from all {Nodes.Count} node(s)."
+            : $"Applied role '{normalizedRoleName}' for traffic type '{normalizedTrafficType}' to all {Nodes.Count} node(s).";
+        RefreshDerivedStateAfterStructureChange(statusMessage);
+    }
+
     private void EnsureNetworkExists()
     {
         if (!HasNetwork)
@@ -634,6 +781,25 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         return CreateTrafficDefinition();
+    }
+
+    private TrafficTypeDefinitionEditorViewModel EnsureTrafficDefinition(string trafficTypeName)
+    {
+        var normalizedName = trafficTypeName.Trim();
+        var existingDefinition = TrafficDefinitions.FirstOrDefault(definition => Comparer.Equals(definition.Name, normalizedName));
+        if (existingDefinition is not null)
+        {
+            return existingDefinition;
+        }
+
+        var definition = new TrafficTypeDefinitionEditorViewModel(new TrafficTypeDefinition
+        {
+            Name = normalizedName,
+            RoutingPreference = RoutingPreference.TotalCost
+        });
+
+        RegisterTrafficDefinition(definition);
+        return definition;
     }
 
     private void LoadBundledSampleIfAvailable()
@@ -673,8 +839,10 @@ public sealed class MainWindowViewModel : ObservableObject
         TrafficTypeNameOptions.Clear();
         VisibleAllocations.Clear();
         VisibleConsumerCostSummaries.Clear();
+        allAllocationModels.Clear();
         allAllocations.Clear();
         allConsumerCostSummaries.Clear();
+        hasSimulationSnapshot = false;
         SelectedTraffic = null;
         SelectedNode = null;
         SelectedNodeTrafficProfile = null;
@@ -711,6 +879,7 @@ public sealed class MainWindowViewModel : ObservableObject
         RefreshTrafficTypeNameOptions();
         RefreshTrafficSummariesFromCurrentState();
         RecalculateWorkspace();
+        ClearFlowVisuals();
         RefreshCounts();
         StatusMessage = successMessage;
     }
@@ -1118,10 +1287,13 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void InvalidateSimulationResults(string message)
     {
+        hasSimulationSnapshot = false;
+        allAllocationModels.Clear();
         allAllocations.Clear();
         allConsumerCostSummaries.Clear();
         VisibleAllocations.Clear();
         VisibleConsumerCostSummaries.Clear();
+        ClearFlowVisuals();
 
         foreach (var traffic in TrafficTypes)
         {
@@ -1149,6 +1321,110 @@ public sealed class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(VisibleAllocationHeadline));
     }
 
+    private void RefreshFlowVisuals()
+    {
+        if (!hasSimulationSnapshot)
+        {
+            ClearFlowVisuals();
+            return;
+        }
+
+        var filteredAllocations = SelectedTraffic is null
+            ? allAllocationModels
+            : allAllocationModels.Where(allocation => Comparer.Equals(allocation.TrafficType, SelectedTraffic.Name)).ToList();
+        var edgeMap = Edges
+            .Where(edge => !string.IsNullOrWhiteSpace(edge.Id))
+            .GroupBy(edge => edge.Id, Comparer)
+            .ToDictionary(group => group.Key, group => group.First(), Comparer);
+        var edgeVisualsById = new Dictionary<string, EdgeFlowVisualSummary>(Comparer);
+        var nodeVisualsById = new Dictionary<string, NodeFlowVisualSummary>(Comparer);
+
+        foreach (var allocation in filteredAllocations)
+        {
+            if (allocation.IsLocalSupply)
+            {
+                AddNodeLocalQuantity(allocation.ConsumerNodeId, allocation.Quantity, nodeVisualsById);
+                continue;
+            }
+
+            AddNodeOutboundQuantity(allocation.ProducerNodeId, allocation.Quantity, nodeVisualsById);
+            AddNodeInboundQuantity(allocation.ConsumerNodeId, allocation.Quantity, nodeVisualsById);
+
+            foreach (var transhipmentNodeId in allocation.PathNodeIds.Skip(1).Take(Math.Max(0, allocation.PathNodeIds.Count - 2)))
+            {
+                AddNodeTranshipmentQuantity(transhipmentNodeId, allocation.Quantity, nodeVisualsById);
+            }
+
+            for (var index = 0; index < allocation.PathEdgeIds.Count; index++)
+            {
+                var edgeId = allocation.PathEdgeIds[index];
+                if (string.IsNullOrWhiteSpace(edgeId))
+                {
+                    continue;
+                }
+
+                var fromNodeId = index < allocation.PathNodeIds.Count ? allocation.PathNodeIds[index] : string.Empty;
+                var toNodeId = index + 1 < allocation.PathNodeIds.Count ? allocation.PathNodeIds[index + 1] : string.Empty;
+                var existingEdgeSummary = edgeVisualsById.GetValueOrDefault(edgeId, EdgeFlowVisualSummary.Empty);
+
+                if (edgeMap.TryGetValue(edgeId, out var edge) &&
+                    Comparer.Equals(fromNodeId, edge.FromNodeId) &&
+                    Comparer.Equals(toNodeId, edge.ToNodeId))
+                {
+                    edgeVisualsById[edgeId] = existingEdgeSummary with
+                    {
+                        ForwardQuantity = existingEdgeSummary.ForwardQuantity + allocation.Quantity
+                    };
+                }
+                else
+                {
+                    edgeVisualsById[edgeId] = existingEdgeSummary with
+                    {
+                        ReverseQuantity = existingEdgeSummary.ReverseQuantity + allocation.Quantity
+                    };
+                }
+            }
+        }
+
+        var maxEdgeFlowQuantity = edgeVisualsById.Count == 0
+            ? 0d
+            : edgeVisualsById.Values.Max(summary => summary.TotalQuantity);
+
+        foreach (var edge in Edges)
+        {
+            var summary = string.IsNullOrWhiteSpace(edge.Id)
+                ? EdgeFlowVisualSummary.Empty
+                : edgeVisualsById.GetValueOrDefault(edge.Id, EdgeFlowVisualSummary.Empty);
+            edge.ApplySimulationVisuals(summary.ForwardQuantity, summary.ReverseQuantity, maxEdgeFlowQuantity, hasSimulationSnapshot);
+        }
+
+        foreach (var node in Nodes)
+        {
+            var summary = string.IsNullOrWhiteSpace(node.Id)
+                ? NodeFlowVisualSummary.Empty
+                : nodeVisualsById.GetValueOrDefault(node.Id, NodeFlowVisualSummary.Empty);
+            node.ApplySimulationVisuals(
+                summary.OutboundQuantity,
+                summary.TranshipmentQuantity,
+                summary.InboundQuantity,
+                summary.LocalQuantity,
+                hasSimulationSnapshot);
+        }
+    }
+
+    private void ClearFlowVisuals()
+    {
+        foreach (var edge in Edges)
+        {
+            edge.ClearSimulationVisuals();
+        }
+
+        foreach (var node in Nodes)
+        {
+            node.ClearSimulationVisuals();
+        }
+    }
+
     private void RefreshVisibleConsumerCostSummaries()
     {
         VisibleConsumerCostSummaries.Clear();
@@ -1163,6 +1439,70 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(VisibleConsumerCostHeadline));
+    }
+
+    private static void AddNodeOutboundQuantity(string nodeId, double quantity, IDictionary<string, NodeFlowVisualSummary> nodeVisualsById)
+    {
+        if (string.IsNullOrWhiteSpace(nodeId) || quantity <= Epsilon)
+        {
+            return;
+        }
+
+        var existingSummary = nodeVisualsById.TryGetValue(nodeId, out var summary)
+            ? summary
+            : NodeFlowVisualSummary.Empty;
+        nodeVisualsById[nodeId] = existingSummary with
+        {
+            OutboundQuantity = existingSummary.OutboundQuantity + quantity
+        };
+    }
+
+    private static void AddNodeInboundQuantity(string nodeId, double quantity, IDictionary<string, NodeFlowVisualSummary> nodeVisualsById)
+    {
+        if (string.IsNullOrWhiteSpace(nodeId) || quantity <= Epsilon)
+        {
+            return;
+        }
+
+        var existingSummary = nodeVisualsById.TryGetValue(nodeId, out var summary)
+            ? summary
+            : NodeFlowVisualSummary.Empty;
+        nodeVisualsById[nodeId] = existingSummary with
+        {
+            InboundQuantity = existingSummary.InboundQuantity + quantity
+        };
+    }
+
+    private static void AddNodeTranshipmentQuantity(string nodeId, double quantity, IDictionary<string, NodeFlowVisualSummary> nodeVisualsById)
+    {
+        if (string.IsNullOrWhiteSpace(nodeId) || quantity <= Epsilon)
+        {
+            return;
+        }
+
+        var existingSummary = nodeVisualsById.TryGetValue(nodeId, out var summary)
+            ? summary
+            : NodeFlowVisualSummary.Empty;
+        nodeVisualsById[nodeId] = existingSummary with
+        {
+            TranshipmentQuantity = existingSummary.TranshipmentQuantity + quantity
+        };
+    }
+
+    private static void AddNodeLocalQuantity(string nodeId, double quantity, IDictionary<string, NodeFlowVisualSummary> nodeVisualsById)
+    {
+        if (string.IsNullOrWhiteSpace(nodeId) || quantity <= Epsilon)
+        {
+            return;
+        }
+
+        var existingSummary = nodeVisualsById.TryGetValue(nodeId, out var summary)
+            ? summary
+            : NodeFlowVisualSummary.Empty;
+        nodeVisualsById[nodeId] = existingSummary with
+        {
+            LocalQuantity = existingSummary.LocalQuantity + quantity
+        };
     }
 
     private static void SynchronizeCollection(ObservableCollection<string> target, IEnumerable<string> values)
@@ -1250,5 +1590,21 @@ public sealed class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedNodeConsumption));
         OnPropertyChanged(nameof(SelectedNodeTrafficSelectionLabel));
         OnPropertyChanged(nameof(SelectedNodeTrafficRoleSummary));
+    }
+
+    private readonly record struct EdgeFlowVisualSummary(double ForwardQuantity, double ReverseQuantity)
+    {
+        public static EdgeFlowVisualSummary Empty => new(0d, 0d);
+
+        public double TotalQuantity => ForwardQuantity + ReverseQuantity;
+    }
+
+    private readonly record struct NodeFlowVisualSummary(
+        double OutboundQuantity,
+        double TranshipmentQuantity,
+        double InboundQuantity,
+        double LocalQuantity)
+    {
+        public static NodeFlowVisualSummary Empty => new(0d, 0d, 0d, 0d);
     }
 }

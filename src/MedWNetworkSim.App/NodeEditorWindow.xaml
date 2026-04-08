@@ -32,7 +32,7 @@
                 <TextBlock Margin="0,8,0,0"
                            FontSize="12"
                            Foreground="{StaticResource MutedForegroundBrush}"
-                           Text="Choose a node, set any shared transhipment capacity, then choose one of its traffic-role entries and set the traffic type and role from dropdown lists."
+                           Text="Choose a node, set any shared transhipment capacity, then choose one of its traffic-role entries and set the traffic type and role from dropdown lists. You can also bulk-apply one traffic role to every node from this window."
                            TextWrapping="Wrap" />
             </StackPanel>
         </Border>
@@ -196,6 +196,7 @@
 
                     <WrapPanel Grid.Row="2">
                         <Button Content="Add Traffic Role" Click="AddTrafficRole_Click" />
+                        <Button Content="Apply To All Nodes..." Click="ApplyTrafficRoleToAllNodes_Click" />
                         <Button Content="Remove Selected" Click="RemoveTrafficRole_Click" />
                     </WrapPanel>
 

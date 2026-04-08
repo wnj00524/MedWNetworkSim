@@ -82,4 +82,14 @@ public sealed class RouteAllocation
     /// Gets the ordered node names visited by the movement path.
     /// </summary>
     public IReadOnlyList<string> PathNodeNames { get; init; } = [];
+
+    /// <summary>
+    /// Gets the ordered node identifiers visited by the movement path.
+    /// </summary>
+    public IReadOnlyList<string> PathNodeIds { get; init; } = [];
+
+    /// <summary>
+    /// Gets the ordered edge identifiers traversed by the movement path.
+    /// </summary>
+    public IReadOnlyList<string> PathEdgeIds { get; init; } = [];
 }

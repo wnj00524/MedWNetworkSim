@@ -12,6 +12,8 @@
     <None Include="Samples\sample-network.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <EmbeddedResource Include="Samples\sample-network.json"
+                      LogicalName="MedWNetworkSim.App.Samples.sample-network.json" />
   </ItemGroup>
 
 </Project>

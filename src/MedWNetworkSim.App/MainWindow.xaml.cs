@@ -83,6 +83,11 @@ public partial class MainWindow : Window
         ExecuteWithErrorHandling(ViewModel.AutoArrangeNodes);
     }
 
+    private void ToggleCanvasOnly_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.ToggleCanvasOnlyMode);
+    }
+
     private void AddTrafficType_Click(object sender, RoutedEventArgs e)
     {
         ExecuteWithErrorHandling(ViewModel.AddTrafficDefinition);
@@ -102,6 +107,16 @@ public partial class MainWindow : Window
     {
         // The dedicated window keeps node-role editing simpler than trying to fit every selector into the main pane.
         var window = new NodeEditorWindow(ViewModel)
+        {
+            Owner = this
+        };
+
+        window.ShowDialog();
+    }
+
+    private void ApplyTrafficRoleToAllNodes_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new BulkApplyTrafficRoleWindow(ViewModel)
         {
             Owner = this
         };

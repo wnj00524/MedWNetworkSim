@@ -1,14 +1,23 @@
 using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
+using System.Windows.Media;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.ViewModels;
 
 public sealed class EdgeViewModel : ObservableObject
 {
-    private const double LabelWidth = 176d;
-    private const double LabelHeight = 58d;
+    private const double DefaultLabelWidth = 196d;
+    private const double DefaultLabelHeight = 58d;
+    private const double SimulatedLabelHeight = 84d;
+    private const double UtilizationTrackWidth = 76d;
+    private const double Epsilon = 0.000001d;
+
+    private static readonly Brush IdleBrush = CreateFrozenBrush("#FFD7C7B1");
+    private static readonly Brush LowUsageBrush = CreateFrozenBrush("#FF9BAA76");
+    private static readonly Brush MediumUsageBrush = CreateFrozenBrush("#FFC48B4B");
+    private static readonly Brush HighUsageBrush = CreateFrozenBrush("#FFC56245");
 
     private string id;
     private string fromNodeId;
@@ -19,6 +28,12 @@ public sealed class EdgeViewModel : ObservableObject
     private bool isBidirectional;
     private NodeViewModel? sourceNode;
     private NodeViewModel? targetNode;
+    private bool hasSimulationDetails;
+    private double routedForwardQuantity;
+    private double routedReverseQuantity;
+    private double flowStrokeThickness;
+    private double capacityUtilizationRatio;
+    private Brush flowStrokeBrush = IdleBrush;
 
     public EdgeViewModel(EdgeModel model, NodeViewModel? sourceNode, NodeViewModel? targetNode)
     {
@@ -119,6 +134,7 @@ public sealed class EdgeViewModel : ObservableObject
             }
 
             OnPropertyChanged(nameof(CapacityLabel));
+            RefreshSimulationDerivedState();
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -135,7 +151,9 @@ public sealed class EdgeViewModel : ObservableObject
 
             OnPropertyChanged(nameof(DirectionLabel));
             OnPropertyChanged(nameof(ArrowVisibility));
+            OnPropertyChanged(nameof(FlowArrowVisibility));
             OnPropertyChanged(nameof(ArrowPoints));
+            OnPropertyChanged(nameof(FlowSummaryLabel));
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -149,6 +167,73 @@ public sealed class EdgeViewModel : ObservableObject
     public string CapacityLabel => Capacity.HasValue
         ? $"cap {Capacity.Value:0.##}"
         : "cap inf";
+
+    public string CapacityDisplayLabel => !HasSimulationDetails
+        ? CapacityLabel
+        : Capacity.HasValue
+            ? $"used {RoutedTotalQuantity:0.##} / {Capacity.Value:0.##} ({capacityUtilizationRatio:0%})"
+            : $"used {RoutedTotalQuantity:0.##} | cap inf";
+
+    public string FlowSummaryLabel
+    {
+        get
+        {
+            if (!HasSimulationDetails)
+            {
+                return string.Empty;
+            }
+
+            if (!IsBidirectional)
+            {
+                return $"flow {RoutedTotalQuantity:0.##}";
+            }
+
+            if (routedForwardQuantity > Epsilon && routedReverseQuantity > Epsilon)
+            {
+                return $"flow -> {routedForwardQuantity:0.##} | <- {routedReverseQuantity:0.##}";
+            }
+
+            if (routedForwardQuantity > Epsilon)
+            {
+                return $"flow -> {routedForwardQuantity:0.##}";
+            }
+
+            if (routedReverseQuantity > Epsilon)
+            {
+                return $"flow <- {routedReverseQuantity:0.##}";
+            }
+
+            return "flow 0";
+        }
+    }
+
+    public double RoutedTotalQuantity => routedForwardQuantity + routedReverseQuantity;
+
+    public bool HasSimulationDetails => hasSimulationDetails;
+
+    public double LabelWidth => DefaultLabelWidth;
+
+    public double LabelHeight => HasSimulationDetails ? SimulatedLabelHeight : DefaultLabelHeight;
+
+    public Visibility FlowSummaryVisibility => HasSimulationDetails ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility UtilizationBarVisibility => HasSimulationDetails && Capacity.HasValue ? Visibility.Visible : Visibility.Collapsed;
+
+    public double UtilizationBarWidth => UtilizationBarVisibility == Visibility.Visible
+        ? UtilizationTrackWidth * capacityUtilizationRatio
+        : 0d;
+
+    public Brush FlowStrokeBrush => flowStrokeBrush;
+
+    public double FlowStrokeThickness => flowStrokeThickness;
+
+    public Visibility FlowOverlayVisibility => HasValidEndpoints && RoutedTotalQuantity > Epsilon
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility FlowArrowVisibility => FlowOverlayVisibility == Visibility.Visible && ArrowVisibility == Visibility.Visible
+        ? Visibility.Visible
+        : Visibility.Collapsed;
 
     public Visibility ArrowVisibility => IsBidirectional || !HasValidEndpoints ? Visibility.Collapsed : Visibility.Visible;
 
@@ -164,7 +249,9 @@ public sealed class EdgeViewModel : ObservableObject
 
     public double LabelLeft => ((X1 + X2) / 2d) - (LabelWidth / 2d);
 
-    public double LabelTop => ((Y1 + Y2) / 2d) - (LabelHeight / 2d);
+    public double LabelTop => ((X1 + X2, Y1 + Y2) is var midpoint
+        ? (midpoint.Item2 / 2d) - (LabelHeight / 2d)
+        : 0d);
 
     public string ArrowPoints
     {
@@ -211,6 +298,26 @@ public sealed class EdgeViewModel : ObservableObject
         nodeMap.TryGetValue(FromNodeId, out var resolvedSourceNode);
         nodeMap.TryGetValue(ToNodeId, out var resolvedTargetNode);
         UpdateResolvedNodes(resolvedSourceNode, resolvedTargetNode);
+    }
+
+    public void ApplySimulationVisuals(
+        double forwardQuantity,
+        double reverseQuantity,
+        double maxVisibleFlowQuantity,
+        bool hasSimulationSnapshot)
+    {
+        routedForwardQuantity = Math.Max(0d, forwardQuantity);
+        routedReverseQuantity = Math.Max(0d, reverseQuantity);
+        hasSimulationDetails = hasSimulationSnapshot && (Capacity.HasValue || RoutedTotalQuantity > Epsilon);
+        RefreshSimulationDerivedState(maxVisibleFlowQuantity);
+    }
+
+    public void ClearSimulationVisuals()
+    {
+        routedForwardQuantity = 0d;
+        routedReverseQuantity = 0d;
+        hasSimulationDetails = false;
+        RefreshSimulationDerivedState(0d);
     }
 
     public EdgeModel ToModel()
@@ -262,6 +369,7 @@ public sealed class EdgeViewModel : ObservableObject
         OnGeometryChanged();
         OnPropertyChanged(nameof(EdgeVisibility));
         OnPropertyChanged(nameof(ArrowVisibility));
+        OnPropertyChanged(nameof(FlowArrowVisibility));
     }
 
     private (Point start, Point end) GetSegmentEndpoints()
@@ -316,5 +424,62 @@ public sealed class EdgeViewModel : ObservableObject
         OnPropertyChanged(nameof(LabelLeft));
         OnPropertyChanged(nameof(LabelTop));
         OnPropertyChanged(nameof(ArrowPoints));
+    }
+
+    private void RefreshSimulationDerivedState(double maxVisibleFlowQuantity = 0d)
+    {
+        var normalizedFlow = RoutedTotalQuantity <= Epsilon || maxVisibleFlowQuantity <= Epsilon
+            ? 0d
+            : Math.Min(1d, RoutedTotalQuantity / maxVisibleFlowQuantity);
+        capacityUtilizationRatio = Capacity.HasValue && Capacity.Value > Epsilon
+            ? Math.Min(1d, RoutedTotalQuantity / Capacity.Value)
+            : 0d;
+        flowStrokeThickness = RoutedTotalQuantity <= Epsilon
+            ? 0d
+            : 3d + (normalizedFlow * 5d);
+        flowStrokeBrush = PickUsageBrush(
+            Capacity.HasValue ? capacityUtilizationRatio : normalizedFlow,
+            RoutedTotalQuantity > Epsilon);
+
+        OnPropertyChanged(nameof(RoutedTotalQuantity));
+        OnPropertyChanged(nameof(CapacityDisplayLabel));
+        OnPropertyChanged(nameof(FlowSummaryLabel));
+        OnPropertyChanged(nameof(HasSimulationDetails));
+        OnPropertyChanged(nameof(LabelHeight));
+        OnPropertyChanged(nameof(LabelTop));
+        OnPropertyChanged(nameof(FlowSummaryVisibility));
+        OnPropertyChanged(nameof(UtilizationBarVisibility));
+        OnPropertyChanged(nameof(UtilizationBarWidth));
+        OnPropertyChanged(nameof(FlowStrokeBrush));
+        OnPropertyChanged(nameof(FlowStrokeThickness));
+        OnPropertyChanged(nameof(FlowOverlayVisibility));
+        OnPropertyChanged(nameof(FlowArrowVisibility));
+    }
+
+    private static Brush PickUsageBrush(double ratio, bool hasFlow)
+    {
+        if (!hasFlow)
+        {
+            return IdleBrush;
+        }
+
+        if (ratio >= 0.8d)
+        {
+            return HighUsageBrush;
+        }
+
+        if (ratio >= 0.45d)
+        {
+            return MediumUsageBrush;
+        }
+
+        return LowUsageBrush;
+    }
+
+    private static Brush CreateFrozenBrush(string hex)
+    {
+        var brush = (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
+        brush.Freeze();
+        return brush;
     }
 }

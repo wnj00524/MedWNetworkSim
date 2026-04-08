@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Windows;
+using System.Windows.Media;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.ViewModels;
@@ -7,13 +9,30 @@ namespace MedWNetworkSim.App.ViewModels;
 public sealed class NodeViewModel : ObservableObject
 {
     public const double DefaultWidth = 176d;
-    public const double DefaultHeight = 118d;
+    public const double DefaultHeight = 154d;
+
+    private const double UtilizationTrackWidth = 92d;
+    private const double Epsilon = 0.000001d;
+
+    private static readonly Brush DefaultNodeBorder = CreateFrozenBrush("#FFC7B27C");
+    private static readonly Brush IdleBrush = CreateFrozenBrush("#FFD7C7B1");
+    private static readonly Brush LowUsageBrush = CreateFrozenBrush("#FF9BAA76");
+    private static readonly Brush MediumUsageBrush = CreateFrozenBrush("#FFC48B4B");
+    private static readonly Brush HighUsageBrush = CreateFrozenBrush("#FFC56245");
 
     private string id;
     private string name;
     private double x;
     private double y;
     private double? transhipmentCapacity;
+    private bool hasSimulationDetails;
+    private double routedOutboundQuantity;
+    private double transhipmentQuantity;
+    private double routedInboundQuantity;
+    private double localQuantity;
+    private double transhipmentUtilizationRatio;
+    private Brush nodeBorderDisplayBrush = DefaultNodeBorder;
+    private Brush simulationBrush = IdleBrush;
 
     public NodeViewModel(NodeModel model)
     {
@@ -125,6 +144,7 @@ public sealed class NodeViewModel : ObservableObject
 
             OnPropertyChanged(nameof(TranshipmentCapacityLabel));
             OnPropertyChanged(nameof(FullTrafficSummary));
+            RefreshSimulationDerivedState();
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -141,11 +161,100 @@ public sealed class NodeViewModel : ObservableObject
         ? $"trans cap {TranshipmentCapacity.Value:0.##}"
         : "trans cap inf";
 
-    public string FullTrafficSummary =>
-        string.Join(
-            Environment.NewLine,
-            new[] { $"Transhipment Capacity: {(TranshipmentCapacity.HasValue ? TranshipmentCapacity.Value.ToString("0.##") : "Unlimited")}" }
-                .Concat(TrafficProfiles.Select(profile => $"{profile.TrafficType}: {profile.RoleSummary}")));
+    public string FlowSummaryLabel
+    {
+        get
+        {
+            if (!HasSimulationDetails)
+            {
+                return string.Empty;
+            }
+
+            var parts = new List<string>();
+
+            if (routedOutboundQuantity > Epsilon)
+            {
+                parts.Add($"out {routedOutboundQuantity:0.##}");
+            }
+
+            if (transhipmentQuantity > Epsilon)
+            {
+                parts.Add($"thru {transhipmentQuantity:0.##}");
+            }
+
+            if (routedInboundQuantity > Epsilon)
+            {
+                parts.Add($"in {routedInboundQuantity:0.##}");
+            }
+
+            if (localQuantity > Epsilon)
+            {
+                parts.Add($"local {localQuantity:0.##}");
+            }
+
+            return parts.Count == 0 ? "No routed flow." : string.Join("  ", parts);
+        }
+    }
+
+    public string TranshipmentUsageLabel
+    {
+        get
+        {
+            if (!HasTranshipmentUsageDetails)
+            {
+                return string.Empty;
+            }
+
+            if (TranshipmentCapacity.HasValue)
+            {
+                return $"trans used {transhipmentQuantity:0.##} / {TranshipmentCapacity.Value:0.##} ({transhipmentUtilizationRatio:0%})";
+            }
+
+            return $"trans used {transhipmentQuantity:0.##} | cap inf";
+        }
+    }
+
+    public Visibility SimulationPanelVisibility => HasSimulationDetails ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility TranshipmentUsageVisibility => HasTranshipmentUsageDetails ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility TranshipmentUsageBarVisibility => HasTranshipmentUsageDetails && TranshipmentCapacity.HasValue
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public double TranshipmentUtilizationBarWidth => TranshipmentUsageBarVisibility == Visibility.Visible
+        ? UtilizationTrackWidth * transhipmentUtilizationRatio
+        : 0d;
+
+    public Brush NodeBorderDisplayBrush => nodeBorderDisplayBrush;
+
+    public Brush SimulationBrush => simulationBrush;
+
+    public bool HasSimulationDetails => hasSimulationDetails;
+
+    public string FullTrafficSummary
+    {
+        get
+        {
+            var lines = new List<string>
+            {
+                $"Transhipment Capacity: {(TranshipmentCapacity.HasValue ? TranshipmentCapacity.Value.ToString("0.##") : "Unlimited")}"
+            };
+
+            if (HasSimulationDetails)
+            {
+                lines.Add($"Flow: {FlowSummaryLabel}");
+            }
+
+            if (HasTranshipmentUsageDetails)
+            {
+                lines.Add($"Utilization: {TranshipmentUsageLabel}");
+            }
+
+            lines.AddRange(TrafficProfiles.Select(profile => $"{profile.TrafficType}: {profile.RoleSummary}"));
+            return string.Join(Environment.NewLine, lines);
+        }
+    }
 
     public void AddTrafficProfile(NodeTrafficProfileViewModel profile)
     {
@@ -162,6 +271,36 @@ public sealed class NodeViewModel : ObservableObject
         // Keep the node on the positive canvas while preserving drag semantics from the node center.
         X = Math.Max(Width / 2d, X + deltaX);
         Y = Math.Max(Height / 2d, Y + deltaY);
+    }
+
+    public void ApplySimulationVisuals(
+        double outboundQuantity,
+        double transhipmentFlowQuantity,
+        double inboundQuantity,
+        double localMatchedQuantity,
+        bool hasSimulationSnapshot)
+    {
+        routedOutboundQuantity = Math.Max(0d, outboundQuantity);
+        transhipmentQuantity = Math.Max(0d, transhipmentFlowQuantity);
+        routedInboundQuantity = Math.Max(0d, inboundQuantity);
+        localQuantity = Math.Max(0d, localMatchedQuantity);
+        hasSimulationDetails = hasSimulationSnapshot &&
+            (TranshipmentCapacity.HasValue ||
+             routedOutboundQuantity > Epsilon ||
+             transhipmentQuantity > Epsilon ||
+             routedInboundQuantity > Epsilon ||
+             localQuantity > Epsilon);
+        RefreshSimulationDerivedState();
+    }
+
+    public void ClearSimulationVisuals()
+    {
+        routedOutboundQuantity = 0d;
+        transhipmentQuantity = 0d;
+        routedInboundQuantity = 0d;
+        localQuantity = 0d;
+        hasSimulationDetails = false;
+        RefreshSimulationDerivedState();
     }
 
     public NodeModel ToModel()
@@ -185,6 +324,8 @@ public sealed class NodeViewModel : ObservableObject
         };
     }
 
+    private bool HasTranshipmentUsageDetails => HasSimulationDetails && (TranshipmentCapacity.HasValue || transhipmentQuantity > Epsilon);
+
     private void HandleTrafficProfilesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         foreach (var profile in e.NewItems?.OfType<NodeTrafficProfileViewModel>() ?? [])
@@ -206,5 +347,56 @@ public sealed class NodeViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(FullTrafficSummary));
         DefinitionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void RefreshSimulationDerivedState()
+    {
+        transhipmentUtilizationRatio = TranshipmentCapacity.HasValue && TranshipmentCapacity.Value > Epsilon
+            ? Math.Min(1d, transhipmentQuantity / TranshipmentCapacity.Value)
+            : 0d;
+        simulationBrush = PickUsageBrush(
+            TranshipmentCapacity.HasValue ? transhipmentUtilizationRatio : transhipmentQuantity > Epsilon ? 1d : 0d,
+            transhipmentQuantity > Epsilon || routedOutboundQuantity > Epsilon || routedInboundQuantity > Epsilon || localQuantity > Epsilon);
+        nodeBorderDisplayBrush = HasSimulationDetails
+            ? simulationBrush
+            : DefaultNodeBorder;
+
+        OnPropertyChanged(nameof(FlowSummaryLabel));
+        OnPropertyChanged(nameof(TranshipmentUsageLabel));
+        OnPropertyChanged(nameof(SimulationPanelVisibility));
+        OnPropertyChanged(nameof(TranshipmentUsageVisibility));
+        OnPropertyChanged(nameof(TranshipmentUsageBarVisibility));
+        OnPropertyChanged(nameof(TranshipmentUtilizationBarWidth));
+        OnPropertyChanged(nameof(NodeBorderDisplayBrush));
+        OnPropertyChanged(nameof(SimulationBrush));
+        OnPropertyChanged(nameof(HasSimulationDetails));
+        OnPropertyChanged(nameof(FullTrafficSummary));
+    }
+
+    private static Brush PickUsageBrush(double ratio, bool hasFlow)
+    {
+        if (!hasFlow)
+        {
+            return IdleBrush;
+        }
+
+        if (ratio >= 0.8d)
+        {
+            return HighUsageBrush;
+        }
+
+        if (ratio >= 0.45d)
+        {
+            return MediumUsageBrush;
+        }
+
+        return LowUsageBrush;
+    }
+
+    private static Brush CreateFrozenBrush(string hex)
+    {
+        var brush = (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
+        brush.Freeze();
+        return brush;
     }
 }

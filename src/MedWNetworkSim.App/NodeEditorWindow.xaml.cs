@@ -30,6 +30,16 @@ public partial class NodeEditorWindow : Window
         ExecuteWithErrorHandling(ViewModel.AddTrafficProfileToSelectedNode);
     }
 
+    private void ApplyTrafficRoleToAllNodes_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new BulkApplyTrafficRoleWindow(ViewModel)
+        {
+            Owner = this
+        };
+
+        window.ShowDialog();
+    }
+
     private void RemoveTrafficRole_Click(object sender, RoutedEventArgs e)
     {
         ExecuteWithErrorHandling(ViewModel.RemoveSelectedTrafficProfileFromNode);

@@ -65,6 +65,7 @@
                     <Button Content="New Network" Click="NewNetwork_Click" />
                     <Button Content="Load Sample" Click="LoadSample_Click" />
                     <Button Content="Open JSON..." Click="OpenFile_Click" />
+                    <Button Content="GraphML..." Click="GraphMl_Click" />
                     <Button Content="Auto Arrange"
                             Click="AutoArrange_Click"
                             IsEnabled="{Binding HasNetwork}" />

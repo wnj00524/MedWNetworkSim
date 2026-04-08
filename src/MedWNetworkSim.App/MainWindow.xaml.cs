@@ -40,6 +40,16 @@ public partial class MainWindow : Window
         ExecuteWithErrorHandling(() => ViewModel.LoadFromFile(dialog.FileName));
     }
 
+    private void GraphMl_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new GraphMlTransferWindow(ViewModel)
+        {
+            Owner = this
+        };
+
+        window.ShowDialog();
+    }
+
     private void SaveFile_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new SaveFileDialog

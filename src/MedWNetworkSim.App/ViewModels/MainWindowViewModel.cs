@@ -12,6 +12,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
 
     private readonly NetworkFileService fileService = new();
+    private readonly GraphMlFileService graphMlFileService = new();
     private readonly NetworkSimulationEngine simulationEngine = new();
     private readonly List<RouteAllocationRowViewModel> allAllocations = [];
     private readonly List<ConsumerCostSummaryRowViewModel> allConsumerCostSummaries = [];
@@ -71,6 +72,8 @@ public sealed class MainWindowViewModel : ObservableObject
             if (SetProperty(ref networkName, value))
             {
                 OnPropertyChanged(nameof(WindowTitle));
+                OnPropertyChanged(nameof(SuggestedFileName));
+                OnPropertyChanged(nameof(SuggestedGraphMlFileName));
             }
         }
     }
@@ -303,6 +306,20 @@ public sealed class MainWindowViewModel : ObservableObject
         }
     }
 
+    public string SuggestedGraphMlFileName
+    {
+        get
+        {
+            var baseName = Regex.Replace(NetworkName, @"[^\w\-]+", "-").Trim('-');
+            if (string.IsNullOrWhiteSpace(baseName))
+            {
+                baseName = "network";
+            }
+
+            return $"{baseName}.graphml";
+        }
+    }
+
     public void CreateNewNetwork()
     {
         LoadNetwork(
@@ -321,12 +338,26 @@ public sealed class MainWindowViewModel : ObservableObject
         LoadNetwork(network, path, $"Loaded network file '{Path.GetFileName(path)}'.");
     }
 
+    public void LoadFromGraphMl(string path, GraphMlTransferOptions options)
+    {
+        var network = graphMlFileService.Load(path, options);
+        LoadNetwork(network, path, $"Imported GraphML file '{Path.GetFileName(path)}'.");
+    }
+
     public void SaveToFile(string path)
     {
         var network = BuildValidatedNetwork();
         fileService.Save(network, path);
         ActiveFileLabel = path;
         StatusMessage = $"Saved the current network to '{Path.GetFileName(path)}'.";
+    }
+
+    public void SaveToGraphMl(string path, GraphMlTransferOptions options)
+    {
+        var network = BuildValidatedNetwork();
+        graphMlFileService.Save(network, path, options);
+        ActiveFileLabel = path;
+        StatusMessage = $"Exported the current network to GraphML file '{Path.GetFileName(path)}'.";
     }
 
     public void LoadBundledSample()
@@ -573,6 +604,17 @@ public sealed class MainWindowViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(node);
         node.MoveBy(deltaX, deltaY);
         RecalculateWorkspace();
+    }
+
+    public IReadOnlyList<string> GetAvailableTrafficTypeNames()
+    {
+        return TrafficDefinitions
+            .Select(definition => definition.Name)
+            .Concat(Nodes.SelectMany(node => node.TrafficProfiles).Select(profile => profile.TrafficType))
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(Comparer)
+            .OrderBy(name => name, Comparer)
+            .ToList();
     }
 
     private void EnsureNetworkExists()

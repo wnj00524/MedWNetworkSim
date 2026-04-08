@@ -9,6 +9,11 @@ namespace MedWNetworkSim.App.Services;
 public sealed class RouteAllocation
 {
     /// <summary>
+    /// Gets the timestep this movement was planned or observed in. Zero is used for non-temporal runs.
+    /// </summary>
+    public int Period { get; init; }
+
+    /// <summary>
     /// Gets the traffic type moved by this allocation.
     /// </summary>
     public string TrafficType { get; init; } = string.Empty;

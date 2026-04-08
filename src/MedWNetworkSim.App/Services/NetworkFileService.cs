@@ -207,6 +207,44 @@ public sealed class NetworkFileService
                 throw new InvalidOperationException($"Node '{nodeId}' has an invalid consumption value for traffic '{profile.TrafficType}'. Use a finite number >= 0.");
             }
 
+            if (profile.ProductionStartPeriod.HasValue && profile.ProductionStartPeriod.Value < 0)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has an invalid productionStartPeriod for traffic '{profile.TrafficType}'. Use an integer >= 0.");
+            }
+
+            if (profile.ProductionEndPeriod.HasValue && profile.ProductionEndPeriod.Value < 0)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has an invalid productionEndPeriod for traffic '{profile.TrafficType}'. Use an integer >= 0.");
+            }
+
+            if (profile.ConsumptionStartPeriod.HasValue && profile.ConsumptionStartPeriod.Value < 0)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has an invalid consumptionStartPeriod for traffic '{profile.TrafficType}'. Use an integer >= 0.");
+            }
+
+            if (profile.ConsumptionEndPeriod.HasValue && profile.ConsumptionEndPeriod.Value < 0)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has an invalid consumptionEndPeriod for traffic '{profile.TrafficType}'. Use an integer >= 0.");
+            }
+
+            if (profile.ProductionStartPeriod.HasValue && profile.ProductionEndPeriod.HasValue &&
+                profile.ProductionStartPeriod.Value > profile.ProductionEndPeriod.Value)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has a production schedule where start is after end for traffic '{profile.TrafficType}'.");
+            }
+
+            if (profile.ConsumptionStartPeriod.HasValue && profile.ConsumptionEndPeriod.HasValue &&
+                profile.ConsumptionStartPeriod.Value > profile.ConsumptionEndPeriod.Value)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has a consumption schedule where start is after end for traffic '{profile.TrafficType}'.");
+            }
+
+            if (profile.StoreCapacity.HasValue &&
+                (double.IsNaN(profile.StoreCapacity.Value) || double.IsInfinity(profile.StoreCapacity.Value) || profile.StoreCapacity.Value < 0d))
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has an invalid storeCapacity for traffic '{profile.TrafficType}'. Use a number >= 0 or omit it.");
+            }
+
             var trafficType = profile.TrafficType.Trim();
             if (!normalizedProfiles.TryGetValue(trafficType, out var normalizedProfile))
             {
@@ -220,6 +258,12 @@ public sealed class NetworkFileService
             normalizedProfile.Production += profile.Production;
             normalizedProfile.Consumption += profile.Consumption;
             normalizedProfile.CanTransship |= profile.CanTransship;
+            normalizedProfile.ProductionStartPeriod ??= profile.ProductionStartPeriod;
+            normalizedProfile.ProductionEndPeriod ??= profile.ProductionEndPeriod;
+            normalizedProfile.ConsumptionStartPeriod ??= profile.ConsumptionStartPeriod;
+            normalizedProfile.ConsumptionEndPeriod ??= profile.ConsumptionEndPeriod;
+            normalizedProfile.IsStore |= profile.IsStore;
+            normalizedProfile.StoreCapacity ??= profile.StoreCapacity;
         }
 
         // Duplicate traffic rows on the same node are collapsed into one persisted profile per traffic type.

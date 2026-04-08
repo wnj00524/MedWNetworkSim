@@ -5,6 +5,8 @@ namespace MedWNetworkSim.App.ViewModels;
 
 public sealed class RouteAllocationRowViewModel(RouteAllocation allocation) : ObservableObject
 {
+    public int Period { get; } = allocation.Period;
+
     public string TrafficType { get; } = allocation.TrafficType;
 
     public RoutingPreference RoutingPreference { get; } = allocation.RoutingPreference;

@@ -83,6 +83,16 @@ public partial class MainWindow : Window
         ExecuteWithErrorHandling(ViewModel.RunSimulation);
     }
 
+    private void ResetTimeline_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.ResetTimeline);
+    }
+
+    private void NextTimelinePeriod_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.AdvanceTimeline);
+    }
+
     private void AutoArrange_Click(object sender, RoutedEventArgs e)
     {
         ExecuteWithErrorHandling(ViewModel.AutoArrangeNodes);

@@ -6,6 +6,19 @@ namespace MedWNetworkSim.App.Models;
 public static class NodeTrafficRoleCatalog
 {
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+    private static readonly IReadOnlyDictionary<string, NodeTrafficRoleFlags> FlagsByRoleName =
+        new Dictionary<string, NodeTrafficRoleFlags>(Comparer)
+        {
+            [NoTrafficRole] = default,
+            ["None"] = default,
+            [ProducerRole] = new NodeTrafficRoleFlags(true, false, false),
+            [ConsumerRole] = new NodeTrafficRoleFlags(false, true, false),
+            [TransshipRole] = new NodeTrafficRoleFlags(false, false, true),
+            [ProducerConsumerRole] = new NodeTrafficRoleFlags(true, true, false),
+            [ProducerTransshipRole] = new NodeTrafficRoleFlags(true, false, true),
+            [ConsumerTransshipRole] = new NodeTrafficRoleFlags(false, true, true),
+            [ProducerConsumerTransshipRole] = new NodeTrafficRoleFlags(true, true, true)
+        };
 
     public const string NoTrafficRole = "No Traffic Role";
     public const string ProducerRole = "Producer";
@@ -140,53 +153,14 @@ public static class NodeTrafficRoleCatalog
     {
         var normalized = roleName?.Trim();
 
-        if (string.IsNullOrWhiteSpace(normalized) ||
-            Comparer.Equals(normalized, NoTrafficRole) ||
-            Comparer.Equals(normalized, "None"))
+        if (string.IsNullOrWhiteSpace(normalized))
         {
             flags = default;
             return true;
         }
 
-        if (Comparer.Equals(normalized, ProducerRole))
+        if (FlagsByRoleName.TryGetValue(normalized, out flags))
         {
-            flags = new NodeTrafficRoleFlags(true, false, false);
-            return true;
-        }
-
-        if (Comparer.Equals(normalized, ConsumerRole))
-        {
-            flags = new NodeTrafficRoleFlags(false, true, false);
-            return true;
-        }
-
-        if (Comparer.Equals(normalized, TransshipRole))
-        {
-            flags = new NodeTrafficRoleFlags(false, false, true);
-            return true;
-        }
-
-        if (Comparer.Equals(normalized, ProducerConsumerRole))
-        {
-            flags = new NodeTrafficRoleFlags(true, true, false);
-            return true;
-        }
-
-        if (Comparer.Equals(normalized, ProducerTransshipRole))
-        {
-            flags = new NodeTrafficRoleFlags(true, false, true);
-            return true;
-        }
-
-        if (Comparer.Equals(normalized, ConsumerTransshipRole))
-        {
-            flags = new NodeTrafficRoleFlags(false, true, true);
-            return true;
-        }
-
-        if (Comparer.Equals(normalized, ProducerConsumerTransshipRole))
-        {
-            flags = new NodeTrafficRoleFlags(true, true, true);
             return true;
         }
 

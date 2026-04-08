@@ -32,7 +32,7 @@
                 <TextBlock Margin="0,8,0,0"
                            FontSize="12"
                            Foreground="{StaticResource MutedForegroundBrush}"
-                           Text="Choose a node, choose one of its traffic-role entries, then set the traffic type and role from dropdown lists."
+                           Text="Choose a node, set any shared transhipment capacity, then choose one of its traffic-role entries and set the traffic type and role from dropdown lists."
                            TextWrapping="Wrap" />
             </StackPanel>
         </Border>
@@ -82,6 +82,8 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="10" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <TextBlock VerticalAlignment="Center"
@@ -123,7 +125,16 @@
                                  Grid.Column="1"
                                  Text="{Binding SelectedNode.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
-                        <Grid Grid.Row="6" Grid.ColumnSpan="2">
+                        <TextBlock Grid.Row="6"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="Transhipment Capacity" />
+                        <TextBox Grid.Row="6"
+                                 Grid.Column="1"
+                                 Text="{Binding SelectedNode.TranshipmentCapacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <Grid Grid.Row="8" Grid.ColumnSpan="2">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="120" />

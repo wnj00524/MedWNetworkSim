@@ -15,6 +15,7 @@
         <SolidColorBrush x:Key="NodeBorderBrush" Color="#FFC7B27C" />
         <SolidColorBrush x:Key="EdgeBrush" Color="#FF7A685D" />
         <SolidColorBrush x:Key="EdgeLabelBrush" Color="#FFF7EBDD" />
+        <SolidColorBrush x:Key="InfoPanelBrush" Color="#FFF8F1E7" />
         <SolidColorBrush x:Key="MutedForegroundBrush" Color="#FF6E5D51" />
         <SolidColorBrush x:Key="StrongForegroundBrush" Color="#FF2D231E" />
 

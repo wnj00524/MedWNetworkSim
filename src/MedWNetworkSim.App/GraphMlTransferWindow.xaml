@@ -77,7 +77,7 @@
                 <Border Grid.Row="2"
                         Grid.ColumnSpan="2"
                         Padding="12"
-                        Background="#FFF8F1E7"
+                        Background="{StaticResource InfoPanelBrush}"
                         BorderBrush="{StaticResource BorderBrush}"
                         BorderThickness="1"
                         CornerRadius="12">
@@ -185,7 +185,7 @@
                 <Border Grid.Row="18"
                         Grid.ColumnSpan="2"
                         Padding="12"
-                        Background="#FFF8F1E7"
+                        Background="{StaticResource InfoPanelBrush}"
                         BorderBrush="{StaticResource BorderBrush}"
                         BorderThickness="1"
                         CornerRadius="12">
@@ -197,7 +197,7 @@
                         <TextBlock Margin="0,8,0,0"
                                    FontSize="12"
                                    Foreground="{StaticResource MutedForegroundBrush}"
-                                   Text="Leave traffic type or role on none when you want imported nodes to stay structural only. Leave capacity blank when you want GraphML capacity data omitted; if an imported producer or consumer role must be materialized into the simulator without a numeric capacity, MedWNetworkSim uses 1 unit so the role remains valid."
+                                   Text="Leave traffic type or role on none when you want imported nodes to stay structural only. When the default role includes transhipment, the capacity becomes that node's shared transhipment limit. Producer or consumer defaults still fall back to 1 unit if they need a starter quantity and no amount is available in the GraphML data."
                                    TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>

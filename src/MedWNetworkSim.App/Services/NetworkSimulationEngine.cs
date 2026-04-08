@@ -19,7 +19,7 @@ public sealed class NetworkSimulationEngine
     {
         ArgumentNullException.ThrowIfNull(network);
 
-        // Build shared graph data once, then route every traffic type against the same pool of edge capacity.
+        // Build shared graph data once, then route every traffic type against the same pool of edge and node transhipment capacity.
         var adjacency = BuildAdjacency(network);
         var definitionsByTraffic = network.TrafficTypes
             .ToDictionary(definition => definition.Name, definition => definition, Comparer);
@@ -40,7 +40,12 @@ public sealed class NetworkSimulationEngine
             edge => edge.Id,
             edge => edge.Capacity ?? double.PositiveInfinity,
             Comparer);
-        var hasFiniteCapacities = network.Edges.Any(edge => edge.Capacity.HasValue);
+        var remainingTranshipmentCapacityByNodeId = network.Nodes.ToDictionary(
+            node => node.Id,
+            node => node.TranshipmentCapacity ?? double.PositiveInfinity,
+            Comparer);
+        var hasFiniteCapacities = network.Edges.Any(edge => edge.Capacity.HasValue) ||
+            network.Nodes.Any(node => node.TranshipmentCapacity.HasValue);
 
         foreach (var context in contexts)
         {
@@ -62,7 +67,7 @@ public sealed class NetworkSimulationEngine
         {
             // Capacity bidding is resolved globally: every traffic type competes for the next best route.
             var nextCandidate = contexts
-                .SelectMany(context => BuildCandidateRoutes(context, adjacency, remainingCapacityByEdgeId))
+                .SelectMany(context => BuildCandidateRoutes(context, adjacency, remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId))
                 .OrderByDescending(candidate => candidate.CapacityBidPerUnit)
                 .ThenBy(candidate => candidate.TotalScore)
                 .ThenBy(candidate => candidate.TotalTime)
@@ -80,7 +85,11 @@ public sealed class NetworkSimulationEngine
             var remainingSupply = context.Supply.TryGetValue(nextCandidate.ProducerNodeId, out var supplyValue) ? supplyValue : 0d;
             var remainingDemand = context.Demand.TryGetValue(nextCandidate.ConsumerNodeId, out var demandValue) ? demandValue : 0d;
             var quantity = Math.Min(remainingSupply, remainingDemand);
-            var routeCapacity = GetPathRemainingCapacity(nextCandidate.PathEdgeIds, remainingCapacityByEdgeId);
+            var routeCapacity = GetRouteRemainingCapacity(
+                nextCandidate.PathEdgeIds,
+                nextCandidate.PathTranshipmentNodeIds,
+                remainingCapacityByEdgeId,
+                remainingTranshipmentCapacityByNodeId);
 
             if (!double.IsPositiveInfinity(routeCapacity))
             {
@@ -94,7 +103,9 @@ public sealed class NetworkSimulationEngine
 
             var bidCostPerUnit = CalculateBidCostPerUnit(
                 nextCandidate.PathEdgeIds,
+                nextCandidate.PathTranshipmentNodeIds,
                 remainingCapacityByEdgeId,
+                remainingTranshipmentCapacityByNodeId,
                 nextCandidate.CapacityBidPerUnit,
                 quantity,
                 routeCapacity);
@@ -121,7 +132,12 @@ public sealed class NetworkSimulationEngine
 
             context.Supply[nextCandidate.ProducerNodeId] -= quantity;
             context.Demand[nextCandidate.ConsumerNodeId] -= quantity;
-            ReserveCapacity(nextCandidate.PathEdgeIds, remainingCapacityByEdgeId, quantity);
+            ReserveCapacity(
+                nextCandidate.PathEdgeIds,
+                nextCandidate.PathTranshipmentNodeIds,
+                remainingCapacityByEdgeId,
+                remainingTranshipmentCapacityByNodeId,
+                quantity);
         }
 
         foreach (var context in contexts)
@@ -141,7 +157,7 @@ public sealed class NetworkSimulationEngine
 
             if (hasFiniteCapacities && (unusedSupply > Epsilon || unmetDemand > Epsilon))
             {
-                context.Notes.Add("Shared edge capacity limits may have prevented additional routing.");
+                context.Notes.Add("Shared edge or node transhipment capacity limits may have prevented additional routing.");
             }
 
             var totalBidCost = context.Allocations.Sum(allocation => allocation.BidCostPerUnit * allocation.Quantity);
@@ -287,7 +303,8 @@ public sealed class NetworkSimulationEngine
     private static List<RouteCandidate> BuildCandidateRoutes(
         TrafficContext context,
         IReadOnlyDictionary<string, List<GraphArc>> adjacency,
-        IDictionary<string, double> remainingCapacityByEdgeId)
+        IDictionary<string, double> remainingCapacityByEdgeId,
+        IDictionary<string, double> remainingTranshipmentCapacityByNodeId)
     {
         var routes = new List<RouteCandidate>();
 
@@ -305,7 +322,8 @@ public sealed class NetworkSimulationEngine
                     producerNodeId,
                     consumerNodeId,
                     adjacency,
-                    remainingCapacityByEdgeId);
+                    remainingCapacityByEdgeId,
+                    remainingTranshipmentCapacityByNodeId);
 
                 if (route is not null)
                 {
@@ -322,7 +340,8 @@ public sealed class NetworkSimulationEngine
         string producerNodeId,
         string consumerNodeId,
         IReadOnlyDictionary<string, List<GraphArc>> adjacency,
-        IDictionary<string, double> remainingCapacityByEdgeId)
+        IDictionary<string, double> remainingCapacityByEdgeId,
+        IDictionary<string, double> remainingTranshipmentCapacityByNodeId)
     {
         // A Dijkstra pass finds the best currently-feasible route under this traffic type's scoring rule.
         var distances = new Dictionary<string, double>(Comparer)
@@ -355,6 +374,13 @@ public sealed class NetworkSimulationEngine
             {
                 if (!remainingCapacityByEdgeId.TryGetValue(arc.EdgeId, out var remainingCapacity) ||
                     remainingCapacity <= Epsilon)
+                {
+                    continue;
+                }
+
+                if (IsIntermediateNode(arc.ToNodeId, producerNodeId, consumerNodeId) &&
+                    remainingTranshipmentCapacityByNodeId.TryGetValue(arc.ToNodeId, out var remainingNodeCapacity) &&
+                    remainingNodeCapacity <= Epsilon)
                 {
                     continue;
                 }
@@ -396,6 +422,7 @@ public sealed class NetworkSimulationEngine
 
         pathNodeIds.Reverse();
         pathArcs.Reverse();
+        var pathTranshipmentNodeIds = GetIntermediateNodeIds(pathNodeIds);
 
         return new RouteCandidate(
             context,
@@ -403,6 +430,7 @@ public sealed class NetworkSimulationEngine
             consumerNodeId,
             pathNodeIds,
             pathArcs.Select(arc => arc.EdgeId).ToList(),
+            pathTranshipmentNodeIds,
             pathArcs.Sum(arc => arc.Time),
             pathArcs.Sum(arc => arc.Cost),
             pathArcs.Sum(arc => Score(arc.Time, arc.Cost, context.RoutingPreference)),
@@ -451,29 +479,63 @@ public sealed class NetworkSimulationEngine
         return adjacency;
     }
 
-    private static double GetPathRemainingCapacity(
-        IReadOnlyList<string> pathEdgeIds,
-        IDictionary<string, double> remainingCapacityByEdgeId)
+    private static bool IsIntermediateNode(string nodeId, string producerNodeId, string consumerNodeId)
     {
-        if (pathEdgeIds.Count == 0)
+        return !Comparer.Equals(nodeId, producerNodeId) && !Comparer.Equals(nodeId, consumerNodeId);
+    }
+
+    private static IReadOnlyList<string> GetIntermediateNodeIds(IReadOnlyList<string> pathNodeIds)
+    {
+        if (pathNodeIds.Count <= 2)
+        {
+            return [];
+        }
+
+        var intermediateNodeIds = new List<string>(pathNodeIds.Count - 2);
+        for (var index = 1; index < pathNodeIds.Count - 1; index++)
+        {
+            intermediateNodeIds.Add(pathNodeIds[index]);
+        }
+
+        return intermediateNodeIds;
+    }
+
+    private static double GetRouteRemainingCapacity(
+        IReadOnlyList<string> pathEdgeIds,
+        IReadOnlyList<string> pathTranshipmentNodeIds,
+        IDictionary<string, double> remainingCapacityByEdgeId,
+        IDictionary<string, double> remainingTranshipmentCapacityByNodeId)
+    {
+        var edgeCapacity = GetPathRemainingCapacity(pathEdgeIds, remainingCapacityByEdgeId);
+        var nodeCapacity = GetPathRemainingCapacity(pathTranshipmentNodeIds, remainingTranshipmentCapacityByNodeId);
+        return Math.Min(edgeCapacity, nodeCapacity);
+    }
+
+    private static double GetPathRemainingCapacity(
+        IReadOnlyList<string> pathResourceIds,
+        IDictionary<string, double> remainingCapacityById)
+    {
+        if (pathResourceIds.Count == 0)
         {
             return double.PositiveInfinity;
         }
 
-        return pathEdgeIds
-            .Select(edgeId => remainingCapacityByEdgeId.TryGetValue(edgeId, out var remainingCapacity) ? remainingCapacity : 0d)
+        return pathResourceIds
+            .Select(resourceId => remainingCapacityById.TryGetValue(resourceId, out var remainingCapacity) ? remainingCapacity : 0d)
             .DefaultIfEmpty(0d)
             .Min();
     }
 
     private static double CalculateBidCostPerUnit(
         IReadOnlyList<string> pathEdgeIds,
+        IReadOnlyList<string> pathTranshipmentNodeIds,
         IDictionary<string, double> remainingCapacityByEdgeId,
+        IDictionary<string, double> remainingTranshipmentCapacityByNodeId,
         double capacityBidPerUnit,
         double quantity,
         double routeCapacity)
     {
-        // Bid cost is only charged when the chosen movement fully consumes a finite bottleneck on the route.
+        // Bid cost is only charged when the chosen movement fully consumes one or more finite bottlenecks on the route.
         if (capacityBidPerUnit <= Epsilon ||
             quantity <= Epsilon ||
             double.IsPositiveInfinity(routeCapacity) ||
@@ -482,28 +544,49 @@ public sealed class NetworkSimulationEngine
             return 0d;
         }
 
-        var bottleneckEdgeCount = pathEdgeIds.Count(edgeId =>
-            remainingCapacityByEdgeId.TryGetValue(edgeId, out var remainingCapacity) &&
+        var bottleneckResourceCount =
+            CountBottleneckResources(pathEdgeIds, remainingCapacityByEdgeId, routeCapacity) +
+            CountBottleneckResources(pathTranshipmentNodeIds, remainingTranshipmentCapacityByNodeId, routeCapacity);
+
+        return bottleneckResourceCount * capacityBidPerUnit;
+    }
+
+    private static int CountBottleneckResources(
+        IEnumerable<string> pathResourceIds,
+        IDictionary<string, double> remainingCapacityById,
+        double routeCapacity)
+    {
+        return pathResourceIds.Count(resourceId =>
+            remainingCapacityById.TryGetValue(resourceId, out var remainingCapacity) &&
             !double.IsPositiveInfinity(remainingCapacity) &&
             remainingCapacity <= routeCapacity + Epsilon);
-
-        return bottleneckEdgeCount * capacityBidPerUnit;
     }
 
     private static void ReserveCapacity(
         IEnumerable<string> pathEdgeIds,
+        IEnumerable<string> pathTranshipmentNodeIds,
         IDictionary<string, double> remainingCapacityByEdgeId,
+        IDictionary<string, double> remainingTranshipmentCapacityByNodeId,
         double quantity)
     {
-        foreach (var edgeId in pathEdgeIds)
+        ReserveCapacity(pathEdgeIds, remainingCapacityByEdgeId, quantity);
+        ReserveCapacity(pathTranshipmentNodeIds, remainingTranshipmentCapacityByNodeId, quantity);
+    }
+
+    private static void ReserveCapacity(
+        IEnumerable<string> pathResourceIds,
+        IDictionary<string, double> remainingCapacityById,
+        double quantity)
+    {
+        foreach (var resourceId in pathResourceIds)
         {
-            if (!remainingCapacityByEdgeId.TryGetValue(edgeId, out var remainingCapacity) ||
+            if (!remainingCapacityById.TryGetValue(resourceId, out var remainingCapacity) ||
                 double.IsPositiveInfinity(remainingCapacity))
             {
                 continue;
             }
 
-            remainingCapacityByEdgeId[edgeId] = Math.Max(0d, remainingCapacity - quantity);
+            remainingCapacityById[resourceId] = Math.Max(0d, remainingCapacity - quantity);
         }
     }
 
@@ -566,6 +649,7 @@ public sealed class NetworkSimulationEngine
         string ConsumerNodeId,
         IReadOnlyList<string> PathNodeIds,
         IReadOnlyList<string> PathEdgeIds,
+        IReadOnlyList<string> PathTranshipmentNodeIds,
         double TotalTime,
         double TransitCostPerUnit,
         double TotalScore,

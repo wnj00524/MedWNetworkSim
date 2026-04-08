@@ -86,12 +86,20 @@ public sealed class NetworkFileService
                 throw new InvalidOperationException($"Duplicate node id '{nodeId}' was found.");
             }
 
+            var transhipmentCapacity = node.TranshipmentCapacity;
+            if (transhipmentCapacity.HasValue &&
+                (double.IsNaN(transhipmentCapacity.Value) || double.IsInfinity(transhipmentCapacity.Value) || transhipmentCapacity.Value < 0d))
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has an invalid transhipmentCapacity value. Use a number >= 0 or omit the property for unlimited transhipment.");
+            }
+
             normalizedNodes.Add(new NodeModel
             {
                 Id = nodeId,
                 Name = string.IsNullOrWhiteSpace(node.Name) ? nodeId : node.Name.Trim(),
                 X = node.X,
                 Y = node.Y,
+                TranshipmentCapacity = transhipmentCapacity,
                 TrafficProfiles = NormalizeProfiles(node.TrafficProfiles, nodeId)
             });
         }

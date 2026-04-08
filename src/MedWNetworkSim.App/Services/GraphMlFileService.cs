@@ -16,6 +16,52 @@ public sealed class GraphMlFileService
     private static readonly XNamespace GraphMlNamespace = "http://graphml.graphdrawing.org/xmlns";
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
 
+    private const string GraphTarget = "graph";
+    private const string NodeTarget = "node";
+    private const string EdgeTarget = "edge";
+
+    private const string StringType = "string";
+    private const string DoubleType = "double";
+    private const string BooleanType = "boolean";
+
+    private const string GraphNameKeyId = "graph_name";
+    private const string GraphDescriptionKeyId = "graph_description";
+    private const string GraphTrafficTypesJsonKeyId = "graph_traffic_types_json";
+
+    private const string NodeNameKeyId = "node_name";
+    private const string NodeXKeyId = "node_x";
+    private const string NodeYKeyId = "node_y";
+    private const string NodeTranshipmentCapacityKeyId = "node_transhipment_capacity";
+    private const string NodeTrafficTypeKeyId = "node_traffic_type";
+    private const string NodeRoleKeyId = "node_role";
+    private const string NodeCapacityKeyId = "node_capacity";
+    private const string NodeProfilesJsonKeyId = "node_profiles_json";
+
+    private const string EdgeIdKeyId = "edge_id";
+    private const string EdgeTimeKeyId = "edge_time";
+    private const string EdgeCostKeyId = "edge_cost";
+    private const string EdgeCapacityKeyId = "edge_capacity";
+    private const string EdgeIsBidirectionalKeyId = "edge_is_bidirectional";
+
+    private const string NameAttribute = "name";
+    private const string NetworkNameAttribute = "networkName";
+    private const string DescriptionAttribute = "description";
+    private const string LabelAttribute = "label";
+    private const string TrafficTypesJsonAttribute = "trafficTypesJson";
+    private const string MedwTrafficTypesJsonAttribute = "medwTrafficTypesJson";
+    private const string XAttributeName = "x";
+    private const string YAttributeName = "y";
+    private const string TranshipmentCapacityAttribute = "transhipmentCapacity";
+    private const string TrafficTypeAttribute = "trafficType";
+    private const string RoleAttribute = "role";
+    private const string CapacityAttribute = "capacity";
+    private const string TrafficProfilesJsonAttribute = "trafficProfilesJson";
+    private const string MedwTrafficProfilesJsonAttribute = "medwTrafficProfilesJson";
+    private const string IdAttributeName = "id";
+    private const string TimeAttribute = "time";
+    private const string CostAttribute = "cost";
+    private const string IsBidirectionalAttribute = "isBidirectional";
+
     private readonly NetworkFileService networkFileService = new();
     private readonly JsonSerializerOptions serializerOptions = new()
     {
@@ -38,8 +84,8 @@ public sealed class GraphMlFileService
         var hasExplicitTrafficTypes = TryDeserializeData(
             graphData,
             out List<TrafficTypeDefinition>? trafficTypes,
-            "trafficTypesJson",
-            "medwTrafficTypesJson");
+            TrafficTypesJsonAttribute,
+            MedwTrafficTypesJsonAttribute);
 
         var directedByDefault = !string.Equals(
             graphElement.Attribute("edgedefault")?.Value,
@@ -54,11 +100,11 @@ public sealed class GraphMlFileService
             .Select(edge => ReadEdge(edge, keyDefinitions, directedByDefault))
             .ToList();
 
-        var graphName = GetFirstValue(graphData, "name", "networkName")
+        var graphName = GetFirstValue(graphData, NameAttribute, NetworkNameAttribute)
             ?? graphElement.Attribute("id")?.Value
             ?? Path.GetFileNameWithoutExtension(path);
 
-        var graphDescription = GetFirstValue(graphData, "description")
+        var graphDescription = GetFirstValue(graphData, DescriptionAttribute)
             ?? graphElement.Element(GraphMlNamespace + "desc")?.Value
             ?? string.Empty;
 
@@ -103,36 +149,37 @@ public sealed class GraphMlFileService
                 XNamespace.Get("http://www.w3.org/2001/XMLSchema-instance") + "schemaLocation",
                 "http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd"));
 
-        AddKey(root, "graph_name", "graph", "name", "string");
-        AddKey(root, "graph_description", "graph", "description", "string");
-        AddKey(root, "graph_traffic_types_json", "graph", "trafficTypesJson", "string");
+        AddKey(root, GraphNameKeyId, GraphTarget, NameAttribute, StringType);
+        AddKey(root, GraphDescriptionKeyId, GraphTarget, DescriptionAttribute, StringType);
+        AddKey(root, GraphTrafficTypesJsonKeyId, GraphTarget, TrafficTypesJsonAttribute, StringType);
 
-        AddKey(root, "node_name", "node", "name", "string");
-        AddKey(root, "node_x", "node", "x", "double");
-        AddKey(root, "node_y", "node", "y", "double");
-        AddKey(root, "node_traffic_type", "node", "trafficType", "string");
-        AddKey(root, "node_role", "node", "role", "string");
-        AddKey(root, "node_capacity", "node", "capacity", "double");
-        AddKey(root, "node_profiles_json", "node", "trafficProfilesJson", "string");
+        AddKey(root, NodeNameKeyId, NodeTarget, NameAttribute, StringType);
+        AddKey(root, NodeXKeyId, NodeTarget, XAttributeName, DoubleType);
+        AddKey(root, NodeYKeyId, NodeTarget, YAttributeName, DoubleType);
+        AddKey(root, NodeTranshipmentCapacityKeyId, NodeTarget, TranshipmentCapacityAttribute, DoubleType);
+        AddKey(root, NodeTrafficTypeKeyId, NodeTarget, TrafficTypeAttribute, StringType);
+        AddKey(root, NodeRoleKeyId, NodeTarget, RoleAttribute, StringType);
+        AddKey(root, NodeCapacityKeyId, NodeTarget, CapacityAttribute, DoubleType);
+        AddKey(root, NodeProfilesJsonKeyId, NodeTarget, TrafficProfilesJsonAttribute, StringType);
 
-        AddKey(root, "edge_id", "edge", "id", "string");
-        AddKey(root, "edge_time", "edge", "time", "double");
-        AddKey(root, "edge_cost", "edge", "cost", "double");
-        AddKey(root, "edge_capacity", "edge", "capacity", "double");
-        AddKey(root, "edge_is_bidirectional", "edge", "isBidirectional", "boolean");
+        AddKey(root, EdgeIdKeyId, EdgeTarget, IdAttributeName, StringType);
+        AddKey(root, EdgeTimeKeyId, EdgeTarget, TimeAttribute, DoubleType);
+        AddKey(root, EdgeCostKeyId, EdgeTarget, CostAttribute, DoubleType);
+        AddKey(root, EdgeCapacityKeyId, EdgeTarget, CapacityAttribute, DoubleType);
+        AddKey(root, EdgeIsBidirectionalKeyId, EdgeTarget, IsBidirectionalAttribute, BooleanType);
 
         var graph = new XElement(
             GraphMlNamespace + "graph",
             new XAttribute("id", SanitizeIdentifier(model.Name, "network")),
             new XAttribute("edgedefault", "directed"));
 
-        AddData(graph, "graph_name", model.Name);
+        AddData(graph, GraphNameKeyId, model.Name);
         if (!string.IsNullOrWhiteSpace(model.Description))
         {
-            AddData(graph, "graph_description", model.Description);
+            AddData(graph, GraphDescriptionKeyId, model.Description);
         }
 
-        AddData(graph, "graph_traffic_types_json", JsonSerializer.Serialize(model.TrafficTypes, serializerOptions));
+        AddData(graph, GraphTrafficTypesJsonKeyId, JsonSerializer.Serialize(model.TrafficTypes, serializerOptions));
 
         foreach (var node in model.Nodes)
         {
@@ -140,43 +187,48 @@ public sealed class GraphMlFileService
                 GraphMlNamespace + "node",
                 new XAttribute("id", node.Id));
 
-            AddData(nodeElement, "node_name", node.Name);
+            AddData(nodeElement, NodeNameKeyId, node.Name);
 
             if (node.X.HasValue)
             {
-                AddData(nodeElement, "node_x", node.X.Value.ToString(CultureInfo.InvariantCulture));
+                AddData(nodeElement, NodeXKeyId, node.X.Value.ToString(CultureInfo.InvariantCulture));
             }
 
             if (node.Y.HasValue)
             {
-                AddData(nodeElement, "node_y", node.Y.Value.ToString(CultureInfo.InvariantCulture));
+                AddData(nodeElement, NodeYKeyId, node.Y.Value.ToString(CultureInfo.InvariantCulture));
             }
 
-            AddData(nodeElement, "node_profiles_json", JsonSerializer.Serialize(node.TrafficProfiles, serializerOptions));
+            if (node.TranshipmentCapacity.HasValue)
+            {
+                AddData(nodeElement, NodeTranshipmentCapacityKeyId, node.TranshipmentCapacity.Value.ToString(CultureInfo.InvariantCulture));
+            }
+
+            AddData(nodeElement, NodeProfilesJsonKeyId, JsonSerializer.Serialize(node.TrafficProfiles, serializerOptions));
 
             var preferredProfile = SelectPreferredProfile(node, options.DefaultTrafficType);
             var exportedTrafficType = preferredProfile?.TrafficType ?? NormalizeOptionalString(options.DefaultTrafficType);
             var exportedRole = preferredProfile is not null
                 ? NodeTrafficRoleCatalog.GetRoleName(preferredProfile)
                 : options.DefaultRoleName;
-            var exportedCapacity = preferredProfile is not null
+            var exportedCapacity = node.TranshipmentCapacity ?? (preferredProfile is not null
                 ? NodeTrafficRoleCatalog.GetRepresentativeCapacity(preferredProfile)
-                : options.DefaultNodeCapacity;
+                : options.DefaultNodeCapacity);
 
             if (!string.IsNullOrWhiteSpace(exportedTrafficType))
             {
-                AddData(nodeElement, "node_traffic_type", exportedTrafficType);
+                AddData(nodeElement, NodeTrafficTypeKeyId, exportedTrafficType);
             }
 
             if (NodeTrafficRoleCatalog.TryParseFlags(exportedRole, out var roleFlags) &&
                 (roleFlags.IsProducer || roleFlags.IsConsumer || roleFlags.CanTransship))
             {
-                AddData(nodeElement, "node_role", exportedRole);
+                AddData(nodeElement, NodeRoleKeyId, exportedRole);
             }
 
             if (exportedCapacity.HasValue)
             {
-                AddData(nodeElement, "node_capacity", exportedCapacity.Value.ToString(CultureInfo.InvariantCulture));
+                AddData(nodeElement, NodeCapacityKeyId, exportedCapacity.Value.ToString(CultureInfo.InvariantCulture));
             }
 
             graph.Add(nodeElement);
@@ -195,14 +247,14 @@ public sealed class GraphMlFileService
                 edgeElement.Add(new XAttribute("directed", "false"));
             }
 
-            AddData(edgeElement, "edge_id", edge.Id);
-            AddData(edgeElement, "edge_time", edge.Time.ToString(CultureInfo.InvariantCulture));
-            AddData(edgeElement, "edge_cost", edge.Cost.ToString(CultureInfo.InvariantCulture));
-            AddData(edgeElement, "edge_is_bidirectional", edge.IsBidirectional ? "true" : "false");
+            AddData(edgeElement, EdgeIdKeyId, edge.Id);
+            AddData(edgeElement, EdgeTimeKeyId, edge.Time.ToString(CultureInfo.InvariantCulture));
+            AddData(edgeElement, EdgeCostKeyId, edge.Cost.ToString(CultureInfo.InvariantCulture));
+            AddData(edgeElement, EdgeIsBidirectionalKeyId, edge.IsBidirectional ? "true" : "false");
 
             if (edge.Capacity.HasValue)
             {
-                AddData(edgeElement, "edge_capacity", edge.Capacity.Value.ToString(CultureInfo.InvariantCulture));
+                AddData(edgeElement, EdgeCapacityKeyId, edge.Capacity.Value.ToString(CultureInfo.InvariantCulture));
             }
 
             graph.Add(edgeElement);
@@ -227,19 +279,23 @@ public sealed class GraphMlFileService
         var hasExplicitProfiles = TryDeserializeData(
             nodeData,
             out List<NodeTrafficProfile>? explicitProfiles,
-            "trafficProfilesJson",
-            "medwTrafficProfilesJson");
+            TrafficProfilesJsonAttribute,
+            MedwTrafficProfilesJsonAttribute);
 
         var profiles = hasExplicitProfiles
             ? explicitProfiles ?? []
             : BuildDefaultProfiles(nodeData, options);
+        var transhipmentCapacity = hasExplicitProfiles
+            ? TryGetDouble(nodeData, "transhipmentCapacity")
+            : BuildDefaultTranshipmentCapacity(nodeData, options);
 
         return new NodeModel
         {
             Id = nodeId,
-            Name = GetFirstValue(nodeData, "name", "label") ?? nodeId,
-            X = TryGetDouble(nodeData, "x"),
-            Y = TryGetDouble(nodeData, "y"),
+            Name = GetFirstValue(nodeData, NameAttribute, LabelAttribute) ?? nodeId,
+            X = TryGetDouble(nodeData, XAttributeName),
+            Y = TryGetDouble(nodeData, YAttributeName),
+            TranshipmentCapacity = transhipmentCapacity,
             TrafficProfiles = profiles
         };
     }
@@ -259,14 +315,14 @@ public sealed class GraphMlFileService
         }
 
         var edgeId = edgeElement.Attribute("id")?.Value?.Trim()
-            ?? GetFirstValue(edgeData, "id");
+            ?? GetFirstValue(edgeData, IdAttributeName);
 
         var directedOverride = edgeElement.Attribute("directed")?.Value;
         var isBidirectional = directedOverride is not null
             ? !TryParseBoolean(directedOverride, defaultValue: true)
             : !directedByDefault;
 
-        if (edgeData.TryGetValue("isBidirectional", out var bidirectionalText))
+        if (edgeData.TryGetValue(IsBidirectionalAttribute, out var bidirectionalText))
         {
             isBidirectional = TryParseBoolean(bidirectionalText, defaultValue: isBidirectional);
         }
@@ -276,9 +332,9 @@ public sealed class GraphMlFileService
             Id = edgeId ?? string.Empty,
             FromNodeId = sourceId,
             ToNodeId = targetId,
-            Time = TryGetDouble(edgeData, "time") ?? 1d,
-            Cost = TryGetDouble(edgeData, "cost") ?? 1d,
-            Capacity = TryGetDouble(edgeData, "capacity"),
+            Time = TryGetDouble(edgeData, TimeAttribute) ?? 1d,
+            Cost = TryGetDouble(edgeData, CostAttribute) ?? 1d,
+            Capacity = TryGetDouble(edgeData, CapacityAttribute),
             IsBidirectional = isBidirectional
         };
     }
@@ -287,14 +343,35 @@ public sealed class GraphMlFileService
         IReadOnlyDictionary<string, string> nodeData,
         GraphMlTransferOptions options)
     {
-        var trafficType = NormalizeOptionalString(GetFirstValue(nodeData, "trafficType"))
+        var trafficType = NormalizeOptionalString(GetFirstValue(nodeData, TrafficTypeAttribute))
             ?? NormalizeOptionalString(options.DefaultTrafficType);
-        var roleName = NormalizeOptionalString(GetFirstValue(nodeData, "role"))
+        var roleName = NormalizeOptionalString(GetFirstValue(nodeData, RoleAttribute))
             ?? options.DefaultRoleName;
-        var capacity = TryGetDouble(nodeData, "capacity") ?? options.DefaultNodeCapacity;
+        var capacity = TryGetDouble(nodeData, CapacityAttribute) ?? options.DefaultNodeCapacity;
 
         var profile = NodeTrafficRoleCatalog.CreateDefaultProfile(trafficType, roleName, capacity);
         return profile is null ? [] : [profile];
+    }
+
+    private static double? BuildDefaultTranshipmentCapacity(
+        IReadOnlyDictionary<string, string> nodeData,
+        GraphMlTransferOptions options)
+    {
+        var explicitTranshipmentCapacity = TryGetDouble(nodeData, TranshipmentCapacityAttribute);
+        if (explicitTranshipmentCapacity.HasValue)
+        {
+            return explicitTranshipmentCapacity;
+        }
+
+        var roleName = NormalizeOptionalString(GetFirstValue(nodeData, RoleAttribute))
+            ?? options.DefaultRoleName;
+
+        if (!NodeTrafficRoleCatalog.TryParseFlags(roleName, out var flags) || !flags.CanTransship)
+        {
+            return null;
+        }
+
+        return TryGetDouble(nodeData, CapacityAttribute) ?? options.DefaultNodeCapacity;
     }
 
     private static NodeTrafficProfile? SelectPreferredProfile(NodeModel node, string? preferredTrafficType)

@@ -521,6 +521,11 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public void AddNode()
     {
+        AddNodeAt(null, null);
+    }
+
+    public void AddNodeAt(double? x, double? y)
+    {
         EnsureNetworkExists();
 
         var primaryTrafficDefinition = EnsurePrimaryTrafficDefinition();
@@ -530,8 +535,8 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             Id = GetNextUniqueName("N", Nodes.Select(item => item.Id)),
             Name = $"Node {nodeIndex}",
-            X = 220d + ((nodeIndex - 1) % 4 * 220d),
-            Y = 180d + ((nodeIndex - 1) / 4 * 170d)
+            X = x ?? 220d + ((nodeIndex - 1) % 4 * 220d),
+            Y = y ?? 180d + ((nodeIndex - 1) / 4 * 170d)
         });
         var initialProfile = new NodeTrafficProfileViewModel(new NodeTrafficProfile
         {
@@ -642,6 +647,42 @@ public sealed class MainWindowViewModel : ObservableObject
         RegisterEdge(edge);
         SelectedEdge = edge;
         RefreshDerivedStateAfterStructureChange("Added a new edge.");
+    }
+
+    public void AddEdgeBetween(NodeViewModel fromNode, NodeViewModel toNode)
+    {
+        AddEdgeBetween(fromNode, toNode, isBidirectional: true);
+    }
+
+    public void AddEdgeBetween(NodeViewModel fromNode, NodeViewModel toNode, bool isBidirectional)
+    {
+        ArgumentNullException.ThrowIfNull(fromNode);
+        ArgumentNullException.ThrowIfNull(toNode);
+
+        EnsureNetworkExists();
+
+        if (Comparer.Equals(fromNode.Id, toNode.Id))
+        {
+            throw new InvalidOperationException("Choose two different nodes to create an edge.");
+        }
+
+        var edge = new EdgeViewModel(
+            new EdgeModel
+            {
+                Id = GetNextUniqueName("E", Edges.Select(item => item.Id)),
+                FromNodeId = fromNode.Id,
+                ToNodeId = toNode.Id,
+                Time = 1d,
+                Cost = 1d,
+                IsBidirectional = isBidirectional
+            },
+            fromNode,
+            toNode);
+
+        RegisterEdge(edge);
+        SelectedEdge = edge;
+        var edgeDirectionLabel = isBidirectional ? "bidirectional" : "one-way";
+        RefreshDerivedStateAfterStructureChange($"Added a {edgeDirectionLabel} edge from '{fromNode.Name}' to '{toNode.Name}'.");
     }
 
     public void RemoveSelectedEdge()

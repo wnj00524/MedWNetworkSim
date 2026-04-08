@@ -9,6 +9,8 @@ public sealed class GraphMlTransferWindowViewModel : ObservableObject
 {
     public const string NoDefaultTrafficTypeOption = "(None)";
 
+    private string importFilePath = string.Empty;
+    private string exportFilePath = string.Empty;
     private string defaultTrafficTypeText = NoDefaultTrafficTypeOption;
     private string selectedRoleName = NodeTrafficRoleCatalog.NoTrafficRole;
     private string defaultCapacityText = string.Empty;
@@ -43,6 +45,38 @@ public sealed class GraphMlTransferWindowViewModel : ObservableObject
     public string SuggestedExportFileName { get; }
 
     public bool CanExport { get; }
+
+    public bool CanImport => !string.IsNullOrWhiteSpace(ImportFilePath);
+
+    public bool CanSave => CanExport && !string.IsNullOrWhiteSpace(ExportFilePath);
+
+    public string ImportFilePath
+    {
+        get => importFilePath;
+        set
+        {
+            if (!SetProperty(ref importFilePath, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(CanImport));
+        }
+    }
+
+    public string ExportFilePath
+    {
+        get => exportFilePath;
+        set
+        {
+            if (!SetProperty(ref exportFilePath, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(CanSave));
+        }
+    }
 
     public string DefaultTrafficTypeText
     {

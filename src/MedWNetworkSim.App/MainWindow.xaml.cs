@@ -93,6 +93,16 @@ public partial class MainWindow : Window
         ExecuteWithErrorHandling(ViewModel.AddTrafficDefinition);
     }
 
+    private void EditTrafficTypes_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new TrafficTypeEditorWindow(ViewModel)
+        {
+            Owner = this
+        };
+
+        window.ShowDialog();
+    }
+
     private void RemoveTrafficType_Click(object sender, RoutedEventArgs e)
     {
         ExecuteWithErrorHandling(ViewModel.RemoveSelectedTrafficDefinition);
@@ -117,6 +127,16 @@ public partial class MainWindow : Window
     private void ApplyTrafficRoleToAllNodes_Click(object sender, RoutedEventArgs e)
     {
         var window = new BulkApplyTrafficRoleWindow(ViewModel)
+        {
+            Owner = this
+        };
+
+        window.ShowDialog();
+    }
+
+    private void EditEdges_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new EdgeEditorWindow(ViewModel)
         {
             Owner = this
         };

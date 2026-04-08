@@ -1,0 +1,218 @@
+<Window x:Class="MedWNetworkSim.App.TrafficTypeEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Traffic Type Editor"
+        Width="980"
+        Height="700"
+        MinWidth="860"
+        MinHeight="620"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Padding="16"
+                Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="18">
+            <StackPanel>
+                <TextBlock FontSize="18"
+                           FontWeight="SemiBold"
+                           Text="Traffic Type Editor" />
+                <TextBlock Margin="0,8,0,0"
+                           FontSize="12"
+                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Text="Add, rename, and edit traffic types in a full-size editor. Changes update the shared network immediately, including routing preference and capacity bidding defaults."
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.45*" />
+                <ColumnDefinition Width="14" />
+                <ColumnDefinition Width="0.95*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Padding="14"
+                    Background="{StaticResource PanelBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="18">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="Traffic Types" />
+
+                    <WrapPanel Grid.Row="2">
+                        <Button Content="Add Traffic Type" Click="AddTrafficType_Click" />
+                        <Button Content="Remove Selected" Click="RemoveTrafficType_Click" />
+                    </WrapPanel>
+
+                    <DataGrid Grid.Row="4"
+                              ItemsSource="{Binding TrafficDefinitions}"
+                              SelectedItem="{Binding SelectedTrafficDefinition, Mode=TwoWay}"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              IsReadOnly="False"
+                              MinHeight="360"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                              SelectionMode="Single"
+                              SelectionUnit="FullRow">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Binding="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Header="Name" Width="130" />
+                            <DataGridTemplateColumn Header="Preference" Width="140">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock VerticalAlignment="Center"
+                                                   Text="{Binding RoutingPreference}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox Padding="2"
+                                                  MinWidth="112"
+                                                  ItemsSource="{Binding DataContext.RoutingPreferences, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                  SelectedItem="{Binding RoutingPreference, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Binding="{Binding CapacityBidPerUnit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.##}}" Header="Bid / Unit" Width="105" />
+                            <DataGridTextColumn Binding="{Binding Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Header="Description" Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2"
+                    Padding="14"
+                    Background="{StaticResource PanelBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="18">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="Selected Traffic Type" />
+
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="Traffic Type" />
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding SelectedTrafficDefinition.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Grid.Row="2"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="Preference" />
+                        <ComboBox Grid.Row="2"
+                                  Grid.Column="1"
+                                  ItemsSource="{Binding RoutingPreferences}"
+                                  SelectedItem="{Binding SelectedTrafficDefinition.RoutingPreference, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Grid.Row="4"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="Bid / Unit" />
+                        <TextBox Grid.Row="4"
+                                 Grid.Column="1"
+                                 Text="{Binding SelectedTrafficDefinition.CapacityBidPerUnit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Grid.Row="6"
+                                   VerticalAlignment="Top"
+                                   FontSize="11"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="Description" />
+                        <TextBox Grid.Row="6"
+                                 Grid.Column="1"
+                                 MinHeight="120"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 Text="{Binding SelectedTrafficDefinition.Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </Grid>
+
+                    <Border Grid.Row="4"
+                            Padding="12"
+                            Background="#FFF8F1E7"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12">
+                        <TextBlock FontSize="12"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="Use routing preference to control how this traffic type chooses routes, and use bid per unit to compete for shared edge and node transhipment capacity."
+                                   TextWrapping="Wrap" />
+                    </Border>
+
+                    <Border Grid.Row="6"
+                            Padding="12"
+                            Background="#FFFFFBF4"
+                            BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12">
+                        <TextBlock FontSize="12"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="{Binding StatusMessage}"
+                                   TextWrapping="Wrap" />
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <DockPanel Grid.Row="4">
+            <TextBlock VerticalAlignment="Center"
+                       FontSize="12"
+                       Foreground="{StaticResource MutedForegroundBrush}"
+                       Text="Tip: the main bottom editor remains available for quick review, but this window is the recommended place to edit multiple traffic types." />
+            <Button DockPanel.Dock="Right"
+                    Margin="12,0,0,0"
+                    Content="Close"
+                    Click="Close_Click" />
+        </DockPanel>
+    </Grid>
+</Window>

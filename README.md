@@ -4,9 +4,11 @@ WPF network simulator for modelling multi-traffic movement across producer, cons
 
 ## What It Does
 
-- Loads a JSON network file.
-- Imports and exports GraphML files through a dedicated popup window.
-- Lets users create a new network and edit traffic types, nodes, node roles, and edges directly in the app.
+- Creates a new network in-app or loads an existing JSON network file.
+- Loads the bundled sample network for quick exploration.
+- Imports and exports GraphML files through a dedicated popup window with explicit import and export file pickers.
+- Lets users edit the network name and description directly in the app.
+- Lets users create and edit traffic types, nodes, node roles, and edges directly in the app.
 - Draws the network on a draggable canvas.
 - Auto-positions nodes when `x` and `y` are omitted from the input file.
 - Includes an `Auto Arrange` action to regenerate node positions for the whole network.
@@ -19,22 +21,33 @@ WPF network simulator for modelling multi-traffic movement across producer, cons
   - `cost`: minimise edge cost
   - `totalCost`: minimise `time + cost`
 - Simulates routed movements from producers to consumers through valid transhipment nodes.
+- Shows simulation outputs in-app, including routed movements, consumer costs, and traffic summaries filtered by traffic type.
 - Saves the current network, including updated node positions, back to JSON.
 
 ## Editing In App
 
-- Use `New Network` to start from an empty model.
-- Use `GraphML...` to import a GraphML graph or export the current network as GraphML. The popup lets you choose a default traffic type, a default node role, and an optional default node capacity for nodes that do not already carry MedW-specific traffic data.
-- Maintain traffic types in the `Network Editor` tab, including routing preference and optional `capacityBidPerUnit` used for both edge and node-capacity competition.
-- Add and remove nodes in the main editor grid.
-- Open `Open Node Editor...` to edit one node in a dedicated window, including its optional shared `transhipmentCapacity`.
+- Use `New Network`, `Load Sample`, and `Open JSON...` from the main toolbar to start from a blank model, the bundled sample, or a saved JSON file.
+- Use `Save JSON...` to save the current in-memory network back to the app's JSON format.
+- Use `GraphML...` to open the GraphML popup. It provides separate `Import File` and `Export File` paths, `Browse...` buttons, `Load GraphML`, and `Save GraphML`.
+- In the GraphML popup, choose a default traffic type, a default node role, and an optional default capacity for imported nodes that do not already carry MedW-specific traffic data.
+- Maintain traffic types in the `Network Editor` tab, including routing preference and optional `capacityBidPerUnit` used for both edge and node-transhipment-capacity competition.
+- Add and remove nodes in the main editor grid, including each node's optional shared `transhipmentCapacity`.
+- Open `Open Node Editor...` to edit one node in a dedicated window with dropdown-based traffic-role editing.
 - In the node editor, choose the node, then choose one of its traffic-role entries, then set:
   - `Traffic Type`
   - `Role`
   - `Production`
   - `Consumption`
 - Add and remove edges in the `Edges` grid. `From` and `To` are chosen from the existing node list rather than typed freehand.
+- Use the `Node Roles` tab to review the currently selected node and traffic-role entry before opening the dedicated editor window.
 - Drag nodes on the canvas to refine the layout visually, or use `Auto Arrange` to regenerate positions.
+
+## Simulation Outputs
+
+- The left-hand overview shows network totals and per-traffic summaries after a run.
+- The `Consumer Costs` tab shows local quantity, imported quantity, blended unit cost, and total movement cost for each consumer.
+- The `Routed Movements` tab shows each routed allocation, including source, producer, consumer, quantity, path, transit cost, bid cost, and landed cost.
+- The `Node Roles` tab provides a quick selection surface for node traffic-role entries and links back into the dedicated node editor.
 
 ## Run It
 
@@ -47,8 +60,9 @@ The app ships with a bundled sample file at [sample-network.json](src/MedWNetwor
 
 ## GraphML Format
 
-- GraphML export preserves the full MedW network by writing the app's traffic definitions, node transhipment capacities, and node traffic profiles into GraphML `<data>` elements.
+- GraphML export preserves the full MedW network by writing graph metadata, traffic definitions, node coordinates, node transhipment capacities, node traffic profiles, and edge properties into GraphML `<data>` elements.
 - GraphML import restores those MedW-specific payloads when they are present.
+- The `GraphML...` popup loads from the chosen import path and writes to the chosen export path. Importing replaces the current in-memory network.
 - When you import a more generic GraphML file that only contains graph structure, the `GraphML...` popup can synthesize a starter traffic-role entry per node from the chosen default traffic type, node role, and optional capacity.
 - Leaving the default traffic type or role on none keeps imported nodes structural only.
 - When the default role includes transhipment, the default capacity becomes that node's shared `transhipmentCapacity`. Producer or consumer defaults still fall back to `1` unit if they need a starter quantity and no amount is available in the GraphML input.
@@ -132,8 +146,11 @@ The app uses a simple custom JSON format:
 
 - [MainWindow.xaml](src/MedWNetworkSim.App/MainWindow.xaml) defines the main shell: canvas, summary panes, simulation results, and the in-app editor grids.
 - [MainWindowViewModel.cs](src/MedWNetworkSim.App/ViewModels/MainWindowViewModel.cs) is the application coordinator. It loads/saves networks, keeps editor selections in sync, and triggers simulation.
+- [GraphMlTransferWindow.xaml](src/MedWNetworkSim.App/GraphMlTransferWindow.xaml) and [GraphMlTransferWindow.xaml.cs](src/MedWNetworkSim.App/GraphMlTransferWindow.xaml.cs) provide the dedicated GraphML import/export dialog and file-picking workflow.
 - [NodeEditorWindow.xaml](src/MedWNetworkSim.App/NodeEditorWindow.xaml) provides the dedicated dropdown-driven node editing workflow.
+- [GraphMlFileService.cs](src/MedWNetworkSim.App/Services/GraphMlFileService.cs) translates between the in-memory MedW model and GraphML, including fallback default-node synthesis for generic GraphML imports.
 - [NetworkFileService.cs](src/MedWNetworkSim.App/Services/NetworkFileService.cs) normalizes and validates JSON data and applies automatic layout.
 - [NetworkSimulationEngine.cs](src/MedWNetworkSim.App/Services/NetworkSimulationEngine.cs) performs routing, capacity competition, bid-cost calculation, and consumer-cost summarization.
+- [NodeTrafficRoleCatalog.cs](src/MedWNetworkSim.App/Models/NodeTrafficRoleCatalog.cs) centralizes the named producer, consumer, and transhipment role combinations used by the UI and GraphML import mapping.
 - The `Models` folder contains the persisted JSON shape.
 - The `ViewModels` folder contains the editable UI state and display helpers used by WPF binding.

@@ -106,6 +106,7 @@ public sealed class NetworkFileService
             {
                 Id = nodeId,
                 Name = string.IsNullOrWhiteSpace(node.Name) ? nodeId : node.Name.Trim(),
+                Shape = node.Shape,
                 X = node.X,
                 Y = node.Y,
                 TranshipmentCapacity = transhipmentCapacity,

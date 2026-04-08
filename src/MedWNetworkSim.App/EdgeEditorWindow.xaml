@@ -21,8 +21,8 @@
         </Grid.RowDefinitions>
 
         <Border Padding="16"
-                Background="{StaticResource PanelBrush}"
-                BorderBrush="{StaticResource BorderBrush}"
+                Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
                 CornerRadius="18">
             <StackPanel>
@@ -31,7 +31,7 @@
                            Text="Edge Editor" />
                 <TextBlock Margin="0,8,0,0"
                            FontSize="12"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="Edit multiple network edges in a full-size workspace. Choose endpoints from the current node list and adjust time, cost, capacity, and direction without relying on the compact bottom panel."
                            TextWrapping="Wrap" />
             </StackPanel>
@@ -45,8 +45,8 @@
             </Grid.ColumnDefinitions>
 
             <Border Padding="14"
-                    Background="{StaticResource PanelBrush}"
-                    BorderBrush="{StaticResource BorderBrush}"
+                    Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1"
                     CornerRadius="18">
                 <Grid>
@@ -118,8 +118,8 @@
 
             <Border Grid.Column="2"
                     Padding="14"
-                    Background="{StaticResource PanelBrush}"
-                    BorderBrush="{StaticResource BorderBrush}"
+                    Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1"
                     CornerRadius="18">
                 <Grid>
@@ -160,7 +160,7 @@
 
                         <TextBlock VerticalAlignment="Center"
                                    FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Edge" />
                         <ComboBox Grid.Column="1"
                                   MinWidth="230"
@@ -183,7 +183,7 @@
                         <TextBlock Grid.Row="2"
                                    VerticalAlignment="Center"
                                    FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Id" />
                         <TextBox Grid.Row="2"
                                  Grid.Column="1"
@@ -192,7 +192,7 @@
                         <TextBlock Grid.Row="4"
                                    VerticalAlignment="Center"
                                    FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="From" />
                         <ComboBox Grid.Row="4"
                                   Grid.Column="1"
@@ -202,7 +202,7 @@
                         <TextBlock Grid.Row="6"
                                    VerticalAlignment="Center"
                                    FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="To" />
                         <ComboBox Grid.Row="6"
                                   Grid.Column="1"
@@ -212,7 +212,7 @@
                         <TextBlock Grid.Row="8"
                                    VerticalAlignment="Center"
                                    FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Time" />
                         <TextBox Grid.Row="8"
                                  Grid.Column="1"
@@ -221,7 +221,7 @@
                         <TextBlock Grid.Row="10"
                                    VerticalAlignment="Center"
                                    FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Cost" />
                         <TextBox Grid.Row="10"
                                  Grid.Column="1"
@@ -238,7 +238,7 @@
 
                             <TextBlock VerticalAlignment="Center"
                                        FontSize="11"
-                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
                                        Text="Capacity" />
                             <TextBox Grid.Column="1"
                                      Text="{Binding SelectedEdge.Capacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -251,24 +251,24 @@
 
                     <Border Grid.Row="4"
                             Padding="12"
-                            Background="#FFF8F1E7"
-                            BorderBrush="{StaticResource BorderBrush}"
+                            Background="{DynamicResource InfoPanelBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
                             CornerRadius="12">
                         <TextBlock FontSize="12"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Tip: edge capacity is optional. Leave it blank for unlimited capacity, or set a value to let traffic types compete using their bid per unit."
                                    TextWrapping="Wrap" />
                     </Border>
 
                     <Border Grid.Row="6"
                             Padding="12"
-                            Background="#FFFFFBF4"
-                            BorderBrush="{StaticResource BorderBrush}"
+                            Background="{DynamicResource CardBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
                             CornerRadius="12">
                         <TextBlock FontSize="12"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="{Binding StatusMessage}"
                                    TextWrapping="Wrap" />
                     </Border>
@@ -279,7 +279,7 @@
         <DockPanel Grid.Row="4">
             <TextBlock VerticalAlignment="Center"
                        FontSize="12"
-                       Foreground="{StaticResource MutedForegroundBrush}"
+                       Foreground="{DynamicResource MutedForegroundBrush}"
                        Text="Tip: the bottom edge table is still useful for quick review, but this window is the recommended place to edit multiple edges." />
             <Button DockPanel.Dock="Right"
                     Margin="12,0,0,0"

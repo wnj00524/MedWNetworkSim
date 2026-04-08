@@ -26,6 +26,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private string networkName = "MedW Network Simulator";
     private string networkDescription = "Load a JSON network file, or create a new one and edit it directly in the app.";
     private string statusMessage = "Load a network file or create a new one, then edit nodes and edges directly in the application.";
+    private AppTheme selectedTheme = AppTheme.Classic;
     private TrafficSummaryViewModel? selectedTraffic;
     private NodeViewModel? selectedNode;
     private NodeTrafficProfileViewModel? selectedNodeTrafficProfile;
@@ -46,6 +47,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public MainWindowViewModel()
     {
+        AppThemeManager.ApplyTheme(selectedTheme);
         LoadBundledSampleIfAvailable();
     }
 
@@ -69,10 +71,26 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public Array RoutingPreferences { get; } = Enum.GetValues(typeof(RoutingPreference));
 
+    public Array ThemeOptions { get; } = Enum.GetValues(typeof(AppTheme));
+
     public string ActiveFileLabel
     {
         get => activeFileLabel;
         private set => SetProperty(ref activeFileLabel, value);
+    }
+
+    public AppTheme SelectedTheme
+    {
+        get => selectedTheme;
+        set
+        {
+            if (!SetProperty(ref selectedTheme, value))
+            {
+                return;
+            }
+
+            AppThemeManager.ApplyTheme(value);
+        }
     }
 
     public string NetworkName
@@ -206,6 +224,8 @@ public sealed class MainWindowViewModel : ObservableObject
 
             SelectedNodeTrafficProfile = value?.TrafficProfiles.FirstOrDefault();
             OnPropertyChanged(nameof(SelectedNodeTrafficRoleHeadline));
+            OnPropertyChanged(nameof(SelectedNodeShapeOptions));
+            OnPropertyChanged(nameof(SelectedNodeShape));
         }
     }
 
@@ -426,6 +446,22 @@ public sealed class MainWindowViewModel : ObservableObject
             }
 
             SelectedNodeTrafficProfile.StoreCapacity = value;
+        }
+    }
+
+    public IReadOnlyList<NodeVisualShape> SelectedNodeShapeOptions => SelectedNode?.ShapeOptions ?? [];
+
+    public NodeVisualShape SelectedNodeShape
+    {
+        get => SelectedNode?.Shape ?? NodeVisualShape.Square;
+        set
+        {
+            if (SelectedNode is null || SelectedNode.Shape == value)
+            {
+                return;
+            }
+
+            SelectedNode.Shape = value;
         }
     }
 
@@ -1861,6 +1897,8 @@ public sealed class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedNodeConsumptionEndPeriod));
         OnPropertyChanged(nameof(IsSelectedNodeStore));
         OnPropertyChanged(nameof(SelectedNodeStoreCapacity));
+        OnPropertyChanged(nameof(SelectedNodeShapeOptions));
+        OnPropertyChanged(nameof(SelectedNodeShape));
         OnPropertyChanged(nameof(SelectedNodeTrafficSelectionLabel));
         OnPropertyChanged(nameof(SelectedNodeTrafficRoleSummary));
     }

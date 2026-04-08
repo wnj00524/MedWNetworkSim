@@ -20,8 +20,8 @@
         </Grid.RowDefinitions>
 
         <Border Padding="16"
-                Background="{StaticResource PanelBrush}"
-                BorderBrush="{StaticResource BorderBrush}"
+                Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
                 CornerRadius="18">
             <StackPanel>
@@ -30,7 +30,7 @@
                            Text="Traffic Type Editor" />
                 <TextBlock Margin="0,8,0,0"
                            FontSize="12"
-                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
                            Text="Add, rename, and edit traffic types in a full-size editor. Changes update the shared network immediately, including routing preference and capacity bidding defaults."
                            TextWrapping="Wrap" />
             </StackPanel>
@@ -44,8 +44,8 @@
             </Grid.ColumnDefinitions>
 
             <Border Padding="14"
-                    Background="{StaticResource PanelBrush}"
-                    BorderBrush="{StaticResource BorderBrush}"
+                    Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1"
                     CornerRadius="18">
                 <Grid>
@@ -103,8 +103,8 @@
 
             <Border Grid.Column="2"
                     Padding="14"
-                    Background="{StaticResource PanelBrush}"
-                    BorderBrush="{StaticResource BorderBrush}"
+                    Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1"
                     CornerRadius="18">
                 <Grid>
@@ -139,7 +139,7 @@
 
                         <TextBlock VerticalAlignment="Center"
                                    FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Traffic Type" />
                         <TextBox Grid.Column="1"
                                  Text="{Binding SelectedTrafficDefinition.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -147,7 +147,7 @@
                         <TextBlock Grid.Row="2"
                                    VerticalAlignment="Center"
                                    FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Preference" />
                         <ComboBox Grid.Row="2"
                                   Grid.Column="1"
@@ -157,7 +157,7 @@
                         <TextBlock Grid.Row="4"
                                    VerticalAlignment="Center"
                                    FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Bid / Unit" />
                         <TextBox Grid.Row="4"
                                  Grid.Column="1"
@@ -166,7 +166,7 @@
                         <TextBlock Grid.Row="6"
                                    VerticalAlignment="Top"
                                    FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Description" />
                         <TextBox Grid.Row="6"
                                  Grid.Column="1"
@@ -179,24 +179,24 @@
 
                     <Border Grid.Row="4"
                             Padding="12"
-                            Background="#FFF8F1E7"
-                            BorderBrush="{StaticResource BorderBrush}"
+                            Background="{DynamicResource InfoPanelBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
                             CornerRadius="12">
                         <TextBlock FontSize="12"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Use routing preference to control how this traffic type chooses routes, and use bid per unit to compete for shared edge and node transhipment capacity."
                                    TextWrapping="Wrap" />
                     </Border>
 
                     <Border Grid.Row="6"
                             Padding="12"
-                            Background="#FFFFFBF4"
-                            BorderBrush="{StaticResource BorderBrush}"
+                            Background="{DynamicResource CardBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
                             CornerRadius="12">
                         <TextBlock FontSize="12"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="{Binding StatusMessage}"
                                    TextWrapping="Wrap" />
                     </Border>
@@ -207,7 +207,7 @@
         <DockPanel Grid.Row="4">
             <TextBlock VerticalAlignment="Center"
                        FontSize="12"
-                       Foreground="{StaticResource MutedForegroundBrush}"
+                       Foreground="{DynamicResource MutedForegroundBrush}"
                        Text="Tip: the main bottom editor remains available for quick review, but this window is the recommended place to edit multiple traffic types." />
             <Button DockPanel.Dock="Right"
                     Margin="12,0,0,0"

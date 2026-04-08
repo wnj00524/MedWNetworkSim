@@ -32,6 +32,7 @@ public sealed class GraphMlFileService
     private const string NodeXKeyId = "node_x";
     private const string NodeYKeyId = "node_y";
     private const string NodeTranshipmentCapacityKeyId = "node_transhipment_capacity";
+    private const string NodeShapeKeyId = "node_shape";
     private const string NodeTrafficTypeKeyId = "node_traffic_type";
     private const string NodeRoleKeyId = "node_role";
     private const string NodeCapacityKeyId = "node_capacity";
@@ -52,6 +53,7 @@ public sealed class GraphMlFileService
     private const string XAttributeName = "x";
     private const string YAttributeName = "y";
     private const string TranshipmentCapacityAttribute = "transhipmentCapacity";
+    private const string ShapeAttribute = "shape";
     private const string TrafficTypeAttribute = "trafficType";
     private const string RoleAttribute = "role";
     private const string CapacityAttribute = "capacity";
@@ -157,6 +159,7 @@ public sealed class GraphMlFileService
         AddKey(root, NodeXKeyId, NodeTarget, XAttributeName, DoubleType);
         AddKey(root, NodeYKeyId, NodeTarget, YAttributeName, DoubleType);
         AddKey(root, NodeTranshipmentCapacityKeyId, NodeTarget, TranshipmentCapacityAttribute, DoubleType);
+        AddKey(root, NodeShapeKeyId, NodeTarget, ShapeAttribute, StringType);
         AddKey(root, NodeTrafficTypeKeyId, NodeTarget, TrafficTypeAttribute, StringType);
         AddKey(root, NodeRoleKeyId, NodeTarget, RoleAttribute, StringType);
         AddKey(root, NodeCapacityKeyId, NodeTarget, CapacityAttribute, DoubleType);
@@ -203,6 +206,8 @@ public sealed class GraphMlFileService
             {
                 AddData(nodeElement, NodeTranshipmentCapacityKeyId, node.TranshipmentCapacity.Value.ToString(CultureInfo.InvariantCulture));
             }
+
+            AddData(nodeElement, NodeShapeKeyId, node.Shape.ToString());
 
             AddData(nodeElement, NodeProfilesJsonKeyId, JsonSerializer.Serialize(node.TrafficProfiles, serializerOptions));
 
@@ -293,6 +298,7 @@ public sealed class GraphMlFileService
         {
             Id = nodeId,
             Name = GetFirstValue(nodeData, NameAttribute, LabelAttribute) ?? nodeId,
+            Shape = TryGetShape(nodeData, ShapeAttribute) ?? NodeVisualShape.Square,
             X = TryGetDouble(nodeData, XAttributeName),
             Y = TryGetDouble(nodeData, YAttributeName),
             TranshipmentCapacity = transhipmentCapacity,
@@ -522,6 +528,24 @@ public sealed class GraphMlFileService
         }
 
         return defaultValue;
+    }
+
+    private static NodeVisualShape? TryGetShape(IReadOnlyDictionary<string, string> data, params string[] candidateNames)
+    {
+        foreach (var candidateName in candidateNames)
+        {
+            if (!data.TryGetValue(candidateName, out var rawValue) || string.IsNullOrWhiteSpace(rawValue))
+            {
+                continue;
+            }
+
+            if (Enum.TryParse<NodeVisualShape>(rawValue.Trim(), ignoreCase: true, out var parsedShape))
+            {
+                return parsedShape;
+            }
+        }
+
+        return null;
     }
 
     private static string? NormalizeOptionalString(string? value)

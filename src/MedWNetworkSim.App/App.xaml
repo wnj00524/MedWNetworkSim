@@ -4,6 +4,7 @@
              xmlns:local="clr-namespace:MedWNetworkSim.App"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
+        <FontFamily x:Key="AppFontFamily">Segoe UI</FontFamily>
         <SolidColorBrush x:Key="WindowBrush" Color="#FFF4EFE6" />
         <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFCF7" />
         <SolidColorBrush x:Key="CanvasBrush" Color="#FFF8F3E9" />
@@ -18,6 +19,13 @@
         <SolidColorBrush x:Key="InfoPanelBrush" Color="#FFF8F1E7" />
         <SolidColorBrush x:Key="MutedForegroundBrush" Color="#FF6E5D51" />
         <SolidColorBrush x:Key="StrongForegroundBrush" Color="#FF2D231E" />
+        <SolidColorBrush x:Key="InputBrush" Color="#FFFDF9F3" />
+        <SolidColorBrush x:Key="SectionBrush" Color="#FFF8F1E7" />
+        <SolidColorBrush x:Key="CardBrush" Color="#FFFFFBF4" />
+        <SolidColorBrush x:Key="CardAltBrush" Color="#FFF0E6D6" />
+        <SolidColorBrush x:Key="TrackBrush" Color="#FFE7DCCB" />
+        <SolidColorBrush x:Key="NodeWatermarkBrush" Color="#66A67C54" />
+        <SolidColorBrush x:Key="NodeBadgeBrush" Color="#FFF0E6D6" />
 
         <DrawingBrush x:Key="CanvasGridBrush"
                       TileMode="Tile"
@@ -28,10 +36,10 @@
                       Stretch="None">
             <DrawingBrush.Drawing>
                 <DrawingGroup>
-                    <GeometryDrawing Brush="{StaticResource CanvasBrush}" Geometry="M0,0 H32 V32 H0 Z" />
+                    <GeometryDrawing Brush="{DynamicResource CanvasBrush}" Geometry="M0,0 H32 V32 H0 Z" />
                     <GeometryDrawing Geometry="M32,0 L0,0 0,32">
                         <GeometryDrawing.Pen>
-                            <Pen Brush="{StaticResource CanvasLineBrush}" Thickness="1" />
+                            <Pen Brush="{DynamicResource CanvasLineBrush}" Thickness="1" />
                         </GeometryDrawing.Pen>
                     </GeometryDrawing>
                 </DrawingGroup>
@@ -39,15 +47,15 @@
         </DrawingBrush>
 
         <Style TargetType="Window">
-            <Setter Property="FontFamily" Value="Segoe UI" />
-            <Setter Property="Foreground" Value="{StaticResource StrongForegroundBrush}" />
-            <Setter Property="Background" Value="{StaticResource WindowBrush}" />
+            <Setter Property="FontFamily" Value="{DynamicResource AppFontFamily}" />
+            <Setter Property="Foreground" Value="{DynamicResource StrongForegroundBrush}" />
+            <Setter Property="Background" Value="{DynamicResource WindowBrush}" />
         </Style>
 
         <Style TargetType="Button">
-            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
             <Setter Property="Foreground" Value="White" />
-            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="14,10" />
             <Setter Property="Margin" Value="0,0,12,0" />
@@ -72,9 +80,9 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="GridLinesVisibility" Value="Horizontal" />
-            <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource BorderBrush}" />
-            <Setter Property="RowBackground" Value="#FFFEFDFC" />
-            <Setter Property="AlternatingRowBackground" Value="#FFF8F1E7" />
+            <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="RowBackground" Value="{DynamicResource PanelBrush}" />
+            <Setter Property="AlternatingRowBackground" Value="{DynamicResource InfoPanelBrush}" />
             <Setter Property="HeadersVisibility" Value="Column" />
             <Setter Property="CanUserAddRows" Value="False" />
             <Setter Property="CanUserDeleteRows" Value="False" />
@@ -82,9 +90,9 @@
         </Style>
 
         <Style TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="#FFF1E3D1" />
+            <Setter Property="Background" Value="{DynamicResource CardAltBrush}" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Foreground" Value="{StaticResource StrongForegroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource StrongForegroundBrush}" />
             <Setter Property="Padding" Value="12,10" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>

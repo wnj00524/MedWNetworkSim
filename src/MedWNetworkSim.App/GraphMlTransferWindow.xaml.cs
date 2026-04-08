@@ -128,7 +128,7 @@ public partial class GraphMlTransferWindow : Window
         }
 
         var exportPath = ViewModel.ExportFilePath.Trim();
-        if (string.IsNullOrWhiteSpace(Path.GetExtension(exportPath)))
+        if (!Path.HasExtension(exportPath))
         {
             exportPath += ".graphml";
         }

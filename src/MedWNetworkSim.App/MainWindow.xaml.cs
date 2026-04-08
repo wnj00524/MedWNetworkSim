@@ -136,7 +136,7 @@ public partial class MainWindow : Window
 
     private void EditEdges_Click(object sender, RoutedEventArgs e)
     {
-        var window = new EdgeEditorWindow(ViewModel)
+        var window = new EdgeEditorWindow(new EdgeEditorViewModel(ViewModel))
         {
             Owner = this
         };

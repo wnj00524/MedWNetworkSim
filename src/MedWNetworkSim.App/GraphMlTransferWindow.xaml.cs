@@ -1,4 +1,5 @@
 using System.Windows;
+using System.IO;
 using Microsoft.Win32;
 using MedWNetworkSim.App.ViewModels;
 
@@ -21,7 +22,7 @@ public partial class GraphMlTransferWindow : Window
 
     public GraphMlTransferWindowViewModel ViewModel { get; }
 
-    private void ImportGraphMl_Click(object sender, RoutedEventArgs e)
+    private void BrowseImportGraphMl_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog
         {
@@ -36,21 +37,29 @@ public partial class GraphMlTransferWindow : Window
             return;
         }
 
+        ViewModel.ImportFilePath = dialog.FileName;
+    }
+
+    private void ImportGraphMl_Click(object sender, RoutedEventArgs e)
+    {
         ExecuteWithErrorHandling(() =>
         {
             var options = ViewModel.BuildTransferOptions();
-            mainWindowViewModel.LoadFromGraphMl(dialog.FileName, options);
+            var importPath = GetValidatedImportPath();
+            mainWindowViewModel.LoadFromGraphMl(importPath, options);
             Close();
         });
     }
 
-    private void ExportGraphMl_Click(object sender, RoutedEventArgs e)
+    private void BrowseExportGraphMl_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new SaveFileDialog
         {
             Title = "Export GraphML graph",
             Filter = "GraphML (*.graphml)|*.graphml|XML (*.xml)|*.xml|All files (*.*)|*.*",
-            FileName = ViewModel.SuggestedExportFileName,
+            FileName = string.IsNullOrWhiteSpace(ViewModel.ExportFilePath)
+                ? ViewModel.SuggestedExportFileName
+                : Path.GetFileName(ViewModel.ExportFilePath),
             OverwritePrompt = true
         };
 
@@ -59,10 +68,16 @@ public partial class GraphMlTransferWindow : Window
             return;
         }
 
+        ViewModel.ExportFilePath = dialog.FileName;
+    }
+
+    private void ExportGraphMl_Click(object sender, RoutedEventArgs e)
+    {
         ExecuteWithErrorHandling(() =>
         {
             var options = ViewModel.BuildTransferOptions();
-            mainWindowViewModel.SaveToGraphMl(dialog.FileName, options);
+            var exportPath = GetNormalizedExportPath();
+            mainWindowViewModel.SaveToGraphMl(exportPath, options);
             Close();
         });
     }
@@ -87,5 +102,37 @@ public partial class GraphMlTransferWindow : Window
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
+    }
+
+    private string GetValidatedImportPath()
+    {
+        if (string.IsNullOrWhiteSpace(ViewModel.ImportFilePath))
+        {
+            throw new InvalidOperationException("Choose a GraphML file to import.");
+        }
+
+        var importPath = Path.GetFullPath(ViewModel.ImportFilePath.Trim());
+        if (!File.Exists(importPath))
+        {
+            throw new FileNotFoundException("The selected GraphML import file was not found.", importPath);
+        }
+
+        return importPath;
+    }
+
+    private string GetNormalizedExportPath()
+    {
+        if (string.IsNullOrWhiteSpace(ViewModel.ExportFilePath))
+        {
+            throw new InvalidOperationException("Choose a GraphML file path to save.");
+        }
+
+        var exportPath = ViewModel.ExportFilePath.Trim();
+        if (string.IsNullOrWhiteSpace(Path.GetExtension(exportPath)))
+        {
+            exportPath += ".graphml";
+        }
+
+        return Path.GetFullPath(exportPath);
     }
 }

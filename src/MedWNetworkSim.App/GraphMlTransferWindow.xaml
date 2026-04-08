@@ -6,9 +6,9 @@
         mc:Ignorable="d"
         Title="GraphML Import / Export"
         Width="720"
-        Height="540"
+        Height="620"
         MinWidth="680"
-        MinHeight="500"
+        MinHeight="560"
         WindowStartupLocation="CenterOwner">
     <Grid Margin="18">
         <Grid.RowDefinitions>
@@ -45,13 +45,23 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="16" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="16" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="12" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="16" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="12" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="12" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="12" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="16" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
@@ -62,40 +72,117 @@
                 <TextBlock Grid.ColumnSpan="2"
                            FontSize="16"
                            FontWeight="SemiBold"
+                           Text="GraphML Files" />
+
+                <Border Grid.Row="2"
+                        Grid.ColumnSpan="2"
+                        Padding="12"
+                        Background="#FFF8F1E7"
+                        BorderBrush="{StaticResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="12">
+                    <TextBlock FontSize="12"
+                               Foreground="{StaticResource MutedForegroundBrush}"
+                               Text="Choose a GraphML file to load into the simulator, or choose a destination file to save the current network. You can type a path directly or use Browse."
+                               TextWrapping="Wrap" />
+                </Border>
+
+                <TextBlock Grid.Row="4"
+                           VerticalAlignment="Center"
+                           FontSize="12"
+                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Text="Import File" />
+                <Grid Grid.Row="4"
+                      Grid.Column="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox MinWidth="220"
+                             Margin="0,0,12,0"
+                             Text="{Binding ImportFilePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button Grid.Column="1"
+                            Content="Browse..."
+                            Click="BrowseImportGraphMl_Click" />
+                    <Button Grid.Column="2"
+                            Content="Load GraphML"
+                            Click="ImportGraphMl_Click"
+                            IsEnabled="{Binding CanImport}" />
+                </Grid>
+
+                <TextBlock Grid.Row="6"
+                           VerticalAlignment="Center"
+                           FontSize="12"
+                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Text="Export File" />
+                <Grid Grid.Row="6"
+                      Grid.Column="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox MinWidth="220"
+                             Margin="0,0,12,0"
+                             Text="{Binding ExportFilePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button Grid.Column="1"
+                            Content="Browse..."
+                            Click="BrowseExportGraphMl_Click"
+                            IsEnabled="{Binding CanExport}" />
+                    <Button Grid.Column="2"
+                            Content="Save GraphML"
+                            Click="ExportGraphMl_Click"
+                            IsEnabled="{Binding CanSave}" />
+                </Grid>
+
+                <TextBlock Grid.Row="8"
+                           Grid.ColumnSpan="2"
+                           FontSize="11"
+                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Text="{Binding SuggestedExportFileName, StringFormat=Suggested export filename: {0}}"
+                           TextWrapping="Wrap" />
+
+                <TextBlock Grid.Row="10"
+                           Grid.ColumnSpan="2"
+                           FontSize="16"
+                           FontWeight="SemiBold"
                            Text="Default Node Mapping" />
 
-                <TextBlock Grid.Row="2"
+                <TextBlock Grid.Row="12"
                            VerticalAlignment="Center"
                            FontSize="12"
                            Foreground="{StaticResource MutedForegroundBrush}"
                            Text="Traffic Type" />
-                <ComboBox Grid.Row="2"
+                <ComboBox Grid.Row="12"
                           Grid.Column="1"
                           IsEditable="True"
                           IsTextSearchEnabled="False"
                           ItemsSource="{Binding TrafficTypeOptions}"
                           Text="{Binding DefaultTrafficTypeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
-                <TextBlock Grid.Row="4"
+                <TextBlock Grid.Row="14"
                            VerticalAlignment="Center"
                            FontSize="12"
                            Foreground="{StaticResource MutedForegroundBrush}"
                            Text="Role" />
-                <ComboBox Grid.Row="4"
+                <ComboBox Grid.Row="14"
                           Grid.Column="1"
                           ItemsSource="{Binding RoleOptions}"
                           SelectedItem="{Binding SelectedRoleName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
-                <TextBlock Grid.Row="6"
+                <TextBlock Grid.Row="16"
                            VerticalAlignment="Center"
                            FontSize="12"
                            Foreground="{StaticResource MutedForegroundBrush}"
                            Text="Capacity" />
-                <TextBox Grid.Row="6"
+                <TextBox Grid.Row="16"
                          Grid.Column="1"
                          Text="{Binding DefaultCapacityText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
-                <Border Grid.Row="8"
+                <Border Grid.Row="18"
                         Grid.ColumnSpan="2"
                         Padding="12"
                         Background="#FFF8F1E7"
@@ -121,14 +208,9 @@
             <TextBlock VerticalAlignment="Center"
                        FontSize="12"
                        Foreground="{StaticResource MutedForegroundBrush}"
-                       Text="Import reads a GraphML file and replaces the current network. Export writes the currently loaded network to a GraphML file." />
+                       Text="Import replaces the current network. Save GraphML writes the currently loaded network to the chosen GraphML file." />
             <WrapPanel DockPanel.Dock="Right"
                        Margin="12,0,0,0">
-                <Button Content="Import GraphML..."
-                        Click="ImportGraphMl_Click" />
-                <Button Content="Export GraphML..."
-                        Click="ExportGraphMl_Click"
-                        IsEnabled="{Binding CanExport}" />
                 <Button Content="Close"
                         Click="Close_Click" />
             </WrapPanel>

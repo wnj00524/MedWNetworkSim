@@ -29,6 +29,12 @@ public partial class TrafficTypeEditorWindow : Window
         Close();
     }
 
+    protected override void OnClosed(EventArgs e)
+    {
+        ViewModel.Dispose();
+        base.OnClosed(e);
+    }
+
     private void ExecuteWithErrorHandling(Action action)
     {
         try

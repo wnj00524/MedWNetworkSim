@@ -3,9 +3,10 @@ using System.ComponentModel;
 
 namespace MedWNetworkSim.App.ViewModels;
 
-public sealed class TrafficTypeEditorViewModel : ObservableObject
+public sealed class TrafficTypeEditorViewModel : ObservableObject, IDisposable
 {
     private readonly MainWindowViewModel mainWindowViewModel;
+    private bool isDisposed;
 
     public TrafficTypeEditorViewModel(MainWindowViewModel mainWindowViewModel)
     {
@@ -46,8 +47,25 @@ public sealed class TrafficTypeEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedTrafficDefinition));
     }
 
+    public void Dispose()
+    {
+        if (isDisposed)
+        {
+            return;
+        }
+
+        mainWindowViewModel.PropertyChanged -= HandleMainWindowViewModelPropertyChanged;
+        isDisposed = true;
+        GC.SuppressFinalize(this);
+    }
+
     private void HandleMainWindowViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (isDisposed)
+        {
+            return;
+        }
+
         if (e.PropertyName is nameof(MainWindowViewModel.SelectedTrafficDefinition))
         {
             OnPropertyChanged(nameof(SelectedTrafficDefinition));

@@ -5,14 +5,14 @@ namespace MedWNetworkSim.App;
 
 public partial class EdgeEditorWindow : Window
 {
-    public EdgeEditorWindow(MainWindowViewModel viewModel)
+    public EdgeEditorWindow(EdgeEditorViewModel viewModel)
     {
         InitializeComponent();
         ViewModel = viewModel;
         DataContext = ViewModel;
     }
 
-    public MainWindowViewModel ViewModel { get; }
+    public EdgeEditorViewModel ViewModel { get; }
 
     private void AddEdge_Click(object sender, RoutedEventArgs e)
     {

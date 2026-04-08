@@ -249,9 +249,7 @@ public sealed class EdgeViewModel : ObservableObject
 
     public double LabelLeft => ((X1 + X2) / 2d) - (LabelWidth / 2d);
 
-    public double LabelTop => ((X1 + X2, Y1 + Y2) is var midpoint
-        ? (midpoint.Item2 / 2d) - (LabelHeight / 2d)
-        : 0d);
+    public double LabelTop => ((Y1 + Y2) / 2d) - (LabelHeight / 2d);
 
     public string ArrowPoints
     {

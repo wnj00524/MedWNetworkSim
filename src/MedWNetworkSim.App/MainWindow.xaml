@@ -119,13 +119,33 @@
                                   HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Auto"
                                   CanContentScroll="False">
-                        <Grid Width="{Binding WorkspaceWidth}" Height="{Binding WorkspaceHeight}">
+                        <Grid x:Name="NetworkCanvasGrid"
+                              Width="{Binding WorkspaceWidth}"
+                              Height="{Binding WorkspaceHeight}"
+                              PreviewMouseLeftButtonDown="NetworkCanvasGrid_OnPreviewMouseLeftButtonDown"
+                              PreviewMouseRightButtonDown="NetworkCanvasGrid_OnPreviewMouseRightButtonDown">
+                            <Grid.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Add Node"
+                                              Click="CanvasAddNode_Click" />
+                                </ContextMenu>
+                            </Grid.ContextMenu>
+
                             <Border Background="{StaticResource CanvasGridBrush}"
                                     BorderBrush="#33B18A63"
                                     BorderThickness="1"
                                     CornerRadius="20" />
 
-                            <ItemsControl ItemsSource="{Binding Edges}" IsHitTestVisible="False">
+                            <Line x:Name="EdgeCreationPreviewLine"
+                                  IsHitTestVisible="False"
+                                  Stroke="{StaticResource AccentStrongBrush}"
+                                  StrokeThickness="3"
+                                  StrokeDashArray="6,4"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  Visibility="Collapsed" />
+
+                            <ItemsControl ItemsSource="{Binding Edges}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <Canvas />
@@ -227,6 +247,7 @@
                                                Height="{Binding Height}"
                                                Cursor="SizeAll"
                                                PreviewMouseLeftButtonDown="NodeThumb_OnPreviewMouseLeftButtonDown"
+                                               PreviewMouseLeftButtonUp="NodeThumb_OnPreviewMouseLeftButtonUp"
                                                DragDelta="NodeThumb_OnDragDelta"
                                                ToolTip="{Binding FullTrafficSummary}">
                                             <Thumb.Template>

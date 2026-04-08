@@ -81,6 +81,12 @@
                     <Button Content="Run Simulation"
                             Click="RunSimulation_Click"
                             IsEnabled="{Binding HasNetwork}" />
+                    <Button Content="Reset Timeline"
+                            Click="ResetTimeline_Click"
+                            IsEnabled="{Binding HasNetwork}" />
+                    <Button Content="Next Period"
+                            Click="NextTimelinePeriod_Click"
+                            IsEnabled="{Binding HasNetwork}" />
                 </WrapPanel>
             </Grid>
         </Border>
@@ -109,6 +115,13 @@
                         <TextBlock FontSize="20"
                                    FontWeight="SemiBold"
                                    Text="Network Canvas" />
+                        <TextBlock DockPanel.Dock="Right"
+                                   Margin="18,0,0,0"
+                                   VerticalAlignment="Center"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource AccentStrongBrush}"
+                                   Text="{Binding TimelineHeadline}" />
                         <TextBlock DockPanel.Dock="Right"
                                    FontSize="12"
                                    Foreground="{StaticResource MutedForegroundBrush}"
@@ -324,6 +337,21 @@
                                                                                 CornerRadius="3" />
                                                                     </Grid>
                                                                 </StackPanel>
+                                                            </Border>
+
+                                                            <Border Grid.Row="2"
+                                                                    Margin="0,0,0,8"
+                                                                    Padding="8"
+                                                                    Background="#FFF3ECE0"
+                                                                    BorderBrush="{StaticResource BorderBrush}"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="12"
+                                                                    VerticalAlignment="Bottom"
+                                                                    Visibility="{Binding TimelinePanelVisibility}">
+                                                                <TextBlock FontSize="11"
+                                                                           Foreground="{StaticResource AccentStrongBrush}"
+                                                                           Text="{Binding TimelineSummaryLabel}"
+                                                                           TextWrapping="Wrap" />
                                                             </Border>
 
                                                             <ScrollViewer Grid.Row="3"
@@ -624,6 +652,7 @@
                                       SelectionMode="Single"
                                       SelectionUnit="FullRow">
                                 <DataGrid.Columns>
+                                    <DataGridTextColumn Binding="{Binding Period}" Header="Period" Width="65" />
                                     <DataGridTextColumn Binding="{Binding TrafficType}" Header="Traffic" Width="120" />
                                     <DataGridTextColumn Binding="{Binding RoutingPreferenceLabel}" Header="Preference" Width="95" />
                                     <DataGridTextColumn Binding="{Binding SourceLabel}" Header="Source" Width="85" />

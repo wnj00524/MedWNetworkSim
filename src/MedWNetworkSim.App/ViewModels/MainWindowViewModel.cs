@@ -17,6 +17,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly NetworkFileService fileService = new();
     private readonly GraphMlFileService graphMlFileService = new();
     private readonly NetworkSimulationEngine simulationEngine = new();
+    private readonly TemporalNetworkSimulationEngine temporalSimulationEngine = new();
     private readonly List<RouteAllocation> allAllocationModels = [];
     private readonly List<RouteAllocationRowViewModel> allAllocations = [];
     private readonly List<ConsumerCostSummaryRowViewModel> allConsumerCostSummaries = [];
@@ -34,6 +35,10 @@ public sealed class MainWindowViewModel : ObservableObject
     private bool isAdjustingTrafficDefinitionNames;
     private bool isBulkUpdatingTrafficProfiles;
     private bool hasSimulationSnapshot;
+    private TemporalNetworkSimulationEngine.TemporalSimulationState? temporalSimulationState;
+    private TemporalNetworkSimulationEngine.TemporalSimulationStepResult? lastTimelineStepResult;
+    private int currentPeriod;
+    private bool hasTimelineSnapshot;
     private double workspaceWidth = 1600d;
     private double workspaceHeight = 1000d;
     private bool hasNetwork;
@@ -125,6 +130,12 @@ public sealed class MainWindowViewModel : ObservableObject
     }
 
     public string CanvasOnlyButtonLabel => IsCanvasOnlyMode ? "Exit Canvas Only" : "Canvas Only";
+
+    public int CurrentPeriod => currentPeriod;
+
+    public string TimelineHeadline => hasTimelineSnapshot
+        ? $"Timeline period {CurrentPeriod}"
+        : "Timeline not started";
 
     public GridLength RightRailColumnWidth => IsCanvasOnlyMode
         ? new GridLength(0d)
@@ -314,6 +325,110 @@ public sealed class MainWindowViewModel : ObservableObject
         }
     }
 
+    public int? SelectedNodeProductionStartPeriod
+    {
+        get => SelectedNodeTrafficProfile?.ProductionStartPeriod;
+        set
+        {
+            if (SelectedNodeTrafficProfile is null)
+            {
+                return;
+            }
+
+            if (SelectedNodeTrafficProfile.ProductionStartPeriod == value)
+            {
+                return;
+            }
+
+            SelectedNodeTrafficProfile.ProductionStartPeriod = value;
+        }
+    }
+
+    public int? SelectedNodeProductionEndPeriod
+    {
+        get => SelectedNodeTrafficProfile?.ProductionEndPeriod;
+        set
+        {
+            if (SelectedNodeTrafficProfile is null)
+            {
+                return;
+            }
+
+            if (SelectedNodeTrafficProfile.ProductionEndPeriod == value)
+            {
+                return;
+            }
+
+            SelectedNodeTrafficProfile.ProductionEndPeriod = value;
+        }
+    }
+
+    public int? SelectedNodeConsumptionStartPeriod
+    {
+        get => SelectedNodeTrafficProfile?.ConsumptionStartPeriod;
+        set
+        {
+            if (SelectedNodeTrafficProfile is null)
+            {
+                return;
+            }
+
+            if (SelectedNodeTrafficProfile.ConsumptionStartPeriod == value)
+            {
+                return;
+            }
+
+            SelectedNodeTrafficProfile.ConsumptionStartPeriod = value;
+        }
+    }
+
+    public int? SelectedNodeConsumptionEndPeriod
+    {
+        get => SelectedNodeTrafficProfile?.ConsumptionEndPeriod;
+        set
+        {
+            if (SelectedNodeTrafficProfile is null)
+            {
+                return;
+            }
+
+            if (SelectedNodeTrafficProfile.ConsumptionEndPeriod == value)
+            {
+                return;
+            }
+
+            SelectedNodeTrafficProfile.ConsumptionEndPeriod = value;
+        }
+    }
+
+    public bool IsSelectedNodeStore
+    {
+        get => SelectedNodeTrafficProfile?.IsStore ?? false;
+        set
+        {
+            if (SelectedNodeTrafficProfile is null || SelectedNodeTrafficProfile.IsStore == value)
+            {
+                return;
+            }
+
+            SelectedNodeTrafficProfile.IsStore = value;
+        }
+    }
+
+    public double? SelectedNodeStoreCapacity
+    {
+        get => SelectedNodeTrafficProfile?.StoreCapacity;
+        set
+        {
+            if (SelectedNodeTrafficProfile is null || SelectedNodeTrafficProfile.StoreCapacity == value)
+            {
+                return;
+            }
+
+            SelectedNodeTrafficProfile.StoreCapacity = value;
+        }
+    }
+
     public string SelectedNodeTrafficSelectionLabel => SelectedNodeTrafficProfile?.SelectionLabel ?? "No traffic role selected";
 
     public string SelectedNodeTrafficRoleSummary => SelectedNodeTrafficProfile?.RoleSummary ?? "Choose or add a traffic role entry.";
@@ -462,6 +577,45 @@ public sealed class MainWindowViewModel : ObservableObject
 
         var totalDelivered = outcomes.Sum(outcome => outcome.TotalDelivered);
         StatusMessage = $"Simulation complete. Routed {allAllocations.Count} movement(s) delivering {totalDelivered:0.##} unit(s).";
+    }
+
+    public void ResetTimeline()
+    {
+        temporalSimulationState = null;
+        lastTimelineStepResult = null;
+        currentPeriod = 0;
+        hasTimelineSnapshot = false;
+        OnPropertyChanged(nameof(CurrentPeriod));
+        OnPropertyChanged(nameof(TimelineHeadline));
+        ClearTimelineVisuals();
+        StatusMessage = "Reset the time-step simulation.";
+    }
+
+    public void AdvanceTimeline()
+    {
+        if (!HasNetwork)
+        {
+            return;
+        }
+
+        var current = BuildValidatedNetwork();
+        temporalSimulationState ??= temporalSimulationEngine.Initialize(current);
+        var stepResult = temporalSimulationEngine.Advance(current, temporalSimulationState);
+        lastTimelineStepResult = stepResult;
+        currentPeriod = stepResult.Period;
+        hasTimelineSnapshot = true;
+        OnPropertyChanged(nameof(CurrentPeriod));
+        OnPropertyChanged(nameof(TimelineHeadline));
+
+        allAllocationModels.Clear();
+        allAllocationModels.AddRange(stepResult.Allocations);
+        allAllocations.Clear();
+        allAllocations.AddRange(stepResult.Allocations.Select(allocation => new RouteAllocationRowViewModel(allocation)));
+        allConsumerCostSummaries.Clear();
+        VisibleConsumerCostSummaries.Clear();
+        RefreshVisibleAllocations();
+        ApplyTimelineVisuals(stepResult);
+        StatusMessage = $"Advanced the timeline to period {currentPeriod}. {stepResult.InFlightMovementCount} movement(s) remain in flight.";
     }
 
     public void AutoArrangeNodes()
@@ -916,12 +1070,19 @@ public sealed class MainWindowViewModel : ObservableObject
             : network.Description;
         ActiveFileLabel = activeFilePath ?? "Unsaved network";
         HasNetwork = true;
+        temporalSimulationState = null;
+        lastTimelineStepResult = null;
+        currentPeriod = 0;
+        hasTimelineSnapshot = false;
         RefreshNodeIdOptions();
         RefreshTrafficTypeNameOptions();
         RefreshTrafficSummariesFromCurrentState();
         RecalculateWorkspace();
         ClearFlowVisuals();
+        ClearTimelineVisuals();
         RefreshCounts();
+        OnPropertyChanged(nameof(CurrentPeriod));
+        OnPropertyChanged(nameof(TimelineHeadline));
         StatusMessage = successMessage;
     }
 
@@ -1329,18 +1490,25 @@ public sealed class MainWindowViewModel : ObservableObject
     private void InvalidateSimulationResults(string message)
     {
         hasSimulationSnapshot = false;
+        hasTimelineSnapshot = false;
+        temporalSimulationState = null;
+        lastTimelineStepResult = null;
+        currentPeriod = 0;
         allAllocationModels.Clear();
         allAllocations.Clear();
         allConsumerCostSummaries.Clear();
         VisibleAllocations.Clear();
         VisibleConsumerCostSummaries.Clear();
         ClearFlowVisuals();
+        ClearTimelineVisuals();
 
         foreach (var traffic in TrafficTypes)
         {
             traffic.ClearOutcome();
         }
 
+        OnPropertyChanged(nameof(CurrentPeriod));
+        OnPropertyChanged(nameof(TimelineHeadline));
         OnPropertyChanged(nameof(VisibleAllocationHeadline));
         OnPropertyChanged(nameof(VisibleConsumerCostHeadline));
         StatusMessage = message;
@@ -1366,6 +1534,12 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         if (!hasSimulationSnapshot)
         {
+            if (hasTimelineSnapshot && lastTimelineStepResult is not null)
+            {
+                ApplyTimelineVisuals(lastTimelineStepResult);
+                return;
+            }
+
             ClearFlowVisuals();
             return;
         }
@@ -1453,6 +1627,44 @@ public sealed class MainWindowViewModel : ObservableObject
         }
     }
 
+    private void ApplyTimelineVisuals(TemporalNetworkSimulationEngine.TemporalSimulationStepResult stepResult)
+    {
+        var maxEdgeFlowQuantity = stepResult.EdgeFlows.Count == 0
+            ? 0d
+            : stepResult.EdgeFlows.Values.Max(summary => summary.ForwardQuantity + summary.ReverseQuantity);
+
+        foreach (var edge in Edges)
+        {
+            var summary = string.IsNullOrWhiteSpace(edge.Id)
+                ? TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty
+                : stepResult.EdgeFlows.GetValueOrDefault(edge.Id, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty);
+            edge.ApplySimulationVisuals(summary.ForwardQuantity, summary.ReverseQuantity, maxEdgeFlowQuantity, hasSimulationSnapshot: true);
+        }
+
+        foreach (var node in Nodes)
+        {
+            var flowSummary = string.IsNullOrWhiteSpace(node.Id)
+                ? TemporalNetworkSimulationEngine.NodeFlowVisualSummary.Empty
+                : stepResult.NodeFlows.GetValueOrDefault(node.Id, TemporalNetworkSimulationEngine.NodeFlowVisualSummary.Empty);
+
+            var trafficStates = stepResult.NodeStates
+                .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id))
+                .Select(pair => pair.Value)
+                .ToList();
+
+            node.ApplySimulationVisuals(
+                flowSummary.OutboundQuantity,
+                0d,
+                flowSummary.InboundQuantity,
+                0d,
+                hasSimulationSnapshot: true);
+            node.ApplyTimelineVisuals(
+                trafficStates.Sum(item => item.AvailableSupply),
+                trafficStates.Sum(item => item.DemandBacklog),
+                trafficStates.Sum(item => item.StoreInventory));
+        }
+    }
+
     private void ClearFlowVisuals()
     {
         foreach (var edge in Edges)
@@ -1463,6 +1675,20 @@ public sealed class MainWindowViewModel : ObservableObject
         foreach (var node in Nodes)
         {
             node.ClearSimulationVisuals();
+        }
+    }
+
+    private void ClearTimelineVisuals()
+    {
+        foreach (var edge in Edges)
+        {
+            edge.ClearSimulationVisuals();
+        }
+
+        foreach (var node in Nodes)
+        {
+            node.ClearSimulationVisuals();
+            node.ClearTimelineVisuals();
         }
     }
 
@@ -1629,6 +1855,12 @@ public sealed class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSelectedNodeConsumer));
         OnPropertyChanged(nameof(SelectedNodeProduction));
         OnPropertyChanged(nameof(SelectedNodeConsumption));
+        OnPropertyChanged(nameof(SelectedNodeProductionStartPeriod));
+        OnPropertyChanged(nameof(SelectedNodeProductionEndPeriod));
+        OnPropertyChanged(nameof(SelectedNodeConsumptionStartPeriod));
+        OnPropertyChanged(nameof(SelectedNodeConsumptionEndPeriod));
+        OnPropertyChanged(nameof(IsSelectedNodeStore));
+        OnPropertyChanged(nameof(SelectedNodeStoreCapacity));
         OnPropertyChanged(nameof(SelectedNodeTrafficSelectionLabel));
         OnPropertyChanged(nameof(SelectedNodeTrafficRoleSummary));
     }

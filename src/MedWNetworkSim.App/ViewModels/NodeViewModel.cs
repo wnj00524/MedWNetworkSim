@@ -31,6 +31,10 @@ public sealed class NodeViewModel : ObservableObject
     private double routedInboundQuantity;
     private double localQuantity;
     private double transhipmentUtilizationRatio;
+    private double availableSupplyQuantity;
+    private double demandBacklogQuantity;
+    private double storeInventoryQuantity;
+    private bool hasTimelineDetails;
     private Brush nodeBorderDisplayBrush = DefaultNodeBorder;
     private Brush simulationBrush = IdleBrush;
 
@@ -165,7 +169,7 @@ public sealed class NodeViewModel : ObservableObject
     {
         get
         {
-            if (!HasSimulationDetails)
+            if (!HasSimulationDetails && !HasTimelineDetails)
             {
                 return string.Empty;
             }
@@ -196,6 +200,36 @@ public sealed class NodeViewModel : ObservableObject
         }
     }
 
+    public string TimelineSummaryLabel
+    {
+        get
+        {
+            if (!HasTimelineDetails)
+            {
+                return string.Empty;
+            }
+
+            var parts = new List<string>();
+
+            if (availableSupplyQuantity > Epsilon)
+            {
+                parts.Add($"ready {availableSupplyQuantity:0.##}");
+            }
+
+            if (demandBacklogQuantity > Epsilon)
+            {
+                parts.Add($"need {demandBacklogQuantity:0.##}");
+            }
+
+            if (storeInventoryQuantity > Epsilon)
+            {
+                parts.Add($"stored {storeInventoryQuantity:0.##}");
+            }
+
+            return parts.Count == 0 ? "No waiting stock or demand." : string.Join("  ", parts);
+        }
+    }
+
     public string TranshipmentUsageLabel
     {
         get
@@ -216,6 +250,8 @@ public sealed class NodeViewModel : ObservableObject
 
     public Visibility SimulationPanelVisibility => HasSimulationDetails ? Visibility.Visible : Visibility.Collapsed;
 
+    public Visibility TimelinePanelVisibility => HasTimelineDetails ? Visibility.Visible : Visibility.Collapsed;
+
     public Visibility TranshipmentUsageVisibility => HasTranshipmentUsageDetails ? Visibility.Visible : Visibility.Collapsed;
 
     public Visibility TranshipmentUsageBarVisibility => HasTranshipmentUsageDetails && TranshipmentCapacity.HasValue
@@ -232,6 +268,8 @@ public sealed class NodeViewModel : ObservableObject
 
     public bool HasSimulationDetails => hasSimulationDetails;
 
+    public bool HasTimelineDetails => hasTimelineDetails;
+
     public string FullTrafficSummary
     {
         get
@@ -244,6 +282,11 @@ public sealed class NodeViewModel : ObservableObject
             if (HasSimulationDetails)
             {
                 lines.Add($"Flow: {FlowSummaryLabel}");
+            }
+
+            if (HasTimelineDetails)
+            {
+                lines.Add($"Timeline: {TimelineSummaryLabel}");
             }
 
             if (HasTranshipmentUsageDetails)
@@ -303,6 +346,26 @@ public sealed class NodeViewModel : ObservableObject
         RefreshSimulationDerivedState();
     }
 
+    public void ApplyTimelineVisuals(double availableSupply, double demandBacklog, double storeInventory)
+    {
+        availableSupplyQuantity = Math.Max(0d, availableSupply);
+        demandBacklogQuantity = Math.Max(0d, demandBacklog);
+        storeInventoryQuantity = Math.Max(0d, storeInventory);
+        hasTimelineDetails = availableSupplyQuantity > Epsilon ||
+            demandBacklogQuantity > Epsilon ||
+            storeInventoryQuantity > Epsilon;
+        RefreshSimulationDerivedState();
+    }
+
+    public void ClearTimelineVisuals()
+    {
+        availableSupplyQuantity = 0d;
+        demandBacklogQuantity = 0d;
+        storeInventoryQuantity = 0d;
+        hasTimelineDetails = false;
+        RefreshSimulationDerivedState();
+    }
+
     public NodeModel ToModel()
     {
         return new NodeModel
@@ -318,7 +381,13 @@ public sealed class NodeViewModel : ObservableObject
                     TrafficType = profile.TrafficType,
                     Production = profile.Production,
                     Consumption = profile.Consumption,
-                    CanTransship = profile.CanTransship
+                    CanTransship = profile.CanTransship,
+                    ProductionStartPeriod = profile.ProductionStartPeriod,
+                    ProductionEndPeriod = profile.ProductionEndPeriod,
+                    ConsumptionStartPeriod = profile.ConsumptionStartPeriod,
+                    ConsumptionEndPeriod = profile.ConsumptionEndPeriod,
+                    IsStore = profile.IsStore,
+                    StoreCapacity = profile.StoreCapacity
                 })
                 .ToList()
         };
@@ -364,12 +433,14 @@ public sealed class NodeViewModel : ObservableObject
         OnPropertyChanged(nameof(FlowSummaryLabel));
         OnPropertyChanged(nameof(TranshipmentUsageLabel));
         OnPropertyChanged(nameof(SimulationPanelVisibility));
+        OnPropertyChanged(nameof(TimelinePanelVisibility));
         OnPropertyChanged(nameof(TranshipmentUsageVisibility));
         OnPropertyChanged(nameof(TranshipmentUsageBarVisibility));
         OnPropertyChanged(nameof(TranshipmentUtilizationBarWidth));
         OnPropertyChanged(nameof(NodeBorderDisplayBrush));
         OnPropertyChanged(nameof(SimulationBrush));
         OnPropertyChanged(nameof(HasSimulationDetails));
+        OnPropertyChanged(nameof(TimelineSummaryLabel));
         OnPropertyChanged(nameof(FullTrafficSummary));
     }
 

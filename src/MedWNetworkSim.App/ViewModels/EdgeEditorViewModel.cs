@@ -3,9 +3,10 @@ using System.ComponentModel;
 
 namespace MedWNetworkSim.App.ViewModels;
 
-public sealed class EdgeEditorViewModel : ObservableObject
+public sealed class EdgeEditorViewModel : ObservableObject, IDisposable
 {
     private readonly MainWindowViewModel mainWindowViewModel;
+    private bool isDisposed;
 
     public EdgeEditorViewModel(MainWindowViewModel mainWindowViewModel)
     {
@@ -46,8 +47,25 @@ public sealed class EdgeEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedEdge));
     }
 
+    public void Dispose()
+    {
+        if (isDisposed)
+        {
+            return;
+        }
+
+        mainWindowViewModel.PropertyChanged -= HandleMainWindowViewModelPropertyChanged;
+        isDisposed = true;
+        GC.SuppressFinalize(this);
+    }
+
     private void HandleMainWindowViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (isDisposed)
+        {
+            return;
+        }
+
         if (e.PropertyName is nameof(MainWindowViewModel.SelectedEdge))
         {
             OnPropertyChanged(nameof(SelectedEdge));

@@ -84,6 +84,12 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="10" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <TextBlock VerticalAlignment="Center"
@@ -200,73 +206,146 @@
                         <Button Content="Remove Selected" Click="RemoveTrafficRole_Click" />
                     </WrapPanel>
 
-                    <Grid Grid.Row="4">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
+                    <ScrollViewer Grid.Row="4"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
 
-                        <TextBlock VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
-                                   Text="Entry" />
-                        <ComboBox Grid.Column="1"
-                                  MinWidth="260"
-                                  ItemsSource="{Binding SelectedNode.TrafficProfiles}"
-                                  SelectedItem="{Binding SelectedNodeTrafficProfile, Mode=TwoWay}"
-                                  DisplayMemberPath="SelectionLabel" />
+                            <TextBlock VerticalAlignment="Center"
+                                       FontSize="11"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Text="Entry" />
+                            <ComboBox Grid.Column="1"
+                                      MinWidth="260"
+                                      ItemsSource="{Binding SelectedNode.TrafficProfiles}"
+                                      SelectedItem="{Binding SelectedNodeTrafficProfile, Mode=TwoWay}"
+                                      DisplayMemberPath="SelectionLabel" />
 
-                        <TextBlock Grid.Row="2"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
-                                   Text="Traffic Type" />
-                        <ComboBox Grid.Row="2"
-                                  Grid.Column="1"
-                                  ItemsSource="{Binding TrafficTypeNameOptions}"
-                                  SelectedItem="{Binding SelectedNodeTrafficType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Grid.Row="2"
+                                       VerticalAlignment="Center"
+                                       FontSize="11"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Text="Traffic Type" />
+                            <ComboBox Grid.Row="2"
+                                      Grid.Column="1"
+                                      ItemsSource="{Binding TrafficTypeNameOptions}"
+                                      SelectedItem="{Binding SelectedNodeTrafficType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
-                        <TextBlock Grid.Row="4"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
-                                   Text="Role" />
-                        <ComboBox Grid.Row="4"
-                                  Grid.Column="1"
-                                  ItemsSource="{Binding SelectedNodeRoleOptions}"
-                                  SelectedItem="{Binding SelectedNodeRoleName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Grid.Row="4"
+                                       VerticalAlignment="Center"
+                                       FontSize="11"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Text="Role" />
+                            <ComboBox Grid.Row="4"
+                                      Grid.Column="1"
+                                      ItemsSource="{Binding SelectedNodeRoleOptions}"
+                                      SelectedItem="{Binding SelectedNodeRoleName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
-                        <TextBlock Grid.Row="6"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
-                                   Text="Production" />
-                        <TextBox Grid.Row="6"
-                                 Grid.Column="1"
-                                 IsEnabled="{Binding IsSelectedNodeProducer}"
-                                 Text="{Binding SelectedNodeProduction, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Grid.Row="6"
+                                       VerticalAlignment="Center"
+                                       FontSize="11"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Text="Production" />
+                            <TextBox Grid.Row="6"
+                                     Grid.Column="1"
+                                     IsEnabled="{Binding IsSelectedNodeProducer}"
+                                     Text="{Binding SelectedNodeProduction, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
-                        <TextBlock Grid.Row="8"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{StaticResource MutedForegroundBrush}"
-                                   Text="Consumption" />
-                        <TextBox Grid.Row="8"
-                                 Grid.Column="1"
-                                 IsEnabled="{Binding IsSelectedNodeConsumer}"
-                                 Text="{Binding SelectedNodeConsumption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    </Grid>
+                            <TextBlock Grid.Row="8"
+                                       VerticalAlignment="Center"
+                                       FontSize="11"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Text="Consumption" />
+                            <TextBox Grid.Row="8"
+                                     Grid.Column="1"
+                                     IsEnabled="{Binding IsSelectedNodeConsumer}"
+                                     Text="{Binding SelectedNodeConsumption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                            <Grid Grid.Row="10" Grid.ColumnSpan="2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="90" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock VerticalAlignment="Center"
+                                       FontSize="11"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Text="Prod From" />
+                            <TextBox Grid.Column="1"
+                                     Text="{Binding SelectedNodeProductionStartPeriod, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Grid.Column="3"
+                                       VerticalAlignment="Center"
+                                       FontSize="11"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Text="To" />
+                            <TextBox Grid.Column="4"
+                                     Text="{Binding SelectedNodeProductionEndPeriod, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+
+                            <Grid Grid.Row="12" Grid.ColumnSpan="2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="90" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock VerticalAlignment="Center"
+                                       FontSize="11"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Text="Cons From" />
+                            <TextBox Grid.Column="1"
+                                     Text="{Binding SelectedNodeConsumptionStartPeriod, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Grid.Column="3"
+                                       VerticalAlignment="Center"
+                                       FontSize="11"
+                                       Foreground="{StaticResource MutedForegroundBrush}"
+                                       Text="To" />
+                            <TextBox Grid.Column="4"
+                                     Text="{Binding SelectedNodeConsumptionEndPeriod, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+
+                            <Grid Grid.Row="14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <CheckBox VerticalAlignment="Center"
+                                          Content="Store"
+                                          IsChecked="{Binding IsSelectedNodeStore, Mode=TwoWay}" />
+                                <TextBox Grid.Column="1"
+                                         Margin="12,0,0,0"
+                                         IsEnabled="{Binding IsSelectedNodeStore}"
+                                         Text="{Binding SelectedNodeStoreCapacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+                        </Grid>
+                    </ScrollViewer>
 
                     <Border Grid.Row="6"
                             Padding="12"

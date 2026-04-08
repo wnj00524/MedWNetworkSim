@@ -28,6 +28,11 @@ public sealed class NodeModel
     public double? Y { get; set; }
 
     /// <summary>
+    /// Gets or sets the optional shared capacity limit for using this node as an intermediate transhipment point.
+    /// </summary>
+    public double? TranshipmentCapacity { get; set; }
+
+    /// <summary>
     /// Gets or sets the per-traffic roles and quantities for this node.
     /// </summary>
     public List<NodeTrafficProfile> TrafficProfiles { get; set; } = [];

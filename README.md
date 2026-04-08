@@ -11,6 +11,7 @@ WPF network simulator for modelling multi-traffic movement across producer, cons
 - Auto-positions nodes when `x` and `y` are omitted from the input file.
 - Includes an `Auto Arrange` action to regenerate node positions for the whole network.
 - Models optional edge capacities and consumes them during routing.
+- Models optional shared node transhipment capacities and consumes them during routing.
 - Lets each node participate in any number of traffic types.
 - Allows the same node to produce, tranship, and consume different traffic types.
 - Supports per-traffic routing priorities:
@@ -24,9 +25,9 @@ WPF network simulator for modelling multi-traffic movement across producer, cons
 
 - Use `New Network` to start from an empty model.
 - Use `GraphML...` to import a GraphML graph or export the current network as GraphML. The popup lets you choose a default traffic type, a default node role, and an optional default node capacity for nodes that do not already carry MedW-specific traffic data.
-- Maintain traffic types in the `Network Editor` tab, including routing preference and optional `capacityBidPerUnit`.
+- Maintain traffic types in the `Network Editor` tab, including routing preference and optional `capacityBidPerUnit` used for both edge and node-capacity competition.
 - Add and remove nodes in the main editor grid.
-- Open `Open Node Editor...` to edit one node in a dedicated window.
+- Open `Open Node Editor...` to edit one node in a dedicated window, including its optional shared `transhipmentCapacity`.
 - In the node editor, choose the node, then choose one of its traffic-role entries, then set:
   - `Traffic Type`
   - `Role`
@@ -46,11 +47,11 @@ The app ships with a bundled sample file at [sample-network.json](src/MedWNetwor
 
 ## GraphML Format
 
-- GraphML export preserves the full MedW network by writing the app's traffic definitions and node traffic profiles into GraphML `<data>` elements.
+- GraphML export preserves the full MedW network by writing the app's traffic definitions, node transhipment capacities, and node traffic profiles into GraphML `<data>` elements.
 - GraphML import restores those MedW-specific payloads when they are present.
 - When you import a more generic GraphML file that only contains graph structure, the `GraphML...` popup can synthesize a starter traffic-role entry per node from the chosen default traffic type, node role, and optional capacity.
 - Leaving the default traffic type or role on none keeps imported nodes structural only.
-- Leaving default capacity blank omits GraphML capacity data. If an imported producer or consumer default still needs to become a simulator role, the app falls back to `1` unit so that role remains valid in the current MedW data model.
+- When the default role includes transhipment, the default capacity becomes that node's shared `transhipmentCapacity`. Producer or consumer defaults still fall back to `1` unit if they need a starter quantity and no amount is available in the GraphML input.
 
 ## JSON Format
 
@@ -72,6 +73,7 @@ The app uses a simple custom JSON format:
     {
       "id": "N1",
       "name": "Clinic A",
+      "transhipmentCapacity": 24,
       "trafficProfiles": [
         {
           "trafficType": "Infectious Waste",
@@ -98,26 +100,30 @@ The app uses a simple custom JSON format:
 
 `x` and `y` are optional. If they are omitted, the app generates an initial layout when the file is loaded, and those generated positions are then saved back out if you use `Save JSON...`.
 
-`capacity` is also optional. If it is omitted, the edge is treated as having unlimited capacity.
+`capacity` is optional on edges. If it is omitted, the edge is treated as having unlimited capacity.
 
-`capacityBidPerUnit` is optional on a traffic type. If omitted, `speed` traffic defaults to a bid of `1` per constrained bottleneck edge and other traffic types default to `0`.
+`transhipmentCapacity` is optional on nodes. If it is omitted, the node can tranship unlimited flow whenever the active traffic role allows transhipment.
+
+`capacityBidPerUnit` is optional on a traffic type. If omitted, `speed` traffic defaults to a bid of `1` per constrained bottleneck resource and other traffic types default to `0`.
 
 ## Routing Rules
 
 - Edge weights are shared across traffic types through `time` and `cost`.
 - Edge capacity is optional, but when present it is shared across all traffic routed through that edge.
-- Traffic types can place a per-unit bid on constrained edge capacity.
+- Node transhipment capacity is optional, but when present it is shared across all traffic routed through that node as an intermediate stop.
+- Traffic types can place a per-unit bid on constrained edge or node transhipment capacity.
 - A traffic type chooses how those edge values are scored.
 - Producer nodes are any nodes with `production > 0` for that traffic.
 - Consumer nodes are any nodes with `consumption > 0` for that traffic.
 - Intermediate nodes must have `canTransship: true` for that same traffic.
 - Local producer-to-consumer matching on the same node is handled before network routing.
-- Capacity competition is resolved across all traffic types together. Higher bids win access to scarce edge capacity first, then the normal route score breaks ties.
-- Bid premiums are added to the landed movement cost when the route is genuinely bottlenecked by finite edge capacity.
+- Capacity competition is resolved across all traffic types together. Higher bids win access to scarce edge or node-transhipment capacity first, then the normal route score breaks ties.
+- Bid premiums are added to the landed movement cost when the route is genuinely bottlenecked by finite edge or node-transhipment capacity.
 
 ## Notes
 
 - Omit `capacity` on an edge when you want it to behave as unlimited.
+- Omit `transhipmentCapacity` on a node when you want it to behave as unlimited.
 - The consumer-cost view shows local and imported movement costs separately, plus the blended movement cost seen at each consumer node.
 - Routing is path-based and allocates producer supply to consumer demand using the best available routes under the chosen traffic preference and capacity bidding.
 - `Auto Arrange` only updates node positions. It does not throw away in-memory edits to nodes, roles, or traffic types.

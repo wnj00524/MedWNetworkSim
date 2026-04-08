@@ -104,9 +104,9 @@ public sealed class GraphMlTransferWindowViewModel : ObservableObject
             : SelectedRoleName.Trim();
         var normalizedCapacity = ParseCapacity(DefaultCapacityText);
 
-        if (normalizedCapacity.HasValue && normalizedCapacity.Value <= 0d)
+        if (normalizedCapacity.HasValue && normalizedCapacity.Value < 0d)
         {
-            throw new InvalidOperationException("Default node capacity must be greater than 0 when provided.");
+            throw new InvalidOperationException("Default node capacity must be a number >= 0 when provided.");
         }
 
         return new GraphMlTransferOptions(normalizedTrafficType, normalizedRole, normalizedCapacity);
@@ -143,6 +143,6 @@ public sealed class GraphMlTransferWindowViewModel : ObservableObject
             return currentCultureValue;
         }
 
-        throw new InvalidOperationException("Default node capacity must be a valid number or left blank.");
+        throw new InvalidOperationException("Default node capacity must be a valid number >= 0 or left blank.");
     }
 }

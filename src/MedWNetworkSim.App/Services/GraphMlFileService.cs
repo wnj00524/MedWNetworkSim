@@ -110,6 +110,7 @@ public sealed class GraphMlFileService
         AddKey(root, "node_name", "node", "name", "string");
         AddKey(root, "node_x", "node", "x", "double");
         AddKey(root, "node_y", "node", "y", "double");
+        AddKey(root, "node_transhipment_capacity", "node", "transhipmentCapacity", "double");
         AddKey(root, "node_traffic_type", "node", "trafficType", "string");
         AddKey(root, "node_role", "node", "role", "string");
         AddKey(root, "node_capacity", "node", "capacity", "double");
@@ -152,6 +153,11 @@ public sealed class GraphMlFileService
                 AddData(nodeElement, "node_y", node.Y.Value.ToString(CultureInfo.InvariantCulture));
             }
 
+            if (node.TranshipmentCapacity.HasValue)
+            {
+                AddData(nodeElement, "node_transhipment_capacity", node.TranshipmentCapacity.Value.ToString(CultureInfo.InvariantCulture));
+            }
+
             AddData(nodeElement, "node_profiles_json", JsonSerializer.Serialize(node.TrafficProfiles, serializerOptions));
 
             var preferredProfile = SelectPreferredProfile(node, options.DefaultTrafficType);
@@ -159,9 +165,9 @@ public sealed class GraphMlFileService
             var exportedRole = preferredProfile is not null
                 ? NodeTrafficRoleCatalog.GetRoleName(preferredProfile)
                 : options.DefaultRoleName;
-            var exportedCapacity = preferredProfile is not null
+            var exportedCapacity = node.TranshipmentCapacity ?? (preferredProfile is not null
                 ? NodeTrafficRoleCatalog.GetRepresentativeCapacity(preferredProfile)
-                : options.DefaultNodeCapacity;
+                : options.DefaultNodeCapacity);
 
             if (!string.IsNullOrWhiteSpace(exportedTrafficType))
             {
@@ -233,6 +239,9 @@ public sealed class GraphMlFileService
         var profiles = hasExplicitProfiles
             ? explicitProfiles ?? []
             : BuildDefaultProfiles(nodeData, options);
+        var transhipmentCapacity = hasExplicitProfiles
+            ? TryGetDouble(nodeData, "transhipmentCapacity")
+            : BuildDefaultTranshipmentCapacity(nodeData, options);
 
         return new NodeModel
         {
@@ -240,6 +249,7 @@ public sealed class GraphMlFileService
             Name = GetFirstValue(nodeData, "name", "label") ?? nodeId,
             X = TryGetDouble(nodeData, "x"),
             Y = TryGetDouble(nodeData, "y"),
+            TranshipmentCapacity = transhipmentCapacity,
             TrafficProfiles = profiles
         };
     }
@@ -295,6 +305,27 @@ public sealed class GraphMlFileService
 
         var profile = NodeTrafficRoleCatalog.CreateDefaultProfile(trafficType, roleName, capacity);
         return profile is null ? [] : [profile];
+    }
+
+    private static double? BuildDefaultTranshipmentCapacity(
+        IReadOnlyDictionary<string, string> nodeData,
+        GraphMlTransferOptions options)
+    {
+        var explicitTranshipmentCapacity = TryGetDouble(nodeData, "transhipmentCapacity");
+        if (explicitTranshipmentCapacity.HasValue)
+        {
+            return explicitTranshipmentCapacity;
+        }
+
+        var roleName = NormalizeOptionalString(GetFirstValue(nodeData, "role"))
+            ?? options.DefaultRoleName;
+
+        if (!NodeTrafficRoleCatalog.TryParseFlags(roleName, out var flags) || !flags.CanTransship)
+        {
+            return null;
+        }
+
+        return TryGetDouble(nodeData, "capacity") ?? options.DefaultNodeCapacity;
     }
 
     private static NodeTrafficProfile? SelectPreferredProfile(NodeModel node, string? preferredTrafficType)

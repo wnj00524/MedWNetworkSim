@@ -13,6 +13,7 @@ public sealed class NodeViewModel : ObservableObject
     private string name;
     private double x;
     private double y;
+    private double? transhipmentCapacity;
 
     public NodeViewModel(NodeModel model)
     {
@@ -20,6 +21,7 @@ public sealed class NodeViewModel : ObservableObject
         name = model.Name;
         x = model.X ?? 0d;
         y = model.Y ?? 0d;
+        transhipmentCapacity = model.TranshipmentCapacity;
         TrafficProfiles = new ObservableCollection<NodeTrafficProfileViewModel>(
             model.TrafficProfiles.Select(profile => new NodeTrafficProfileViewModel(profile)));
         TrafficProfiles.CollectionChanged += HandleTrafficProfilesChanged;
@@ -111,6 +113,22 @@ public sealed class NodeViewModel : ObservableObject
 
     public double CenterY => Y;
 
+    public double? TranshipmentCapacity
+    {
+        get => transhipmentCapacity;
+        set
+        {
+            if (!SetProperty(ref transhipmentCapacity, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(TranshipmentCapacityLabel));
+            OnPropertyChanged(nameof(FullTrafficSummary));
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     public ObservableCollection<NodeTrafficProfileViewModel> TrafficProfiles { get; }
 
     public string TrafficProfileCountLabel => TrafficProfiles.Count switch
@@ -119,9 +137,15 @@ public sealed class NodeViewModel : ObservableObject
         _ => $"{TrafficProfiles.Count} traffic types"
     };
 
-    public string FullTrafficSummary => string.Join(
-        Environment.NewLine,
-        TrafficProfiles.Select(profile => $"{profile.TrafficType}: {profile.RoleSummary}"));
+    public string TranshipmentCapacityLabel => TranshipmentCapacity.HasValue
+        ? $"trans cap {TranshipmentCapacity.Value:0.##}"
+        : "trans cap inf";
+
+    public string FullTrafficSummary =>
+        string.Join(
+            Environment.NewLine,
+            new[] { $"Transhipment Capacity: {(TranshipmentCapacity.HasValue ? TranshipmentCapacity.Value.ToString("0.##") : "Unlimited")}" }
+                .Concat(TrafficProfiles.Select(profile => $"{profile.TrafficType}: {profile.RoleSummary}")));
 
     public void AddTrafficProfile(NodeTrafficProfileViewModel profile)
     {
@@ -148,6 +172,7 @@ public sealed class NodeViewModel : ObservableObject
             Name = Name,
             X = X,
             Y = Y,
+            TranshipmentCapacity = TranshipmentCapacity,
             TrafficProfiles = TrafficProfiles
                 .Select(profile => new NodeTrafficProfile
                 {

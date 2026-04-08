@@ -42,6 +42,7 @@
     {
       "id": "HUB-N",
       "name": "North Logistics Hub",
+      "transhipmentCapacity": 38,
       "trafficProfiles": [
         { "trafficType": "Infectious Waste", "production": 0, "consumption": 0, "canTransship": true },
         { "trafficType": "Recyclables", "production": 4, "consumption": 2, "canTransship": true },
@@ -51,6 +52,7 @@
     {
       "id": "AUTO-1",
       "name": "Autoclave Centre",
+      "transhipmentCapacity": 18,
       "trafficProfiles": [
         { "trafficType": "Infectious Waste", "production": 0, "consumption": 55, "canTransship": false },
         { "trafficType": "Sterile Supplies", "production": 25, "consumption": 0, "canTransship": true }
@@ -66,6 +68,7 @@
     {
       "id": "PORT-1",
       "name": "Intermodal Port",
+      "transhipmentCapacity": 24,
       "trafficProfiles": [
         { "trafficType": "Infectious Waste", "production": 0, "consumption": 0, "canTransship": true },
         { "trafficType": "Recyclables", "production": 0, "consumption": 0, "canTransship": true },

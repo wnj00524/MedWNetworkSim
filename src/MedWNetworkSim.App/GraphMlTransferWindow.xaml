@@ -1,0 +1,137 @@
+<Window x:Class="MedWNetworkSim.App.GraphMlTransferWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="GraphML Import / Export"
+        Width="720"
+        Height="540"
+        MinWidth="680"
+        MinHeight="500"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Padding="16"
+                Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="18">
+            <StackPanel>
+                <TextBlock FontSize="18"
+                           FontWeight="SemiBold"
+                           Text="GraphML Import / Export" />
+                <TextBlock Margin="0,8,0,0"
+                           FontSize="12"
+                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Text="Import a generic GraphML graph into the simulator or export the current network as GraphML. The defaults below are used only when a GraphML node does not already carry MedW-specific traffic data."
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="2"
+                Padding="16"
+                Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="18">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="170" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.ColumnSpan="2"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           Text="Default Node Mapping" />
+
+                <TextBlock Grid.Row="2"
+                           VerticalAlignment="Center"
+                           FontSize="12"
+                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Text="Traffic Type" />
+                <ComboBox Grid.Row="2"
+                          Grid.Column="1"
+                          IsEditable="True"
+                          IsTextSearchEnabled="False"
+                          ItemsSource="{Binding TrafficTypeOptions}"
+                          Text="{Binding DefaultTrafficTypeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                <TextBlock Grid.Row="4"
+                           VerticalAlignment="Center"
+                           FontSize="12"
+                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Text="Role" />
+                <ComboBox Grid.Row="4"
+                          Grid.Column="1"
+                          ItemsSource="{Binding RoleOptions}"
+                          SelectedItem="{Binding SelectedRoleName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                <TextBlock Grid.Row="6"
+                           VerticalAlignment="Center"
+                           FontSize="12"
+                           Foreground="{StaticResource MutedForegroundBrush}"
+                           Text="Capacity" />
+                <TextBox Grid.Row="6"
+                         Grid.Column="1"
+                         Text="{Binding DefaultCapacityText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                <Border Grid.Row="8"
+                        Grid.ColumnSpan="2"
+                        Padding="12"
+                        Background="#FFF8F1E7"
+                        BorderBrush="{StaticResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="12">
+                    <StackPanel>
+                        <TextBlock FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource AccentStrongBrush}"
+                                   Text="How the defaults are used" />
+                        <TextBlock Margin="0,8,0,0"
+                                   FontSize="12"
+                                   Foreground="{StaticResource MutedForegroundBrush}"
+                                   Text="Leave traffic type or role on none when you want imported nodes to stay structural only. Leave capacity blank when you want GraphML capacity data omitted; if an imported producer or consumer role must be materialized into the simulator without a numeric capacity, MedWNetworkSim uses 1 unit so the role remains valid."
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <DockPanel Grid.Row="4">
+            <TextBlock VerticalAlignment="Center"
+                       FontSize="12"
+                       Foreground="{StaticResource MutedForegroundBrush}"
+                       Text="Import reads a GraphML file and replaces the current network. Export writes the currently loaded network to a GraphML file." />
+            <WrapPanel DockPanel.Dock="Right"
+                       Margin="12,0,0,0">
+                <Button Content="Import GraphML..."
+                        Click="ImportGraphMl_Click" />
+                <Button Content="Export GraphML..."
+                        Click="ExportGraphMl_Click"
+                        IsEnabled="{Binding CanExport}" />
+                <Button Content="Close"
+                        Click="Close_Click" />
+            </WrapPanel>
+        </DockPanel>
+    </Grid>
+</Window>

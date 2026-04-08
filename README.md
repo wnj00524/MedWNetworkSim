@@ -5,6 +5,7 @@ WPF network simulator for modelling multi-traffic movement across producer, cons
 ## What It Does
 
 - Loads a JSON network file.
+- Imports and exports GraphML files through a dedicated popup window.
 - Lets users create a new network and edit traffic types, nodes, node roles, and edges directly in the app.
 - Draws the network on a draggable canvas.
 - Auto-positions nodes when `x` and `y` are omitted from the input file.
@@ -22,6 +23,7 @@ WPF network simulator for modelling multi-traffic movement across producer, cons
 ## Editing In App
 
 - Use `New Network` to start from an empty model.
+- Use `GraphML...` to import a GraphML graph or export the current network as GraphML. The popup lets you choose a default traffic type, a default node role, and an optional default node capacity for nodes that do not already carry MedW-specific traffic data.
 - Maintain traffic types in the `Network Editor` tab, including routing preference and optional `capacityBidPerUnit`.
 - Add and remove nodes in the main editor grid.
 - Open `Open Node Editor...` to edit one node in a dedicated window.
@@ -41,6 +43,14 @@ dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj
 ```
 
 The app ships with a bundled sample file at [sample-network.json](src/MedWNetworkSim.App/Samples/sample-network.json).
+
+## GraphML Format
+
+- GraphML export preserves the full MedW network by writing the app's traffic definitions and node traffic profiles into GraphML `<data>` elements.
+- GraphML import restores those MedW-specific payloads when they are present.
+- When you import a more generic GraphML file that only contains graph structure, the `GraphML...` popup can synthesize a starter traffic-role entry per node from the chosen default traffic type, node role, and optional capacity.
+- Leaving the default traffic type or role on none keeps imported nodes structural only.
+- Leaving default capacity blank omits GraphML capacity data. If an imported producer or consumer default still needs to become a simulator role, the app falls back to `1` unit so that role remains valid in the current MedW data model.
 
 ## JSON Format
 

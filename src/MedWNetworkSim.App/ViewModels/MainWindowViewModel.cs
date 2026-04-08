@@ -627,6 +627,94 @@ public sealed class MainWindowViewModel : ObservableObject
             .ToList();
     }
 
+    public void ApplyTrafficRoleToAllNodes(BulkApplyTrafficRoleOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        EnsureNetworkExists();
+        if (Nodes.Count == 0)
+        {
+            throw new InvalidOperationException("Add at least one node before applying a traffic role to all nodes.");
+        }
+
+        var normalizedTrafficType = options.TrafficType.Trim();
+        var normalizedRoleName = string.IsNullOrWhiteSpace(options.RoleName)
+            ? NodeTrafficRoleCatalog.NoTrafficRole
+            : options.RoleName.Trim();
+        var hasRoleFlags = NodeTrafficRoleCatalog.TryParseFlags(normalizedRoleName, out var roleFlags);
+        var clearsTrafficRole = !hasRoleFlags || (!roleFlags.IsProducer && !roleFlags.IsConsumer && !roleFlags.CanTransship);
+
+        if (!clearsTrafficRole)
+        {
+            EnsureTrafficDefinition(normalizedTrafficType);
+        }
+
+        isBulkUpdatingTrafficProfiles = true;
+
+        try
+        {
+            foreach (var node in Nodes)
+            {
+                var matchingProfiles = node.TrafficProfiles
+                    .Where(profile => Comparer.Equals(profile.TrafficType, normalizedTrafficType))
+                    .ToList();
+
+                if (clearsTrafficRole)
+                {
+                    foreach (var matchingProfile in matchingProfiles)
+                    {
+                        if (ReferenceEquals(SelectedNode, node) && ReferenceEquals(SelectedNodeTrafficProfile, matchingProfile))
+                        {
+                            SelectedNodeTrafficProfile = null;
+                        }
+
+                        node.RemoveTrafficProfile(matchingProfile);
+                    }
+
+                    continue;
+                }
+
+                var profile = matchingProfiles.FirstOrDefault();
+                if (profile is null)
+                {
+                    profile = new NodeTrafficProfileViewModel(new NodeTrafficProfile
+                    {
+                        TrafficType = normalizedTrafficType
+                    });
+                    node.AddTrafficProfile(profile);
+                }
+
+                profile.TrafficType = normalizedTrafficType;
+                profile.Production = roleFlags.IsProducer ? options.ProductionAmount : 0d;
+                profile.Consumption = roleFlags.IsConsumer ? options.ConsumptionAmount : 0d;
+                profile.CanTransship = roleFlags.CanTransship;
+
+                if (options.ApplyTranshipmentCapacity && roleFlags.CanTransship)
+                {
+                    node.TranshipmentCapacity = options.TranshipmentCapacity;
+                }
+
+                NormalizeNodeTrafficProfiles(node);
+            }
+        }
+        finally
+        {
+            isBulkUpdatingTrafficProfiles = false;
+        }
+
+        if (SelectedNode is not null)
+        {
+            SelectedNodeTrafficProfile = SelectedNode.TrafficProfiles
+                .FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, normalizedTrafficType))
+                ?? SelectedNode.TrafficProfiles.FirstOrDefault();
+        }
+
+        var statusMessage = clearsTrafficRole
+            ? $"Removed traffic type '{normalizedTrafficType}' from all {Nodes.Count} node(s)."
+            : $"Applied role '{normalizedRoleName}' for traffic type '{normalizedTrafficType}' to all {Nodes.Count} node(s).";
+        RefreshDerivedStateAfterStructureChange(statusMessage);
+    }
+
     private void EnsureNetworkExists()
     {
         if (!HasNetwork)
@@ -644,6 +732,25 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         return CreateTrafficDefinition();
+    }
+
+    private TrafficTypeDefinitionEditorViewModel EnsureTrafficDefinition(string trafficTypeName)
+    {
+        var normalizedName = trafficTypeName.Trim();
+        var existingDefinition = TrafficDefinitions.FirstOrDefault(definition => Comparer.Equals(definition.Name, normalizedName));
+        if (existingDefinition is not null)
+        {
+            return existingDefinition;
+        }
+
+        var definition = new TrafficTypeDefinitionEditorViewModel(new TrafficTypeDefinition
+        {
+            Name = normalizedName,
+            RoutingPreference = RoutingPreference.TotalCost
+        });
+
+        RegisterTrafficDefinition(definition);
+        return definition;
     }
 
     private void LoadBundledSampleIfAvailable()

@@ -95,7 +95,7 @@ public partial class MainWindow : Window
 
     private void EditTrafficTypes_Click(object sender, RoutedEventArgs e)
     {
-        var window = new TrafficTypeEditorWindow(ViewModel)
+        var window = new TrafficTypeEditorWindow(new TrafficTypeEditorViewModel(ViewModel))
         {
             Owner = this
         };

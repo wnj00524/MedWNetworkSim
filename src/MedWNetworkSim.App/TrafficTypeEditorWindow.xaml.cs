@@ -5,14 +5,14 @@ namespace MedWNetworkSim.App;
 
 public partial class TrafficTypeEditorWindow : Window
 {
-    public TrafficTypeEditorWindow(MainWindowViewModel viewModel)
+    public TrafficTypeEditorWindow(TrafficTypeEditorViewModel viewModel)
     {
         InitializeComponent();
         ViewModel = viewModel;
         DataContext = ViewModel;
     }
 
-    public MainWindowViewModel ViewModel { get; }
+    public TrafficTypeEditorViewModel ViewModel { get; }
 
     private void AddTrafficType_Click(object sender, RoutedEventArgs e)
     {

@@ -67,6 +67,8 @@
                     <Button Content="Load Sample" Click="LoadSample_Click" />
                     <Button Content="Open JSON..." Click="OpenFile_Click" />
                     <Button Content="GraphML..." Click="GraphMl_Click" />
+                    <Button Content="Traffic Types..." Click="EditTrafficTypes_Click" />
+                    <Button Content="Edges..." Click="EditEdges_Click" />
                     <Button Content="{Binding CanvasOnlyButtonLabel}"
                             Click="ToggleCanvasOnly_Click"
                             IsEnabled="{Binding HasNetwork}" />
@@ -548,7 +550,8 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <TabControl Grid.Row="0">
+                    <TabControl Grid.Row="0"
+                                MinHeight="280">
                     <TabItem Header="Consumer Costs">
                         <Grid Margin="10">
                             <Grid.RowDefinitions>
@@ -756,6 +759,7 @@
 
                                         <WrapPanel Grid.Row="2">
                                             <Button Content="Add Traffic Type" Click="AddTrafficType_Click" />
+                                            <Button Content="Open Traffic Type Editor..." Click="EditTrafficTypes_Click" />
                                             <Button Content="Remove Selected" Click="RemoveTrafficType_Click" />
                                         </WrapPanel>
 
@@ -765,11 +769,13 @@
                                                    Text="Traffic type definitions control routing preference and shared capacity bidding defaults for both edges and node transhipment." />
 
                                         <DataGrid Grid.Row="6"
+                                                  MinHeight="150"
                                                   ItemsSource="{Binding TrafficDefinitions}"
                                                   SelectedItem="{Binding SelectedTrafficDefinition, Mode=TwoWay}"
                                                   AutoGenerateColumns="False"
                                                   CanUserAddRows="False"
                                                   IsReadOnly="False"
+                                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                                                   SelectionMode="Single"
                                                   SelectionUnit="FullRow">
                                             <DataGrid.Columns>
@@ -833,6 +839,7 @@
                                                   SelectedItem="{Binding SelectedNode, Mode=TwoWay}"
                                                   AutoGenerateColumns="False"
                                                   CanUserAddRows="False"
+                                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                                                   SelectionMode="Single"
                                                   SelectionUnit="FullRow">
                                             <DataGrid.Columns>
@@ -899,14 +906,17 @@
 
                                         <WrapPanel Grid.Row="2">
                                             <Button Content="Add Edge" Click="AddEdge_Click" />
+                                            <Button Content="Open Edge Editor..." Click="EditEdges_Click" />
                                             <Button Content="Remove Selected" Click="RemoveEdge_Click" />
                                         </WrapPanel>
 
                                         <DataGrid Grid.Row="4"
+                                                  MinHeight="150"
                                                   ItemsSource="{Binding Edges}"
                                                   SelectedItem="{Binding SelectedEdge, Mode=TwoWay}"
                                                   AutoGenerateColumns="False"
                                                   CanUserAddRows="False"
+                                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                                                   SelectionMode="Single"
                                                   SelectionUnit="FullRow">
                                             <DataGrid.Columns>

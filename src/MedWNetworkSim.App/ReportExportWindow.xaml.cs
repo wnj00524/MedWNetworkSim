@@ -1,6 +1,7 @@
 using Microsoft.Win32;
 using System.IO;
 using System.Windows;
+using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.ViewModels;
 
 namespace MedWNetworkSim.App;
@@ -13,7 +14,7 @@ public partial class ReportExportWindow : Window
     {
         InitializeComponent();
         this.mainWindowViewModel = mainWindowViewModel;
-        ViewModel = new ReportExportWindowViewModel(mainWindowViewModel.SuggestedReportFileName);
+        ViewModel = new ReportExportWindowViewModel(mainWindowViewModel.SuggestedReportFilePath);
         DataContext = ViewModel;
     }
 
@@ -24,8 +25,11 @@ public partial class ReportExportWindow : Window
         var dialog = new SaveFileDialog
         {
             Title = "Export report",
-            Filter = "Markdown report (*.md)|*.md|Text file (*.txt)|*.txt|All files (*.*)|*.*",
+            Filter = ViewModel.SelectedFormat == ReportExportFormat.Csv
+                ? "CSV report (*.csv)|*.csv|All files (*.*)|*.*"
+                : "Markdown report (*.md)|*.md|All files (*.*)|*.*",
             FileName = Path.GetFileName(ViewModel.ReportPath),
+            DefaultExt = ViewModel.SelectedFormat == ReportExportFormat.Csv ? ".csv" : ".md",
             OverwritePrompt = true
         };
 
@@ -45,8 +49,8 @@ public partial class ReportExportWindow : Window
     {
         ExecuteWithErrorHandling(() =>
         {
-            var path = NormalizeReportPath(ViewModel.ReportPath);
-            mainWindowViewModel.ExportCurrentReport(path);
+            var path = NormalizeReportPath(ViewModel.ReportPath, ViewModel.SelectedFormat);
+            mainWindowViewModel.ExportCurrentReport(path, ViewModel.SelectedFormat);
             ViewModel.ReportPath = path;
         });
     }
@@ -55,8 +59,8 @@ public partial class ReportExportWindow : Window
     {
         ExecuteWithErrorHandling(() =>
         {
-            var path = NormalizeReportPath(ViewModel.ReportPath);
-            mainWindowViewModel.ExportTimelineReport(path, ViewModel.GetTimelinePeriods());
+            var path = NormalizeReportPath(ViewModel.ReportPath, ViewModel.SelectedFormat);
+            mainWindowViewModel.ExportTimelineReport(path, ViewModel.GetTimelinePeriods(), ViewModel.SelectedFormat);
             ViewModel.ReportPath = path;
         });
     }
@@ -66,19 +70,14 @@ public partial class ReportExportWindow : Window
         Close();
     }
 
-    private static string NormalizeReportPath(string reportPath)
+    private static string NormalizeReportPath(string reportPath, ReportExportFormat format)
     {
         if (string.IsNullOrWhiteSpace(reportPath))
         {
             throw new InvalidOperationException("Choose a report file path before exporting.");
         }
 
-        if (!Path.HasExtension(reportPath))
-        {
-            return reportPath + ".md";
-        }
-
-        return reportPath;
+        return ReportExportWindowViewModel.ApplyFormatExtension(reportPath, format);
     }
 
     private void ExecuteWithErrorHandling(Action action)

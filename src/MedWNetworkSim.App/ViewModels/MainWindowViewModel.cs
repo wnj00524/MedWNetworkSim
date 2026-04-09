@@ -551,6 +551,15 @@ public sealed class MainWindowViewModel : ObservableObject
         }
     }
 
+    public string SuggestedReportFilePath
+    {
+        get
+        {
+            var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            return Path.Combine(documentsPath, SuggestedReportFileName);
+        }
+    }
+
     public void CreateNewNetwork()
     {
         LoadNetwork(
@@ -591,17 +600,17 @@ public sealed class MainWindowViewModel : ObservableObject
         StatusMessage = $"Exported the current network to GraphML file '{Path.GetFileName(path)}'.";
     }
 
-    public void ExportCurrentReport(string path)
+    public void ExportCurrentReport(string path, ReportExportFormat format)
     {
         var network = BuildValidatedNetwork();
-        reportExportService.SaveCurrentReport(network, path);
+        reportExportService.SaveCurrentReport(network, path, format);
         StatusMessage = $"Exported the current report to '{Path.GetFileName(path)}'.";
     }
 
-    public void ExportTimelineReport(string path, int periods)
+    public void ExportTimelineReport(string path, int periods, ReportExportFormat format)
     {
         var network = BuildValidatedNetwork();
-        reportExportService.SaveTimelineReport(network, path, periods);
+        reportExportService.SaveTimelineReport(network, path, periods, format);
         StatusMessage = $"Exported the timeline report for {periods} period(s) to '{Path.GetFileName(path)}'.";
     }
 

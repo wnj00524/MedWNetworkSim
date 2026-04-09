@@ -1,14 +1,20 @@
+using System.IO;
+using MedWNetworkSim.App.Models;
+
 namespace MedWNetworkSim.App.ViewModels;
 
 public sealed class ReportExportWindowViewModel : ObservableObject
 {
     private string reportPath;
     private string timelinePeriodsText = "12";
+    private ReportExportFormat selectedFormat = ReportExportFormat.Markdown;
 
-    public ReportExportWindowViewModel(string suggestedFileName)
+    public ReportExportWindowViewModel(string suggestedReportPath)
     {
-        reportPath = suggestedFileName;
+        reportPath = suggestedReportPath;
     }
+
+    public Array FormatOptions { get; } = Enum.GetValues(typeof(ReportExportFormat));
 
     public string ReportPath
     {
@@ -30,6 +36,20 @@ public sealed class ReportExportWindowViewModel : ObservableObject
         set => SetProperty(ref timelinePeriodsText, value);
     }
 
+    public ReportExportFormat SelectedFormat
+    {
+        get => selectedFormat;
+        set
+        {
+            if (!SetProperty(ref selectedFormat, value))
+            {
+                return;
+            }
+
+            ReportPath = ApplyFormatExtension(ReportPath, value);
+        }
+    }
+
     public bool CanExport => !string.IsNullOrWhiteSpace(ReportPath);
 
     public int GetTimelinePeriods()
@@ -40,5 +60,21 @@ public sealed class ReportExportWindowViewModel : ObservableObject
         }
 
         return periods;
+    }
+
+    public static string ApplyFormatExtension(string path, ReportExportFormat format)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return path;
+        }
+
+        var desiredExtension = format == ReportExportFormat.Csv ? ".csv" : ".md";
+        if (!Path.HasExtension(path))
+        {
+            return path + desiredExtension;
+        }
+
+        return Path.ChangeExtension(path, desiredExtension);
     }
 }

@@ -15,15 +15,18 @@ public sealed class ReportExportService
     private readonly NetworkSimulationEngine networkSimulationEngine = new();
     private readonly TemporalNetworkSimulationEngine temporalNetworkSimulationEngine = new();
 
-    public void SaveCurrentReport(NetworkModel network, string path)
+    public void SaveCurrentReport(NetworkModel network, string path, ReportExportFormat format)
     {
         ArgumentNullException.ThrowIfNull(network);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        File.WriteAllText(path, BuildCurrentReport(network), Encoding.UTF8);
+        var contents = format == ReportExportFormat.Csv
+            ? BuildCurrentCsvReport(network)
+            : BuildCurrentMarkdownReport(network);
+        File.WriteAllText(path, contents, Encoding.UTF8);
     }
 
-    public void SaveTimelineReport(NetworkModel network, string path, int periods)
+    public void SaveTimelineReport(NetworkModel network, string path, int periods, ReportExportFormat format)
     {
         ArgumentNullException.ThrowIfNull(network);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -33,10 +36,13 @@ public sealed class ReportExportService
             throw new InvalidOperationException("Timeline report periods must be greater than zero.");
         }
 
-        File.WriteAllText(path, BuildTimelineReport(network, periods), Encoding.UTF8);
+        var contents = format == ReportExportFormat.Csv
+            ? BuildTimelineCsvReport(network, periods)
+            : BuildTimelineMarkdownReport(network, periods);
+        File.WriteAllText(path, contents, Encoding.UTF8);
     }
 
-    private string BuildCurrentReport(NetworkModel network)
+    private string BuildCurrentMarkdownReport(NetworkModel network)
     {
         var outcomes = networkSimulationEngine.Simulate(network);
         var consumerCosts = networkSimulationEngine.SummarizeConsumerCosts(outcomes);
@@ -148,7 +154,7 @@ public sealed class ReportExportService
         return builder.ToString();
     }
 
-    private string BuildTimelineReport(NetworkModel network, int periods)
+    private string BuildTimelineMarkdownReport(NetworkModel network, int periods)
     {
         var builder = CreateReportHeader($"Timeline Report ({periods} periods)", network);
         var state = temporalNetworkSimulationEngine.Initialize(network);
@@ -257,6 +263,228 @@ public sealed class ReportExportService
                 {
                     var flow = stepResult.NodeFlows.GetValueOrDefault(node.Id, TemporalNetworkSimulationEngine.NodeFlowVisualSummary.Empty);
                     var states = stepResult.NodeStates
+                        .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id))
+                        .Select(pair => pair.Value)
+                        .ToList();
+                    return new[]
+                    {
+                        $"{node.Name} ({node.Id})",
+                        FormatNumber(flow.OutboundQuantity),
+                        FormatNumber(flow.InboundQuantity),
+                        FormatNumber(states.Sum(item => item.AvailableSupply)),
+                        FormatNumber(states.Sum(item => item.DemandBacklog)),
+                        FormatNumber(states.Sum(item => item.StoreInventory))
+                    };
+                }));
+        }
+
+        return builder.ToString();
+    }
+
+    private string BuildCurrentCsvReport(NetworkModel network)
+    {
+        var outcomes = networkSimulationEngine.Simulate(network);
+        var consumerCosts = networkSimulationEngine.SummarizeConsumerCosts(outcomes);
+        var allocations = outcomes.SelectMany(outcome => outcome.Allocations).ToList();
+        var builder = new StringBuilder();
+        AppendCsvTitleBlock(builder, "Current Network Report", network);
+        AppendCsvTable(
+            builder,
+            "Network Overview",
+            ["Measure", "Value"],
+            [
+                ["Nodes", network.Nodes.Count.ToString(CultureInfo.InvariantCulture)],
+                ["Edges", network.Edges.Count.ToString(CultureInfo.InvariantCulture)],
+                ["Traffic Types", network.TrafficTypes.Count.ToString(CultureInfo.InvariantCulture)],
+                ["Total Routed Movements", allocations.Count.ToString(CultureInfo.InvariantCulture)],
+                ["Total Delivered", FormatNumber(outcomes.Sum(outcome => outcome.TotalDelivered))]
+            ]);
+        AppendCsvTable(
+            builder,
+            "Traffic Types",
+            ["Traffic Type", "Preference", "Capacity Bid / Unit", "Description"],
+            network.TrafficTypes.Select(definition => new[]
+            {
+                definition.Name,
+                FormatRoutingPreference(definition.RoutingPreference),
+                FormatNumber(definition.CapacityBidPerUnit),
+                definition.Description
+            }));
+        AppendCsvTable(
+            builder,
+            "Nodes",
+            ["Node", "Shape", "Position", "Transhipment Cap", "Traffic Profiles"],
+            network.Nodes.Select(node => new[]
+            {
+                $"{node.Name} ({node.Id})",
+                node.Shape.ToString(),
+                $"{FormatNumber(node.X)}, {FormatNumber(node.Y)}",
+                FormatNumber(node.TranshipmentCapacity),
+                string.Join(" | ", node.TrafficProfiles.Select(FormatTrafficProfile))
+            }));
+        AppendCsvTable(
+            builder,
+            "Edges",
+            ["Edge", "Route", "Time", "Cost", "Capacity", "Direction"],
+            network.Edges.Select(edge => new[]
+            {
+                edge.Id,
+                $"{edge.FromNodeId} -> {edge.ToNodeId}",
+                FormatNumber(edge.Time),
+                FormatNumber(edge.Cost),
+                FormatNumber(edge.Capacity),
+                edge.IsBidirectional ? "Bidirectional" : "One-way"
+            }));
+        AppendCsvTable(
+            builder,
+            "Traffic Outcomes",
+            ["Traffic Type", "Preference", "Production", "Consumption", "Delivered", "Unused Supply", "Unmet Demand", "Notes"],
+            outcomes.Select(outcome => new[]
+            {
+                outcome.TrafficType,
+                FormatRoutingPreference(outcome.RoutingPreference),
+                FormatNumber(outcome.TotalProduction),
+                FormatNumber(outcome.TotalConsumption),
+                FormatNumber(outcome.TotalDelivered),
+                FormatNumber(outcome.UnusedSupply),
+                FormatNumber(outcome.UnmetDemand),
+                outcome.Notes.Count == 0 ? "None" : string.Join(" ", outcome.Notes)
+            }));
+        AppendCsvTable(
+            builder,
+            "Consumer Costs",
+            ["Traffic Type", "Consumer", "Local Qty", "Imported Qty", "Blended Unit Cost", "Total Movement Cost"],
+            consumerCosts.Select(summary => new[]
+            {
+                summary.TrafficType,
+                $"{summary.ConsumerName} ({summary.ConsumerNodeId})",
+                FormatNumber(summary.LocalQuantity),
+                FormatNumber(summary.ImportedQuantity),
+                FormatNumber(summary.BlendedUnitCost),
+                FormatNumber(summary.TotalMovementCost)
+            }));
+        AppendCsvTable(
+            builder,
+            "Routed Movements",
+            ["Traffic Type", "Producer", "Consumer", "Qty", "Path", "Time", "Transit Cost", "Bid Cost", "Delivered Cost"],
+            allocations
+                .OrderBy(allocation => allocation.TrafficType, Comparer)
+                .ThenBy(allocation => allocation.ConsumerName, Comparer)
+                .ThenBy(allocation => allocation.ProducerName, Comparer)
+                .Select(allocation => new[]
+                {
+                    allocation.TrafficType,
+                    allocation.ProducerName,
+                    allocation.ConsumerName,
+                    FormatNumber(allocation.Quantity),
+                    string.Join(" -> ", allocation.PathNodeNames),
+                    FormatNumber(allocation.TotalTime),
+                    FormatNumber(allocation.TotalCost),
+                    FormatNumber(allocation.BidCostPerUnit),
+                    FormatNumber(allocation.DeliveredCostPerUnit)
+                }));
+
+        return builder.ToString();
+    }
+
+    private string BuildTimelineCsvReport(NetworkModel network, int periods)
+    {
+        var state = temporalNetworkSimulationEngine.Initialize(network);
+        var results = new List<TemporalNetworkSimulationEngine.TemporalSimulationStepResult>(periods);
+        for (var period = 0; period < periods; period++)
+        {
+            results.Add(temporalNetworkSimulationEngine.Advance(network, state));
+        }
+
+        var allAllocations = results.SelectMany(result => result.Allocations).ToList();
+        var builder = new StringBuilder();
+        AppendCsvTitleBlock(builder, $"Timeline Report ({periods} periods)", network);
+        AppendCsvTable(
+            builder,
+            "Timeline Overview",
+            ["Measure", "Value"],
+            [
+                ["Periods Simulated", periods.ToString(CultureInfo.InvariantCulture)],
+                ["Allocations Planned", allAllocations.Count.ToString(CultureInfo.InvariantCulture)],
+                ["Total Delivered", FormatNumber(allAllocations.Sum(item => item.Quantity))],
+                ["Periods With Movement", results.Count(result => result.Allocations.Count > 0).ToString(CultureInfo.InvariantCulture)],
+                ["Final In-Flight Movements", results[^1].InFlightMovementCount.ToString(CultureInfo.InvariantCulture)]
+            ]);
+        AppendCsvTable(
+            builder,
+            "Timeline Outcomes By Traffic",
+            ["Traffic Type", "Delivered", "Movements", "Avg Delivered Cost / Unit"],
+            allAllocations
+                .GroupBy(allocation => allocation.TrafficType, Comparer)
+                .OrderBy(group => group.Key, Comparer)
+                .Select(group =>
+                {
+                    var totalQuantity = group.Sum(item => item.Quantity);
+                    var totalMovementCost = group.Sum(item => item.TotalMovementCost);
+                    return new[]
+                    {
+                        group.Key,
+                        FormatNumber(totalQuantity),
+                        group.Count().ToString(CultureInfo.InvariantCulture),
+                        FormatNumber(totalQuantity > 0 ? totalMovementCost / totalQuantity : 0d)
+                    };
+                }));
+
+        foreach (var result in results)
+        {
+            AppendCsvTable(
+                builder,
+                $"Period {result.Period} Summary",
+                ["Measure", "Value"],
+                [
+                    ["Delivered This Period", FormatNumber(result.Allocations.Sum(item => item.Quantity))],
+                    ["Movements Planned", result.Allocations.Count.ToString(CultureInfo.InvariantCulture)],
+                    ["Edges Used", result.EdgeFlows.Count(item => TotalEdgeFlow(item.Value) > 0).ToString(CultureInfo.InvariantCulture)],
+                    ["Nodes Active", result.NodeFlows.Count(item => item.Value.OutboundQuantity > 0 || item.Value.InboundQuantity > 0).ToString(CultureInfo.InvariantCulture)],
+                    ["In-Flight After Period", result.InFlightMovementCount.ToString(CultureInfo.InvariantCulture)]
+                ]);
+
+            AppendCsvTable(
+                builder,
+                $"Period {result.Period} Routed Movements",
+                ["Traffic Type", "Producer", "Consumer", "Qty", "Path", "Time", "Delivered Cost"],
+                result.Allocations.Select(allocation => new[]
+                {
+                    allocation.TrafficType,
+                    allocation.ProducerName,
+                    allocation.ConsumerName,
+                    FormatNumber(allocation.Quantity),
+                    string.Join(" -> ", allocation.PathNodeNames),
+                    FormatNumber(allocation.TotalTime),
+                    FormatNumber(allocation.DeliveredCostPerUnit)
+                }));
+
+            AppendCsvTable(
+                builder,
+                $"Period {result.Period} Edge Usage",
+                ["Edge", "Route", "Forward Flow", "Reverse Flow", "Capacity", "Utilisation"],
+                network.Edges.Select(edge =>
+                {
+                    var summary = result.EdgeFlows.GetValueOrDefault(edge.Id, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty);
+                    return new[]
+                    {
+                        edge.Id,
+                        $"{edge.FromNodeId} -> {edge.ToNodeId}",
+                        FormatNumber(summary.ForwardQuantity),
+                        FormatNumber(summary.ReverseQuantity),
+                        FormatNumber(edge.Capacity),
+                        FormatUtilisation(TotalEdgeFlow(summary), edge.Capacity)
+                    };
+                }));
+
+            AppendCsvTable(
+                builder,
+                $"Period {result.Period} Node Activity",
+                ["Node", "Outbound", "Inbound", "Ready Supply", "Demand Backlog", "Store Inventory"],
+                network.Nodes.Select(node =>
+                {
+                    var flow = result.NodeFlows.GetValueOrDefault(node.Id, TemporalNetworkSimulationEngine.NodeFlowVisualSummary.Empty);
+                    var states = result.NodeStates
                         .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id))
                         .Select(pair => pair.Value)
                         .ToList();
@@ -411,5 +639,57 @@ public sealed class ReportExportService
     private static double TotalEdgeFlow(TemporalNetworkSimulationEngine.EdgeFlowVisualSummary summary)
     {
         return summary.ForwardQuantity + summary.ReverseQuantity;
+    }
+
+    private static void AppendCsvTitleBlock(StringBuilder builder, string title, NetworkModel network)
+    {
+        builder.AppendLine(BuildCsvRow([title]));
+        builder.AppendLine(BuildCsvRow(["Generated", DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss zzz")]));
+        builder.AppendLine(BuildCsvRow(["Network", network.Name]));
+        if (!string.IsNullOrWhiteSpace(network.Description))
+        {
+            builder.AppendLine(BuildCsvRow(["Description", network.Description.Trim()]));
+        }
+
+        builder.AppendLine();
+    }
+
+    private static void AppendCsvTable(StringBuilder builder, string sectionTitle, IReadOnlyList<string> headers, IEnumerable<string[]> rows)
+    {
+        builder.AppendLine(BuildCsvRow([sectionTitle]));
+        builder.AppendLine(BuildCsvRow(headers));
+
+        var materializedRows = rows.ToList();
+        if (materializedRows.Count == 0)
+        {
+            builder.AppendLine(BuildCsvRow(["No data"]));
+        }
+        else
+        {
+            foreach (var row in materializedRows)
+            {
+                builder.AppendLine(BuildCsvRow(row));
+            }
+        }
+
+        builder.AppendLine();
+    }
+
+    private static string BuildCsvRow(IEnumerable<string?> values)
+    {
+        return string.Join(",", values.Select(EscapeCsvCell));
+    }
+
+    private static string EscapeCsvCell(string? value)
+    {
+        var safe = value ?? string.Empty;
+        if (safe.Contains('"'))
+        {
+            safe = safe.Replace("\"", "\"\"");
+        }
+
+        return safe.IndexOfAny([',', '"', '\r', '\n']) >= 0
+            ? $"\"{safe}\""
+            : safe;
     }
 }

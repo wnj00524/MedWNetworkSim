@@ -5,18 +5,16 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Export Reports"
-        Width="620"
-        Height="420"
-        MinWidth="560"
-        MinHeight="360"
+        Width="660"
+        Height="500"
+        MinWidth="600"
+        MinHeight="440"
         WindowStartupLocation="CenterOwner">
     <Grid Margin="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="12" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="12" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <Border Padding="16"
@@ -42,97 +40,125 @@
                 BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
                 CornerRadius="18">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="12" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="12" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="12" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
                 <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-                    <TextBlock VerticalAlignment="Center"
-                               Margin="0,0,12,0"
-                               FontSize="12"
-                               Foreground="{DynamicResource MutedForegroundBrush}"
-                               Text="Report File" />
-                    <TextBox Grid.Column="1"
-                             MinWidth="260"
-                             Text="{Binding ReportPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    <Button Grid.Column="2"
-                            Margin="12,0,0,0"
-                            Content="Browse..."
-                            Click="Browse_Click" />
-                </Grid>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
 
-                <Grid Grid.Row="2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="160" />
-                    </Grid.ColumnDefinitions>
-
-                    <TextBlock VerticalAlignment="Center"
-                               Margin="0,0,12,0"
-                               FontSize="12"
-                               Foreground="{DynamicResource MutedForegroundBrush}"
-                               Text="Timeline Periods" />
-                    <TextBox Grid.Column="1"
-                             Text="{Binding TimelinePeriodsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                </Grid>
-
-                <WrapPanel Grid.Row="4">
-                    <Button Content="Export Current Report"
-                            IsEnabled="{Binding CanExport}"
-                            Click="ExportCurrentReport_Click" />
-                    <Button Content="Export Timeline Report"
-                            IsEnabled="{Binding CanExport}"
-                            Click="ExportTimelineReport_Click" />
-                </WrapPanel>
-
-                <Border Grid.Row="6"
-                        Padding="12"
-                        Background="{DynamicResource InfoPanelBrush}"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="12">
-                    <StackPanel>
-                        <TextBlock FontSize="12"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource AccentStrongBrush}"
-                                   Text="What gets exported" />
-                        <TextBlock Margin="0,8,0,0"
+                        <TextBlock VerticalAlignment="Center"
+                                   Margin="0,0,12,0"
                                    FontSize="12"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Current report: network overview, traffic definitions, nodes, edges, traffic outcomes, consumer costs, and routed movements."
-                                   TextWrapping="Wrap" />
-                        <TextBlock Margin="0,6,0,0"
+                                   Text="Report File" />
+                        <TextBox Grid.Column="1"
+                                 MinWidth="300"
+                                 Text="{Binding ReportPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Grid.Column="2"
+                                Margin="12,0,0,0"
+                                Content="Browse..."
+                                Click="Browse_Click" />
+                    </Grid>
+
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="180" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock VerticalAlignment="Center"
+                                   Margin="0,0,12,0"
                                    FontSize="12"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Timeline report: per-period routed movements, edge usage, node activity, and overall totals across the requested number of periods."
-                                   TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-            </Grid>
+                                   Text="Report Format" />
+                        <ComboBox Grid.Column="1"
+                                  ItemsSource="{Binding FormatOptions}"
+                                  SelectedItem="{Binding SelectedFormat, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </Grid>
+
+                    <Grid Grid.Row="4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="160" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock VerticalAlignment="Center"
+                                   Margin="0,0,12,0"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Timeline Periods" />
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding TimelinePeriodsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </Grid>
+
+                    <WrapPanel Grid.Row="6">
+                        <Button Content="Export Current Report"
+                                IsEnabled="{Binding CanExport}"
+                                Click="ExportCurrentReport_Click" />
+                        <Button Content="Export Timeline Report"
+                                IsEnabled="{Binding CanExport}"
+                                Click="ExportTimelineReport_Click" />
+                    </WrapPanel>
+
+                    <Border Grid.Row="8"
+                            Padding="12"
+                            Background="{DynamicResource InfoPanelBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12">
+                        <StackPanel>
+                            <TextBlock FontSize="12"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource AccentStrongBrush}"
+                                       Text="What gets exported" />
+                            <TextBlock Margin="0,8,0,0"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
+                                       Text="Current report: network overview, traffic definitions, nodes, edges, traffic outcomes, consumer costs, and routed movements."
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,6,0,0"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
+                                       Text="Timeline report: per-period routed movements, edge usage, node activity, and overall totals across the requested number of periods."
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,6,0,0"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
+                                       Text="Use Browse to choose both the file name and the save location. The selected format updates the expected file extension automatically."
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <DockPanel Grid.Row="10">
+                        <TextBlock VerticalAlignment="Center"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Markdown is best for a readable narrative report. CSV is best for spreadsheet analysis or further processing." />
+                        <Button DockPanel.Dock="Right"
+                                Margin="12,0,0,0"
+                                Content="Close"
+                                Click="Close_Click" />
+                    </DockPanel>
+                </Grid>
+            </ScrollViewer>
         </Border>
-
-        <DockPanel Grid.Row="4">
-            <TextBlock VerticalAlignment="Center"
-                       FontSize="12"
-                       Foreground="{DynamicResource MutedForegroundBrush}"
-                       Text="Reports export as Markdown (.md) so they are easy to read or attach to project notes." />
-            <Button DockPanel.Dock="Right"
-                    Margin="12,0,0,0"
-                    Content="Close"
-                    Click="Close_Click" />
-        </DockPanel>
     </Grid>
 </Window>

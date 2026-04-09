@@ -16,6 +16,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private readonly NetworkFileService fileService = new();
     private readonly GraphMlFileService graphMlFileService = new();
+    private readonly ReportExportService reportExportService = new();
     private readonly NetworkSimulationEngine simulationEngine = new();
     private readonly TemporalNetworkSimulationEngine temporalSimulationEngine = new();
     private readonly List<RouteAllocation> allAllocationModels = [];
@@ -536,6 +537,20 @@ public sealed class MainWindowViewModel : ObservableObject
         }
     }
 
+    public string SuggestedReportFileName
+    {
+        get
+        {
+            var baseName = Regex.Replace(NetworkName, @"[^\w\-]+", "-").Trim('-');
+            if (string.IsNullOrWhiteSpace(baseName))
+            {
+                baseName = "network";
+            }
+
+            return $"{baseName}-report.md";
+        }
+    }
+
     public void CreateNewNetwork()
     {
         LoadNetwork(
@@ -574,6 +589,20 @@ public sealed class MainWindowViewModel : ObservableObject
         graphMlFileService.Save(network, path, options);
         ActiveFileLabel = path;
         StatusMessage = $"Exported the current network to GraphML file '{Path.GetFileName(path)}'.";
+    }
+
+    public void ExportCurrentReport(string path)
+    {
+        var network = BuildValidatedNetwork();
+        reportExportService.SaveCurrentReport(network, path);
+        StatusMessage = $"Exported the current report to '{Path.GetFileName(path)}'.";
+    }
+
+    public void ExportTimelineReport(string path, int periods)
+    {
+        var network = BuildValidatedNetwork();
+        reportExportService.SaveTimelineReport(network, path, periods);
+        StatusMessage = $"Exported the timeline report for {periods} period(s) to '{Path.GetFileName(path)}'.";
     }
 
     public void LoadBundledSample()

@@ -55,6 +55,16 @@ public partial class MainWindow : Window
         window.ShowDialog();
     }
 
+    private void Reports_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new ReportExportWindow(ViewModel)
+        {
+            Owner = this
+        };
+
+        window.ShowDialog();
+    }
+
     private void SaveFile_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new SaveFileDialog

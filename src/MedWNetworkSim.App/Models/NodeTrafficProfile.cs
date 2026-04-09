@@ -21,6 +21,11 @@ public sealed class NodeTrafficProfile
     public double Consumption { get; set; }
 
     /// <summary>
+    /// Gets or sets the optional extra per-unit premium this consumer will pay to prioritize this traffic type.
+    /// </summary>
+    public double ConsumerPremiumPerUnit { get; set; }
+
+    /// <summary>
     /// Gets or sets a value indicating whether this node may be used as an intermediate transhipment point.
     /// </summary>
     public bool CanTransship { get; set; }

@@ -1,100 +1,190 @@
 {
-  "name": "Medical Waste and Supply Routing Demo",
-  "description": "Sample multi-traffic network showing producers, consumers, and transhipment behaviour across the same set of nodes.",
+  "name": "Medieval Town Trade, Storage, And Seasons Demo",
+  "description": "Sample network set in and around a medieval market town, showing timed production and consumption periods, store-based inventory nodes, constrained routes, and mixed producer, consumer, and transhipment behaviour across multiple traffic types.",
   "trafficTypes": [
     {
-      "name": "Infectious Waste",
-      "description": "Time-sensitive waste moved to treatment facilities.",
-      "routingPreference": "speed",
-      "capacityBidPerUnit": 1.5
-    },
-    {
-      "name": "Recyclables",
-      "description": "Traffic that prefers low direct cost over raw speed.",
-      "routingPreference": "cost"
-    },
-    {
-      "name": "Sterile Supplies",
-      "description": "Traffic routed on combined time plus cost.",
+      "name": "Grain",
+      "description": "Staple food moved between farms, mills, granaries, and town consumers.",
       "routingPreference": "totalCost",
-      "capacityBidPerUnit": 0.5
+      "capacityBidPerUnit": 0.4
+    },
+    {
+      "name": "Timber",
+      "description": "Bulk material that prefers cheaper routes, even if they are slower.",
+      "routingPreference": "cost",
+      "capacityBidPerUnit": 0.8
+    },
+    {
+      "name": "Iron",
+      "description": "Heavy ore and forged goods that compete strongly for scarce capacity.",
+      "routingPreference": "totalCost",
+      "capacityBidPerUnit": 1.6
+    },
+    {
+      "name": "Herbs",
+      "description": "Perishable medicinal bundles that prefer the fastest paths.",
+      "routingPreference": "speed",
+      "capacityBidPerUnit": 1.1
     }
   ],
   "nodes": [
     {
-      "id": "HOSP-A",
-      "name": "Clinic East",
+      "id": "FARM-N",
+      "name": "North Fields",
       "trafficProfiles": [
-        { "trafficType": "Infectious Waste", "production": 42, "consumption": 0, "canTransship": false },
-        { "trafficType": "Recyclables", "production": 18, "consumption": 0, "canTransship": false },
-        { "trafficType": "Sterile Supplies", "production": 0, "consumption": 20, "canTransship": false }
+        { "trafficType": "Grain", "production": 26, "productionStartPeriod": 1, "productionEndPeriod": 3, "consumption": 0, "canTransship": false },
+        { "trafficType": "Timber", "production": 0, "consumption": 4, "consumptionStartPeriod": 0, "consumptionEndPeriod": 6, "canTransship": false }
       ]
     },
     {
-      "id": "HOSP-B",
-      "name": "Hospital West",
+      "id": "FARM-S",
+      "name": "South Mill Farms",
       "trafficProfiles": [
-        { "trafficType": "Infectious Waste", "production": 30, "consumption": 0, "canTransship": false },
-        { "trafficType": "Recyclables", "production": 12, "consumption": 0, "canTransship": false },
-        { "trafficType": "Sterile Supplies", "production": 0, "consumption": 15, "canTransship": false }
+        { "trafficType": "Grain", "production": 22, "productionStartPeriod": 2, "productionEndPeriod": 5, "consumption": 0, "canTransship": false },
+        { "trafficType": "Timber", "production": 0, "consumption": 3, "consumptionStartPeriod": 0, "consumptionEndPeriod": 6, "canTransship": false }
       ]
     },
     {
-      "id": "HUB-N",
-      "name": "North Logistics Hub",
-      "transhipmentCapacity": 38,
+      "id": "FOREST",
+      "name": "King's Wood Camp",
       "trafficProfiles": [
-        { "trafficType": "Infectious Waste", "production": 0, "consumption": 0, "canTransship": true },
-        { "trafficType": "Recyclables", "production": 4, "consumption": 2, "canTransship": true },
-        { "trafficType": "Sterile Supplies", "production": 0, "consumption": 0, "canTransship": true }
+        { "trafficType": "Timber", "production": 18, "productionStartPeriod": 0, "productionEndPeriod": 2, "consumption": 0, "canTransship": false },
+        { "trafficType": "Timber", "production": 24, "productionStartPeriod": 4, "productionEndPeriod": 6, "consumption": 0, "canTransship": false },
+        { "trafficType": "Grain", "production": 0, "consumption": 8, "consumptionStartPeriod": 0, "consumptionEndPeriod": 6, "canTransship": false }
       ]
     },
     {
-      "id": "AUTO-1",
-      "name": "Autoclave Centre",
-      "transhipmentCapacity": 18,
+      "id": "MINE",
+      "name": "Hill Mine",
       "trafficProfiles": [
-        { "trafficType": "Infectious Waste", "production": 0, "consumption": 55, "canTransship": false },
-        { "trafficType": "Sterile Supplies", "production": 25, "consumption": 0, "canTransship": true }
+        { "trafficType": "Iron", "production": 16, "productionStartPeriod": 0, "productionEndPeriod": 2, "consumption": 0, "canTransship": false },
+        { "trafficType": "Iron", "production": 20, "productionStartPeriod": 4, "productionEndPeriod": 6, "consumption": 0, "canTransship": false },
+        { "trafficType": "Grain", "production": 0, "consumption": 10, "consumptionStartPeriod": 0, "consumptionEndPeriod": 6, "canTransship": false },
+        { "trafficType": "Timber", "production": 0, "consumption": 5, "consumptionStartPeriod": 0, "consumptionEndPeriod": 6, "canTransship": false }
       ]
     },
     {
-      "id": "REC-1",
-      "name": "Recovery Facility",
+      "id": "HERB-G",
+      "name": "Abbey Herb Gardens",
       "trafficProfiles": [
-        { "trafficType": "Recyclables", "production": 0, "consumption": 40, "canTransship": false }
+        { "trafficType": "Herbs", "production": 10, "productionStartPeriod": 0, "productionEndPeriod": 1, "consumption": 0, "canTransship": false },
+        { "trafficType": "Herbs", "production": 14, "productionStartPeriod": 3, "productionEndPeriod": 5, "consumption": 0, "canTransship": false },
+        { "trafficType": "Grain", "production": 0, "consumption": 6, "consumptionStartPeriod": 0, "consumptionEndPeriod": 6, "canTransship": false }
       ]
     },
     {
-      "id": "PORT-1",
-      "name": "Intermodal Port",
-      "transhipmentCapacity": 24,
+      "id": "MARKET",
+      "name": "Market Square",
+      "transhipmentCapacity": 40,
       "trafficProfiles": [
-        { "trafficType": "Infectious Waste", "production": 0, "consumption": 0, "canTransship": true },
-        { "trafficType": "Recyclables", "production": 0, "consumption": 0, "canTransship": true },
-        { "trafficType": "Sterile Supplies", "production": 0, "consumption": 0, "canTransship": true }
+        { "trafficType": "Grain", "production": 6, "productionStartPeriod": 1, "productionEndPeriod": 4, "consumption": 10, "consumptionStartPeriod": 0, "consumptionEndPeriod": 6, "canTransship": true },
+        { "trafficType": "Timber", "production": 0, "consumption": 8, "consumptionStartPeriod": 1, "consumptionEndPeriod": 6, "canTransship": true },
+        { "trafficType": "Iron", "production": 0, "consumption": 6, "consumptionStartPeriod": 1, "consumptionEndPeriod": 6, "canTransship": true },
+        { "trafficType": "Herbs", "production": 0, "consumption": 5, "consumptionStartPeriod": 0, "consumptionEndPeriod": 6, "canTransship": true }
       ]
     },
     {
-      "id": "LAB-1",
-      "name": "Regional Lab",
+      "id": "WHARF",
+      "name": "River Wharf",
+      "transhipmentCapacity": 28,
       "trafficProfiles": [
-        { "trafficType": "Infectious Waste", "production": 0, "consumption": 10, "canTransship": false },
-        { "trafficType": "Sterile Supplies", "production": 20, "consumption": 0, "canTransship": false }
+        { "trafficType": "Grain", "production": 0, "consumption": 0, "canTransship": true },
+        { "trafficType": "Timber", "production": 0, "consumption": 0, "canTransship": true },
+        { "trafficType": "Iron", "production": 0, "consumption": 0, "canTransship": true },
+        { "trafficType": "Herbs", "production": 0, "consumption": 0, "canTransship": true }
+      ]
+    },
+    {
+      "id": "MILL",
+      "name": "Riverside Mill",
+      "trafficProfiles": [
+        { "trafficType": "Grain", "production": 8, "productionStartPeriod": 1, "productionEndPeriod": 6, "consumption": 12, "consumptionStartPeriod": 0, "consumptionEndPeriod": 6, "canTransship": false },
+        { "trafficType": "Timber", "production": 0, "consumption": 10, "consumptionStartPeriod": 0, "consumptionEndPeriod": 6, "canTransship": false }
+      ]
+    },
+    {
+      "id": "SMITHY",
+      "name": "Town Smithy",
+      "trafficProfiles": [
+        { "trafficType": "Iron", "production": 6, "productionStartPeriod": 2, "productionEndPeriod": 6, "consumption": 18, "consumptionStartPeriod": 0, "consumptionEndPeriod": 6, "canTransship": false },
+        { "trafficType": "Timber", "production": 0, "consumption": 7, "consumptionStartPeriod": 0, "consumptionEndPeriod": 6, "canTransship": false },
+        { "trafficType": "Herbs", "production": 0, "consumption": 2, "consumptionStartPeriod": 3, "consumptionEndPeriod": 6, "canTransship": false }
+      ]
+    },
+    {
+      "id": "BARRACKS",
+      "name": "Gate Barracks",
+      "trafficProfiles": [
+        { "trafficType": "Grain", "production": 0, "consumption": 18, "consumptionStartPeriod": 2, "consumptionEndPeriod": 6, "canTransship": false },
+        { "trafficType": "Iron", "production": 0, "consumption": 10, "consumptionStartPeriod": 2, "consumptionEndPeriod": 6, "canTransship": false, "consumerPremiumPerUnit": 0.7 },
+        { "trafficType": "Herbs", "production": 0, "consumption": 6, "consumptionStartPeriod": 2, "consumptionEndPeriod": 6, "canTransship": false, "consumerPremiumPerUnit": 0.5 }
+      ]
+    },
+    {
+      "id": "INN",
+      "name": "Pilgrim's Inn",
+      "trafficProfiles": [
+        { "trafficType": "Grain", "production": 0, "consumption": 14, "consumptionStartPeriod": 1, "consumptionEndPeriod": 6, "canTransship": false },
+        { "trafficType": "Herbs", "production": 0, "consumption": 4, "consumptionStartPeriod": 1, "consumptionEndPeriod": 6, "canTransship": false },
+        { "trafficType": "Timber", "production": 0, "consumption": 2, "consumptionStartPeriod": 0, "consumptionEndPeriod": 6, "canTransship": false }
+      ]
+    },
+    {
+      "id": "APOTHEC",
+      "name": "Town Apothecary",
+      "trafficProfiles": [
+        { "trafficType": "Herbs", "production": 4, "productionStartPeriod": 2, "productionEndPeriod": 6, "consumption": 15, "consumptionStartPeriod": 0, "consumptionEndPeriod": 6, "canTransship": false, "consumerPremiumPerUnit": 0.8 },
+        { "trafficType": "Iron", "production": 0, "consumption": 2, "consumptionStartPeriod": 3, "consumptionEndPeriod": 6, "canTransship": false }
+      ]
+    },
+    {
+      "id": "GRANARY",
+      "name": "Town Granary",
+      "trafficProfiles": [
+        { "trafficType": "Grain", "production": 18, "productionStartPeriod": 3, "productionEndPeriod": 6, "consumption": 30, "consumptionStartPeriod": 0, "consumptionEndPeriod": 2, "isStore": true, "storeCapacity": 60, "canTransship": false }
+      ]
+    },
+    {
+      "id": "LUMBER",
+      "name": "Lumber Yard",
+      "trafficProfiles": [
+        { "trafficType": "Timber", "production": 14, "productionStartPeriod": 2, "productionEndPeriod": 6, "consumption": 22, "consumptionStartPeriod": 0, "consumptionEndPeriod": 3, "isStore": true, "storeCapacity": 45, "canTransship": false }
+      ]
+    },
+    {
+      "id": "ARMORY",
+      "name": "Castle Armory",
+      "trafficProfiles": [
+        { "trafficType": "Iron", "production": 8, "productionStartPeriod": 4, "productionEndPeriod": 6, "consumption": 18, "consumptionStartPeriod": 0, "consumptionEndPeriod": 3, "isStore": true, "storeCapacity": 35, "canTransship": false, "consumerPremiumPerUnit": 0.9 }
       ]
     }
   ],
   "edges": [
-    { "id": "E1", "fromNodeId": "HOSP-A", "toNodeId": "HUB-N", "time": 3.2, "cost": 4.5, "capacity": 48, "isBidirectional": true },
-    { "id": "E2", "fromNodeId": "HOSP-B", "toNodeId": "HUB-N", "time": 3.8, "cost": 5.1, "capacity": 34, "isBidirectional": true },
-    { "id": "E3", "fromNodeId": "HUB-N", "toNodeId": "AUTO-1", "time": 4.9, "cost": 7.2, "capacity": 46, "isBidirectional": false },
-    { "id": "E4", "fromNodeId": "HUB-N", "toNodeId": "REC-1", "time": 4.0, "cost": 4.0, "capacity": 18, "isBidirectional": false },
-    { "id": "E5", "fromNodeId": "HUB-N", "toNodeId": "PORT-1", "time": 5.4, "cost": 3.6, "capacity": 22, "isBidirectional": true },
-    { "id": "E6", "fromNodeId": "PORT-1", "toNodeId": "REC-1", "time": 2.6, "cost": 2.0, "capacity": 17, "isBidirectional": true },
-    { "id": "E7", "fromNodeId": "PORT-1", "toNodeId": "LAB-1", "time": 2.2, "cost": 6.4, "capacity": 16, "isBidirectional": true },
-    { "id": "E8", "fromNodeId": "AUTO-1", "toNodeId": "PORT-1", "time": 2.0, "cost": 3.0, "capacity": 20, "isBidirectional": true },
-    { "id": "E9", "fromNodeId": "AUTO-1", "toNodeId": "LAB-1", "time": 3.1, "cost": 4.2, "capacity": 19, "isBidirectional": true },
-    { "id": "E10", "fromNodeId": "LAB-1", "toNodeId": "HOSP-A", "time": 2.4, "cost": 5.0, "capacity": 19, "isBidirectional": true },
-    { "id": "E11", "fromNodeId": "LAB-1", "toNodeId": "HOSP-B", "time": 2.7, "cost": 5.0, "capacity": 18, "isBidirectional": true }
+    { "id": "E1", "fromNodeId": "FARM-N", "toNodeId": "MARKET", "time": 2.0, "cost": 2.2, "capacity": 26, "isBidirectional": true },
+    { "id": "E2", "fromNodeId": "FARM-S", "toNodeId": "MARKET", "time": 2.4, "cost": 1.8, "capacity": 22, "isBidirectional": true },
+    { "id": "E3", "fromNodeId": "FOREST", "toNodeId": "WHARF", "time": 2.8, "cost": 1.5, "capacity": 24, "isBidirectional": false },
+    { "id": "E4", "fromNodeId": "FOREST", "toNodeId": "MARKET", "time": 3.6, "cost": 3.0, "capacity": 16, "isBidirectional": true },
+    { "id": "E5", "fromNodeId": "MINE", "toNodeId": "SMITHY", "time": 2.3, "cost": 3.5, "capacity": 18, "isBidirectional": false },
+    { "id": "E6", "fromNodeId": "MINE", "toNodeId": "WHARF", "time": 4.1, "cost": 2.4, "capacity": 20, "isBidirectional": true },
+    { "id": "E7", "fromNodeId": "HERB-G", "toNodeId": "APOTHEC", "time": 1.2, "cost": 2.8, "capacity": 10, "isBidirectional": false },
+    { "id": "E8", "fromNodeId": "HERB-G", "toNodeId": "MARKET", "time": 1.7, "cost": 2.0, "capacity": 12, "isBidirectional": true },
+    { "id": "E9", "fromNodeId": "MARKET", "toNodeId": "WHARF", "time": 1.5, "cost": 1.1, "capacity": 30, "isBidirectional": true },
+    { "id": "E10", "fromNodeId": "MARKET", "toNodeId": "MILL", "time": 1.0, "cost": 0.9, "capacity": 18, "isBidirectional": true },
+    { "id": "E11", "fromNodeId": "MARKET", "toNodeId": "SMITHY", "time": 1.4, "cost": 1.6, "capacity": 14, "isBidirectional": true },
+    { "id": "E12", "fromNodeId": "MARKET", "toNodeId": "INN", "time": 0.9, "cost": 1.0, "capacity": 16, "isBidirectional": true },
+    { "id": "E13", "fromNodeId": "MARKET", "toNodeId": "BARRACKS", "time": 1.1, "cost": 1.3, "capacity": 15, "isBidirectional": true },
+    { "id": "E14", "fromNodeId": "WHARF", "toNodeId": "BARRACKS", "time": 1.8, "cost": 1.0, "capacity": 11, "isBidirectional": false },
+    { "id": "E15", "fromNodeId": "WHARF", "toNodeId": "APOTHEC", "time": 1.6, "cost": 1.7, "capacity": 9, "isBidirectional": true },
+    { "id": "E16", "fromNodeId": "MILL", "toNodeId": "INN", "time": 0.8, "cost": 0.7, "capacity": 12, "isBidirectional": true },
+    { "id": "E17", "fromNodeId": "SMITHY", "toNodeId": "BARRACKS", "time": 1.3, "cost": 1.5, "capacity": 10, "isBidirectional": true },
+    { "id": "E18", "fromNodeId": "SMITHY", "toNodeId": "APOTHEC", "time": 1.1, "cost": 1.2, "capacity": 8, "isBidirectional": true },
+    { "id": "E19", "fromNodeId": "FARM-S", "toNodeId": "MILL", "time": 1.6, "cost": 1.1, "capacity": 17, "isBidirectional": true },
+    { "id": "E20", "fromNodeId": "FARM-N", "toNodeId": "BARRACKS", "time": 2.9, "cost": 2.6, "capacity": 9, "isBidirectional": false },
+    { "id": "E21", "fromNodeId": "MARKET", "toNodeId": "GRANARY", "time": 0.7, "cost": 0.6, "capacity": 25, "isBidirectional": true },
+    { "id": "E22", "fromNodeId": "WHARF", "toNodeId": "GRANARY", "time": 1.2, "cost": 0.8, "capacity": 14, "isBidirectional": true },
+    { "id": "E23", "fromNodeId": "FOREST", "toNodeId": "LUMBER", "time": 1.9, "cost": 1.0, "capacity": 20, "isBidirectional": false },
+    { "id": "E24", "fromNodeId": "LUMBER", "toNodeId": "MARKET", "time": 1.1, "cost": 0.9, "capacity": 18, "isBidirectional": true },
+    { "id": "E25", "fromNodeId": "SMITHY", "toNodeId": "ARMORY", "time": 1.0, "cost": 1.1, "capacity": 12, "isBidirectional": true },
+    { "id": "E26", "fromNodeId": "WHARF", "toNodeId": "ARMORY", "time": 2.0, "cost": 1.6, "capacity": 10, "isBidirectional": false }
   ]
 }

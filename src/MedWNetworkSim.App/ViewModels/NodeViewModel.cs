@@ -433,6 +433,7 @@ public sealed class NodeViewModel : ObservableObject
                     TrafficType = profile.TrafficType,
                     Production = profile.Production,
                     Consumption = profile.Consumption,
+                    ConsumerPremiumPerUnit = profile.ConsumerPremiumPerUnit,
                     CanTransship = profile.CanTransship,
                     ProductionStartPeriod = profile.ProductionStartPeriod,
                     ProductionEndPeriod = profile.ProductionEndPeriod,

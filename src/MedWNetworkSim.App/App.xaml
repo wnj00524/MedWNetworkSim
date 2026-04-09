@@ -1,8 +1,7 @@
 <Application x:Class="MedWNetworkSim.App.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:MedWNetworkSim.App"
-             StartupUri="MainWindow.xaml">
+             xmlns:local="clr-namespace:MedWNetworkSim.App">
     <Application.Resources>
         <FontFamily x:Key="AppFontFamily">Segoe UI</FontFamily>
         <SolidColorBrush x:Key="WindowBrush" Color="#FFF4EFE6" />

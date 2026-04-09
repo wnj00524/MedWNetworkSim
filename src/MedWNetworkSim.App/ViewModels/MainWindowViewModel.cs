@@ -16,6 +16,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private readonly NetworkFileService fileService = new();
     private readonly GraphMlFileService graphMlFileService = new();
+    private readonly ReportExportService reportExportService = new();
     private readonly NetworkSimulationEngine simulationEngine = new();
     private readonly TemporalNetworkSimulationEngine temporalSimulationEngine = new();
     private readonly List<RouteAllocation> allAllocationModels = [];
@@ -345,6 +346,25 @@ public sealed class MainWindowViewModel : ObservableObject
         }
     }
 
+    public double SelectedNodeConsumerPremiumPerUnit
+    {
+        get => SelectedNodeTrafficProfile?.ConsumerPremiumPerUnit ?? 0d;
+        set
+        {
+            if (SelectedNodeTrafficProfile is null)
+            {
+                return;
+            }
+
+            if (Math.Abs(SelectedNodeTrafficProfile.ConsumerPremiumPerUnit - value) < 0.000001d)
+            {
+                return;
+            }
+
+            SelectedNodeTrafficProfile.ConsumerPremiumPerUnit = value;
+        }
+    }
+
     public int? SelectedNodeProductionStartPeriod
     {
         get => SelectedNodeTrafficProfile?.ProductionStartPeriod;
@@ -517,6 +537,29 @@ public sealed class MainWindowViewModel : ObservableObject
         }
     }
 
+    public string SuggestedReportFileName
+    {
+        get
+        {
+            var baseName = Regex.Replace(NetworkName, @"[^\w\-]+", "-").Trim('-');
+            if (string.IsNullOrWhiteSpace(baseName))
+            {
+                baseName = "network";
+            }
+
+            return $"{baseName}-report.html";
+        }
+    }
+
+    public string SuggestedReportFilePath
+    {
+        get
+        {
+            var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            return Path.Combine(documentsPath, SuggestedReportFileName);
+        }
+    }
+
     public void CreateNewNetwork()
     {
         LoadNetwork(
@@ -555,6 +598,20 @@ public sealed class MainWindowViewModel : ObservableObject
         graphMlFileService.Save(network, path, options);
         ActiveFileLabel = path;
         StatusMessage = $"Exported the current network to GraphML file '{Path.GetFileName(path)}'.";
+    }
+
+    public void ExportCurrentReport(string path, ReportExportFormat format)
+    {
+        var network = BuildValidatedNetwork();
+        reportExportService.SaveCurrentReport(network, path, format);
+        StatusMessage = $"Exported the current report to '{Path.GetFileName(path)}'.";
+    }
+
+    public void ExportTimelineReport(string path, int periods, ReportExportFormat format)
+    {
+        var network = BuildValidatedNetwork();
+        reportExportService.SaveTimelineReport(network, path, periods, format);
+        StatusMessage = $"Exported the timeline report for {periods} period(s) to '{Path.GetFileName(path)}'.";
     }
 
     public void LoadBundledSample()
@@ -1891,6 +1948,7 @@ public sealed class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSelectedNodeConsumer));
         OnPropertyChanged(nameof(SelectedNodeProduction));
         OnPropertyChanged(nameof(SelectedNodeConsumption));
+        OnPropertyChanged(nameof(SelectedNodeConsumerPremiumPerUnit));
         OnPropertyChanged(nameof(SelectedNodeProductionStartPeriod));
         OnPropertyChanged(nameof(SelectedNodeProductionEndPeriod));
         OnPropertyChanged(nameof(SelectedNodeConsumptionStartPeriod));

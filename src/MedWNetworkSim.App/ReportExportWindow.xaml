@@ -1,0 +1,164 @@
+<Window x:Class="MedWNetworkSim.App.ReportExportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Export Reports"
+        Width="660"
+        Height="500"
+        MinWidth="600"
+        MinHeight="440"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Padding="16"
+                Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="18">
+            <StackPanel>
+                <TextBlock FontSize="18"
+                           FontWeight="SemiBold"
+                           Text="Export Reports" />
+                <TextBlock Margin="0,8,0,0"
+                           FontSize="12"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
+                           Text="Export a readable HTML report or a spreadsheet-friendly CSV report for the current network. The current report captures the one-shot simulation outputs, and the timeline report simulates the network from period 1 for the number of periods you choose."
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="2"
+                Padding="16"
+                Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="18">
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock VerticalAlignment="Center"
+                                   Margin="0,0,12,0"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Report File" />
+                        <TextBox Grid.Column="1"
+                                 MinWidth="300"
+                                 Text="{Binding ReportPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Grid.Column="2"
+                                Margin="12,0,0,0"
+                                Content="Browse..."
+                                Click="Browse_Click" />
+                    </Grid>
+
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="180" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock VerticalAlignment="Center"
+                                   Margin="0,0,12,0"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Report Format" />
+                        <ComboBox Grid.Column="1"
+                                  ItemsSource="{Binding FormatOptions}"
+                                  SelectedItem="{Binding SelectedFormat, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </Grid>
+
+                    <Grid Grid.Row="4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="160" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock VerticalAlignment="Center"
+                                   Margin="0,0,12,0"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Timeline Periods" />
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding TimelinePeriodsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </Grid>
+
+                    <WrapPanel Grid.Row="6">
+                        <Button Content="Export Current Report"
+                                IsEnabled="{Binding CanExport}"
+                                Click="ExportCurrentReport_Click" />
+                        <Button Content="Export Timeline Report"
+                                IsEnabled="{Binding CanExport}"
+                                Click="ExportTimelineReport_Click" />
+                    </WrapPanel>
+
+                    <Border Grid.Row="8"
+                            Padding="12"
+                            Background="{DynamicResource InfoPanelBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12">
+                        <StackPanel>
+                        <TextBlock FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource AccentStrongBrush}"
+                                   Text="What gets exported" />
+                            <TextBlock Margin="0,8,0,0"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
+                                       Text="Current report: network overview, traffic definitions, nodes, edges, traffic outcomes, consumer costs, and routed movements."
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,6,0,0"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
+                                       Text="Timeline report: per-period routed movements, edge usage, node activity, and overall totals across the requested number of periods."
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,6,0,0"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
+                                       Text="Use Browse to choose both the file name and the save location. The selected format updates the expected file extension automatically."
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <DockPanel Grid.Row="10">
+                        <TextBlock VerticalAlignment="Center"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="HTML is best for a polished readable report. CSV is best for spreadsheet analysis or further processing." />
+                        <Button DockPanel.Dock="Right"
+                                Margin="12,0,0,0"
+                                Content="Close"
+                                Click="Close_Click" />
+                    </DockPanel>
+                </Grid>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</Window>

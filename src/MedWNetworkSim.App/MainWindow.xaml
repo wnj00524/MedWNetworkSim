@@ -68,6 +68,9 @@
                                         Click="SaveFile_Click"
                                         IsEnabled="{Binding HasNetwork}" />
                                 <Button Content="GraphML..." Click="GraphMl_Click" />
+                                <Button Content="Reports..."
+                                        Click="Reports_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
                             </WrapPanel>
                         </StackPanel>
                     </Border>

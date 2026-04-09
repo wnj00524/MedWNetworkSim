@@ -208,6 +208,11 @@ public sealed class NetworkFileService
                 throw new InvalidOperationException($"Node '{nodeId}' has an invalid consumption value for traffic '{profile.TrafficType}'. Use a finite number >= 0.");
             }
 
+            if (double.IsNaN(profile.ConsumerPremiumPerUnit) || double.IsInfinity(profile.ConsumerPremiumPerUnit) || profile.ConsumerPremiumPerUnit < 0d)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has an invalid consumerPremiumPerUnit for traffic '{profile.TrafficType}'. Use a finite number >= 0.");
+            }
+
             if (profile.ProductionStartPeriod.HasValue && profile.ProductionStartPeriod.Value < 0)
             {
                 throw new InvalidOperationException($"Node '{nodeId}' has an invalid productionStartPeriod for traffic '{profile.TrafficType}'. Use an integer >= 0.");
@@ -258,6 +263,7 @@ public sealed class NetworkFileService
 
             normalizedProfile.Production += profile.Production;
             normalizedProfile.Consumption += profile.Consumption;
+            normalizedProfile.ConsumerPremiumPerUnit = Math.Max(normalizedProfile.ConsumerPremiumPerUnit, profile.ConsumerPremiumPerUnit);
             normalizedProfile.CanTransship |= profile.CanTransship;
             normalizedProfile.ProductionStartPeriod ??= profile.ProductionStartPeriod;
             normalizedProfile.ProductionEndPeriod ??= profile.ProductionEndPeriod;

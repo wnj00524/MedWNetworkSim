@@ -7,6 +7,7 @@ public sealed class NodeTrafficProfileViewModel : ObservableObject, NodeTrafficR
     private string trafficType;
     private double production;
     private double consumption;
+    private double consumerPremiumPerUnit;
     private bool canTransship;
     private int? productionStartPeriod;
     private int? productionEndPeriod;
@@ -20,6 +21,7 @@ public sealed class NodeTrafficProfileViewModel : ObservableObject, NodeTrafficR
         trafficType = profile.TrafficType;
         production = profile.Production;
         consumption = profile.Consumption;
+        consumerPremiumPerUnit = profile.ConsumerPremiumPerUnit;
         canTransship = profile.CanTransship;
         productionStartPeriod = profile.ProductionStartPeriod;
         productionEndPeriod = profile.ProductionEndPeriod;
@@ -103,6 +105,20 @@ public sealed class NodeTrafficProfileViewModel : ObservableObject, NodeTrafficR
             }
 
             Consumption = value ? Math.Max(Consumption, 1d) : 0d;
+        }
+    }
+
+    public double ConsumerPremiumPerUnit
+    {
+        get => consumerPremiumPerUnit;
+        set
+        {
+            if (!SetProperty(ref consumerPremiumPerUnit, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(RoleSummary));
         }
     }
 
@@ -251,6 +267,11 @@ public sealed class NodeTrafficProfileViewModel : ObservableObject, NodeTrafficR
             if (Consumption > 0)
             {
                 parts.Add($"C {Consumption:0.##}");
+            }
+
+            if (ConsumerPremiumPerUnit > 0)
+            {
+                parts.Add($"Bid+ {ConsumerPremiumPerUnit:0.##}");
             }
 
             if (IsStore)

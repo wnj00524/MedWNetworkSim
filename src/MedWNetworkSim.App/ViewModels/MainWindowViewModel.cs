@@ -345,6 +345,25 @@ public sealed class MainWindowViewModel : ObservableObject
         }
     }
 
+    public double SelectedNodeConsumerPremiumPerUnit
+    {
+        get => SelectedNodeTrafficProfile?.ConsumerPremiumPerUnit ?? 0d;
+        set
+        {
+            if (SelectedNodeTrafficProfile is null)
+            {
+                return;
+            }
+
+            if (Math.Abs(SelectedNodeTrafficProfile.ConsumerPremiumPerUnit - value) < 0.000001d)
+            {
+                return;
+            }
+
+            SelectedNodeTrafficProfile.ConsumerPremiumPerUnit = value;
+        }
+    }
+
     public int? SelectedNodeProductionStartPeriod
     {
         get => SelectedNodeTrafficProfile?.ProductionStartPeriod;
@@ -1891,6 +1910,7 @@ public sealed class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSelectedNodeConsumer));
         OnPropertyChanged(nameof(SelectedNodeProduction));
         OnPropertyChanged(nameof(SelectedNodeConsumption));
+        OnPropertyChanged(nameof(SelectedNodeConsumerPremiumPerUnit));
         OnPropertyChanged(nameof(SelectedNodeProductionStartPeriod));
         OnPropertyChanged(nameof(SelectedNodeProductionEndPeriod));
         OnPropertyChanged(nameof(SelectedNodeConsumptionStartPeriod));

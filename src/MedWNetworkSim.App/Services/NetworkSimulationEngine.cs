@@ -438,7 +438,7 @@ public sealed class NetworkSimulationEngine
             pathArcs.Sum(arc => arc.Time),
             pathArcs.Sum(arc => arc.Cost),
             pathArcs.Sum(arc => Score(arc.Time, arc.Cost, context.RoutingPreference)),
-            context.CapacityBidPerUnit);
+            GetCapacityBidPerUnit(context, consumerNodeId));
     }
 
     private static bool CanTraverseNode(
@@ -626,6 +626,15 @@ public sealed class NetworkSimulationEngine
         }
 
         return definition.RoutingPreference == RoutingPreference.Speed ? 1d : 0d;
+    }
+
+    private static double GetCapacityBidPerUnit(TrafficContext context, string consumerNodeId)
+    {
+        var baseBid = context.CapacityBidPerUnit;
+        var consumerPremium = context.ProfilesByNodeId.TryGetValue(consumerNodeId, out var profile)
+            ? Math.Max(0d, profile?.ConsumerPremiumPerUnit ?? 0d)
+            : 0d;
+        return baseBid + consumerPremium;
     }
 
     private static double Score(double time, double cost, RoutingPreference routingPreference)

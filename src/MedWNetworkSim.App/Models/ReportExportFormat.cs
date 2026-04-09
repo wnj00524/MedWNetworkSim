@@ -2,6 +2,6 @@ namespace MedWNetworkSim.App.Models;
 
 public enum ReportExportFormat
 {
-    Markdown,
+    Html,
     Csv
 }

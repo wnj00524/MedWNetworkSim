@@ -29,7 +29,7 @@
                 <TextBlock Margin="0,8,0,0"
                            FontSize="12"
                            Foreground="{DynamicResource MutedForegroundBrush}"
-                           Text="Export a Markdown report for the current network. The current report captures the one-shot simulation outputs, and the timeline report simulates the network from period 1 for the number of periods you choose."
+                           Text="Export a readable HTML report or a spreadsheet-friendly CSV report for the current network. The current report captures the one-shot simulation outputs, and the timeline report simulates the network from period 1 for the number of periods you choose."
                            TextWrapping="Wrap" />
             </StackPanel>
         </Border>
@@ -125,10 +125,10 @@
                             BorderThickness="1"
                             CornerRadius="12">
                         <StackPanel>
-                            <TextBlock FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource AccentStrongBrush}"
-                                       Text="What gets exported" />
+                        <TextBlock FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource AccentStrongBrush}"
+                                   Text="What gets exported" />
                             <TextBlock Margin="0,8,0,0"
                                        FontSize="12"
                                        Foreground="{DynamicResource MutedForegroundBrush}"
@@ -151,7 +151,7 @@
                         <TextBlock VerticalAlignment="Center"
                                    FontSize="12"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Markdown is best for a readable narrative report. CSV is best for spreadsheet analysis or further processing." />
+                                   Text="HTML is best for a polished readable report. CSV is best for spreadsheet analysis or further processing." />
                         <Button DockPanel.Dock="Right"
                                 Margin="12,0,0,0"
                                 Content="Close"

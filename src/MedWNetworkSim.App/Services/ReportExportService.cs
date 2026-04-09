@@ -1,12 +1,13 @@
 using System.Globalization;
 using System.IO;
+using System.Net;
 using System.Text;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
 
 /// <summary>
-/// Builds human-readable Markdown reports from the current network and simulation outputs.
+/// Builds human-readable reports from the current network and simulation outputs.
 /// </summary>
 public sealed class ReportExportService
 {
@@ -22,7 +23,7 @@ public sealed class ReportExportService
 
         var contents = format == ReportExportFormat.Csv
             ? BuildCurrentCsvReport(network)
-            : BuildCurrentMarkdownReport(network);
+            : BuildCurrentHtmlReport(network);
         File.WriteAllText(path, contents, Encoding.UTF8);
     }
 
@@ -38,19 +39,19 @@ public sealed class ReportExportService
 
         var contents = format == ReportExportFormat.Csv
             ? BuildTimelineCsvReport(network, periods)
-            : BuildTimelineMarkdownReport(network, periods);
+            : BuildTimelineHtmlReport(network, periods);
         File.WriteAllText(path, contents, Encoding.UTF8);
     }
 
-    private string BuildCurrentMarkdownReport(NetworkModel network)
+    private string BuildCurrentHtmlReport(NetworkModel network)
     {
         var outcomes = networkSimulationEngine.Simulate(network);
         var consumerCosts = networkSimulationEngine.SummarizeConsumerCosts(outcomes);
         var allocations = outcomes.SelectMany(outcome => outcome.Allocations).ToList();
-        var builder = CreateReportHeader("Current Network Report", network);
+        var builder = CreateHtmlReportHeader("Current Network Report", network);
 
-        builder.AppendLine("## Network Overview");
-        AppendTable(
+        builder.AppendLine("<h2>Network Overview</h2>");
+        AppendHtmlTable(
             builder,
             ["Measure", "Value"],
             [
@@ -61,8 +62,8 @@ public sealed class ReportExportService
                 ["Total Delivered", FormatNumber(outcomes.Sum(outcome => outcome.TotalDelivered))]
             ]);
 
-        builder.AppendLine("## Traffic Types");
-        AppendTable(
+        builder.AppendLine("<h2>Traffic Types</h2>");
+        AppendHtmlTable(
             builder,
             ["Traffic Type", "Preference", "Capacity Bid / Unit", "Description"],
             network.TrafficTypes.Select(definition => new[]
@@ -73,8 +74,8 @@ public sealed class ReportExportService
                 definition.Description
             }));
 
-        builder.AppendLine("## Nodes");
-        AppendTable(
+        builder.AppendLine("<h2>Nodes</h2>");
+        AppendHtmlTable(
             builder,
             ["Node", "Shape", "Position", "Transhipment Cap", "Traffic Profiles"],
             network.Nodes.Select(node => new[]
@@ -83,11 +84,11 @@ public sealed class ReportExportService
                 node.Shape.ToString(),
                 $"{FormatNumber(node.X)}, {FormatNumber(node.Y)}",
                 FormatNumber(node.TranshipmentCapacity),
-                string.Join("<br/>", node.TrafficProfiles.Select(FormatTrafficProfile))
+                string.Join(Environment.NewLine, node.TrafficProfiles.Select(FormatTrafficProfile))
             }));
 
-        builder.AppendLine("## Edges");
-        AppendTable(
+        builder.AppendLine("<h2>Edges</h2>");
+        AppendHtmlTable(
             builder,
             ["Edge", "Route", "Time", "Cost", "Capacity", "Direction"],
             network.Edges.Select(edge => new[]
@@ -100,8 +101,8 @@ public sealed class ReportExportService
                 edge.IsBidirectional ? "Bidirectional" : "One-way"
             }));
 
-        builder.AppendLine("## Traffic Outcomes");
-        AppendTable(
+        builder.AppendLine("<h2>Traffic Outcomes</h2>");
+        AppendHtmlTable(
             builder,
             ["Traffic Type", "Preference", "Production", "Consumption", "Delivered", "Unused Supply", "Unmet Demand", "Notes"],
             outcomes.Select(outcome => new[]
@@ -116,8 +117,8 @@ public sealed class ReportExportService
                 outcome.Notes.Count == 0 ? "None" : string.Join(" ", outcome.Notes)
             }));
 
-        builder.AppendLine("## Consumer Costs");
-        AppendTable(
+        builder.AppendLine("<h2>Consumer Costs</h2>");
+        AppendHtmlTable(
             builder,
             ["Traffic Type", "Consumer", "Local Qty", "Imported Qty", "Blended Unit Cost", "Total Movement Cost"],
             consumerCosts.Select(summary => new[]
@@ -130,8 +131,8 @@ public sealed class ReportExportService
                 FormatNumber(summary.TotalMovementCost)
             }));
 
-        builder.AppendLine("## Routed Movements");
-        AppendTable(
+        builder.AppendLine("<h2>Routed Movements</h2>");
+        AppendHtmlTable(
             builder,
             ["Traffic Type", "Producer", "Consumer", "Qty", "Path", "Time", "Transit Cost", "Bid Cost", "Delivered Cost"],
             allocations
@@ -151,12 +152,12 @@ public sealed class ReportExportService
                     FormatNumber(allocation.DeliveredCostPerUnit)
                 }));
 
-        return builder.ToString();
+        return FinishHtmlReport(builder);
     }
 
-    private string BuildTimelineMarkdownReport(NetworkModel network, int periods)
+    private string BuildTimelineHtmlReport(NetworkModel network, int periods)
     {
-        var builder = CreateReportHeader($"Timeline Report ({periods} periods)", network);
+        var builder = CreateHtmlReportHeader($"Timeline Report ({periods} periods)", network);
         var state = temporalNetworkSimulationEngine.Initialize(network);
         var periodResults = new List<TemporalNetworkSimulationEngine.TemporalSimulationStepResult>(periods);
 
@@ -167,8 +168,8 @@ public sealed class ReportExportService
 
         var allAllocations = periodResults.SelectMany(result => result.Allocations).ToList();
         var finalPeriodResult = periodResults[^1];
-        builder.AppendLine("## Timeline Overview");
-        AppendTable(
+        builder.AppendLine("<h2>Timeline Overview</h2>");
+        AppendHtmlTable(
             builder,
             ["Measure", "Value"],
             [
@@ -179,8 +180,8 @@ public sealed class ReportExportService
                 ["Final In-Flight Movements", finalPeriodResult.InFlightMovementCount.ToString(CultureInfo.InvariantCulture)]
             ]);
 
-        builder.AppendLine("## Timeline Outcomes By Traffic");
-        AppendTable(
+        builder.AppendLine("<h2>Timeline Outcomes By Traffic</h2>");
+        AppendHtmlTable(
             builder,
             ["Traffic Type", "Delivered", "Movements", "Avg Delivered Cost / Unit"],
             allAllocations
@@ -201,9 +202,9 @@ public sealed class ReportExportService
 
         foreach (var stepResult in periodResults)
         {
-            builder.AppendLine($"## Period {stepResult.Period}");
+            builder.AppendLine($"<h2>Period {stepResult.Period}</h2>");
 
-            AppendTable(
+            AppendHtmlTable(
                 builder,
                 ["Measure", "Value"],
                 [
@@ -214,15 +215,14 @@ public sealed class ReportExportService
                     ["In-Flight After Period", stepResult.InFlightMovementCount.ToString(CultureInfo.InvariantCulture)]
                 ]);
 
-            builder.AppendLine("### Routed Movements");
+            builder.AppendLine("<h3>Routed Movements</h3>");
             if (stepResult.Allocations.Count == 0)
             {
-                builder.AppendLine("No movements were planned in this period.");
-                builder.AppendLine();
+                builder.AppendLine("<p>No movements were planned in this period.</p>");
             }
             else
             {
-                AppendTable(
+                AppendHtmlTable(
                     builder,
                     ["Traffic Type", "Producer", "Consumer", "Qty", "Path", "Time", "Delivered Cost"],
                     stepResult.Allocations.Select(allocation => new[]
@@ -237,8 +237,8 @@ public sealed class ReportExportService
                     }));
             }
 
-            builder.AppendLine("### Edge Usage");
-            AppendTable(
+            builder.AppendLine("<h3>Edge Usage</h3>");
+            AppendHtmlTable(
                 builder,
                 ["Edge", "Route", "Flow", "Capacity", "Utilisation"],
                 network.Edges.Select(edge =>
@@ -255,8 +255,8 @@ public sealed class ReportExportService
                     };
                 }));
 
-            builder.AppendLine("### Node Activity");
-            AppendTable(
+            builder.AppendLine("<h3>Node Activity</h3>");
+            AppendHtmlTable(
                 builder,
                 ["Node", "Outbound", "Inbound", "Ready Supply", "Demand Backlog", "Store Inventory"],
                 network.Nodes.Select(node =>
@@ -278,7 +278,7 @@ public sealed class ReportExportService
                 }));
         }
 
-        return builder.ToString();
+        return FinishHtmlReport(builder);
     }
 
     private string BuildCurrentCsvReport(NetworkModel network)
@@ -503,56 +503,79 @@ public sealed class ReportExportService
         return builder.ToString();
     }
 
-    private static StringBuilder CreateReportHeader(string title, NetworkModel network)
+    private static StringBuilder CreateHtmlReportHeader(string title, NetworkModel network)
     {
         var builder = new StringBuilder();
-        builder.AppendLine($"# {EscapeCell(title)}");
-        builder.AppendLine();
-        builder.AppendLine($"Generated: {DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz}");
-        builder.AppendLine($"Network: {EscapeCell(network.Name)}");
+        builder.AppendLine("<!DOCTYPE html>");
+        builder.AppendLine("<html lang=\"en\">");
+        builder.AppendLine("<head>");
+        builder.AppendLine("  <meta charset=\"utf-8\" />");
+        builder.AppendLine($"  <title>{HtmlEncode(title)}</title>");
+        builder.AppendLine("  <style>");
+        builder.AppendLine("    body { font-family: 'Segoe UI', Arial, sans-serif; margin: 28px; color: #2d231e; background: #fffdf9; }");
+        builder.AppendLine("    h1, h2, h3 { color: #6f3e1b; margin-bottom: 0.35rem; }");
+        builder.AppendLine("    h2 { margin-top: 2rem; border-bottom: 2px solid #e7dccb; padding-bottom: 0.25rem; }");
+        builder.AppendLine("    p.meta { margin: 0.2rem 0; color: #6e5d51; }");
+        builder.AppendLine("    table { width: 100%; border-collapse: collapse; margin: 0.85rem 0 1.35rem; font-size: 0.95rem; }");
+        builder.AppendLine("    th, td { border: 1px solid #d7c7b1; padding: 8px 10px; vertical-align: top; text-align: left; }");
+        builder.AppendLine("    th { background: #f0e6d6; }");
+        builder.AppendLine("    tr:nth-child(even) td { background: #fffaf3; }");
+        builder.AppendLine("    .description { margin-top: 1rem; padding: 12px 14px; background: #f8f1e7; border: 1px solid #d7c7b1; border-radius: 10px; }");
+        builder.AppendLine("  </style>");
+        builder.AppendLine("</head>");
+        builder.AppendLine("<body>");
+        builder.AppendLine($"<h1>{HtmlEncode(title)}</h1>");
+        builder.AppendLine($"<p class=\"meta\"><strong>Generated:</strong> {HtmlEncode(DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss zzz"))}</p>");
+        builder.AppendLine($"<p class=\"meta\"><strong>Network:</strong> {HtmlEncode(network.Name)}</p>");
 
         if (!string.IsNullOrWhiteSpace(network.Description))
         {
-            builder.AppendLine();
-            builder.AppendLine(network.Description.Trim());
+            builder.AppendLine($"<div class=\"description\">{HtmlEncode(network.Description.Trim())}</div>");
         }
 
-        builder.AppendLine();
         return builder;
     }
 
-    private static void AppendTable(StringBuilder builder, IReadOnlyList<string> headers, IEnumerable<string[]> rows)
+    private static string FinishHtmlReport(StringBuilder builder)
+    {
+        builder.AppendLine("</body>");
+        builder.AppendLine("</html>");
+        return builder.ToString();
+    }
+
+    private static void AppendHtmlTable(StringBuilder builder, IReadOnlyList<string> headers, IEnumerable<string[]> rows)
     {
         var materializedRows = rows.ToList();
-        builder.Append("| ");
-        builder.Append(string.Join(" | ", headers.Select(EscapeCell)));
-        builder.AppendLine(" |");
-        builder.Append("| ");
-        builder.Append(string.Join(" | ", headers.Select(_ => "---")));
-        builder.AppendLine(" |");
-
-        foreach (var row in materializedRows)
+        builder.AppendLine("<table>");
+        builder.AppendLine("  <thead>");
+        builder.AppendLine("    <tr>");
+        foreach (var header in headers)
         {
-            builder.Append("| ");
-            builder.Append(string.Join(" | ", row.Select(EscapeCell)));
-            builder.AppendLine(" |");
+            builder.AppendLine($"      <th>{HtmlEncode(header)}</th>");
         }
+        builder.AppendLine("    </tr>");
+        builder.AppendLine("  </thead>");
+        builder.AppendLine("  <tbody>");
 
         if (materializedRows.Count == 0)
         {
-            builder.Append("| ");
-            builder.Append(string.Join(" | ", headers.Select((_, index) => index == 0 ? "No data" : string.Empty)));
-            builder.AppendLine(" |");
+            builder.AppendLine($"    <tr><td colspan=\"{headers.Count}\">No data</td></tr>");
+        }
+        else
+        {
+            foreach (var row in materializedRows)
+            {
+                builder.AppendLine("    <tr>");
+                foreach (var cell in row)
+                {
+                    builder.AppendLine($"      <td>{HtmlEncode(cell)}</td>");
+                }
+                builder.AppendLine("    </tr>");
+            }
         }
 
-        builder.AppendLine();
-    }
-
-    private static string EscapeCell(string? value)
-    {
-        return string.IsNullOrWhiteSpace(value)
-            ? string.Empty
-            : value.Replace("|", "\\|").Replace(Environment.NewLine, "<br/>");
+        builder.AppendLine("  </tbody>");
+        builder.AppendLine("</table>");
     }
 
     private static string FormatTrafficProfile(NodeTrafficProfile profile)
@@ -639,6 +662,11 @@ public sealed class ReportExportService
     private static double TotalEdgeFlow(TemporalNetworkSimulationEngine.EdgeFlowVisualSummary summary)
     {
         return summary.ForwardQuantity + summary.ReverseQuantity;
+    }
+
+    private static string HtmlEncode(string? value)
+    {
+        return WebUtility.HtmlEncode(value ?? string.Empty).Replace(Environment.NewLine, "<br/>");
     }
 
     private static void AppendCsvTitleBlock(StringBuilder builder, string title, NetworkModel network)

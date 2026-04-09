@@ -7,7 +7,7 @@ public sealed class ReportExportWindowViewModel : ObservableObject
 {
     private string reportPath;
     private string timelinePeriodsText = "12";
-    private ReportExportFormat selectedFormat = ReportExportFormat.Markdown;
+    private ReportExportFormat selectedFormat = ReportExportFormat.Html;
 
     public ReportExportWindowViewModel(string suggestedReportPath)
     {
@@ -69,7 +69,7 @@ public sealed class ReportExportWindowViewModel : ObservableObject
             return path;
         }
 
-        var desiredExtension = format == ReportExportFormat.Csv ? ".csv" : ".md";
+        var desiredExtension = format == ReportExportFormat.Csv ? ".csv" : ".html";
         if (!Path.HasExtension(path))
         {
             return path + desiredExtension;

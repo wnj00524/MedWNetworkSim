@@ -547,7 +547,7 @@ public sealed class MainWindowViewModel : ObservableObject
                 baseName = "network";
             }
 
-            return $"{baseName}-report.md";
+            return $"{baseName}-report.html";
         }
     }
 

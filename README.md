@@ -8,6 +8,7 @@ WPF network simulator for modelling multi-traffic movement across producer, cons
 - Loads the bundled sample network for quick exploration.
 - Imports and exports GraphML files through a dedicated popup window with explicit import and export file pickers.
 - Exports reports from the GUI or command line in HTML or CSV format.
+- Supports a fuller command-line workflow for creating, editing, arranging, simulating, and reporting on networks without opening the GUI.
 - Lets users edit the network name and description directly in the app.
 - Lets users create and edit traffic types, nodes, node roles, schedules, store settings, and edges directly in the app.
 - Draws the network on a draggable canvas with direct-edit gestures.
@@ -84,21 +85,50 @@ dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj
 
 The app ships with a bundled sample file at [sample-network.json](src/MedWNetworkSim.App/Samples/sample-network.json).
 
+## Docs
+
+- [CLI Reference](docs/CLI_REFERENCE.md)
+- [Network Authoring Guide](docs/NETWORK_AUTHORING.md)
+
 ## Command Line Use
 
-The application can also run headless from the command line to load a network, run either the one-shot simulation or a timeline run, and export a report without opening the GUI.
+The application can also run headless from the command line to:
 
-Named form:
+- create a new network file
+- edit traffic types, nodes, profiles, and edges
+- auto-arrange the network
+- run either the one-shot simulation or a timeline run
+- export reports without opening the GUI
+
+Help:
 
 ```powershell
-dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- --network .\src\MedWNetworkSim.App\Samples\sample-network.json --mode simulation --report current --output .\artifacts\reports\sample-report.html
+dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- help
+dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- -h
+dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- -help
+```
+
+Create and edit a network:
+
+```powershell
+dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- new --file .\artifacts\demo.json --name "CLI Demo"
+dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- add-traffic --file .\artifacts\demo.json --name Waste --preference cost --bid 1.5
+dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- add-node --file .\artifacts\demo.json --id N1 --name "Clinic A" --shape building --x 100 --y 120
+dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- set-profile --file .\artifacts\demo.json --node N1 --traffic Waste --role producer --production 25
+dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- add-edge --file .\artifacts\demo.json --id E1 --from N1 --to N2 --time 1 --cost 4 --direction bidirectional
+```
+
+Run reports:
+
+```powershell
+dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- run --file .\src\MedWNetworkSim.App\Samples\sample-network.json --output .\artifacts\reports\sample-report.html
 ```
 
 ```powershell
-dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- --network .\src\MedWNetworkSim.App\Samples\sample-network.json --mode timeline --report timeline --turns 12 --output .\artifacts\reports\timeline-report.csv
+dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- run --file .\src\MedWNetworkSim.App\Samples\sample-network.json --mode timeline --report timeline --turns 12 --output .\artifacts\reports\timeline-report.csv
 ```
 
-Positional form:
+Legacy positional report form still works:
 
 ```powershell
 dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- .\src\MedWNetworkSim.App\Samples\sample-network.json simulation current .\artifacts\reports\sample-report.html
@@ -114,11 +144,16 @@ CLI rules:
 - `timeline` mode advances the network for the requested number of turns and exports the timeline report.
 - `current` report type is for `simulation` mode.
 - `timeline` report type is for `timeline` mode.
+- `new`, `add-traffic`, `add-node`, `set-profile`, `add-edge`, and `auto-arrange` make it possible to build and update a network entirely from the CLI.
+- `add-traffic`, `add-node`, and `add-edge` behave as practical upserts when the same name or id already exists.
 - Output format is inferred from the output filename:
   - `.html` or `.htm` exports HTML
   - `.csv` exports CSV
   - no extension or an unknown extension defaults to CSV
-- Use `--help` to show the built-in usage text.
+- `help`, `-h`, `-help`, `--help`, and `/?` all show the built-in usage text.
+- Use `none` to clear optional capacities or schedule bounds in the CLI authoring commands.
+
+For the full command reference, see [CLI Reference](docs/CLI_REFERENCE.md).
 
 ## GraphML Format
 
@@ -232,7 +267,7 @@ The app uses a simple custom JSON format:
 - [GraphMlFileService.cs](src/MedWNetworkSim.App/Services/GraphMlFileService.cs) translates between the in-memory MedW model and GraphML, including fallback default-node synthesis for generic GraphML imports.
 - [NetworkFileService.cs](src/MedWNetworkSim.App/Services/NetworkFileService.cs) normalizes and validates JSON data and applies automatic layout.
 - [ReportExportService.cs](src/MedWNetworkSim.App/Services/ReportExportService.cs) generates human-readable HTML reports and spreadsheet-friendly CSV exports for both one-shot and timeline runs.
-- [CommandLineRunService.cs](src/MedWNetworkSim.App/Services/CommandLineRunService.cs) parses command-line arguments, runs the requested simulation mode, and exports reports headlessly.
+- [CommandLineRunService.cs](src/MedWNetworkSim.App/Services/CommandLineRunService.cs) parses command-line arguments, supports headless network authoring commands, runs the requested simulation mode, and exports reports.
 - [NetworkSimulationEngine.cs](src/MedWNetworkSim.App/Services/NetworkSimulationEngine.cs) performs routing, capacity competition, bid-cost calculation, and consumer-cost summarization.
 - [TemporalNetworkSimulationEngine.cs](src/MedWNetworkSim.App/Services/TemporalNetworkSimulationEngine.cs) advances the network one period at a time, preserves in-flight traffic, and manages store inventory.
 - [NodeTrafficRoleCatalog.cs](src/MedWNetworkSim.App/Models/NodeTrafficRoleCatalog.cs) centralizes the named producer, consumer, and transhipment role combinations used by the UI and GraphML import mapping.

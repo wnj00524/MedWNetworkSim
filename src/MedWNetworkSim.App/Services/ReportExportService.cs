@@ -13,40 +13,52 @@ public sealed class ReportExportService
 {
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
 
-    private readonly NetworkSimulationEngine networkSimulationEngine = new();
-    private readonly TemporalNetworkSimulationEngine temporalNetworkSimulationEngine = new();
-
-    public void SaveCurrentReport(NetworkModel network, string path, ReportExportFormat format)
+    public void SaveCurrentReport(
+        NetworkModel network,
+        IEnumerable<TrafficSimulationOutcome> outcomes,
+        IEnumerable<ConsumerCostSummary> consumerCosts,
+        string path,
+        ReportExportFormat format)
     {
         ArgumentNullException.ThrowIfNull(network);
+        ArgumentNullException.ThrowIfNull(outcomes);
+        ArgumentNullException.ThrowIfNull(consumerCosts);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
+        var materializedOutcomes = outcomes.ToList();
+        var materializedConsumerCosts = consumerCosts.ToList();
         var contents = format == ReportExportFormat.Csv
-            ? BuildCurrentCsvReport(network)
-            : BuildCurrentHtmlReport(network);
+            ? BuildCurrentCsvReport(network, materializedOutcomes, materializedConsumerCosts)
+            : BuildCurrentHtmlReport(network, materializedOutcomes, materializedConsumerCosts);
         File.WriteAllText(path, contents, Encoding.UTF8);
     }
 
-    public void SaveTimelineReport(NetworkModel network, string path, int periods, ReportExportFormat format)
+    public void SaveTimelineReport(
+        NetworkModel network,
+        IReadOnlyList<TemporalNetworkSimulationEngine.TemporalSimulationStepResult> periodResults,
+        string path,
+        ReportExportFormat format)
     {
         ArgumentNullException.ThrowIfNull(network);
+        ArgumentNullException.ThrowIfNull(periodResults);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        if (periods <= 0)
+        if (periodResults.Count <= 0)
         {
             throw new InvalidOperationException("Timeline report periods must be greater than zero.");
         }
 
         var contents = format == ReportExportFormat.Csv
-            ? BuildTimelineCsvReport(network, periods)
-            : BuildTimelineHtmlReport(network, periods);
+            ? BuildTimelineCsvReport(network, periodResults)
+            : BuildTimelineHtmlReport(network, periodResults);
         File.WriteAllText(path, contents, Encoding.UTF8);
     }
 
-    private string BuildCurrentHtmlReport(NetworkModel network)
+    private string BuildCurrentHtmlReport(
+        NetworkModel network,
+        IReadOnlyList<TrafficSimulationOutcome> outcomes,
+        IReadOnlyList<ConsumerCostSummary> consumerCosts)
     {
-        var outcomes = networkSimulationEngine.Simulate(network);
-        var consumerCosts = networkSimulationEngine.SummarizeConsumerCosts(outcomes);
         var allocations = outcomes.SelectMany(outcome => outcome.Allocations).ToList();
         var builder = CreateHtmlReportHeader("Current Network Report", network);
 
@@ -155,17 +167,12 @@ public sealed class ReportExportService
         return FinishHtmlReport(builder);
     }
 
-    private string BuildTimelineHtmlReport(NetworkModel network, int periods)
+    private string BuildTimelineHtmlReport(
+        NetworkModel network,
+        IReadOnlyList<TemporalNetworkSimulationEngine.TemporalSimulationStepResult> periodResults)
     {
+        var periods = periodResults.Count;
         var builder = CreateHtmlReportHeader($"Timeline Report ({periods} periods)", network);
-        var state = temporalNetworkSimulationEngine.Initialize(network);
-        var periodResults = new List<TemporalNetworkSimulationEngine.TemporalSimulationStepResult>(periods);
-
-        for (var period = 0; period < periods; period++)
-        {
-            periodResults.Add(temporalNetworkSimulationEngine.Advance(network, state));
-        }
-
         var allAllocations = periodResults.SelectMany(result => result.Allocations).ToList();
         var finalPeriodResult = periodResults[^1];
         builder.AppendLine("<h2>Timeline Overview</h2>");
@@ -281,10 +288,11 @@ public sealed class ReportExportService
         return FinishHtmlReport(builder);
     }
 
-    private string BuildCurrentCsvReport(NetworkModel network)
+    private string BuildCurrentCsvReport(
+        NetworkModel network,
+        IReadOnlyList<TrafficSimulationOutcome> outcomes,
+        IReadOnlyList<ConsumerCostSummary> consumerCosts)
     {
-        var outcomes = networkSimulationEngine.Simulate(network);
-        var consumerCosts = networkSimulationEngine.SummarizeConsumerCosts(outcomes);
         var allocations = outcomes.SelectMany(outcome => outcome.Allocations).ToList();
         var builder = new StringBuilder();
         AppendCsvTitleBlock(builder, "Current Network Report", network);
@@ -387,15 +395,11 @@ public sealed class ReportExportService
         return builder.ToString();
     }
 
-    private string BuildTimelineCsvReport(NetworkModel network, int periods)
+    private string BuildTimelineCsvReport(
+        NetworkModel network,
+        IReadOnlyList<TemporalNetworkSimulationEngine.TemporalSimulationStepResult> results)
     {
-        var state = temporalNetworkSimulationEngine.Initialize(network);
-        var results = new List<TemporalNetworkSimulationEngine.TemporalSimulationStepResult>(periods);
-        for (var period = 0; period < periods; period++)
-        {
-            results.Add(temporalNetworkSimulationEngine.Advance(network, state));
-        }
-
+        var periods = results.Count;
         var allAllocations = results.SelectMany(result => result.Allocations).ToList();
         var builder = new StringBuilder();
         AppendCsvTitleBlock(builder, $"Timeline Report ({periods} periods)", network);

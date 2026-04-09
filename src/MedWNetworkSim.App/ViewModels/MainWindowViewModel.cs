@@ -603,14 +603,24 @@ public sealed class MainWindowViewModel : ObservableObject
     public void ExportCurrentReport(string path, ReportExportFormat format)
     {
         var network = BuildValidatedNetwork();
-        reportExportService.SaveCurrentReport(network, path, format);
+        var outcomes = simulationEngine.Simulate(network);
+        var consumerCosts = simulationEngine.SummarizeConsumerCosts(outcomes);
+        reportExportService.SaveCurrentReport(network, outcomes, consumerCosts, path, format);
         StatusMessage = $"Exported the current report to '{Path.GetFileName(path)}'.";
     }
 
     public void ExportTimelineReport(string path, int periods, ReportExportFormat format)
     {
         var network = BuildValidatedNetwork();
-        reportExportService.SaveTimelineReport(network, path, periods, format);
+        var state = temporalSimulationEngine.Initialize(network);
+        var results = new List<TemporalNetworkSimulationEngine.TemporalSimulationStepResult>(periods);
+
+        for (var period = 0; period < periods; period++)
+        {
+            results.Add(temporalSimulationEngine.Advance(network, state));
+        }
+
+        reportExportService.SaveTimelineReport(network, results, path, format);
         StatusMessage = $"Exported the timeline report for {periods} period(s) to '{Path.GetFileName(path)}'.";
     }
 

@@ -26,6 +26,10 @@ public sealed class CommandLineOptions
 
     public bool HasNetworkDescription { get; init; }
 
+    public int? TimelineLoopLength { get; init; }
+
+    public bool HasTimelineLoopLength { get; init; }
+
     public string TrafficName { get; init; } = string.Empty;
 
     public string TrafficDescription { get; init; } = string.Empty;
@@ -91,6 +95,24 @@ public sealed class CommandLineOptions
     public int? ConsumptionEndPeriod { get; init; }
 
     public bool HasConsumptionEndPeriod { get; init; }
+
+    public IReadOnlyList<PeriodWindow> ProductionWindows { get; init; } = [];
+
+    public bool HasProductionWindows { get; init; }
+
+    public bool ClearProductionWindows { get; init; }
+
+    public IReadOnlyList<PeriodWindow> ConsumptionWindows { get; init; } = [];
+
+    public bool HasConsumptionWindows { get; init; }
+
+    public bool ClearConsumptionWindows { get; init; }
+
+    public IReadOnlyList<ProductionInputRequirement> InputRequirements { get; init; } = [];
+
+    public bool HasInputRequirements { get; init; }
+
+    public bool ClearInputRequirements { get; init; }
 
     public bool? IsStore { get; init; }
 

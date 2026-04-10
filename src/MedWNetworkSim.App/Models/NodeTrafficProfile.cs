@@ -1,6 +1,38 @@
 namespace MedWNetworkSim.App.Models;
 
 /// <summary>
+/// Represents an inclusive period range where a scheduled profile action is active.
+/// </summary>
+public sealed class PeriodWindow
+{
+    /// <summary>
+    /// Gets or sets the first active period. Null means active from the beginning.
+    /// </summary>
+    public int? StartPeriod { get; set; }
+
+    /// <summary>
+    /// Gets or sets the last active period. Null means no upper bound.
+    /// </summary>
+    public int? EndPeriod { get; set; }
+}
+
+/// <summary>
+/// Defines one local precursor input required to produce a unit of output traffic.
+/// </summary>
+public sealed class ProductionInputRequirement
+{
+    /// <summary>
+    /// Gets or sets the precursor traffic type consumed at the producing node.
+    /// </summary>
+    public string TrafficType { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the precursor quantity required per unit of output traffic.
+    /// </summary>
+    public double QuantityPerOutputUnit { get; set; }
+}
+
+/// <summary>
 /// Describes how a single node participates in one traffic type.
 /// </summary>
 public sealed class NodeTrafficProfile
@@ -49,6 +81,21 @@ public sealed class NodeTrafficProfile
     /// Gets or sets the last period in which consumption is active. Null means no upper bound.
     /// </summary>
     public int? ConsumptionEndPeriod { get; set; }
+
+    /// <summary>
+    /// Gets or sets the inclusive production windows for this profile. Empty uses the legacy single-window fields.
+    /// </summary>
+    public List<PeriodWindow> ProductionWindows { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets the inclusive consumption windows for this profile. Empty uses the legacy single-window fields.
+    /// </summary>
+    public List<PeriodWindow> ConsumptionWindows { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets local precursor traffic required to produce one unit of this profile's output.
+    /// </summary>
+    public List<ProductionInputRequirement> InputRequirements { get; set; } = [];
 
     /// <summary>
     /// Gets or sets a value indicating whether this traffic profile stores received traffic in inventory instead of destroying it.

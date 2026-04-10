@@ -1,3 +1,6 @@
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.ViewModels;
@@ -29,6 +32,18 @@ public sealed class NodeTrafficProfileViewModel : ObservableObject, NodeTrafficR
         consumptionEndPeriod = profile.ConsumptionEndPeriod;
         isStore = profile.IsStore;
         storeCapacity = profile.StoreCapacity;
+        ProductionWindows = new ObservableCollection<PeriodWindowViewModel>(
+            profile.ProductionWindows.Select(window => new PeriodWindowViewModel(window)));
+        ConsumptionWindows = new ObservableCollection<PeriodWindowViewModel>(
+            profile.ConsumptionWindows.Select(window => new PeriodWindowViewModel(window)));
+        InputRequirements = new ObservableCollection<ProductionInputRequirementViewModel>(
+            profile.InputRequirements.Select(requirement => new ProductionInputRequirementViewModel(requirement)));
+        ProductionWindows.CollectionChanged += HandleChildCollectionChanged;
+        ConsumptionWindows.CollectionChanged += HandleChildCollectionChanged;
+        InputRequirements.CollectionChanged += HandleChildCollectionChanged;
+        SubscribeChildItems(ProductionWindows);
+        SubscribeChildItems(ConsumptionWindows);
+        SubscribeChildItems(InputRequirements);
     }
 
     public string TrafficType
@@ -235,6 +250,12 @@ public sealed class NodeTrafficProfileViewModel : ObservableObject, NodeTrafficR
 
     public IReadOnlyList<string> RoleOptions => NodeTrafficRoleCatalog.RoleOptions;
 
+    public ObservableCollection<PeriodWindowViewModel> ProductionWindows { get; }
+
+    public ObservableCollection<PeriodWindowViewModel> ConsumptionWindows { get; }
+
+    public ObservableCollection<ProductionInputRequirementViewModel> InputRequirements { get; }
+
     public string SelectedRoleName
     {
         get => NodeTrafficRoleCatalog.GetRoleName(IsProducer, IsConsumer, CanTransship);
@@ -297,9 +318,13 @@ public sealed class NodeTrafficProfileViewModel : ObservableObject, NodeTrafficR
 
     public string SelectionLabel => $"{TrafficType} | {SelectedRoleName}";
 
-    public string ProductionScheduleLabel => FormatSchedule(ProductionStartPeriod, ProductionEndPeriod);
+    public string ProductionScheduleLabel => ProductionWindows.Count > 0
+        ? FormatWindows(ProductionWindows)
+        : FormatSchedule(ProductionStartPeriod, ProductionEndPeriod);
 
-    public string ConsumptionScheduleLabel => FormatSchedule(ConsumptionStartPeriod, ConsumptionEndPeriod);
+    public string ConsumptionScheduleLabel => ConsumptionWindows.Count > 0
+        ? FormatWindows(ConsumptionWindows)
+        : FormatSchedule(ConsumptionStartPeriod, ConsumptionEndPeriod);
 
     public string StoreCapacityLabel => !IsStore
         ? "Not a store"
@@ -312,5 +337,42 @@ public sealed class NodeTrafficProfileViewModel : ObservableObject, NodeTrafficR
         var startLabel = startPeriod?.ToString() ?? "0";
         var endLabel = endPeriod?.ToString() ?? "inf";
         return $"{startLabel}-{endLabel}";
+    }
+
+    private static string FormatWindows(IEnumerable<PeriodWindowViewModel> windows)
+    {
+        return string.Join(", ", windows.Select(window => FormatSchedule(window.StartPeriod, window.EndPeriod)));
+    }
+
+    private void HandleChildCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        SubscribeChildItems(e.NewItems?.OfType<INotifyPropertyChanged>() ?? []);
+        UnsubscribeChildItems(e.OldItems?.OfType<INotifyPropertyChanged>() ?? []);
+        OnPropertyChanged(nameof(ProductionScheduleLabel));
+        OnPropertyChanged(nameof(ConsumptionScheduleLabel));
+        OnPropertyChanged(nameof(RoleSummary));
+    }
+
+    private void HandleChildPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(ProductionScheduleLabel));
+        OnPropertyChanged(nameof(ConsumptionScheduleLabel));
+        OnPropertyChanged(nameof(RoleSummary));
+    }
+
+    private void SubscribeChildItems(IEnumerable<INotifyPropertyChanged> items)
+    {
+        foreach (var item in items)
+        {
+            item.PropertyChanged += HandleChildPropertyChanged;
+        }
+    }
+
+    private void UnsubscribeChildItems(IEnumerable<INotifyPropertyChanged> items)
+    {
+        foreach (var item in items)
+        {
+            item.PropertyChanged -= HandleChildPropertyChanged;
+        }
     }
 }

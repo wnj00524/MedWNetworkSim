@@ -26,6 +26,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private string activeFileLabel = "Bundled sample";
     private string networkName = "MedW Network Simulator";
     private string networkDescription = "Load a JSON network file, or create a new one and edit it directly in the app.";
+    private int? timelineLoopLength;
     private string statusMessage = "Load a network file or create a new one, then edit nodes and edges directly in the application.";
     private AppTheme selectedTheme = AppTheme.Classic;
     private TrafficSummaryViewModel? selectedTraffic;
@@ -114,6 +115,20 @@ public sealed class MainWindowViewModel : ObservableObject
         set => SetProperty(ref networkDescription, value);
     }
 
+    public int? TimelineLoopLength
+    {
+        get => timelineLoopLength;
+        set
+        {
+            var normalized = value is < 1 ? null : value;
+            if (SetProperty(ref timelineLoopLength, normalized))
+            {
+                OnPropertyChanged(nameof(TimelineHeadline));
+                InvalidateSimulationResults("Updated timeline loop settings.");
+            }
+        }
+    }
+
     public string StatusMessage
     {
         get => statusMessage;
@@ -153,7 +168,9 @@ public sealed class MainWindowViewModel : ObservableObject
     public int CurrentPeriod => currentPeriod;
 
     public string TimelineHeadline => hasTimelineSnapshot
-        ? $"Timeline period {CurrentPeriod}"
+        ? TimelineLoopLength.HasValue
+            ? $"Timeline period {CurrentPeriod} (cycle {TemporalNetworkSimulationEngine.GetEffectivePeriod(CurrentPeriod, TimelineLoopLength)} of {TimelineLoopLength})"
+            : $"Timeline period {CurrentPeriod}"
         : "Timeline not started";
 
     public GridLength RightRailColumnWidth => IsCanvasOnlyMode
@@ -879,6 +896,73 @@ public sealed class MainWindowViewModel : ObservableObject
         RefreshDerivedStateAfterStructureChange("Removed the selected traffic profile.");
     }
 
+    public void AddProductionWindowToSelectedProfile()
+    {
+        if (SelectedNodeTrafficProfile is null)
+        {
+            return;
+        }
+
+        SelectedNodeTrafficProfile.ProductionWindows.Add(new PeriodWindowViewModel(new PeriodWindow()));
+    }
+
+    public void RemoveProductionWindowFromSelectedProfile(PeriodWindowViewModel window)
+    {
+        if (SelectedNodeTrafficProfile is null)
+        {
+            return;
+        }
+
+        SelectedNodeTrafficProfile.ProductionWindows.Remove(window);
+    }
+
+    public void AddConsumptionWindowToSelectedProfile()
+    {
+        if (SelectedNodeTrafficProfile is null)
+        {
+            return;
+        }
+
+        SelectedNodeTrafficProfile.ConsumptionWindows.Add(new PeriodWindowViewModel(new PeriodWindow()));
+    }
+
+    public void RemoveConsumptionWindowFromSelectedProfile(PeriodWindowViewModel window)
+    {
+        if (SelectedNodeTrafficProfile is null)
+        {
+            return;
+        }
+
+        SelectedNodeTrafficProfile.ConsumptionWindows.Remove(window);
+    }
+
+    public void AddInputRequirementToSelectedProfile()
+    {
+        if (SelectedNodeTrafficProfile is null)
+        {
+            return;
+        }
+
+        var defaultTrafficType = TrafficTypeNameOptions.FirstOrDefault(name => !Comparer.Equals(name, SelectedNodeTrafficProfile.TrafficType))
+            ?? TrafficTypeNameOptions.FirstOrDefault()
+            ?? string.Empty;
+        SelectedNodeTrafficProfile.InputRequirements.Add(new ProductionInputRequirementViewModel(new ProductionInputRequirement
+        {
+            TrafficType = defaultTrafficType,
+            QuantityPerOutputUnit = 1d
+        }));
+    }
+
+    public void RemoveInputRequirementFromSelectedProfile(ProductionInputRequirementViewModel requirement)
+    {
+        if (SelectedNodeTrafficProfile is null)
+        {
+            return;
+        }
+
+        SelectedNodeTrafficProfile.InputRequirements.Remove(requirement);
+    }
+
     public void AddEdge()
     {
         EnsureNetworkExists();
@@ -968,6 +1052,7 @@ public sealed class MainWindowViewModel : ObservableObject
         return TrafficDefinitions
             .Select(definition => definition.Name)
             .Concat(Nodes.SelectMany(node => node.TrafficProfiles).Select(profile => profile.TrafficType))
+            .Concat(Nodes.SelectMany(node => node.TrafficProfiles).SelectMany(profile => profile.InputRequirements).Select(requirement => requirement.TrafficType))
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Distinct(Comparer)
             .OrderBy(name => name, Comparer)
@@ -1171,6 +1256,8 @@ public sealed class MainWindowViewModel : ObservableObject
         NetworkDescription = string.IsNullOrWhiteSpace(network.Description)
             ? string.Empty
             : network.Description;
+        timelineLoopLength = network.TimelineLoopLength is > 0 ? network.TimelineLoopLength : null;
+        OnPropertyChanged(nameof(TimelineLoopLength));
         ActiveFileLabel = activeFilePath ?? "Unsaved network";
         HasNetwork = true;
         temporalSimulationState = null;
@@ -1198,6 +1285,7 @@ public sealed class MainWindowViewModel : ObservableObject
         var orderedTrafficNames = network.TrafficTypes
             .Select(definition => definition.Name)
             .Concat(network.Nodes.SelectMany(node => node.TrafficProfiles).Select(profile => profile.TrafficType))
+            .Concat(network.Nodes.SelectMany(node => node.TrafficProfiles).SelectMany(profile => profile.InputRequirements).Select(requirement => requirement.TrafficType))
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Distinct(Comparer)
             .ToList();
@@ -1226,6 +1314,7 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             Name = NetworkName,
             Description = NetworkDescription,
+            TimelineLoopLength = TimelineLoopLength,
             TrafficTypes = TrafficDefinitions.Select(definition => definition.ToModel()).ToList(),
             Nodes = Nodes.Select(node => node.ToModel()).ToList(),
             Edges = Edges.Select(edge => edge.ToModel()).ToList()
@@ -1428,6 +1517,7 @@ public sealed class MainWindowViewModel : ObservableObject
         var trafficTypeNames = TrafficDefinitions
             .Select(definition => definition.Name)
             .Concat(Nodes.SelectMany(node => node.TrafficProfiles).Select(profile => profile.TrafficType))
+            .Concat(Nodes.SelectMany(node => node.TrafficProfiles).SelectMany(profile => profile.InputRequirements).Select(requirement => requirement.TrafficType))
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Distinct(Comparer)
             .OrderBy(name => name, Comparer);
@@ -1558,6 +1648,20 @@ public sealed class MainWindowViewModel : ObservableObject
                     primaryProfile.Production += duplicateProfile.Production;
                     primaryProfile.Consumption += duplicateProfile.Consumption;
                     primaryProfile.CanTransship |= duplicateProfile.CanTransship;
+                    foreach (var window in duplicateProfile.ProductionWindows)
+                    {
+                        primaryProfile.ProductionWindows.Add(new PeriodWindowViewModel(window.ToModel()));
+                    }
+
+                    foreach (var window in duplicateProfile.ConsumptionWindows)
+                    {
+                        primaryProfile.ConsumptionWindows.Add(new PeriodWindowViewModel(window.ToModel()));
+                    }
+
+                    foreach (var requirement in duplicateProfile.InputRequirements)
+                    {
+                        primaryProfile.InputRequirements.Add(new ProductionInputRequirementViewModel(requirement.ToModel()));
+                    }
 
                     if (ReferenceEquals(SelectedNodeTrafficProfile, duplicateProfile))
                     {

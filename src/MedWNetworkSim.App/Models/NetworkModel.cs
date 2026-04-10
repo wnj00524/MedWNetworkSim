@@ -18,6 +18,11 @@ public sealed class NetworkModel
     public string Description { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the optional timeline loop length. Values below 1 disable looping.
+    /// </summary>
+    public int? TimelineLoopLength { get; set; }
+
+    /// <summary>
     /// Gets or sets the declared traffic types that can move through the network.
     /// </summary>
     public List<TrafficTypeDefinition> TrafficTypes { get; set; } = [];

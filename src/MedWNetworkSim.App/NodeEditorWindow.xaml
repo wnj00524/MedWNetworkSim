@@ -244,6 +244,12 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="10" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="10" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
                             <TextBlock VerticalAlignment="Center"
@@ -368,6 +374,113 @@
                                          IsEnabled="{Binding IsSelectedNodeStore}"
                                          Text="{Binding SelectedNodeStoreCapacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </Grid>
+
+                            <GroupBox Grid.Row="18"
+                                      Grid.ColumnSpan="2"
+                                      Header="Production Windows">
+                                <StackPanel Margin="8">
+                                    <ItemsControl ItemsSource="{Binding SelectedNodeTrafficProfile.ProductionWindows}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <DockPanel Margin="0,0,0,6">
+                                                    <Button DockPanel.Dock="Right"
+                                                            Margin="8,0,0,0"
+                                                            Padding="6,2"
+                                                            Content="Remove"
+                                                            Click="RemoveProductionWindow_Click" />
+                                                    <TextBlock VerticalAlignment="Center"
+                                                               FontSize="11"
+                                                               Foreground="{DynamicResource MutedForegroundBrush}"
+                                                               Text="From" />
+                                                    <TextBox Width="70"
+                                                             Margin="6,0"
+                                                             Text="{Binding StartPeriod, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <TextBlock VerticalAlignment="Center"
+                                                               FontSize="11"
+                                                               Foreground="{DynamicResource MutedForegroundBrush}"
+                                                               Text="To" />
+                                                    <TextBox Width="70"
+                                                             Margin="6,0"
+                                                             Text="{Binding EndPeriod, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                </DockPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Button HorizontalAlignment="Left"
+                                            Content="Add production window"
+                                            Click="AddProductionWindow_Click" />
+                                </StackPanel>
+                            </GroupBox>
+
+                            <GroupBox Grid.Row="20"
+                                      Grid.ColumnSpan="2"
+                                      Header="Consumption Windows">
+                                <StackPanel Margin="8">
+                                    <ItemsControl ItemsSource="{Binding SelectedNodeTrafficProfile.ConsumptionWindows}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <DockPanel Margin="0,0,0,6">
+                                                    <Button DockPanel.Dock="Right"
+                                                            Margin="8,0,0,0"
+                                                            Padding="6,2"
+                                                            Content="Remove"
+                                                            Click="RemoveConsumptionWindow_Click" />
+                                                    <TextBlock VerticalAlignment="Center"
+                                                               FontSize="11"
+                                                               Foreground="{DynamicResource MutedForegroundBrush}"
+                                                               Text="From" />
+                                                    <TextBox Width="70"
+                                                             Margin="6,0"
+                                                             Text="{Binding StartPeriod, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <TextBlock VerticalAlignment="Center"
+                                                               FontSize="11"
+                                                               Foreground="{DynamicResource MutedForegroundBrush}"
+                                                               Text="To" />
+                                                    <TextBox Width="70"
+                                                             Margin="6,0"
+                                                             Text="{Binding EndPeriod, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                </DockPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Button HorizontalAlignment="Left"
+                                            Content="Add consumption window"
+                                            Click="AddConsumptionWindow_Click" />
+                                </StackPanel>
+                            </GroupBox>
+
+                            <GroupBox Grid.Row="22"
+                                      Grid.ColumnSpan="2"
+                                      Header="Production Inputs">
+                                <StackPanel Margin="8">
+                                    <ItemsControl ItemsSource="{Binding SelectedNodeTrafficProfile.InputRequirements}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <DockPanel Margin="0,0,0,6">
+                                                    <Button DockPanel.Dock="Right"
+                                                            Margin="8,0,0,0"
+                                                            Padding="6,2"
+                                                            Content="Remove"
+                                                            Click="RemoveInputRequirement_Click" />
+                                                    <ComboBox Width="130"
+                                                              ItemsSource="{Binding DataContext.TrafficTypeNameOptions, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                              SelectedItem="{Binding TrafficType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <TextBlock Margin="8,0,6,0"
+                                                               VerticalAlignment="Center"
+                                                               FontSize="11"
+                                                               Foreground="{DynamicResource MutedForegroundBrush}"
+                                                               Text="per output" />
+                                                    <TextBox Width="70"
+                                                             Text="{Binding QuantityPerOutputUnit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                </DockPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Button HorizontalAlignment="Left"
+                                            Content="Add input"
+                                            Click="AddInputRequirement_Click" />
+                                </StackPanel>
+                            </GroupBox>
                         </Grid>
                     </ScrollViewer>
 

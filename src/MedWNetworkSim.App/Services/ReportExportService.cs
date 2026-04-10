@@ -181,6 +181,7 @@ public sealed class ReportExportService
             ["Measure", "Value"],
             [
                 ["Periods Simulated", periods.ToString(CultureInfo.InvariantCulture)],
+                ["Loop Length", network.TimelineLoopLength.HasValue ? network.TimelineLoopLength.Value.ToString(CultureInfo.InvariantCulture) : "None"],
                 ["Allocations Planned", allAllocations.Count.ToString(CultureInfo.InvariantCulture)],
                 ["Total Delivered", FormatNumber(allAllocations.Sum(allocation => allocation.Quantity))],
                 ["Periods With Movement", periodResults.Count(result => result.Allocations.Count > 0).ToString(CultureInfo.InvariantCulture)],
@@ -209,7 +210,7 @@ public sealed class ReportExportService
 
         foreach (var stepResult in periodResults)
         {
-            builder.AppendLine($"<h2>Period {stepResult.Period}</h2>");
+            builder.AppendLine($"<h2>{HtmlEncode(FormatTimelinePeriodLabel(network, stepResult))}</h2>");
 
             AppendHtmlTable(
                 builder,
@@ -410,6 +411,7 @@ public sealed class ReportExportService
             ["Measure", "Value"],
             [
                 ["Periods Simulated", periods.ToString(CultureInfo.InvariantCulture)],
+                ["Loop Length", network.TimelineLoopLength.HasValue ? network.TimelineLoopLength.Value.ToString(CultureInfo.InvariantCulture) : "None"],
                 ["Allocations Planned", allAllocations.Count.ToString(CultureInfo.InvariantCulture)],
                 ["Total Delivered", FormatNumber(allAllocations.Sum(item => item.Quantity))],
                 ["Periods With Movement", results.Count(result => result.Allocations.Count > 0).ToString(CultureInfo.InvariantCulture)],
@@ -439,7 +441,7 @@ public sealed class ReportExportService
         {
             AppendCsvTable(
                 builder,
-                $"Period {result.Period} Summary",
+                $"{FormatTimelinePeriodLabel(network, result)} Summary",
                 ["Measure", "Value"],
                 [
                     ["Delivered This Period", FormatNumber(result.Allocations.Sum(item => item.Quantity))],
@@ -451,7 +453,7 @@ public sealed class ReportExportService
 
             AppendCsvTable(
                 builder,
-                $"Period {result.Period} Routed Movements",
+                $"{FormatTimelinePeriodLabel(network, result)} Routed Movements",
                 ["Traffic Type", "Producer", "Consumer", "Qty", "Path", "Time", "Delivered Cost"],
                 result.Allocations.Select(allocation => new[]
                 {
@@ -466,7 +468,7 @@ public sealed class ReportExportService
 
             AppendCsvTable(
                 builder,
-                $"Period {result.Period} Edge Usage",
+                $"{FormatTimelinePeriodLabel(network, result)} Edge Usage",
                 ["Edge", "Route", "Forward Flow", "Reverse Flow", "Occupancy", "Capacity", "Utilisation"],
                 network.Edges.Select(edge =>
                 {
@@ -486,7 +488,7 @@ public sealed class ReportExportService
 
             AppendCsvTable(
                 builder,
-                $"Period {result.Period} Node Activity",
+                $"{FormatTimelinePeriodLabel(network, result)} Node Activity",
                 ["Node", "Outbound", "Inbound", "Ready Supply", "Demand Backlog", "Store Inventory"],
                 network.Nodes.Select(node =>
                 {
@@ -619,9 +621,22 @@ public sealed class ReportExportService
                 : "Store");
         }
 
-        parts.Add($"Prod {FormatSchedule(profile.ProductionStartPeriod, profile.ProductionEndPeriod)}");
-        parts.Add($"Cons {FormatSchedule(profile.ConsumptionStartPeriod, profile.ConsumptionEndPeriod)}");
+        if (profile.InputRequirements.Count > 0)
+        {
+            parts.Add("Inputs " + string.Join(" + ", profile.InputRequirements.Select(requirement =>
+                $"{requirement.TrafficType}:{FormatNumber(requirement.QuantityPerOutputUnit)}")));
+        }
+
+        parts.Add($"Prod {FormatWindows(profile.ProductionWindows, profile.ProductionStartPeriod, profile.ProductionEndPeriod)}");
+        parts.Add($"Cons {FormatWindows(profile.ConsumptionWindows, profile.ConsumptionStartPeriod, profile.ConsumptionEndPeriod)}");
         return string.Join(", ", parts);
+    }
+
+    private static string FormatWindows(IReadOnlyList<PeriodWindow> windows, int? legacyStart, int? legacyEnd)
+    {
+        return windows.Count > 0
+            ? string.Join(" | ", windows.Select(window => FormatSchedule(window.StartPeriod, window.EndPeriod)))
+            : FormatSchedule(legacyStart, legacyEnd);
     }
 
     private static string FormatSchedule(int? start, int? end)
@@ -637,6 +652,18 @@ public sealed class ReportExportService
             RoutingPreference.Cost => "Cost",
             _ => "Total cost"
         };
+    }
+
+    private static string FormatTimelinePeriodLabel(
+        NetworkModel network,
+        TemporalNetworkSimulationEngine.TemporalSimulationStepResult result)
+    {
+        if (network.TimelineLoopLength.HasValue && network.TimelineLoopLength.Value > 0)
+        {
+            return $"Period {result.Period} (cycle period {result.EffectivePeriod} of {network.TimelineLoopLength.Value})";
+        }
+
+        return $"Period {result.Period}";
     }
 
     private static string FormatNumber(double? value)

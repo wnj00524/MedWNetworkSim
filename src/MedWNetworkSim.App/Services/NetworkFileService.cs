@@ -174,6 +174,12 @@ public sealed class NetworkFileService
             });
         }
 
+        var timelineLoopLength = model.TimelineLoopLength;
+        if (timelineLoopLength.HasValue && timelineLoopLength.Value < 1)
+        {
+            timelineLoopLength = null;
+        }
+
         var trafficDefinitions = NormalizeTrafficDefinitions(model.TrafficTypes, normalizedNodes);
         ApplyAutomaticLayout(normalizedNodes, normalizedEdges, forceLayoutAllNodes);
 
@@ -181,6 +187,7 @@ public sealed class NetworkFileService
         {
             Name = string.IsNullOrWhiteSpace(model.Name) ? "Untitled Network" : model.Name.Trim(),
             Description = model.Description?.Trim() ?? string.Empty,
+            TimelineLoopLength = timelineLoopLength,
             Nodes = normalizedNodes,
             Edges = normalizedEdges,
             TrafficTypes = trafficDefinitions
@@ -213,37 +220,21 @@ public sealed class NetworkFileService
                 throw new InvalidOperationException($"Node '{nodeId}' has an invalid consumerPremiumPerUnit for traffic '{profile.TrafficType}'. Use a finite number >= 0.");
             }
 
-            if (profile.ProductionStartPeriod.HasValue && profile.ProductionStartPeriod.Value < 0)
-            {
-                throw new InvalidOperationException($"Node '{nodeId}' has an invalid productionStartPeriod for traffic '{profile.TrafficType}'. Use an integer >= 0.");
-            }
-
-            if (profile.ProductionEndPeriod.HasValue && profile.ProductionEndPeriod.Value < 0)
-            {
-                throw new InvalidOperationException($"Node '{nodeId}' has an invalid productionEndPeriod for traffic '{profile.TrafficType}'. Use an integer >= 0.");
-            }
-
-            if (profile.ConsumptionStartPeriod.HasValue && profile.ConsumptionStartPeriod.Value < 0)
-            {
-                throw new InvalidOperationException($"Node '{nodeId}' has an invalid consumptionStartPeriod for traffic '{profile.TrafficType}'. Use an integer >= 0.");
-            }
-
-            if (profile.ConsumptionEndPeriod.HasValue && profile.ConsumptionEndPeriod.Value < 0)
-            {
-                throw new InvalidOperationException($"Node '{nodeId}' has an invalid consumptionEndPeriod for traffic '{profile.TrafficType}'. Use an integer >= 0.");
-            }
-
-            if (profile.ProductionStartPeriod.HasValue && profile.ProductionEndPeriod.HasValue &&
-                profile.ProductionStartPeriod.Value > profile.ProductionEndPeriod.Value)
-            {
-                throw new InvalidOperationException($"Node '{nodeId}' has a production schedule where start is after end for traffic '{profile.TrafficType}'.");
-            }
-
-            if (profile.ConsumptionStartPeriod.HasValue && profile.ConsumptionEndPeriod.HasValue &&
-                profile.ConsumptionStartPeriod.Value > profile.ConsumptionEndPeriod.Value)
-            {
-                throw new InvalidOperationException($"Node '{nodeId}' has a consumption schedule where start is after end for traffic '{profile.TrafficType}'.");
-            }
+            var productionWindows = NormalizeWindows(
+                profile.ProductionWindows,
+                profile.ProductionStartPeriod,
+                profile.ProductionEndPeriod,
+                nodeId,
+                profile.TrafficType,
+                "production");
+            var consumptionWindows = NormalizeWindows(
+                profile.ConsumptionWindows,
+                profile.ConsumptionStartPeriod,
+                profile.ConsumptionEndPeriod,
+                nodeId,
+                profile.TrafficType,
+                "consumption");
+            var inputRequirements = NormalizeInputRequirements(profile.InputRequirements, nodeId, profile.TrafficType);
 
             if (profile.StoreCapacity.HasValue &&
                 (double.IsNaN(profile.StoreCapacity.Value) || double.IsInfinity(profile.StoreCapacity.Value) || profile.StoreCapacity.Value < 0d))
@@ -265,18 +256,166 @@ public sealed class NetworkFileService
             normalizedProfile.Consumption += profile.Consumption;
             normalizedProfile.ConsumerPremiumPerUnit = Math.Max(normalizedProfile.ConsumerPremiumPerUnit, profile.ConsumerPremiumPerUnit);
             normalizedProfile.CanTransship |= profile.CanTransship;
-            normalizedProfile.ProductionStartPeriod ??= profile.ProductionStartPeriod;
-            normalizedProfile.ProductionEndPeriod ??= profile.ProductionEndPeriod;
-            normalizedProfile.ConsumptionStartPeriod ??= profile.ConsumptionStartPeriod;
-            normalizedProfile.ConsumptionEndPeriod ??= profile.ConsumptionEndPeriod;
+            MergeWindows(normalizedProfile.ProductionWindows, productionWindows);
+            MergeWindows(normalizedProfile.ConsumptionWindows, consumptionWindows);
+            MergeInputRequirements(normalizedProfile.InputRequirements, inputRequirements);
             normalizedProfile.IsStore |= profile.IsStore;
             normalizedProfile.StoreCapacity ??= profile.StoreCapacity;
         }
 
         // Duplicate traffic rows on the same node are collapsed into one persisted profile per traffic type.
+        foreach (var profile in normalizedProfiles.Values)
+        {
+            MirrorLegacyScheduleFields(profile);
+        }
+
         return normalizedProfiles.Values
             .OrderBy(profile => profile.TrafficType, Comparer)
             .ToList();
+    }
+
+    private static List<PeriodWindow> NormalizeWindows(
+        IEnumerable<PeriodWindow>? windows,
+        int? legacyStartPeriod,
+        int? legacyEndPeriod,
+        string nodeId,
+        string trafficType,
+        string scheduleKind)
+    {
+        var normalized = new List<PeriodWindow>();
+
+        foreach (var window in windows ?? [])
+        {
+            if (window.StartPeriod.HasValue && window.StartPeriod.Value < 0)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has an invalid {scheduleKind} window start for traffic '{trafficType}'. Use an integer >= 0.");
+            }
+
+            if (window.EndPeriod.HasValue && window.EndPeriod.Value < 0)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has an invalid {scheduleKind} window end for traffic '{trafficType}'. Use an integer >= 0.");
+            }
+
+            if (window.StartPeriod.HasValue && window.EndPeriod.HasValue && window.StartPeriod.Value > window.EndPeriod.Value)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has a {scheduleKind} schedule where start is after end for traffic '{trafficType}'.");
+            }
+
+            normalized.Add(new PeriodWindow
+            {
+                StartPeriod = window.StartPeriod,
+                EndPeriod = window.EndPeriod
+            });
+        }
+
+        // Old files only have the single start/end pair; promote it into the new list model.
+        if (normalized.Count == 0 && (legacyStartPeriod.HasValue || legacyEndPeriod.HasValue))
+        {
+            if (legacyStartPeriod.HasValue && legacyStartPeriod.Value < 0)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has an invalid {scheduleKind}StartPeriod for traffic '{trafficType}'. Use an integer >= 0.");
+            }
+
+            if (legacyEndPeriod.HasValue && legacyEndPeriod.Value < 0)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has an invalid {scheduleKind}EndPeriod for traffic '{trafficType}'. Use an integer >= 0.");
+            }
+
+            if (legacyStartPeriod.HasValue && legacyEndPeriod.HasValue && legacyStartPeriod.Value > legacyEndPeriod.Value)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has a {scheduleKind} schedule where start is after end for traffic '{trafficType}'.");
+            }
+
+            normalized.Add(new PeriodWindow
+            {
+                StartPeriod = legacyStartPeriod,
+                EndPeriod = legacyEndPeriod
+            });
+        }
+
+        return normalized;
+    }
+
+    private static List<ProductionInputRequirement> NormalizeInputRequirements(
+        IEnumerable<ProductionInputRequirement>? requirements,
+        string nodeId,
+        string trafficType)
+    {
+        var merged = new Dictionary<string, double>(Comparer);
+
+        foreach (var requirement in requirements ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(requirement.TrafficType))
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has a blank production input requirement for traffic '{trafficType}'.");
+            }
+
+            if (double.IsNaN(requirement.QuantityPerOutputUnit) ||
+                double.IsInfinity(requirement.QuantityPerOutputUnit) ||
+                requirement.QuantityPerOutputUnit <= 0d)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has an invalid input ratio for traffic '{trafficType}'. Use a finite number > 0.");
+            }
+
+            var inputTrafficType = requirement.TrafficType.Trim();
+            merged[inputTrafficType] = merged.GetValueOrDefault(inputTrafficType) + requirement.QuantityPerOutputUnit;
+        }
+
+        return merged
+            .OrderBy(pair => pair.Key, Comparer)
+            .Select(pair => new ProductionInputRequirement
+            {
+                TrafficType = pair.Key,
+                QuantityPerOutputUnit = pair.Value
+            })
+            .ToList();
+    }
+
+    private static void MergeWindows(ICollection<PeriodWindow> target, IEnumerable<PeriodWindow> source)
+    {
+        foreach (var window in source)
+        {
+            if (target.Any(existing => existing.StartPeriod == window.StartPeriod && existing.EndPeriod == window.EndPeriod))
+            {
+                continue;
+            }
+
+            target.Add(new PeriodWindow
+            {
+                StartPeriod = window.StartPeriod,
+                EndPeriod = window.EndPeriod
+            });
+        }
+    }
+
+    private static void MergeInputRequirements(ICollection<ProductionInputRequirement> target, IEnumerable<ProductionInputRequirement> source)
+    {
+        foreach (var requirement in source)
+        {
+            var existing = target.FirstOrDefault(item => Comparer.Equals(item.TrafficType, requirement.TrafficType));
+            if (existing is null)
+            {
+                target.Add(new ProductionInputRequirement
+                {
+                    TrafficType = requirement.TrafficType,
+                    QuantityPerOutputUnit = requirement.QuantityPerOutputUnit
+                });
+                continue;
+            }
+
+            existing.QuantityPerOutputUnit += requirement.QuantityPerOutputUnit;
+        }
+    }
+
+    private static void MirrorLegacyScheduleFields(NodeTrafficProfile profile)
+    {
+        var firstProductionWindow = profile.ProductionWindows.FirstOrDefault();
+        profile.ProductionStartPeriod = firstProductionWindow?.StartPeriod;
+        profile.ProductionEndPeriod = firstProductionWindow?.EndPeriod;
+
+        var firstConsumptionWindow = profile.ConsumptionWindows.FirstOrDefault();
+        profile.ConsumptionStartPeriod = firstConsumptionWindow?.StartPeriod;
+        profile.ConsumptionEndPeriod = firstConsumptionWindow?.EndPeriod;
     }
 
     private static List<TrafficTypeDefinition> NormalizeTrafficDefinitions(
@@ -312,7 +451,9 @@ public sealed class NetworkFileService
         // Traffic types referenced by nodes are back-filled even if the file omits an explicit definition.
         foreach (var trafficName in nodes
                      .SelectMany(node => node.TrafficProfiles)
-                     .Select(profile => profile.TrafficType)
+                     .SelectMany(profile => profile.InputRequirements
+                         .Select(requirement => requirement.TrafficType)
+                         .Append(profile.TrafficType))
                      .Distinct(Comparer))
         {
             if (!result.ContainsKey(trafficName))

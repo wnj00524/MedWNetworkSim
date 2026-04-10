@@ -72,7 +72,7 @@ public sealed class TemporalNetworkSimulationEngine
                 RemainingPeriodsOnCurrentEdge = GetEdgePeriods(edgeLookup[allocation.PathEdgeIds[0]])
             };
 
-            ClaimCurrentMovementResources(network, edgeLookup, movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+            ClaimCurrentMovementResources(edgeLookup, movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
             movements.Add(movement);
         }
 
@@ -632,11 +632,10 @@ public sealed class TemporalNetworkSimulationEngine
         ReleaseCurrentMovementResources(movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         movement.CurrentEdgeIndex += 1;
         movement.RemainingPeriodsOnCurrentEdge = GetEdgePeriods(edgeLookup[movement.PathEdgeIds[movement.CurrentEdgeIndex]]);
-        ClaimCurrentMovementResources(network, edgeLookup, movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+        ClaimCurrentMovementResources(edgeLookup, movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
     }
 
     private static void ClaimCurrentMovementResources(
-        NetworkModel network,
         IReadOnlyDictionary<string, EdgeModel> edgeLookup,
         TemporalInFlightMovement movement,
         IDictionary<string, double> occupiedEdgeCapacity,
@@ -660,8 +659,6 @@ public sealed class TemporalNetworkSimulationEngine
         {
             AddResourceQuantity(occupiedTranshipmentCapacity, transhipmentNodeId, movement.Quantity);
         }
-
-        ValidateResourceOccupancy(network, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
     }
 
     private static void ReleaseCurrentMovementResources(

@@ -41,7 +41,7 @@ public sealed class TemporalNetworkSimulationEngine
         var occupiedEdgeCapacity = state.OccupiedEdgeCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
         var occupiedTranshipmentCapacity = state.OccupiedTranshipmentCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
 
-        ValidateResourceOccupancy(network, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+        ValidateResourceOccupancy(edgeLookup, nodeLookup, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         ValidateMovementResourceClaims(movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
 
         AddScheduledNodeChanges(network, nodeStates, effectivePeriod);
@@ -113,7 +113,7 @@ public sealed class TemporalNetworkSimulationEngine
             MoveMovementToNextEdge(network, edgeLookup, movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         }
 
-        ValidateResourceOccupancy(network, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+        ValidateResourceOccupancy(edgeLookup, nodeLookup, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         ValidateMovementResourceClaims(movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
 
         state.CurrentPeriod = nextPeriod;
@@ -730,32 +730,37 @@ public sealed class TemporalNetworkSimulationEngine
     }
 
     private static void ValidateResourceOccupancy(
-        NetworkModel network,
+        IReadOnlyDictionary<string, EdgeModel> edgeLookup,
+        IReadOnlyDictionary<string, NodeModel> nodeLookup,
         IEnumerable<KeyValuePair<string, double>> occupiedEdgeCapacity,
         IEnumerable<KeyValuePair<string, double>> occupiedTranshipmentCapacity)
     {
         ValidateResourceOccupancy(
             occupiedEdgeCapacity,
-            network.Edges.ToDictionary(edge => edge.Id, edge => edge.Capacity, Comparer),
+            edgeLookup,
+            edge => edge.Capacity,
             "edge");
         ValidateResourceOccupancy(
             occupiedTranshipmentCapacity,
-            network.Nodes.ToDictionary(node => node.Id, node => node.TranshipmentCapacity, Comparer),
+            nodeLookup,
+            node => node.TranshipmentCapacity,
             "transhipment node");
     }
 
-    private static void ValidateResourceOccupancy(
+    private static void ValidateResourceOccupancy<TResource>(
         IEnumerable<KeyValuePair<string, double>> occupiedCapacity,
-        IReadOnlyDictionary<string, double?> nominalCapacity,
+        IReadOnlyDictionary<string, TResource> resourcesById,
+        Func<TResource, double?> getCapacity,
         string resourceKind)
     {
         foreach (var pair in occupiedCapacity)
         {
-            if (!nominalCapacity.TryGetValue(pair.Key, out var capacity))
+            if (!resourcesById.TryGetValue(pair.Key, out var resource))
             {
                 throw new InvalidOperationException($"Occupied {resourceKind} resource '{pair.Key}' does not exist.");
             }
 
+            var capacity = getCapacity(resource);
             if (pair.Value < -Epsilon)
             {
                 throw new InvalidOperationException($"Occupied {resourceKind} resource '{pair.Key}' cannot be negative.");

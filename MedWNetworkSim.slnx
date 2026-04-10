@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/MedWNetworkSim.App/MedWNetworkSim.App.csproj" />
+    <Project Path="src/MedWNetworkSim.App.Verification/MedWNetworkSim.App.Verification.csproj" />
   </Folder>
 </Solution>

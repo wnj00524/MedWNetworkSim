@@ -11,6 +11,7 @@ ScenarioG_MultipleProductionWindows();
 ScenarioH_StrictPrecursorGating();
 ScenarioI_RatioLimitedProduction();
 ScenarioJ_MultiplePrecursorLimitingInput();
+ScenarioK_FractionalPrecursorProduction();
 ScenarioK_NoPrecursorLegacyProduction();
 ScenarioL_CliGuiOverride();
 ScenarioM_LegacySingleWindowLoadCompatibility();
@@ -148,13 +149,13 @@ static void ScenarioG_MultipleProductionWindows()
 
 static void ScenarioH_StrictPrecursorGating()
 {
-    var (network, state) = CreateBakeryNetwork(wheat: 1d, water: 1d);
+    var (network, state) = CreateBakeryNetwork(wheat: 1d, water: 0d);
     var engine = new TemporalNetworkSimulationEngine();
     engine.Advance(network, state);
 
     AssertEqual(0d, GetAvailableSupply(state, "Bakery", "Bread"), "H bread output");
     AssertEqual(1d, GetAvailableSupply(state, "Bakery", "Wheat"), "H wheat remains");
-    AssertEqual(1d, GetAvailableSupply(state, "Bakery", "Water"), "H water remains");
+    AssertEqual(0d, GetAvailableSupply(state, "Bakery", "Water"), "H water remains");
 }
 
 static void ScenarioI_RatioLimitedProduction()
@@ -177,6 +178,17 @@ static void ScenarioJ_MultiplePrecursorLimitingInput()
     AssertEqual(3d, GetAvailableSupply(state, "Bakery", "Bread"), "J bread output");
     AssertEqual(5d, GetAvailableSupply(state, "Bakery", "Wheat"), "J wheat deducted");
     AssertEqual(0d, GetAvailableSupply(state, "Bakery", "Water"), "J water deducted");
+}
+
+static void ScenarioK_FractionalPrecursorProduction()
+{
+    var (network, state) = CreateBakeryNetwork(wheat: 0.5d, water: 1d);
+    var engine = new TemporalNetworkSimulationEngine();
+    engine.Advance(network, state);
+
+    AssertEqual(0.5d, GetAvailableSupply(state, "Bakery", "Bread"), "K fractional bread output");
+    AssertEqual(0d, GetAvailableSupply(state, "Bakery", "Wheat"), "K fractional wheat deducted");
+    AssertEqual(0d, GetAvailableSupply(state, "Bakery", "Water"), "K fractional water deducted");
 }
 
 static void ScenarioK_NoPrecursorLegacyProduction()

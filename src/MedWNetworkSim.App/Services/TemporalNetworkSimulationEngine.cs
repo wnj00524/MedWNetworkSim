@@ -37,18 +37,29 @@ public sealed class TemporalNetworkSimulationEngine
         var nodeLookup = network.Nodes.ToDictionary(node => node.Id, node => node, Comparer);
         var edgeLookup = network.Edges.ToDictionary(edge => edge.Id, edge => edge, Comparer);
         var definitionsByTraffic = network.TrafficTypes.ToDictionary(definition => definition.Name, definition => definition, Comparer);
+        var occupiedEdgeCapacity = state.OccupiedEdgeCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
+        var occupiedTranshipmentCapacity = state.OccupiedTranshipmentCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
+
+        ValidateResourceOccupancy(network, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+        ValidateMovementResourceClaims(movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
 
         AddScheduledNodeChanges(network, nodeStates, nextPeriod);
 
-        var plannedAllocations = PlanNewAllocations(network, definitionsByTraffic, nodeStates, nextPeriod);
+        var availableResources = BuildAvailableResourceCapacity(network, movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+        var plannedAllocations = PlanNewAllocations(
+            network,
+            definitionsByTraffic,
+            nodeStates,
+            nextPeriod,
+            availableResources.EdgeCapacityById,
+            availableResources.TranshipmentCapacityByNodeId);
 
         var edgeFlowById = new Dictionary<string, EdgeFlowVisualSummary>(Comparer);
         var nodeFlowById = new Dictionary<string, NodeFlowVisualSummary>(Comparer);
 
         foreach (var allocation in plannedAllocations)
         {
-            var firstEdgePeriods = GetEdgePeriods(edgeLookup[allocation.PathEdgeIds[0]]);
-            movements.Add(new TemporalInFlightMovement
+            var movement = new TemporalInFlightMovement
             {
                 TrafficType = allocation.TrafficType,
                 Quantity = allocation.Quantity,
@@ -56,9 +67,15 @@ public sealed class TemporalNetworkSimulationEngine
                 PathNodeNames = allocation.PathNodeNames.ToList(),
                 PathEdgeIds = allocation.PathEdgeIds.ToList(),
                 CurrentEdgeIndex = 0,
-                RemainingPeriodsOnCurrentEdge = firstEdgePeriods
-            });
+                RemainingPeriodsOnCurrentEdge = GetEdgePeriods(edgeLookup[allocation.PathEdgeIds[0]])
+            };
+
+            ClaimCurrentMovementResources(network, edgeLookup, movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+            movements.Add(movement);
         }
+
+        var edgeOccupancySnapshot = SnapshotResourceOccupancy(occupiedEdgeCapacity);
+        var transhipmentOccupancySnapshot = SnapshotResourceOccupancy(occupiedTranshipmentCapacity);
 
         foreach (var movement in movements.ToList())
         {
@@ -85,14 +102,17 @@ public sealed class TemporalNetworkSimulationEngine
 
             if (movement.CurrentEdgeIndex == movement.PathEdgeIds.Count - 1)
             {
+                ReleaseCurrentMovementResources(movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
                 CompleteArrival(nodeStates, nodeLookup, movement);
                 movements.Remove(movement);
                 continue;
             }
 
-            movement.CurrentEdgeIndex += 1;
-            movement.RemainingPeriodsOnCurrentEdge = GetEdgePeriods(edgeLookup[movement.PathEdgeIds[movement.CurrentEdgeIndex]]);
+            MoveMovementToNextEdge(network, edgeLookup, movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         }
+
+        ValidateResourceOccupancy(network, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+        ValidateMovementResourceClaims(movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
 
         state.CurrentPeriod = nextPeriod;
         state.NodeStates.Clear();
@@ -103,13 +123,32 @@ public sealed class TemporalNetworkSimulationEngine
 
         state.InFlightMovements.Clear();
         state.InFlightMovements.AddRange(movements);
+        state.OccupiedEdgeCapacity.Clear();
+        foreach (var pair in occupiedEdgeCapacity.Where(pair => pair.Value > Epsilon))
+        {
+            state.OccupiedEdgeCapacity[pair.Key] = pair.Value;
+        }
+
+        state.OccupiedTranshipmentCapacity.Clear();
+        foreach (var pair in occupiedTranshipmentCapacity.Where(pair => pair.Value > Epsilon))
+        {
+            state.OccupiedTranshipmentCapacity[pair.Key] = pair.Value;
+        }
 
         var nodeSnapshots = nodeStates.ToDictionary(
             pair => pair.Key,
             pair => new TemporalNodeStateSnapshot(pair.Value.AvailableSupply, pair.Value.DemandBacklog, pair.Value.StoreInventory),
             TemporalNodeTrafficKey.Comparer);
 
-        return new TemporalSimulationStepResult(nextPeriod, plannedAllocations, edgeFlowById, nodeFlowById, nodeSnapshots, movements.Count);
+        return new TemporalSimulationStepResult(
+            nextPeriod,
+            plannedAllocations,
+            edgeFlowById,
+            nodeFlowById,
+            nodeSnapshots,
+            edgeOccupancySnapshot,
+            transhipmentOccupancySnapshot,
+            movements.Count);
     }
 
     private static void AddScheduledNodeChanges(
@@ -149,11 +188,13 @@ public sealed class TemporalNetworkSimulationEngine
         NetworkModel network,
         IReadOnlyDictionary<string, TrafficTypeDefinition> definitionsByTraffic,
         IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
-        int period)
+        int period,
+        IReadOnlyDictionary<string, double> availableCapacityByEdgeId,
+        IReadOnlyDictionary<string, double> availableTranshipmentCapacityByNodeId)
     {
         var adjacency = BuildAdjacency(network);
-        var remainingCapacityByEdgeId = network.Edges.ToDictionary(edge => edge.Id, edge => edge.Capacity ?? double.PositiveInfinity, Comparer);
-        var remainingTranshipmentCapacityByNodeId = network.Nodes.ToDictionary(node => node.Id, node => node.TranshipmentCapacity ?? double.PositiveInfinity, Comparer);
+        var remainingCapacityByEdgeId = availableCapacityByEdgeId.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
+        var remainingTranshipmentCapacityByNodeId = availableTranshipmentCapacityByNodeId.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
         var contexts = GetOrderedTrafficNames(network)
             .Select(trafficType =>
             {
@@ -429,6 +470,264 @@ public sealed class TemporalNetworkSimulationEngine
         {
             nodeState.StoreInventory += movement.Quantity;
             nodeState.ReservedStoreReceipts = Math.Max(0d, nodeState.ReservedStoreReceipts - movement.Quantity);
+        }
+    }
+
+    private static AvailableResourceCapacity BuildAvailableResourceCapacity(
+        NetworkModel network,
+        IReadOnlyList<TemporalInFlightMovement> movements,
+        IReadOnlyDictionary<string, double> occupiedEdgeCapacity,
+        IReadOnlyDictionary<string, double> occupiedTranshipmentCapacity)
+    {
+        var pendingEdgeClaims = new Dictionary<string, double>(Comparer);
+        var pendingTranshipmentClaims = new Dictionary<string, double>(Comparer);
+
+        foreach (var movement in movements)
+        {
+            if (movement.RemainingPeriodsOnCurrentEdge > 1 ||
+                movement.CurrentEdgeIndex >= movement.PathEdgeIds.Count - 1)
+            {
+                continue;
+            }
+
+            var nextEdgeId = movement.PathEdgeIds[movement.CurrentEdgeIndex + 1];
+            AddResourceQuantity(pendingEdgeClaims, nextEdgeId, movement.Quantity);
+
+            var nextTranshipmentNodeId = GetTranshipmentNodeForEdgeIndex(movement, movement.CurrentEdgeIndex + 1);
+            if (nextTranshipmentNodeId is not null)
+            {
+                AddResourceQuantity(pendingTranshipmentClaims, nextTranshipmentNodeId, movement.Quantity);
+            }
+        }
+
+        return new AvailableResourceCapacity(
+            network.Edges.ToDictionary(
+                edge => edge.Id,
+                edge => GetAvailableCapacity(edge.Capacity, edge.Id, occupiedEdgeCapacity, pendingEdgeClaims),
+                Comparer),
+            network.Nodes.ToDictionary(
+                node => node.Id,
+                node => GetAvailableCapacity(node.TranshipmentCapacity, node.Id, occupiedTranshipmentCapacity, pendingTranshipmentClaims),
+                Comparer));
+    }
+
+    private static double GetAvailableCapacity(
+        double? nominalCapacity,
+        string resourceId,
+        IReadOnlyDictionary<string, double> occupiedCapacity,
+        IReadOnlyDictionary<string, double> pendingClaims)
+    {
+        if (!nominalCapacity.HasValue)
+        {
+            return double.PositiveInfinity;
+        }
+
+        var occupied = occupiedCapacity.TryGetValue(resourceId, out var occupiedValue) ? occupiedValue : 0d;
+        var pending = pendingClaims.TryGetValue(resourceId, out var pendingValue) ? pendingValue : 0d;
+        return Math.Max(0d, nominalCapacity.Value - occupied - pending);
+    }
+
+    private static void MoveMovementToNextEdge(
+        NetworkModel network,
+        IReadOnlyDictionary<string, EdgeModel> edgeLookup,
+        TemporalInFlightMovement movement,
+        IDictionary<string, double> occupiedEdgeCapacity,
+        IDictionary<string, double> occupiedTranshipmentCapacity)
+    {
+        ReleaseCurrentMovementResources(movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+        movement.CurrentEdgeIndex += 1;
+        movement.RemainingPeriodsOnCurrentEdge = GetEdgePeriods(edgeLookup[movement.PathEdgeIds[movement.CurrentEdgeIndex]]);
+        ClaimCurrentMovementResources(network, edgeLookup, movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+    }
+
+    private static void ClaimCurrentMovementResources(
+        NetworkModel network,
+        IReadOnlyDictionary<string, EdgeModel> edgeLookup,
+        TemporalInFlightMovement movement,
+        IDictionary<string, double> occupiedEdgeCapacity,
+        IDictionary<string, double> occupiedTranshipmentCapacity)
+    {
+        if (movement.CurrentEdgeIndex < 0 || movement.CurrentEdgeIndex >= movement.PathEdgeIds.Count)
+        {
+            throw new InvalidOperationException("Cannot claim resources for a movement without a current edge.");
+        }
+
+        var edgeId = movement.PathEdgeIds[movement.CurrentEdgeIndex];
+        if (!edgeLookup.ContainsKey(edgeId))
+        {
+            throw new InvalidOperationException($"Movement references missing edge '{edgeId}'.");
+        }
+
+        AddResourceQuantity(occupiedEdgeCapacity, edgeId, movement.Quantity);
+
+        var transhipmentNodeId = GetCurrentTranshipmentNodeId(movement);
+        if (transhipmentNodeId is not null)
+        {
+            AddResourceQuantity(occupiedTranshipmentCapacity, transhipmentNodeId, movement.Quantity);
+        }
+
+        ValidateResourceOccupancy(network, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+    }
+
+    private static void ReleaseCurrentMovementResources(
+        TemporalInFlightMovement movement,
+        IDictionary<string, double> occupiedEdgeCapacity,
+        IDictionary<string, double> occupiedTranshipmentCapacity)
+    {
+        if (movement.CurrentEdgeIndex < 0 || movement.CurrentEdgeIndex >= movement.PathEdgeIds.Count)
+        {
+            return;
+        }
+
+        ReleaseResourceQuantity(occupiedEdgeCapacity, movement.PathEdgeIds[movement.CurrentEdgeIndex], movement.Quantity);
+
+        var transhipmentNodeId = GetCurrentTranshipmentNodeId(movement);
+        if (transhipmentNodeId is not null)
+        {
+            ReleaseResourceQuantity(occupiedTranshipmentCapacity, transhipmentNodeId, movement.Quantity);
+        }
+    }
+
+    private static string? GetCurrentTranshipmentNodeId(TemporalInFlightMovement movement)
+    {
+        return GetTranshipmentNodeForEdgeIndex(movement, movement.CurrentEdgeIndex);
+    }
+
+    private static string? GetTranshipmentNodeForEdgeIndex(TemporalInFlightMovement movement, int edgeIndex)
+    {
+        if (edgeIndex < 0 || edgeIndex >= movement.PathEdgeIds.Count - 1 || edgeIndex + 1 >= movement.PathNodeIds.Count)
+        {
+            return null;
+        }
+
+        return movement.PathNodeIds[edgeIndex + 1];
+    }
+
+    private static void AddResourceQuantity(IDictionary<string, double> occupiedCapacity, string resourceId, double quantity)
+    {
+        occupiedCapacity[resourceId] = (occupiedCapacity.TryGetValue(resourceId, out var existing) ? existing : 0d) + quantity;
+    }
+
+    private static void ReleaseResourceQuantity(IDictionary<string, double> occupiedCapacity, string resourceId, double quantity)
+    {
+        if (!occupiedCapacity.TryGetValue(resourceId, out var existing))
+        {
+            throw new InvalidOperationException($"Cannot release unclaimed resource '{resourceId}'.");
+        }
+
+        var remaining = existing - quantity;
+        if (remaining < -Epsilon)
+        {
+            throw new InvalidOperationException($"Resource '{resourceId}' occupancy would become negative.");
+        }
+
+        if (remaining <= Epsilon)
+        {
+            occupiedCapacity.Remove(resourceId);
+            return;
+        }
+
+        occupiedCapacity[resourceId] = remaining;
+    }
+
+    private static IReadOnlyDictionary<string, double> SnapshotResourceOccupancy(IReadOnlyDictionary<string, double> occupiedCapacity)
+    {
+        return occupiedCapacity
+            .Where(pair => pair.Value > Epsilon)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
+    }
+
+    private static void ValidateResourceOccupancy(
+        NetworkModel network,
+        IEnumerable<KeyValuePair<string, double>> occupiedEdgeCapacity,
+        IEnumerable<KeyValuePair<string, double>> occupiedTranshipmentCapacity)
+    {
+        ValidateResourceOccupancy(
+            occupiedEdgeCapacity,
+            network.Edges.ToDictionary(edge => edge.Id, edge => edge.Capacity, Comparer),
+            "edge");
+        ValidateResourceOccupancy(
+            occupiedTranshipmentCapacity,
+            network.Nodes.ToDictionary(node => node.Id, node => node.TranshipmentCapacity, Comparer),
+            "transhipment node");
+    }
+
+    private static void ValidateResourceOccupancy(
+        IEnumerable<KeyValuePair<string, double>> occupiedCapacity,
+        IReadOnlyDictionary<string, double?> nominalCapacity,
+        string resourceKind)
+    {
+        foreach (var pair in occupiedCapacity)
+        {
+            if (!nominalCapacity.TryGetValue(pair.Key, out var capacity))
+            {
+                throw new InvalidOperationException($"Occupied {resourceKind} resource '{pair.Key}' does not exist.");
+            }
+
+            if (pair.Value < -Epsilon)
+            {
+                throw new InvalidOperationException($"Occupied {resourceKind} resource '{pair.Key}' cannot be negative.");
+            }
+
+            if (capacity.HasValue && pair.Value > capacity.Value + Epsilon)
+            {
+                throw new InvalidOperationException(
+                    $"Occupied {resourceKind} resource '{pair.Key}' exceeds capacity {capacity.Value} with occupancy {pair.Value}.");
+            }
+        }
+    }
+
+    private static void ValidateMovementResourceClaims(
+        IReadOnlyList<TemporalInFlightMovement> movements,
+        IReadOnlyDictionary<string, double> occupiedEdgeCapacity,
+        IReadOnlyDictionary<string, double> occupiedTranshipmentCapacity)
+    {
+        var expectedEdgeCapacity = new Dictionary<string, double>(Comparer);
+        var expectedTranshipmentCapacity = new Dictionary<string, double>(Comparer);
+
+        foreach (var movement in movements)
+        {
+            if (movement.CurrentEdgeIndex < 0 || movement.CurrentEdgeIndex >= movement.PathEdgeIds.Count)
+            {
+                throw new InvalidOperationException("In-flight movement has no valid current edge claim.");
+            }
+
+            AddResourceQuantity(expectedEdgeCapacity, movement.PathEdgeIds[movement.CurrentEdgeIndex], movement.Quantity);
+
+            var transhipmentNodeId = GetCurrentTranshipmentNodeId(movement);
+            if (transhipmentNodeId is not null)
+            {
+                AddResourceQuantity(expectedTranshipmentCapacity, transhipmentNodeId, movement.Quantity);
+            }
+        }
+
+        ValidateExpectedOccupancy(expectedEdgeCapacity, occupiedEdgeCapacity, "edge");
+        ValidateExpectedOccupancy(expectedTranshipmentCapacity, occupiedTranshipmentCapacity, "transhipment node");
+    }
+
+    private static void ValidateExpectedOccupancy(
+        IReadOnlyDictionary<string, double> expectedCapacity,
+        IReadOnlyDictionary<string, double> actualCapacity,
+        string resourceKind)
+    {
+        foreach (var pair in expectedCapacity)
+        {
+            var actual = actualCapacity.TryGetValue(pair.Key, out var value) ? value : 0d;
+            if (Math.Abs(actual - pair.Value) > Epsilon)
+            {
+                throw new InvalidOperationException(
+                    $"Occupied {resourceKind} resource '{pair.Key}' should be {pair.Value}, but was {actual}.");
+            }
+        }
+
+        foreach (var pair in actualCapacity)
+        {
+            var expected = expectedCapacity.TryGetValue(pair.Key, out var value) ? value : 0d;
+            if (Math.Abs(expected - pair.Value) > Epsilon)
+            {
+                throw new InvalidOperationException(
+                    $"Occupied {resourceKind} resource '{pair.Key}' is orphaned with occupancy {pair.Value}.");
+            }
         }
     }
 
@@ -822,6 +1121,10 @@ public sealed class TemporalNetworkSimulationEngine
 
         public List<TemporalInFlightMovement> InFlightMovements { get; } = [];
 
+        public Dictionary<string, double> OccupiedEdgeCapacity { get; } = new(Comparer);
+
+        public Dictionary<string, double> OccupiedTranshipmentCapacity { get; } = new(Comparer);
+
         public TemporalNodeTrafficState GetOrCreateNodeTrafficState(string nodeId, string trafficType)
         {
             var key = new TemporalNodeTrafficKey(nodeId, trafficType);
@@ -841,6 +1144,8 @@ public sealed class TemporalNetworkSimulationEngine
         IReadOnlyDictionary<string, EdgeFlowVisualSummary> EdgeFlows,
         IReadOnlyDictionary<string, NodeFlowVisualSummary> NodeFlows,
         IReadOnlyDictionary<TemporalNodeTrafficKey, TemporalNodeStateSnapshot> NodeStates,
+        IReadOnlyDictionary<string, double> EdgeOccupancy,
+        IReadOnlyDictionary<string, double> TranshipmentOccupancy,
         int InFlightMovementCount);
 
     public readonly record struct TemporalNodeStateSnapshot(double AvailableSupply, double DemandBacklog, double StoreInventory);
@@ -932,6 +1237,10 @@ public sealed class TemporalNetworkSimulationEngine
     private sealed record GraphArc(string EdgeId, string FromNodeId, string ToNodeId, double Time, double Cost);
 
     private sealed record PreviousStep(string PreviousNodeId, GraphArc Arc);
+
+    private sealed record AvailableResourceCapacity(
+        IReadOnlyDictionary<string, double> EdgeCapacityById,
+        IReadOnlyDictionary<string, double> TranshipmentCapacityByNodeId);
 
     private sealed record RouteCandidate(
         TemporalTrafficContext Context,

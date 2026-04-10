@@ -247,18 +247,19 @@ public sealed class ReportExportService
             builder.AppendLine("<h3>Edge Usage</h3>");
             AppendHtmlTable(
                 builder,
-                ["Edge", "Route", "Flow", "Capacity", "Utilisation"],
+                ["Edge", "Route", "Flow", "Occupancy", "Capacity", "Utilisation"],
                 network.Edges.Select(edge =>
                 {
                     var summary = stepResult.EdgeFlows.GetValueOrDefault(edge.Id, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty);
-                    var totalFlow = TotalEdgeFlow(summary);
+                    var occupancy = stepResult.EdgeOccupancy.GetValueOrDefault(edge.Id, 0d);
                     return new[]
                     {
                         edge.Id,
                         $"{edge.FromNodeId} -> {edge.ToNodeId}",
                         $"{FormatNumber(summary.ForwardQuantity)} / {FormatNumber(summary.ReverseQuantity)}",
+                        FormatNumber(occupancy),
                         FormatNumber(edge.Capacity),
-                        FormatUtilisation(totalFlow, edge.Capacity)
+                        FormatUtilisation(occupancy, edge.Capacity)
                     };
                 }));
 
@@ -466,18 +467,20 @@ public sealed class ReportExportService
             AppendCsvTable(
                 builder,
                 $"Period {result.Period} Edge Usage",
-                ["Edge", "Route", "Forward Flow", "Reverse Flow", "Capacity", "Utilisation"],
+                ["Edge", "Route", "Forward Flow", "Reverse Flow", "Occupancy", "Capacity", "Utilisation"],
                 network.Edges.Select(edge =>
                 {
                     var summary = result.EdgeFlows.GetValueOrDefault(edge.Id, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty);
+                    var occupancy = result.EdgeOccupancy.GetValueOrDefault(edge.Id, 0d);
                     return new[]
                     {
                         edge.Id,
                         $"{edge.FromNodeId} -> {edge.ToNodeId}",
                         FormatNumber(summary.ForwardQuantity),
                         FormatNumber(summary.ReverseQuantity),
+                        FormatNumber(occupancy),
                         FormatNumber(edge.Capacity),
-                        FormatUtilisation(TotalEdgeFlow(summary), edge.Capacity)
+                        FormatUtilisation(occupancy, edge.Capacity)
                     };
                 }));
 

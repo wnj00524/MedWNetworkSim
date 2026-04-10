@@ -22,6 +22,8 @@ dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- <comm
 
 If you are using the built `.exe`, replace the start of each example with the executable name instead.
 
+Use `--gui` or `--force-gui` if you want the desktop app to open even though arguments are present.
+
 ## Get help
 
 Any of these will show the built-in help:
@@ -68,6 +70,7 @@ Important options:
 - `--mode`: `simulation` or `timeline`
 - `--report`: `current` or `timeline`
 - `--turns`: required for timeline mode
+- timeline loop length is read from the network file itself
 
 What the options mean:
 - **simulation/current** = one-off snapshot analysis
@@ -102,16 +105,21 @@ Options:
 - `--overwrite`: replace an existing file
 
 ## `set-network`
-Changes the network’s name or description in an existing file.
+Changes the network’s name, description, or timeline loop length in an existing file.
 
 Examples:
 
 ```bash
 MedWNetworkSim.App.exe set-network --file .\demo.json --name "Updated Demo"
 MedWNetworkSim.App.exe set-network --file .\demo.json --description "Routing test network"
+MedWNetworkSim.App.exe set-network --file .\demo.json --loop-length 12
+MedWNetworkSim.App.exe set-network --file .\demo.json --loop-length none
 ```
 
 Use this when the model already exists and you only want to update its top-level details.
+
+Additional option:
+- `--loop-length`: repeating cycle length for timeline mode; use `none` to clear it
 
 ## `add-traffic`
 Creates or updates a traffic type.
@@ -173,8 +181,14 @@ Options:
 - `--production`: amount supplied
 - `--consumption`: amount needed
 - `--premium`: extra consumer premium per unit
-- `--production-start`, `--production-end`: optional schedule window
-- `--consumption-start`, `--consumption-end`: optional schedule window
+- `--production-start`, `--production-end`: legacy single production window fields
+- `--consumption-start`, `--consumption-end`: legacy single consumption window fields
+- `--production-window`: repeatable production window such as `1-3`, `5-`, or `-7`
+- `--consumption-window`: repeatable consumption window such as `2-4`, `8-`, or `-12`
+- `--clear-production-windows`: remove all production windows
+- `--clear-consumption-windows`: remove all consumption windows
+- `--input`: repeatable local input requirement in the form `TrafficType:Quantity`
+- `--clear-inputs`: remove all precursor input requirements
 - `--store` or `--no-store`: whether the node stores inventory
 - `--store-capacity`: optional storage limit; use `none` to clear it
 
@@ -196,7 +210,32 @@ How to think about this:
 
 Useful behaviour to know:
 - If you set a role that includes producer or consumer but do not give an amount, the CLI keeps the existing positive value or defaults to `1`.
+- Repeating `--production-window`, `--consumption-window`, or `--input` adds multiple rows in one command.
+- Window syntax is inclusive:
+  - `1-3` means periods 1 through 3
+  - `5-` means period 5 onward
+  - `-7` means from the start through period 7
+- Input requirements are local production prerequisites.
+- Example:
+  - `--input Wheat:1 --input Water:2`
+  - means one unit of output needs one Wheat and two Water already present at that node
+- If the required precursor set is not available locally, production for that output traffic is halted for that period.
 - If a profile is reduced back to an empty state, the app removes that profile from the node.
+
+Window examples:
+
+```bash
+MedWNetworkSim.App.exe set-profile --file .\demo.json --node Bakery --traffic Bread --production-window 1-3 --production-window 8-10
+MedWNetworkSim.App.exe set-profile --file .\demo.json --node Town --traffic Bread --consumption-window 1-12
+MedWNetworkSim.App.exe set-profile --file .\demo.json --node Town --traffic Bread --clear-consumption-windows
+```
+
+Input requirement examples:
+
+```bash
+MedWNetworkSim.App.exe set-profile --file .\demo.json --node Bakery --traffic Bread --input Wheat:1 --input Water:2
+MedWNetworkSim.App.exe set-profile --file .\demo.json --node Bakery --traffic Bread --clear-inputs
+```
 
 ## `add-edge`
 Creates or updates a route between two nodes.
@@ -273,6 +312,10 @@ The older positional syntax still works for report generation. The built-in help
 ## When to use the CLI and when not to
 
 The CLI is best when you want:
+- explicit control over:
+  - timeline loop length
+  - repeating schedule windows
+  - local precursor requirements
 - repeatable model setup
 - automation
 - quick changes to many files
@@ -283,3 +326,12 @@ The desktop app is better when you want:
 - drag-and-drop layout
 - canvas interaction
 - quick inspection of the model and results
+- easier editing of several windows or input rows at once
+
+## GUI override
+
+If you want the WPF desktop app to open instead of command-line mode, start with:
+
+```bash
+MedWNetworkSim.App.exe --gui
+```

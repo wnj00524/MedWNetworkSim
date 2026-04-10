@@ -7,6 +7,53 @@ public sealed class CommandLineRunService
 {
     private const char RepeatedValueSeparator = '\u001F';
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+    private static readonly HashSet<string> KnownCliOptions = new(Comparer)
+    {
+        "file",
+        "network",
+        "output",
+        "mode",
+        "report",
+        "turns",
+        "name",
+        "description",
+        "overwrite",
+        "loop-length",
+        "preference",
+        "bid",
+        "id",
+        "node",
+        "traffic",
+        "role",
+        "production",
+        "consumption",
+        "premium",
+        "production-start",
+        "production-end",
+        "consumption-start",
+        "consumption-end",
+        "production-window",
+        "consumption-window",
+        "clear-production-windows",
+        "clear-consumption-windows",
+        "input",
+        "clear-inputs",
+        "store",
+        "no-store",
+        "store-capacity",
+        "shape",
+        "x",
+        "y",
+        "transhipment-capacity",
+        "from",
+        "to",
+        "time",
+        "cost",
+        "capacity",
+        "direction",
+        "one-way",
+        "bidirectional"
+    };
 
     private readonly NetworkFileService networkFileService = new();
     private readonly ReportExportService reportExportService = new();
@@ -15,7 +62,22 @@ public sealed class CommandLineRunService
 
     public bool ShouldRunFromCommandLine(string[] args)
     {
-        return args.Length > 0 && !args.Any(IsForceGuiToken);
+        if (args.Length == 0 || args.Any(IsForceGuiToken))
+        {
+            return false;
+        }
+
+        if (IsHelpRequest(args) || TryGetCommand(args[0], out _))
+        {
+            return true;
+        }
+
+        if (args.Any(IsKnownCliOptionToken))
+        {
+            return true;
+        }
+
+        return LooksLikeLegacyRunArguments(args);
     }
 
     public bool IsHelpRequest(string[] args)
@@ -180,6 +242,71 @@ Examples:
         return Comparer.Equals(arg, "--gui") ||
             Comparer.Equals(arg, "--force-gui") ||
             Comparer.Equals(arg, "gui");
+    }
+
+    private static bool IsKnownCliOptionToken(string arg)
+    {
+        var optionName = GetOptionName(arg);
+        return optionName is not null && IsKnownCliOption(optionName);
+    }
+
+    private static string? GetOptionName(string arg)
+    {
+        if (arg.StartsWith("--", StringComparison.Ordinal))
+        {
+            var body = arg[2..];
+            var separatorIndex = body.IndexOf('=');
+            return separatorIndex >= 0 ? body[..separatorIndex] : body;
+        }
+
+        return arg.StartsWith("-", StringComparison.Ordinal) && arg.Length == 2
+            ? arg[1] switch
+            {
+                'n' => "network",
+                'm' => "mode",
+                'r' => "report",
+                'o' => "output",
+                't' => "turns",
+                'f' => "file",
+                _ => null
+            }
+            : null;
+    }
+
+    private static bool IsKnownCliOption(string optionName)
+    {
+        return KnownCliOptions.Contains(optionName);
+    }
+
+    private static bool LooksLikeLegacyRunArguments(IReadOnlyList<string> args)
+    {
+        if (args.Count < 4)
+        {
+            return false;
+        }
+
+        var networkPath = args[0];
+        var mode = args[1];
+        var report = args[2];
+        return Comparer.Equals(Path.GetExtension(networkPath), ".json") &&
+            IsKnownModeName(mode) &&
+            IsKnownReportName(report);
+    }
+
+    private static bool IsKnownModeName(string value)
+    {
+        return Comparer.Equals(value, "simulation") ||
+            Comparer.Equals(value, "simulate") ||
+            Comparer.Equals(value, "run") ||
+            Comparer.Equals(value, "timeline") ||
+            Comparer.Equals(value, "turns");
+    }
+
+    private static bool IsKnownReportName(string value)
+    {
+        return Comparer.Equals(value, "current") ||
+            Comparer.Equals(value, "simulation") ||
+            Comparer.Equals(value, "timeline");
     }
 
     private static (Dictionary<string, string> Named, List<string> Positional) ParseArguments(IEnumerable<string> args)

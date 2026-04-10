@@ -11,9 +11,11 @@ ScenarioG_MultipleProductionWindows();
 ScenarioH_StrictPrecursorGating();
 ScenarioI_RatioLimitedProduction();
 ScenarioJ_MultiplePrecursorLimitingInput();
+ScenarioK_FractionalPrecursorProduction();
 ScenarioK_NoPrecursorLegacyProduction();
 ScenarioL_CliGuiOverride();
 ScenarioM_LegacySingleWindowLoadCompatibility();
+ScenarioN_DotnetRunProjectArgumentDoesNotEnterCli();
 
 Console.WriteLine("Temporal occupancy verification passed.");
 
@@ -147,13 +149,13 @@ static void ScenarioG_MultipleProductionWindows()
 
 static void ScenarioH_StrictPrecursorGating()
 {
-    var (network, state) = CreateBakeryNetwork(wheat: 1d, water: 1d);
+    var (network, state) = CreateBakeryNetwork(wheat: 1d, water: 0d);
     var engine = new TemporalNetworkSimulationEngine();
     engine.Advance(network, state);
 
     AssertEqual(0d, GetAvailableSupply(state, "Bakery", "Bread"), "H bread output");
     AssertEqual(1d, GetAvailableSupply(state, "Bakery", "Wheat"), "H wheat remains");
-    AssertEqual(1d, GetAvailableSupply(state, "Bakery", "Water"), "H water remains");
+    AssertEqual(0d, GetAvailableSupply(state, "Bakery", "Water"), "H water remains");
 }
 
 static void ScenarioI_RatioLimitedProduction()
@@ -176,6 +178,17 @@ static void ScenarioJ_MultiplePrecursorLimitingInput()
     AssertEqual(3d, GetAvailableSupply(state, "Bakery", "Bread"), "J bread output");
     AssertEqual(5d, GetAvailableSupply(state, "Bakery", "Wheat"), "J wheat deducted");
     AssertEqual(0d, GetAvailableSupply(state, "Bakery", "Water"), "J water deducted");
+}
+
+static void ScenarioK_FractionalPrecursorProduction()
+{
+    var (network, state) = CreateBakeryNetwork(wheat: 0.5d, water: 1d);
+    var engine = new TemporalNetworkSimulationEngine();
+    engine.Advance(network, state);
+
+    AssertEqual(0.5d, GetAvailableSupply(state, "Bakery", "Bread"), "K fractional bread output");
+    AssertEqual(0d, GetAvailableSupply(state, "Bakery", "Wheat"), "K fractional wheat deducted");
+    AssertEqual(0d, GetAvailableSupply(state, "Bakery", "Water"), "K fractional water deducted");
 }
 
 static void ScenarioK_NoPrecursorLegacyProduction()
@@ -223,6 +236,25 @@ static void ScenarioM_LegacySingleWindowLoadCompatibility()
     AssertEqual(1d, profile.ProductionWindows.Count, "M normalized window count");
     AssertEqual(2d, profile.ProductionWindows[0].StartPeriod ?? -1, "M normalized window start");
     AssertEqual(3d, profile.ProductionWindows[0].EndPeriod ?? -1, "M normalized window end");
+}
+
+static void ScenarioN_DotnetRunProjectArgumentDoesNotEnterCli()
+{
+    var service = new CommandLineRunService();
+    if (service.ShouldRunFromCommandLine(["MedWNetworkSim.App.csproj"]))
+    {
+        throw new InvalidOperationException("N project path argument should not enter command-line mode.");
+    }
+
+    if (!service.ShouldRunFromCommandLine(["run", "--file", "demo.json", "--output", "report.html"]))
+    {
+        throw new InvalidOperationException("N explicit run command should enter command-line mode.");
+    }
+
+    if (!service.ShouldRunFromCommandLine(["--file", "demo.json", "--output", "report.html"]))
+    {
+        throw new InvalidOperationException("N named legacy run arguments should enter command-line mode.");
+    }
 }
 
 static NetworkModel CreateNetwork(double edgeTime, bool bidirectional, double production = 100d, double consumption = 100d)

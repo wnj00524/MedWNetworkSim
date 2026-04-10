@@ -502,7 +502,7 @@ public sealed class TemporalNetworkSimulationEngine
             outputQuantity = Math.Min(outputQuantity, availableInput / requirement.QuantityPerOutputUnit);
         }
 
-        if (outputQuantity < 1d - Epsilon)
+        if (outputQuantity < Epsilon)
         {
             return 0d;
         }

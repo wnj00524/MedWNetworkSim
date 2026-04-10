@@ -123,9 +123,24 @@ public sealed class MainWindowViewModel : ObservableObject
             var normalized = value is < 1 ? null : value;
             if (SetProperty(ref timelineLoopLength, normalized))
             {
+                OnPropertyChanged(nameof(IsTimelineLoopEnabled));
                 OnPropertyChanged(nameof(TimelineHeadline));
                 InvalidateSimulationResults("Updated timeline loop settings.");
             }
+        }
+    }
+
+    public bool IsTimelineLoopEnabled
+    {
+        get => TimelineLoopLength.HasValue;
+        set
+        {
+            if (value == IsTimelineLoopEnabled)
+            {
+                return;
+            }
+
+            TimelineLoopLength = value ? 12 : null;
         }
     }
 
@@ -1258,6 +1273,7 @@ public sealed class MainWindowViewModel : ObservableObject
             : network.Description;
         timelineLoopLength = network.TimelineLoopLength is > 0 ? network.TimelineLoopLength : null;
         OnPropertyChanged(nameof(TimelineLoopLength));
+        OnPropertyChanged(nameof(IsTimelineLoopEnabled));
         ActiveFileLabel = activeFilePath ?? "Unsaved network";
         HasNetwork = true;
         temporalSimulationState = null;

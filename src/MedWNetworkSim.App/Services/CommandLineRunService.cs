@@ -5,6 +5,7 @@ namespace MedWNetworkSim.App.Services;
 
 public sealed class CommandLineRunService
 {
+    private const char RepeatedValueSeparator = '\u001F';
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
 
     private readonly NetworkFileService networkFileService = new();
@@ -14,7 +15,7 @@ public sealed class CommandLineRunService
 
     public bool ShouldRunFromCommandLine(string[] args)
     {
-        return args.Length > 0;
+        return args.Length > 0 && !args.Any(IsForceGuiToken);
     }
 
     public bool IsHelpRequest(string[] args)
@@ -31,12 +32,13 @@ Usage:
   MedWNetworkSim.App.exe help
   MedWNetworkSim.App.exe run --file <network.json> --output <report.html|report.csv> [--mode simulation|timeline] [--report current|timeline] [--turns <count>]
   MedWNetworkSim.App.exe new --file <network.json> [--name <name>] [--description <text>] [--overwrite]
-  MedWNetworkSim.App.exe set-network --file <network.json> [--name <name>] [--description <text>]
+  MedWNetworkSim.App.exe set-network --file <network.json> [--name <name>] [--description <text>] [--loop-length <periods>|none]
   MedWNetworkSim.App.exe add-traffic --file <network.json> --name <traffic-name> [--description <text>] [--preference speed|cost|totalCost] [--bid <amount>|none]
   MedWNetworkSim.App.exe add-node --file <network.json> --id <node-id> [--name <name>] [--shape square|circle|person|car|building] [--x <number>] [--y <number>] [--transhipment-capacity <amount>|none]
-  MedWNetworkSim.App.exe set-profile --file <network.json> --node <node-id> --traffic <traffic-name> [--role producer|consumer|transship|producer+consumer|producer+transship|consumer+transship|all|none] [--production <amount>] [--consumption <amount>] [--premium <amount>] [--production-start <period>|none] [--production-end <period>|none] [--consumption-start <period>|none] [--consumption-end <period>|none] [--store|--no-store] [--store-capacity <amount>|none]
+  MedWNetworkSim.App.exe set-profile --file <network.json> --node <node-id> --traffic <traffic-name> [--role producer|consumer|transship|producer+consumer|producer+transship|consumer+transship|all|none] [--production <amount>] [--consumption <amount>] [--premium <amount>] [--production-window <start-end>] [--consumption-window <start-end>] [--clear-production-windows] [--clear-consumption-windows] [--input <traffic:ratio>] [--clear-inputs] [--store|--no-store] [--store-capacity <amount>|none]
   MedWNetworkSim.App.exe add-edge --file <network.json> --from <node-id> --to <node-id> [--id <edge-id>] [--time <number>] [--cost <number>] [--capacity <amount>|none] [--direction one-way|bidirectional]
   MedWNetworkSim.App.exe auto-arrange --file <network.json>
+  MedWNetworkSim.App.exe --gui
 
 Friendly aliases:
   help, -h, -help, --help, /?
@@ -51,6 +53,8 @@ Notes:
       anything else -> CSV
   - `add-traffic`, `add-node`, and `add-edge` create or update existing items when the same name/id is already present.
   - Use `none` for optional capacities or schedules when you want to clear them.
+  - Window syntax supports `1-3`, `5-`, and `-7`; repeat --production-window, --consumption-window, and --input for multiple rows.
+  - `--gui` or `--force-gui` opens the WPF GUI even when other arguments are present.
 
 Examples:
   MedWNetworkSim.App.exe run --file .\network.json --output .\report.html
@@ -171,6 +175,13 @@ Examples:
             Comparer.Equals(arg, "/?");
     }
 
+    private static bool IsForceGuiToken(string arg)
+    {
+        return Comparer.Equals(arg, "--gui") ||
+            Comparer.Equals(arg, "--force-gui") ||
+            Comparer.Equals(arg, "gui");
+    }
+
     private static (Dictionary<string, string> Named, List<string> Positional) ParseArguments(IEnumerable<string> args)
     {
         var named = new Dictionary<string, string>(Comparer);
@@ -186,13 +197,13 @@ Examples:
                 var separatorIndex = body.IndexOf('=');
                 if (separatorIndex >= 0)
                 {
-                    named[body[..separatorIndex]] = body[(separatorIndex + 1)..];
+                    AddNamedValue(named, body[..separatorIndex], body[(separatorIndex + 1)..]);
                     continue;
                 }
 
                 if (TryParseBooleanFlag(body, out var flagKey, out var flagValue))
                 {
-                    named[flagKey] = flagValue;
+                    AddNamedValue(named, flagKey, flagValue);
                     continue;
                 }
 
@@ -201,7 +212,7 @@ Examples:
                     throw new InvalidOperationException($"Missing value for option '--{body}'.");
                 }
 
-                named[body] = values[++index];
+                AddNamedValue(named, body, values[++index]);
                 continue;
             }
 
@@ -223,7 +234,7 @@ Examples:
                     throw new InvalidOperationException($"Missing value for option '{arg}'.");
                 }
 
-                named[key] = values[++index];
+                AddNamedValue(named, key, values[++index]);
                 continue;
             }
 
@@ -231,6 +242,17 @@ Examples:
         }
 
         return (named, positional);
+    }
+
+    private static void AddNamedValue(IDictionary<string, string> named, string key, string value)
+    {
+        if (named.TryGetValue(key, out var existing))
+        {
+            named[key] = $"{existing}{RepeatedValueSeparator}{value}";
+            return;
+        }
+
+        named[key] = value;
     }
 
     private static bool TryParseBooleanFlag(string name, out string key, out string value)
@@ -256,6 +278,18 @@ Examples:
             case "bidirectional":
                 key = "direction";
                 value = "bidirectional";
+                return true;
+            case "clear-production-windows":
+                key = "clear-production-windows";
+                value = "true";
+                return true;
+            case "clear-consumption-windows":
+                key = "clear-consumption-windows";
+                value = "true";
+                return true;
+            case "clear-inputs":
+                key = "clear-inputs";
+                value = "true";
                 return true;
             default:
                 key = string.Empty;
@@ -331,9 +365,10 @@ Examples:
 
         var hasName = HasOption(named, "name");
         var hasDescription = HasOption(named, "description");
-        if (!hasName && !hasDescription)
+        var hasLoopLength = HasOption(named, "loop-length");
+        if (!hasName && !hasDescription && !hasLoopLength)
         {
-            throw new InvalidOperationException("set-network requires --name, --description, or both.");
+            throw new InvalidOperationException("set-network requires --name, --description, --loop-length, or a combination.");
         }
 
         return new CommandLineOptions
@@ -343,7 +378,9 @@ Examples:
             NetworkName = GetOptionalNamedValue(named, "name"),
             NetworkDescription = GetOptionalNamedValue(named, "description"),
             HasNetworkName = hasName,
-            HasNetworkDescription = hasDescription
+            HasNetworkDescription = hasDescription,
+            TimelineLoopLength = ParseOptionalPositiveIntOption(named, "loop-length"),
+            HasTimelineLoopLength = hasLoopLength
         };
     }
 
@@ -426,6 +463,15 @@ Examples:
             HasConsumptionStartPeriod = HasOption(named, "consumption-start"),
             ConsumptionEndPeriod = ParseOptionalIntOption(named, "consumption-end"),
             HasConsumptionEndPeriod = HasOption(named, "consumption-end"),
+            ProductionWindows = GetOptionalNamedValues(named, "production-window").Select(ParsePeriodWindow).ToList(),
+            HasProductionWindows = HasOption(named, "production-window"),
+            ClearProductionWindows = ParseBool(GetOptionalNamedValue(named, "clear-production-windows")),
+            ConsumptionWindows = GetOptionalNamedValues(named, "consumption-window").Select(ParsePeriodWindow).ToList(),
+            HasConsumptionWindows = HasOption(named, "consumption-window"),
+            ClearConsumptionWindows = ParseBool(GetOptionalNamedValue(named, "clear-consumption-windows")),
+            InputRequirements = GetOptionalNamedValues(named, "input").Select(ParseInputRequirement).ToList(),
+            HasInputRequirements = HasOption(named, "input"),
+            ClearInputRequirements = ParseBool(GetOptionalNamedValue(named, "clear-inputs")),
             IsStore = HasOption(named, "store")
                 ? ParseBool(GetOptionalNamedValue(named, "store"))
                 : null,
@@ -520,6 +566,11 @@ Examples:
         if (options.HasNetworkDescription)
         {
             network.Description = options.NetworkDescription;
+        }
+
+        if (options.HasTimelineLoopLength)
+        {
+            network.TimelineLoopLength = options.TimelineLoopLength;
         }
 
         SaveNetwork(network, options.NetworkPath);
@@ -687,6 +738,71 @@ Examples:
             profile.ConsumptionEndPeriod = options.ConsumptionEndPeriod;
         }
 
+        if (options.HasProductionStartPeriod || options.HasProductionEndPeriod)
+        {
+            profile.ProductionWindows.Clear();
+            if (profile.ProductionStartPeriod.HasValue || profile.ProductionEndPeriod.HasValue)
+            {
+                profile.ProductionWindows.Add(new PeriodWindow
+                {
+                    StartPeriod = profile.ProductionStartPeriod,
+                    EndPeriod = profile.ProductionEndPeriod
+                });
+            }
+        }
+
+        if (options.HasConsumptionStartPeriod || options.HasConsumptionEndPeriod)
+        {
+            profile.ConsumptionWindows.Clear();
+            if (profile.ConsumptionStartPeriod.HasValue || profile.ConsumptionEndPeriod.HasValue)
+            {
+                profile.ConsumptionWindows.Add(new PeriodWindow
+                {
+                    StartPeriod = profile.ConsumptionStartPeriod,
+                    EndPeriod = profile.ConsumptionEndPeriod
+                });
+            }
+        }
+
+        if (options.ClearProductionWindows)
+        {
+            profile.ProductionWindows.Clear();
+            profile.ProductionStartPeriod = null;
+            profile.ProductionEndPeriod = null;
+        }
+
+        if (options.HasProductionWindows)
+        {
+            profile.ProductionWindows.Clear();
+            profile.ProductionWindows.AddRange(options.ProductionWindows.Select(CloneWindow));
+            MirrorLegacyProductionWindow(profile);
+        }
+
+        if (options.ClearConsumptionWindows)
+        {
+            profile.ConsumptionWindows.Clear();
+            profile.ConsumptionStartPeriod = null;
+            profile.ConsumptionEndPeriod = null;
+        }
+
+        if (options.HasConsumptionWindows)
+        {
+            profile.ConsumptionWindows.Clear();
+            profile.ConsumptionWindows.AddRange(options.ConsumptionWindows.Select(CloneWindow));
+            MirrorLegacyConsumptionWindow(profile);
+        }
+
+        if (options.ClearInputRequirements)
+        {
+            profile.InputRequirements.Clear();
+        }
+
+        if (options.HasInputRequirements)
+        {
+            profile.InputRequirements.Clear();
+            profile.InputRequirements.AddRange(options.InputRequirements.Select(CloneInputRequirement));
+        }
+
         if (options.HasIsStore)
         {
             profile.IsStore = options.IsStore ?? false;
@@ -801,7 +917,42 @@ Examples:
             !profile.ProductionEndPeriod.HasValue &&
             !profile.ConsumptionStartPeriod.HasValue &&
             !profile.ConsumptionEndPeriod.HasValue &&
+            profile.ProductionWindows.Count == 0 &&
+            profile.ConsumptionWindows.Count == 0 &&
+            profile.InputRequirements.Count == 0 &&
             !profile.StoreCapacity.HasValue;
+    }
+
+    private static PeriodWindow CloneWindow(PeriodWindow window)
+    {
+        return new PeriodWindow
+        {
+            StartPeriod = window.StartPeriod,
+            EndPeriod = window.EndPeriod
+        };
+    }
+
+    private static ProductionInputRequirement CloneInputRequirement(ProductionInputRequirement requirement)
+    {
+        return new ProductionInputRequirement
+        {
+            TrafficType = requirement.TrafficType,
+            QuantityPerOutputUnit = requirement.QuantityPerOutputUnit
+        };
+    }
+
+    private static void MirrorLegacyProductionWindow(NodeTrafficProfile profile)
+    {
+        var firstWindow = profile.ProductionWindows.FirstOrDefault();
+        profile.ProductionStartPeriod = firstWindow?.StartPeriod;
+        profile.ProductionEndPeriod = firstWindow?.EndPeriod;
+    }
+
+    private static void MirrorLegacyConsumptionWindow(NodeTrafficProfile profile)
+    {
+        var firstWindow = profile.ConsumptionWindows.FirstOrDefault();
+        profile.ConsumptionStartPeriod = firstWindow?.StartPeriod;
+        profile.ConsumptionEndPeriod = firstWindow?.EndPeriod;
     }
 
     private void SaveNetwork(NetworkModel network, string path)
@@ -861,7 +1012,14 @@ Examples:
 
     private static string GetOptionalNamedValue(IReadOnlyDictionary<string, string> named, string key)
     {
-        return named.TryGetValue(key, out var value) ? value : string.Empty;
+        return GetOptionalNamedValues(named, key).LastOrDefault() ?? string.Empty;
+    }
+
+    private static IReadOnlyList<string> GetOptionalNamedValues(IReadOnlyDictionary<string, string> named, string key)
+    {
+        return named.TryGetValue(key, out var value)
+            ? value.Split(RepeatedValueSeparator, StringSplitOptions.None)
+            : [];
     }
 
     private static bool HasOption(IReadOnlyDictionary<string, string> named, params string[] keys)
@@ -1027,6 +1185,67 @@ Examples:
         }
 
         return result;
+    }
+
+    private static int? ParseOptionalPositiveIntOption(IReadOnlyDictionary<string, string> named, string key)
+    {
+        var result = ParseOptionalIntOption(named, key);
+        if (result.HasValue && result.Value < 1)
+        {
+            return null;
+        }
+
+        return result;
+    }
+
+    private static PeriodWindow ParsePeriodWindow(string value)
+    {
+        var parts = value.Split('-', 2, StringSplitOptions.None);
+        if (parts.Length != 2)
+        {
+            throw new InvalidOperationException($"'{value}' is not a valid period window. Use start-end, start-, or -end.");
+        }
+
+        return new PeriodWindow
+        {
+            StartPeriod = ParseWindowEndpoint(parts[0], value),
+            EndPeriod = ParseWindowEndpoint(parts[1], value)
+        };
+    }
+
+    private static int? ParseWindowEndpoint(string value, string originalValue)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (!int.TryParse(value, out var result) || result < 0)
+        {
+            throw new InvalidOperationException($"'{originalValue}' is not a valid period window. Window endpoints must be integers >= 0.");
+        }
+
+        return result;
+    }
+
+    private static ProductionInputRequirement ParseInputRequirement(string value)
+    {
+        var parts = value.Split(':', 2, StringSplitOptions.TrimEntries);
+        if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[0]))
+        {
+            throw new InvalidOperationException($"'{value}' is not a valid input requirement. Use TrafficType:Quantity.");
+        }
+
+        if (!double.TryParse(parts[1], out var quantity) || quantity <= 0d)
+        {
+            throw new InvalidOperationException($"'{parts[1]}' is not a valid positive input quantity.");
+        }
+
+        return new ProductionInputRequirement
+        {
+            TrafficType = parts[0],
+            QuantityPerOutputUnit = quantity
+        };
     }
 
     private static bool ParseBool(string value)

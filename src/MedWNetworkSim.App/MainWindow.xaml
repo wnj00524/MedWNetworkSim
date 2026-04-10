@@ -42,6 +42,24 @@
                              BorderBrush="{DynamicResource BorderBrush}"
                              BorderThickness="1"
                              Text="{Binding NetworkName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <DockPanel Margin="0,8,0,0">
+                        <TextBlock VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Timeline loop length" />
+                        <TextBox Width="80"
+                                 Margin="10,0,0,0"
+                                 HorizontalAlignment="Left"
+                                 Background="{DynamicResource InputBrush}"
+                                 BorderBrush="{DynamicResource BorderBrush}"
+                                 BorderThickness="1"
+                                 Text="{Binding TimelineLoopLength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock VerticalAlignment="Center"
+                                   Margin="8,0,0,0"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="blank or 0 = no loop" />
+                    </DockPanel>
                 </StackPanel>
 
                 <WrapPanel Grid.Column="1"

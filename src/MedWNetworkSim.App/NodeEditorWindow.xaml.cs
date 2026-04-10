@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using MedWNetworkSim.App.ViewModels;
 
 namespace MedWNetworkSim.App;
@@ -43,6 +44,45 @@ public partial class NodeEditorWindow : Window
     private void RemoveTrafficRole_Click(object sender, RoutedEventArgs e)
     {
         ExecuteWithErrorHandling(ViewModel.RemoveSelectedTrafficProfileFromNode);
+    }
+
+    private void AddProductionWindow_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.AddProductionWindowToSelectedProfile);
+    }
+
+    private void RemoveProductionWindow_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: PeriodWindowViewModel window })
+        {
+            ExecuteWithErrorHandling(() => ViewModel.RemoveProductionWindowFromSelectedProfile(window));
+        }
+    }
+
+    private void AddConsumptionWindow_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.AddConsumptionWindowToSelectedProfile);
+    }
+
+    private void RemoveConsumptionWindow_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: PeriodWindowViewModel window })
+        {
+            ExecuteWithErrorHandling(() => ViewModel.RemoveConsumptionWindowFromSelectedProfile(window));
+        }
+    }
+
+    private void AddInputRequirement_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.AddInputRequirementToSelectedProfile);
+    }
+
+    private void RemoveInputRequirement_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: ProductionInputRequirementViewModel requirement })
+        {
+            ExecuteWithErrorHandling(() => ViewModel.RemoveInputRequirementFromSelectedProfile(requirement));
+        }
     }
 
     private void Close_Click(object sender, RoutedEventArgs e)

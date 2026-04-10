@@ -29,6 +29,7 @@ public sealed class TemporalNetworkSimulationEngine
 
         var state = currentState ?? Initialize(network);
         var nextPeriod = state.CurrentPeriod + 1;
+        var effectivePeriod = GetEffectivePeriod(nextPeriod, network.TimelineLoopLength);
         var nodeStates = state.NodeStates.ToDictionary(
             pair => pair.Key,
             pair => pair.Value.Clone(),
@@ -40,10 +41,10 @@ public sealed class TemporalNetworkSimulationEngine
         var occupiedEdgeCapacity = state.OccupiedEdgeCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
         var occupiedTranshipmentCapacity = state.OccupiedTranshipmentCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
 
-        ValidateResourceOccupancy(network, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+        ValidateResourceOccupancy(edgeLookup, nodeLookup, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         ValidateMovementResourceClaims(movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
 
-        AddScheduledNodeChanges(network, nodeStates, nextPeriod);
+        AddScheduledNodeChanges(network, nodeStates, effectivePeriod);
 
         var availableResources = BuildAvailableResourceCapacity(network, movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         var plannedAllocations = PlanNewAllocations(
@@ -51,6 +52,7 @@ public sealed class TemporalNetworkSimulationEngine
             definitionsByTraffic,
             nodeStates,
             nextPeriod,
+            effectivePeriod,
             availableResources.EdgeCapacityById,
             availableResources.TranshipmentCapacityByNodeId);
 
@@ -70,7 +72,7 @@ public sealed class TemporalNetworkSimulationEngine
                 RemainingPeriodsOnCurrentEdge = GetEdgePeriods(edgeLookup[allocation.PathEdgeIds[0]])
             };
 
-            ClaimCurrentMovementResources(network, edgeLookup, movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+            ClaimCurrentMovementResources(edgeLookup, movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
             movements.Add(movement);
         }
 
@@ -111,7 +113,7 @@ public sealed class TemporalNetworkSimulationEngine
             MoveMovementToNextEdge(network, edgeLookup, movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         }
 
-        ValidateResourceOccupancy(network, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+        ValidateResourceOccupancy(edgeLookup, nodeLookup, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         ValidateMovementResourceClaims(movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
 
         state.CurrentPeriod = nextPeriod;
@@ -148,6 +150,7 @@ public sealed class TemporalNetworkSimulationEngine
             nodeSnapshots,
             edgeOccupancySnapshot,
             transhipmentOccupancySnapshot,
+            effectivePeriod,
             movements.Count);
     }
 
@@ -156,6 +159,11 @@ public sealed class TemporalNetworkSimulationEngine
         IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
         int period)
     {
+        var profilesByNodeAndTraffic = network.Nodes.ToDictionary(
+            node => node.Id,
+            node => node.TrafficProfiles.ToDictionary(profile => profile.TrafficType, profile => profile, Comparer),
+            Comparer);
+
         foreach (var node in network.Nodes)
         {
             foreach (var profile in node.TrafficProfiles)
@@ -167,16 +175,16 @@ public sealed class TemporalNetworkSimulationEngine
                     nodeStates[key] = state;
                 }
 
-                if (profile.Production > Epsilon &&
-                    IsWithinSchedule(period, profile.ProductionStartPeriod, profile.ProductionEndPeriod) &&
-                    !profile.IsStore)
+                if (profile.Production > Epsilon && IsProductionActive(profile, period) && !profile.IsStore)
                 {
-                    state.AvailableSupply += profile.Production;
+                    state.AvailableSupply += CalculateAndConsumeProductionInputs(
+                        node.Id,
+                        profile,
+                        nodeStates,
+                        profilesByNodeAndTraffic.GetValueOrDefault(node.Id) ?? new Dictionary<string, NodeTrafficProfile>(Comparer));
                 }
 
-                if (profile.Consumption > Epsilon &&
-                    IsWithinSchedule(period, profile.ConsumptionStartPeriod, profile.ConsumptionEndPeriod) &&
-                    !profile.IsStore)
+                if (profile.Consumption > Epsilon && IsConsumptionActive(profile, period) && !profile.IsStore)
                 {
                     state.DemandBacklog += profile.Consumption;
                 }
@@ -189,6 +197,7 @@ public sealed class TemporalNetworkSimulationEngine
         IReadOnlyDictionary<string, TrafficTypeDefinition> definitionsByTraffic,
         IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
         int period,
+        int effectivePeriod,
         IReadOnlyDictionary<string, double> availableCapacityByEdgeId,
         IReadOnlyDictionary<string, double> availableTranshipmentCapacityByNodeId)
     {
@@ -203,7 +212,8 @@ public sealed class TemporalNetworkSimulationEngine
                     network,
                     definition ?? new TrafficTypeDefinition { Name = trafficType, RoutingPreference = RoutingPreference.TotalCost },
                     nodeStates,
-                    period);
+                    period,
+                    effectivePeriod);
             })
             .ToList();
 
@@ -304,7 +314,8 @@ public sealed class TemporalNetworkSimulationEngine
         NetworkModel network,
         TrafficTypeDefinition definition,
         IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
-        int period)
+        int period,
+        int effectivePeriod)
     {
         var profilesByNodeId = network.Nodes.ToDictionary(
             node => node.Id,
@@ -333,7 +344,7 @@ public sealed class TemporalNetworkSimulationEngine
             var availableSupply = nodeState.AvailableSupply;
             if (profile.IsStore &&
                 profile.Production > Epsilon &&
-                IsWithinSchedule(period, profile.ProductionStartPeriod, profile.ProductionEndPeriod))
+                IsProductionActive(profile, effectivePeriod))
             {
                 availableSupply += Math.Min(nodeState.StoreInventory, profile.Production);
                 storeSupplyNodes.Add(node.Id);
@@ -348,7 +359,7 @@ public sealed class TemporalNetworkSimulationEngine
             var availableDemand = 0d;
             if (profile.IsStore &&
                 profile.Consumption > Epsilon &&
-                IsWithinSchedule(period, profile.ConsumptionStartPeriod, profile.ConsumptionEndPeriod))
+                IsConsumptionActive(profile, effectivePeriod))
             {
                 var spareCapacity = profile.StoreCapacity.HasValue
                     ? Math.Max(0d, profile.StoreCapacity.Value - nodeState.StoreInventory - nodeState.ReservedStoreReceipts)
@@ -473,6 +484,90 @@ public sealed class TemporalNetworkSimulationEngine
         }
     }
 
+    private static double CalculateAndConsumeProductionInputs(
+        string nodeId,
+        NodeTrafficProfile outputProfile,
+        IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
+        IReadOnlyDictionary<string, NodeTrafficProfile> profilesByTrafficType)
+    {
+        var outputQuantity = outputProfile.Production;
+        if (outputProfile.InputRequirements.Count == 0)
+        {
+            return outputQuantity;
+        }
+
+        foreach (var requirement in outputProfile.InputRequirements)
+        {
+            var availableInput = GetLocalInputQuantity(nodeId, requirement.TrafficType, nodeStates, profilesByTrafficType);
+            outputQuantity = Math.Min(outputQuantity, availableInput / requirement.QuantityPerOutputUnit);
+        }
+
+        if (outputQuantity < 1d - Epsilon)
+        {
+            return 0d;
+        }
+
+        foreach (var requirement in outputProfile.InputRequirements)
+        {
+            ConsumeLocalInputQuantity(
+                nodeId,
+                requirement.TrafficType,
+                outputQuantity * requirement.QuantityPerOutputUnit,
+                nodeStates,
+                profilesByTrafficType);
+        }
+
+        return outputQuantity;
+    }
+
+    private static double GetLocalInputQuantity(
+        string nodeId,
+        string trafficType,
+        IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
+        IReadOnlyDictionary<string, NodeTrafficProfile> profilesByTrafficType)
+    {
+        var key = new TemporalNodeTrafficKey(nodeId, trafficType);
+        nodeStates.TryGetValue(key, out var state);
+        var available = state?.AvailableSupply ?? 0d;
+        if (profilesByTrafficType.TryGetValue(trafficType, out var profile) && profile.IsStore)
+        {
+            available += state?.StoreInventory ?? 0d;
+        }
+
+        return available;
+    }
+
+    private static void ConsumeLocalInputQuantity(
+        string nodeId,
+        string trafficType,
+        double quantity,
+        IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
+        IReadOnlyDictionary<string, NodeTrafficProfile> profilesByTrafficType)
+    {
+        var key = new TemporalNodeTrafficKey(nodeId, trafficType);
+        if (!nodeStates.TryGetValue(key, out var state))
+        {
+            throw new InvalidOperationException($"Node '{nodeId}' cannot consume missing precursor traffic '{trafficType}'.");
+        }
+
+        var remaining = quantity;
+        var supplyConsumed = Math.Min(state.AvailableSupply, remaining);
+        state.AvailableSupply -= supplyConsumed;
+        remaining -= supplyConsumed;
+
+        if (remaining > Epsilon && profilesByTrafficType.TryGetValue(trafficType, out var profile) && profile.IsStore)
+        {
+            var storeConsumed = Math.Min(state.StoreInventory, remaining);
+            state.StoreInventory -= storeConsumed;
+            remaining -= storeConsumed;
+        }
+
+        if (remaining > Epsilon)
+        {
+            throw new InvalidOperationException($"Node '{nodeId}' would over-consume precursor traffic '{trafficType}'.");
+        }
+    }
+
     private static AvailableResourceCapacity BuildAvailableResourceCapacity(
         NetworkModel network,
         IReadOnlyList<TemporalInFlightMovement> movements,
@@ -537,11 +632,10 @@ public sealed class TemporalNetworkSimulationEngine
         ReleaseCurrentMovementResources(movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         movement.CurrentEdgeIndex += 1;
         movement.RemainingPeriodsOnCurrentEdge = GetEdgePeriods(edgeLookup[movement.PathEdgeIds[movement.CurrentEdgeIndex]]);
-        ClaimCurrentMovementResources(network, edgeLookup, movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+        ClaimCurrentMovementResources(edgeLookup, movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
     }
 
     private static void ClaimCurrentMovementResources(
-        NetworkModel network,
         IReadOnlyDictionary<string, EdgeModel> edgeLookup,
         TemporalInFlightMovement movement,
         IDictionary<string, double> occupiedEdgeCapacity,
@@ -565,8 +659,6 @@ public sealed class TemporalNetworkSimulationEngine
         {
             AddResourceQuantity(occupiedTranshipmentCapacity, transhipmentNodeId, movement.Quantity);
         }
-
-        ValidateResourceOccupancy(network, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
     }
 
     private static void ReleaseCurrentMovementResources(
@@ -638,32 +730,37 @@ public sealed class TemporalNetworkSimulationEngine
     }
 
     private static void ValidateResourceOccupancy(
-        NetworkModel network,
+        IReadOnlyDictionary<string, EdgeModel> edgeLookup,
+        IReadOnlyDictionary<string, NodeModel> nodeLookup,
         IEnumerable<KeyValuePair<string, double>> occupiedEdgeCapacity,
         IEnumerable<KeyValuePair<string, double>> occupiedTranshipmentCapacity)
     {
         ValidateResourceOccupancy(
             occupiedEdgeCapacity,
-            network.Edges.ToDictionary(edge => edge.Id, edge => edge.Capacity, Comparer),
+            edgeLookup,
+            edge => edge.Capacity,
             "edge");
         ValidateResourceOccupancy(
             occupiedTranshipmentCapacity,
-            network.Nodes.ToDictionary(node => node.Id, node => node.TranshipmentCapacity, Comparer),
+            nodeLookup,
+            node => node.TranshipmentCapacity,
             "transhipment node");
     }
 
-    private static void ValidateResourceOccupancy(
+    private static void ValidateResourceOccupancy<TResource>(
         IEnumerable<KeyValuePair<string, double>> occupiedCapacity,
-        IReadOnlyDictionary<string, double?> nominalCapacity,
+        IReadOnlyDictionary<string, TResource> resourcesById,
+        Func<TResource, double?> getCapacity,
         string resourceKind)
     {
         foreach (var pair in occupiedCapacity)
         {
-            if (!nominalCapacity.TryGetValue(pair.Key, out var capacity))
+            if (!resourcesById.TryGetValue(pair.Key, out var resource))
             {
                 throw new InvalidOperationException($"Occupied {resourceKind} resource '{pair.Key}' does not exist.");
             }
 
+            var capacity = getCapacity(resource);
             if (pair.Value < -Epsilon)
             {
                 throw new InvalidOperationException($"Occupied {resourceKind} resource '{pair.Key}' cannot be negative.");
@@ -763,14 +860,58 @@ public sealed class TemporalNetworkSimulationEngine
         nodeFlowById[nodeId] = existing with { InboundQuantity = existing.InboundQuantity + quantity };
     }
 
-    private static bool IsWithinSchedule(int period, int? startPeriod, int? endPeriod)
+    public static int GetEffectivePeriod(int absolutePeriod, int? loopLength)
     {
-        if (startPeriod.HasValue && period < startPeriod.Value)
+        if (!loopLength.HasValue || loopLength.Value < 1)
+        {
+            return absolutePeriod;
+        }
+
+        return ((absolutePeriod - 1) % loopLength.Value) + 1;
+    }
+
+    private static bool IsWithinAnyWindow(int period, IReadOnlyList<PeriodWindow> windows)
+    {
+        if (windows.Count == 0)
+        {
+            return true;
+        }
+
+        return windows.Any(window => IsWithinWindow(period, window));
+    }
+
+    private static bool IsProductionActive(NodeTrafficProfile profile, int period)
+    {
+        return IsWithinAnyWindow(period, profile.ProductionWindows, profile.ProductionStartPeriod, profile.ProductionEndPeriod);
+    }
+
+    private static bool IsConsumptionActive(NodeTrafficProfile profile, int period)
+    {
+        return IsWithinAnyWindow(period, profile.ConsumptionWindows, profile.ConsumptionStartPeriod, profile.ConsumptionEndPeriod);
+    }
+
+    private static bool IsWithinAnyWindow(int period, IReadOnlyList<PeriodWindow> windows, int? legacyStartPeriod, int? legacyEndPeriod)
+    {
+        if (windows.Count > 0)
+        {
+            return IsWithinAnyWindow(period, windows);
+        }
+
+        return IsWithinWindow(period, new PeriodWindow
+        {
+            StartPeriod = legacyStartPeriod,
+            EndPeriod = legacyEndPeriod
+        });
+    }
+
+    private static bool IsWithinWindow(int period, PeriodWindow window)
+    {
+        if (window.StartPeriod.HasValue && period < window.StartPeriod.Value)
         {
             return false;
         }
 
-        if (endPeriod.HasValue && period > endPeriod.Value)
+        if (window.EndPeriod.HasValue && period > window.EndPeriod.Value)
         {
             return false;
         }
@@ -1146,6 +1287,7 @@ public sealed class TemporalNetworkSimulationEngine
         IReadOnlyDictionary<TemporalNodeTrafficKey, TemporalNodeStateSnapshot> NodeStates,
         IReadOnlyDictionary<string, double> EdgeOccupancy,
         IReadOnlyDictionary<string, double> TranshipmentOccupancy,
+        int EffectivePeriod,
         int InFlightMovementCount);
 
     public readonly record struct TemporalNodeStateSnapshot(double AvailableSupply, double DemandBacklog, double StoreInventory);

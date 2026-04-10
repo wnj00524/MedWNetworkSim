@@ -439,6 +439,9 @@ public sealed class NodeViewModel : ObservableObject
                     ProductionEndPeriod = profile.ProductionEndPeriod,
                     ConsumptionStartPeriod = profile.ConsumptionStartPeriod,
                     ConsumptionEndPeriod = profile.ConsumptionEndPeriod,
+                    ProductionWindows = profile.ProductionWindows.Select(window => window.ToModel()).ToList(),
+                    ConsumptionWindows = profile.ConsumptionWindows.Select(window => window.ToModel()).ToList(),
+                    InputRequirements = profile.InputRequirements.Select(requirement => requirement.ToModel()).ToList(),
                     IsStore = profile.IsStore,
                     StoreCapacity = profile.StoreCapacity
                 })

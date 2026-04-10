@@ -1,275 +1,187 @@
 # MedWNetworkSim
 
-WPF network simulator for modelling multi-traffic movement across producer, consumer, transhipment, and store nodes.
+MedWNetworkSim is a desktop application for testing how things move through a network.
 
-## What It Does
+In this app, a **network** is made of places and connections:
+- **Nodes** are places, such as clinics, depots, homes, collection points, warehouses, or hubs.
+- **Edges** are the routes between those places.
+- **Traffic types** are the kinds of things being moved through the network.
 
-- Creates a new network in-app or loads an existing JSON network file.
-- Loads the bundled sample network for quick exploration.
-- Imports and exports GraphML files through a dedicated popup window with explicit import and export file pickers.
-- Exports reports from the GUI or command line in HTML or CSV format.
-- Supports a fuller command-line workflow for creating, editing, arranging, simulating, and reporting on networks without opening the GUI.
-- Lets users edit the network name and description directly in the app.
-- Lets users create and edit traffic types, nodes, node roles, schedules, store settings, and edges directly in the app.
-- Draws the network on a draggable canvas with direct-edit gestures.
-- Auto-positions nodes when `x` and `y` are omitted from the input file.
-- Includes an `Auto Arrange` action to regenerate node positions for the whole network.
-- Models optional edge capacities and consumes them during routing.
-- Models optional shared node transhipment capacities and consumes them during routing.
-- Lets each node participate in any number of traffic types.
-- Allows the same node to produce, tranship, consume, and store different traffic types.
-- Supports per-traffic routing priorities:
-  - `speed`: minimise edge time
-  - `cost`: minimise edge cost
-  - `totalCost`: minimise `time + cost`
-- Simulates routed movements from producers to consumers through valid transhipment nodes.
-- Supports both one-shot routing analysis and period-by-period time progression.
-- Shows simulation outputs in-app, including routed movements, consumer costs, traffic summaries, and live canvas flow/utilisation overlays filtered by traffic type.
-- Saves the current network, including updated node positions, back to JSON.
+You can use it to answer practical questions such as:
+- Where does supply come from?
+- Where does demand exist?
+- Which routes are fastest or cheapest?
+- What happens when a route or a transfer point has limited capacity?
+- What changes over time if supply, demand, and storage are scheduled by period?
 
-## Editing In App
+## What the application can do
 
-- Use `New Network`, `Load Sample`, and `Open JSON...` from the main toolbar to start from a blank model, the bundled sample, or a saved JSON file.
-- Use `Save JSON...` to save the current in-memory network back to the app's JSON format.
-- Use `GraphML...` to open the GraphML popup. It provides separate `Import File` and `Export File` paths, `Browse...` buttons, `Load GraphML`, and `Save GraphML`.
-- Use `Reports...` to export either a current report or a timeline report, and choose HTML or CSV output.
-- In the GraphML popup, choose a default traffic type, a default node role, and an optional default capacity for imported nodes that do not already carry MedW-specific traffic data.
-- Maintain traffic types in the `Network Editor` tab, including routing preference and optional `capacityBidPerUnit` used for both edge and node-transhipment-capacity competition.
-- Add and remove nodes in the main editor grid, including each node's optional shared `transhipmentCapacity`.
-- Open `Traffic Types...`, `Open Node Editor...`, and `Edges...` to work in dedicated editor windows for larger edits.
-- In the node editor, choose the node, then choose one of its traffic-role entries, then set:
-  - `Traffic Type`
-  - `Role`
-  - `Production`
-  - `Consumption`
-  - production start/end periods
-  - consumption start/end periods
-  - optional store flag and store capacity
-- Add and remove edges in the `Edges` grid or `Edge Editor`. `From` and `To` are chosen from the existing node list rather than typed freehand.
-- Use `Apply Role To All Nodes...` to stamp one traffic role, traffic type, and relevant quantities across every node.
-- Drag nodes on the canvas to refine the layout visually, or use `Auto Arrange` to regenerate positions.
-- Right-click a blank canvas area and choose `Add Node` to create a node at that location.
-- Double-click a node to open it in the node editor.
-- Double-click an edge to open it in the edge editor.
-- Double-click a blank canvas area to create a new node there and open it in the node editor.
-- Hold `Ctrl` and drag from one node to another to create a bidirectional edge.
-- Hold `Shift` and drag from one node to another to create a one-way edge from the clicked source node to the released target node.
-- Use `Canvas Only` and the collapsible right-side and lower panels to focus on the network workspace.
+MedWNetworkSim can:
+- create a new network from scratch
+- open an existing network saved as JSON
+- load a sample network so you can explore the application quickly
+- import and export GraphML files
+- let you build and edit a network visually in the desktop app
+- run a one-off simulation to show how movement would be routed
+- run a timeline simulation to show what happens period by period
+- export reports in HTML or CSV
+- work from the command line as well as the desktop interface
 
-## Time-Step Simulation
+## How the model works
 
-- Use `Run Simulation` for the existing one-shot routed-allocation analysis.
-- Use `Reset Timeline` and `Next Period` to advance the network one time period at a time.
-- Traffic moving over an edge with `time: 1` advances one hop per click of `Next Period`.
-- Traffic moving over a path such as `A -> B -> C` with both edges set to `time: 1` takes two period advances to reach `C`.
-- Producer and consumer quantities can be scheduled with start and end periods, so they activate only during their chosen time window.
-- Store profiles consume incoming traffic into inventory up to an optional `storeCapacity`.
-- Store profiles can also release stored inventory on production periods, allowing inventory buffers to feed later routes.
-- Store nodes do not route traffic back to themselves, which avoids trivial storage loops.
+The simulator uses a few core ideas.
 
-## Simulation Outputs
+### Nodes
+A node is a place in the network.
 
-- The left-hand overview shows network totals and per-traffic summaries after a run.
-- The `Consumer Costs` tab shows local quantity, imported quantity, blended unit cost, and total movement cost for each consumer.
-- The `Routed Movements` tab shows each routed allocation, including timestep, source, producer, consumer, quantity, path, transit cost, bid cost, and landed cost.
-- The `Node Roles` tab provides a quick selection surface for node traffic-role entries and links back into the dedicated node editor.
-- The canvas overlays routed flow on edges and shows node flow, transhipment utilisation, and timeline inventory/backlog summaries directly on the network.
-- The `Reports...` dialog exports those same results as either a polished HTML report or a spreadsheet-friendly CSV export.
+A node can do more than one job. Depending on how you set it up, a node can:
+- **produce** traffic, meaning it supplies something
+- **consume** traffic, meaning it needs something
+- **transship** traffic, meaning it can act as an intermediate stop
+- **store** traffic, meaning it can hold inventory for later use
 
-## Run It
+A single node can do different jobs for different traffic types.
 
-```powershell
+Example:
+- A hospital might consume medical supplies.
+- A depot might produce transport capacity for one traffic type and store another.
+- A hub might exist mainly to pass traffic through.
+
+### Edges
+An edge is a connection between two nodes.
+
+An edge can have:
+- a **time** value
+- a **cost** value
+- an optional **capacity** limit
+- either **one-way** or **bidirectional** movement
+
+### Traffic types
+A traffic type is the kind of thing being moved.
+
+Examples might include:
+- waste
+- reusable equipment
+- medicine
+- staff transport
+- collected stock
+
+Each traffic type can have its own routing preference:
+- **speed**: prefer the fastest route
+- **cost**: prefer the cheapest route
+- **totalCost**: prefer the lowest combined time and cost
+
+## What you see in the app
+
+The desktop app lets you:
+- create and edit nodes and edges
+- set network name and description
+- assign traffic roles to nodes
+- drag nodes around the canvas
+- auto-arrange node positions
+- view routed movements and summaries
+- export reports
+
+The app also supports a **Canvas Only** view so you can focus on the visual network layout.
+
+## Two ways to simulate
+
+### 1. Run Simulation
+This is the quick, one-shot analysis.
+
+Use this when you want to see how the current network would route movement right now.
+
+### 2. Timeline mode
+This moves the model forward one period at a time.
+
+Use this when timing matters, for example:
+- supply starts in period 3
+- demand ends in period 8
+- goods take time to travel
+- inventory is stored and released later
+
+## Reports
+
+The application can export results as:
+- **HTML** for a readable report
+- **CSV** for spreadsheet work
+
+Reports can be exported from the desktop app or from the command line.
+
+## Files and formats
+
+### JSON
+JSON is the main working format for this application.
+
+It preserves the full MedWNetworkSim model, including newer features such as:
+- traffic definitions
+- node roles
+- schedules
+- storage
+- premiums
+- capacities
+- positions and layout
+
+If you want the most complete and reliable save format, use JSON.
+
+### GraphML
+GraphML is useful for exchanging graph structures with other tools.
+
+However, JSON is the better long-term format when you want to keep the full simulator behaviour.
+
+## Getting started
+
+For most people, the easiest path is:
+1. Open the app.
+2. Load the sample network or create a new one.
+3. Add traffic types.
+4. Add nodes.
+5. Add edges.
+6. Set what each node produces, consumes, stores, or passes through.
+7. Run a simulation.
+8. Export a report.
+
+## Running the application
+
+Build:
+
+```bash
 dotnet build MedWNetworkSim.slnx
+```
+
+Run the desktop app:
+
+```bash
 dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj
 ```
 
-The app ships with a bundled sample file at [sample-network.json](src/MedWNetworkSim.App/Samples/sample-network.json).
+The project includes a bundled sample network for exploration.
 
-## Docs
+## Documentation
 
 - [CLI Reference](docs/CLI_REFERENCE.md)
 - [Network Authoring Guide](docs/NETWORK_AUTHORING.md)
 
-## Command Line Use
+## Who this is for
 
-The application can also run headless from the command line to:
+This application is useful for anyone who wants to explore movement through a network, even if they are not a developer.
 
-- create a new network file
-- edit traffic types, nodes, profiles, and edges
-- auto-arrange the network
-- run either the one-shot simulation or a timeline run
-- export reports without opening the GUI
+That includes people working on:
+- logistics planning
+- service delivery models
+- transport flows
+- supply and demand scenarios
+- storage and bottleneck analysis
+- period-based movement over time
 
-Help:
+## Plain-English glossary
 
-```powershell
-dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- help
-dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- -h
-dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- -help
-```
-
-Create and edit a network:
-
-```powershell
-dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- new --file .\artifacts\demo.json --name "CLI Demo"
-dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- add-traffic --file .\artifacts\demo.json --name Waste --preference cost --bid 1.5
-dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- add-node --file .\artifacts\demo.json --id N1 --name "Clinic A" --shape building --x 100 --y 120
-dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- set-profile --file .\artifacts\demo.json --node N1 --traffic Waste --role producer --production 25
-dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- add-edge --file .\artifacts\demo.json --id E1 --from N1 --to N2 --time 1 --cost 4 --direction bidirectional
-```
-
-Run reports:
-
-```powershell
-dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- run --file .\src\MedWNetworkSim.App\Samples\sample-network.json --output .\artifacts\reports\sample-report.html
-```
-
-```powershell
-dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- run --file .\src\MedWNetworkSim.App\Samples\sample-network.json --mode timeline --report timeline --turns 12 --output .\artifacts\reports\timeline-report.csv
-```
-
-Legacy positional report form still works:
-
-```powershell
-dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- .\src\MedWNetworkSim.App\Samples\sample-network.json simulation current .\artifacts\reports\sample-report.html
-```
-
-```powershell
-dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- .\src\MedWNetworkSim.App\Samples\sample-network.json timeline timeline .\artifacts\reports\timeline-report.csv 12
-```
-
-CLI rules:
-
-- `simulation` mode produces the same analysis as pressing `Run Simulation` in the app.
-- `timeline` mode advances the network for the requested number of turns and exports the timeline report.
-- `current` report type is for `simulation` mode.
-- `timeline` report type is for `timeline` mode.
-- `new`, `add-traffic`, `add-node`, `set-profile`, `add-edge`, and `auto-arrange` make it possible to build and update a network entirely from the CLI.
-- `add-traffic`, `add-node`, and `add-edge` behave as practical upserts when the same name or id already exists.
-- Output format is inferred from the output filename:
-  - `.html` or `.htm` exports HTML
-  - `.csv` exports CSV
-  - no extension or an unknown extension defaults to CSV
-- `help`, `-h`, `-help`, `--help`, and `/?` all show the built-in usage text.
-- Use `none` to clear optional capacities or schedule bounds in the CLI authoring commands.
-
-For the full command reference, see [CLI Reference](docs/CLI_REFERENCE.md).
-
-## GraphML Format
-
-- GraphML export preserves the full MedW network by writing graph metadata, traffic definitions, node coordinates, node transhipment capacities, node traffic profiles, and edge properties into GraphML `<data>` elements.
-- GraphML import restores those MedW-specific payloads when they are present.
-- The `GraphML...` popup loads from the chosen import path and writes to the chosen export path. Importing replaces the current in-memory network.
-- When you import a more generic GraphML file that only contains graph structure, the `GraphML...` popup can synthesize a starter traffic-role entry per node from the chosen default traffic type, node role, and optional capacity.
-- Leaving the default traffic type or role on none keeps imported nodes structural only.
-- When the default role includes transhipment, the default capacity becomes that node's shared `transhipmentCapacity`. Producer or consumer defaults still fall back to `1` unit if they need a starter quantity and no amount is available in the GraphML input.
-- Generic GraphML import/export currently focuses on the core graph shape plus MedW-specific node role metadata. The newer time-window and store-specific profile fields are primarily preserved through the native JSON format.
-
-## JSON Format
-
-The app uses a simple custom JSON format:
-
-```json
-{
-  "name": "Example Network",
-  "description": "Optional description",
-  "trafficTypes": [
-    {
-      "name": "Infectious Waste",
-      "description": "Optional description",
-      "routingPreference": "speed",
-      "capacityBidPerUnit": 1.5
-    }
-  ],
-  "nodes": [
-    {
-      "id": "N1",
-      "name": "Clinic A",
-      "transhipmentCapacity": 24,
-      "trafficProfiles": [
-        {
-          "trafficType": "Infectious Waste",
-          "production": 40,
-          "consumption": 0,
-          "canTransship": false,
-          "productionStartPeriod": 0,
-          "productionEndPeriod": 12,
-          "consumptionStartPeriod": null,
-          "consumptionEndPeriod": null,
-          "isStore": false,
-          "storeCapacity": null
-        }
-      ]
-    }
-  ],
-  "edges": [
-    {
-      "id": "E1",
-      "fromNodeId": "N1",
-      "toNodeId": "N2",
-      "time": 3.5,
-      "cost": 6.0,
-      "capacity": 20,
-      "isBidirectional": true
-    }
-  ]
-}
-```
-
-`x` and `y` are optional. If they are omitted, the app generates an initial layout when the file is loaded, and those generated positions are then saved back out if you use `Save JSON...`.
-
-`capacity` is optional on edges. If it is omitted, the edge is treated as having unlimited capacity.
-
-`transhipmentCapacity` is optional on nodes. If it is omitted, the node can tranship unlimited flow whenever the active traffic role allows transhipment.
-
-`capacityBidPerUnit` is optional on a traffic type. If omitted, `speed` traffic defaults to a bid of `1` per constrained bottleneck resource and other traffic types default to `0`.
-
-`productionStartPeriod`, `productionEndPeriod`, `consumptionStartPeriod`, and `consumptionEndPeriod` are optional on node traffic profiles. Omit the start to begin at period `0`, and omit the end to keep the schedule open-ended.
-
-`isStore` marks a traffic profile as an inventory-holding sink/source instead of a destructive consumer.
-
-`storeCapacity` is optional on store profiles. If omitted, store inventory is treated as unbounded.
-
-## Routing Rules
-
-- Edge weights are shared across traffic types through `time` and `cost`.
-- Edge capacity is optional, but when present it is shared across all traffic routed through that edge.
-- Node transhipment capacity is optional, but when present it is shared across all traffic routed through that node as an intermediate stop.
-- Traffic types can place a per-unit bid on constrained edge or node transhipment capacity.
-- A traffic type chooses how those edge values are scored.
-- Producer nodes are any nodes with `production > 0` for that traffic.
-- Consumer nodes are any nodes with `consumption > 0` for that traffic.
-- Intermediate nodes must have `canTransship: true` for that same traffic.
-- Local producer-to-consumer matching on the same node is handled before network routing.
-- Capacity competition is resolved across all traffic types together. Higher bids win access to scarce edge or node-transhipment capacity first, then the normal route score breaks ties.
-- Bid premiums are added to the landed movement cost when the route is genuinely bottlenecked by finite edge or node-transhipment capacity.
-- In time-step mode, scheduled production and demand are added period by period, in-flight movements advance one edge-time chunk per period, and stores accumulate inventory until released on later production periods.
-
-## Notes
-
-- Omit `capacity` on an edge when you want it to behave as unlimited.
-- Omit `transhipmentCapacity` on a node when you want it to behave as unlimited.
-- Omit `storeCapacity` on a store profile when you want that store to behave as unlimited.
-- The consumer-cost view shows local and imported movement costs separately, plus the blended movement cost seen at each consumer node.
-- Routing is path-based and allocates producer supply to consumer demand using the best available routes under the chosen traffic preference and capacity bidding.
-- `Auto Arrange` only updates node positions. It does not throw away in-memory edits to nodes, roles, or traffic types.
-- The native JSON format is the most complete persistence format for the current feature set.
-
-## Code Structure
-
-- [MainWindow.xaml](src/MedWNetworkSim.App/MainWindow.xaml) defines the main shell: canvas, summary panes, simulation results, and the in-app editor grids.
-- [App.xaml.cs](src/MedWNetworkSim.App/App.xaml.cs) chooses between the normal GUI startup path and the command-line runner.
-- [MainWindowViewModel.cs](src/MedWNetworkSim.App/ViewModels/MainWindowViewModel.cs) is the application coordinator. It loads/saves networks, keeps editor selections in sync, and drives both one-shot and time-step simulation flows.
-- [GraphMlTransferWindow.xaml](src/MedWNetworkSim.App/GraphMlTransferWindow.xaml) and [GraphMlTransferWindow.xaml.cs](src/MedWNetworkSim.App/GraphMlTransferWindow.xaml.cs) provide the dedicated GraphML import/export dialog and file-picking workflow.
-- [ReportExportWindow.xaml](src/MedWNetworkSim.App/ReportExportWindow.xaml) and [ReportExportWindow.xaml.cs](src/MedWNetworkSim.App/ReportExportWindow.xaml.cs) provide the report export dialog, file-picking workflow, and format selection.
-- [NodeEditorWindow.xaml](src/MedWNetworkSim.App/NodeEditorWindow.xaml) provides the dedicated dropdown-driven node editing workflow.
-- [TrafficTypeEditorWindow.xaml](src/MedWNetworkSim.App/TrafficTypeEditorWindow.xaml) and [EdgeEditorWindow.xaml](src/MedWNetworkSim.App/EdgeEditorWindow.xaml) provide dedicated large-surface editors for traffic types and edges.
-- [GraphMlFileService.cs](src/MedWNetworkSim.App/Services/GraphMlFileService.cs) translates between the in-memory MedW model and GraphML, including fallback default-node synthesis for generic GraphML imports.
-- [NetworkFileService.cs](src/MedWNetworkSim.App/Services/NetworkFileService.cs) normalizes and validates JSON data and applies automatic layout.
-- [ReportExportService.cs](src/MedWNetworkSim.App/Services/ReportExportService.cs) generates human-readable HTML reports and spreadsheet-friendly CSV exports for both one-shot and timeline runs.
-- [CommandLineRunService.cs](src/MedWNetworkSim.App/Services/CommandLineRunService.cs) parses command-line arguments, supports headless network authoring commands, runs the requested simulation mode, and exports reports.
-- [NetworkSimulationEngine.cs](src/MedWNetworkSim.App/Services/NetworkSimulationEngine.cs) performs routing, capacity competition, bid-cost calculation, and consumer-cost summarization.
-- [TemporalNetworkSimulationEngine.cs](src/MedWNetworkSim.App/Services/TemporalNetworkSimulationEngine.cs) advances the network one period at a time, preserves in-flight traffic, and manages store inventory.
-- [NodeTrafficRoleCatalog.cs](src/MedWNetworkSim.App/Models/NodeTrafficRoleCatalog.cs) centralizes the named producer, consumer, and transhipment role combinations used by the UI and GraphML import mapping.
-- The `Models` folder contains the persisted JSON shape.
-- The `ViewModels` folder contains the editable UI state and display helpers used by WPF binding.
+- **Node**: a place in the network
+- **Edge**: a route between places
+- **Traffic type**: a category of thing being moved
+- **Producer**: a node that supplies traffic
+- **Consumer**: a node that needs traffic
+- **Transshipment**: a node acting as a pass-through stop
+- **Store**: a node that keeps inventory for later
+- **Capacity**: the maximum amount a route or node can handle
+- **Timeline**: a step-by-step simulation over periods

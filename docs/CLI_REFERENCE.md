@@ -1,185 +1,285 @@
 # CLI Reference
 
-MedWNetworkSim can be used without opening the GUI. The CLI supports both:
+This guide explains how to use MedWNetworkSim from the command line in plain language.
 
-- running reports from an existing network file
-- creating and editing a network file directly from the command line
+You do **not** need to open the desktop app to use these commands.
 
-## Help
+The command-line mode is useful when you want to:
+- create network files quickly
+- make repeatable test networks
+- update a model in a consistent way
+- generate reports without opening the visual app
 
-Any of these will print the built-in help text:
+## Before you begin
 
-```powershell
+The application runs in command-line mode when you start it with arguments.
+
+Typical project run pattern:
+
+```bash
+dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj -- <command>
+```
+
+If you are using the built `.exe`, replace the start of each example with the executable name instead.
+
+## Get help
+
+Any of these will show the built-in help:
+
+```bash
 MedWNetworkSim.App.exe help
 MedWNetworkSim.App.exe -h
 MedWNetworkSim.App.exe -help
 MedWNetworkSim.App.exe --help
 ```
 
+## The basic idea
+
+Most command-line work follows this pattern:
+1. Create or open a JSON network file.
+2. Add traffic types.
+3. Add nodes.
+4. Set each node’s role for each traffic type.
+5. Add edges.
+6. Run a report.
+
 ## Commands
 
-### `run`
+## `run`
+Runs a simulation and writes a report file.
 
-Runs a simulation and exports a report.
+Example:
 
-```powershell
+```bash
 MedWNetworkSim.App.exe run --file .\network.json --output .\report.html
+```
+
+Timeline example:
+
+```bash
 MedWNetworkSim.App.exe run --file .\network.json --mode timeline --report timeline --turns 12 --output .\timeline.csv
 ```
 
-Options:
+Use this when you already have a network file and want results.
 
-- `--file` or `--network`: input JSON network file
-- `--output`: output report file
+Important options:
+- `--file` or `--network`: the JSON network file to read
+- `--output`: where to save the report
 - `--mode`: `simulation` or `timeline`
 - `--report`: `current` or `timeline`
 - `--turns`: required for timeline mode
 
-Notes:
+What the options mean:
+- **simulation/current** = one-off snapshot analysis
+- **timeline/timeline** = step-by-step period analysis
 
-- `simulation/current` matches the GUI `Run Simulation` report flow.
-- `.html` and `.htm` output HTML.
-- `.csv` output CSV.
-- unknown or missing extensions default to CSV.
+Output format is chosen from the output filename:
+- `.html` or `.htm` gives an HTML report
+- `.csv` gives a CSV report
+- any other extension is treated as CSV by default
 
-### `new`
+## `new`
+Creates a new JSON network file.
 
-Creates a new network JSON file.
+Example:
 
-```powershell
+```bash
 MedWNetworkSim.App.exe new --file .\demo.json --name "Demo Network"
+```
+
+With description and overwrite:
+
+```bash
 MedWNetworkSim.App.exe new --file .\demo.json --name "Demo Network" --description "Created from the CLI" --overwrite
 ```
 
-Options:
+Use this when you want to start a model from scratch.
 
-- `--file`: destination JSON file
-- `--name`: optional network name
-- `--description`: optional description
+Options:
+- `--file`: where to save the network
+- `--name`: network name
+- `--description`: network description
 - `--overwrite`: replace an existing file
 
-### `set-network`
+## `set-network`
+Changes the network’s name or description in an existing file.
 
-Updates the network name or description in an existing file.
+Examples:
 
-```powershell
+```bash
 MedWNetworkSim.App.exe set-network --file .\demo.json --name "Updated Demo"
 MedWNetworkSim.App.exe set-network --file .\demo.json --description "Routing test network"
 ```
 
-### `add-traffic`
+Use this when the model already exists and you only want to update its top-level details.
 
+## `add-traffic`
 Creates or updates a traffic type.
 
-```powershell
+Examples:
+
+```bash
 MedWNetworkSim.App.exe add-traffic --file .\demo.json --name Waste --preference cost --bid 1.5
 MedWNetworkSim.App.exe add-traffic --file .\demo.json --name Reusables --description "Backhaul flow" --preference totalCost
 ```
 
 Options:
-
 - `--name`: traffic type name
-- `--description`: optional description
+- `--description`: explanation of the traffic type
 - `--preference`: `speed`, `cost`, or `totalCost`
-- `--bid`: optional `capacityBidPerUnit`; use `none` to clear it
+- `--bid`: optional bid value used when traffic types compete for scarce capacity; use `none` to clear it
 
-### `add-node`
+Plain-English meaning:
+- Use **speed** when time matters most.
+- Use **cost** when expense matters most.
+- Use **totalCost** when you want a balance of both.
 
+## `add-node`
 Creates or updates a node.
 
-```powershell
+Examples:
+
+```bash
 MedWNetworkSim.App.exe add-node --file .\demo.json --id N1 --name "Clinic A" --shape building --x 100 --y 120
 MedWNetworkSim.App.exe add-node --file .\demo.json --id N2 --name "Hub" --shape circle --transhipment-capacity 10
 ```
 
 Options:
-
-- `--id`: node id
-- `--name`: display name
+- `--id`: short identifier for the node
+- `--name`: display name shown to users
 - `--shape`: `square`, `circle`, `person`, `car`, or `building`
 - `--x`, `--y`: canvas position
-- `--transhipment-capacity`: optional shared node bottleneck; use `none` to clear it
+- `--transhipment-capacity`: optional limit on how much total traffic can pass through this node as an intermediate stop; use `none` to clear it
 
-### `set-profile`
-
+## `set-profile`
 Creates or updates one node/traffic profile.
 
-```powershell
+This is one of the most important commands.
+
+A **profile** means: “for this traffic type, what does this node do?”
+
+Examples:
+
+```bash
 MedWNetworkSim.App.exe set-profile --file .\demo.json --node N1 --traffic Waste --role producer --production 25
 MedWNetworkSim.App.exe set-profile --file .\demo.json --node N2 --traffic Waste --role consumer+transship --consumption 25 --premium 2
 MedWNetworkSim.App.exe set-profile --file .\demo.json --node N3 --traffic Waste --role consumer --store --store-capacity 40
 ```
 
 Options:
-
-- `--node`: node id
-- `--traffic`: traffic type name
-- `--role`: one of:
-  - `producer`
-  - `consumer`
-  - `transship`
-  - `producer+consumer`
-  - `producer+transship`
-  - `consumer+transship`
-  - `all`
-  - `none`
-- `--production`: production amount
-- `--consumption`: consumption amount
-- `--premium`: consumer premium per unit
-- `--production-start`, `--production-end`
-- `--consumption-start`, `--consumption-end`
-- `--store` or `--no-store`
+- `--node`: the node id
+- `--traffic`: the traffic type name
+- `--role`: what the node does for that traffic
+- `--production`: amount supplied
+- `--consumption`: amount needed
+- `--premium`: extra consumer premium per unit
+- `--production-start`, `--production-end`: optional schedule window
+- `--consumption-start`, `--consumption-end`: optional schedule window
+- `--store` or `--no-store`: whether the node stores inventory
 - `--store-capacity`: optional storage limit; use `none` to clear it
 
-Notes:
+Allowed roles:
+- `producer`
+- `consumer`
+- `transship`
+- `producer+consumer`
+- `producer+transship`
+- `consumer+transship`
+- `all`
+- `none`
 
-- When a role includes producer or consumer and no explicit amount is provided, the CLI preserves the existing positive value or falls back to `1`.
-- Setting a profile back to an empty state removes that profile row from the node.
+How to think about this:
+- **producer** = the node supplies something
+- **consumer** = the node needs something
+- **transship** = the node can be used as an intermediate stop
+- **store** = separate from role; this controls inventory behaviour
 
-### `add-edge`
+Useful behaviour to know:
+- If you set a role that includes producer or consumer but do not give an amount, the CLI keeps the existing positive value or defaults to `1`.
+- If a profile is reduced back to an empty state, the app removes that profile from the node.
 
-Creates or updates an edge.
+## `add-edge`
+Creates or updates a route between two nodes.
 
-```powershell
+Examples:
+
+```bash
 MedWNetworkSim.App.exe add-edge --file .\demo.json --id E1 --from N1 --to N2 --time 1 --cost 4 --direction bidirectional
 MedWNetworkSim.App.exe add-edge --file .\demo.json --id E2 --from N2 --to N3 --time 2 --cost 6 --capacity 12 --direction one-way
 ```
 
 Options:
-
 - `--id`: optional edge id
-- `--from`, `--to`: node ids
-- `--time`: edge time
-- `--cost`: edge cost
-- `--capacity`: optional edge capacity; use `none` to clear it
+- `--from`, `--to`: the two node ids
+- `--time`: travel time
+- `--cost`: movement cost
+- `--capacity`: optional route limit; use `none` to clear it
 - `--direction`: `one-way` or `bidirectional`
 
-### `auto-arrange`
+## `auto-arrange`
+Recomputes node positions automatically.
 
-Recomputes node positions using the same layout logic as the GUI.
+Example:
 
-```powershell
+```bash
 MedWNetworkSim.App.exe auto-arrange --file .\demo.json
+```
+
+Use this when you want the application to clean up layout positions for you.
+
+## A simple end-to-end example
+
+This example creates a very small network.
+
+### 1. Create a new file
+```bash
+MedWNetworkSim.App.exe new --file .\demo.json --name "Simple Demo"
+```
+
+### 2. Add a traffic type
+```bash
+MedWNetworkSim.App.exe add-traffic --file .\demo.json --name Waste --preference cost
+```
+
+### 3. Add nodes
+```bash
+MedWNetworkSim.App.exe add-node --file .\demo.json --id N1 --name "Clinic" --shape building
+MedWNetworkSim.App.exe add-node --file .\demo.json --id N2 --name "Hub" --shape circle
+MedWNetworkSim.App.exe add-node --file .\demo.json --id N3 --name "Processor" --shape building
+```
+
+### 4. Set roles
+```bash
+MedWNetworkSim.App.exe set-profile --file .\demo.json --node N1 --traffic Waste --role producer --production 10
+MedWNetworkSim.App.exe set-profile --file .\demo.json --node N2 --traffic Waste --role transship
+MedWNetworkSim.App.exe set-profile --file .\demo.json --node N3 --traffic Waste --role consumer --consumption 10
+```
+
+### 5. Add routes
+```bash
+MedWNetworkSim.App.exe add-edge --file .\demo.json --from N1 --to N2 --time 1 --cost 2 --direction bidirectional
+MedWNetworkSim.App.exe add-edge --file .\demo.json --from N2 --to N3 --time 1 --cost 3 --direction bidirectional
+```
+
+### 6. Run a report
+```bash
+MedWNetworkSim.App.exe run --file .\demo.json --output .\report.html
 ```
 
 ## Legacy positional mode
 
-The older report-only positional syntax still works:
+The older positional syntax still works for report generation. The built-in help text documents it explicitly.
 
-```powershell
-MedWNetworkSim.App.exe .\network.json simulation current .\report.html
-MedWNetworkSim.App.exe .\network.json timeline timeline .\timeline.csv 12
-```
+## When to use the CLI and when not to
 
-## End-to-end example
+The CLI is best when you want:
+- repeatable model setup
+- automation
+- quick changes to many files
+- scripted report generation
 
-```powershell
-MedWNetworkSim.App.exe new --file .\demo.json --name "CLI Demo"
-MedWNetworkSim.App.exe add-traffic --file .\demo.json --name Waste --preference cost --bid 1.5
-MedWNetworkSim.App.exe add-node --file .\demo.json --id N1 --name "Clinic A" --shape building --x 100 --y 120
-MedWNetworkSim.App.exe add-node --file .\demo.json --id N2 --name "Hub" --shape circle --x 240 --y 120 --transhipment-capacity 10
-MedWNetworkSim.App.exe set-profile --file .\demo.json --node N1 --traffic Waste --role producer --production 25
-MedWNetworkSim.App.exe set-profile --file .\demo.json --node N2 --traffic Waste --role consumer+transship --consumption 25 --premium 2
-MedWNetworkSim.App.exe add-edge --file .\demo.json --id E1 --from N1 --to N2 --time 1 --cost 4 --direction bidirectional
-MedWNetworkSim.App.exe run --file .\demo.json --output .\demo-report.html
-```
+The desktop app is better when you want:
+- visual editing
+- drag-and-drop layout
+- canvas interaction
+- quick inspection of the model and results

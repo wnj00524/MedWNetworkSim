@@ -14,6 +14,7 @@ ScenarioJ_MultiplePrecursorLimitingInput();
 ScenarioK_NoPrecursorLegacyProduction();
 ScenarioL_CliGuiOverride();
 ScenarioM_LegacySingleWindowLoadCompatibility();
+ScenarioN_DotnetRunProjectArgumentDoesNotEnterCli();
 
 Console.WriteLine("Temporal occupancy verification passed.");
 
@@ -223,6 +224,25 @@ static void ScenarioM_LegacySingleWindowLoadCompatibility()
     AssertEqual(1d, profile.ProductionWindows.Count, "M normalized window count");
     AssertEqual(2d, profile.ProductionWindows[0].StartPeriod ?? -1, "M normalized window start");
     AssertEqual(3d, profile.ProductionWindows[0].EndPeriod ?? -1, "M normalized window end");
+}
+
+static void ScenarioN_DotnetRunProjectArgumentDoesNotEnterCli()
+{
+    var service = new CommandLineRunService();
+    if (service.ShouldRunFromCommandLine(["MedWNetworkSim.App.csproj"]))
+    {
+        throw new InvalidOperationException("N project path argument should not enter command-line mode.");
+    }
+
+    if (!service.ShouldRunFromCommandLine(["run", "--file", "demo.json", "--output", "report.html"]))
+    {
+        throw new InvalidOperationException("N explicit run command should enter command-line mode.");
+    }
+
+    if (!service.ShouldRunFromCommandLine(["--file", "demo.json", "--output", "report.html"]))
+    {
+        throw new InvalidOperationException("N named legacy run arguments should enter command-line mode.");
+    }
 }
 
 static NetworkModel CreateNetwork(double edgeTime, bool bidirectional, double production = 100d, double consumption = 100d)

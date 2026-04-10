@@ -16,7 +16,7 @@ For most people, the desktop app is the easiest place to start.
 A practical workflow is:
 1. Start in the desktop app.
 2. Load the bundled sample or create a new network.
-3. Add one traffic type first.
+3. Add one traffic type first, then confirm the basic flow works before adding timing or recipes.
 4. Add a small number of nodes.
 5. Connect them with edges.
 6. Set what each node does for that traffic type.
@@ -34,6 +34,8 @@ Before building the network, write down answers to these questions:
 - Which places can act as transfer points?
 - Are any routes slower, more expensive, or limited in capacity?
 - Does timing matter?
+- Does the same timing repeat in a cycle?
+- Does any output depend on precursor traffic already being present at the same node?
 - Does any place need to store stock between periods?
 
 If you can answer those questions, you can usually build the network successfully.
@@ -89,6 +91,8 @@ Important profile fields include:
 - `canTransship`
 - `consumerPremiumPerUnit`
 - schedule windows
+- repeated schedule windows
+- local input requirements for production
 - optional store behaviour
 
 ### How to think about roles
@@ -102,6 +106,16 @@ A useful modelling habit is to ask, for each traffic type at each node:
 - Does it need anything?
 - Can traffic pass through it?
 - Should it store inventory?
+
+### Production recipes and precursor inputs
+Some outputs may require other traffic types to be present locally before they can be produced.
+
+Examples:
+- bread may require wheat and water
+- a processing output may require a consumable precursor
+- a packaging flow may require empties before finished units can be created
+
+These are local transformation rules at one node, not route requests by themselves.
 
 ## 4. Edges
 An edge is a route between two nodes.
@@ -169,12 +183,33 @@ In plain English, this means some traffic can effectively be treated as more val
 Timeline mode is the step-by-step version of the simulation.
 
 In timeline mode:
-- scheduled production and demand activate by period
+- scheduled production and demand activate by period or by any matching window
 - traffic moves across edges over time instead of arriving instantly
 - in-flight traffic stays in motion between periods
 - store nodes can accumulate inventory and release it later
 
 This is useful when the timing of movement matters, not just the final routing result.
+
+### Looping timelines
+The network can also use a repeating loop length.
+
+If the loop length is `12`, then:
+- absolute period 1 uses effective period 1
+- absolute period 12 uses effective period 12
+- absolute period 13 uses effective period 1 again
+
+This is useful for repeating cycles such as:
+- weekly demand
+- monthly production plans
+- seasonal collection or delivery patterns
+
+### Multiple windows
+Each profile can now define:
+- multiple production windows
+- multiple consumption windows
+
+The profile is active if any matching window includes the current effective period.
+This makes it easier to represent split shifts, seasonal bursts, or recurring delivery windows.
 
 ### Example
 Suppose:
@@ -184,6 +219,19 @@ Suppose:
 - each edge has time `1`
 
 Traffic leaves A, reaches B after one period, and reaches C after another. The timing is part of the model, not just the route shape. The application’s UI and docs describe this period-by-period behaviour directly.
+
+## Understanding local production inputs
+
+Production can be constrained by local precursor stock.
+
+Example:
+- Bread production at a bakery is set to `10`
+- Bread requires `Wheat:1` and `Water:2`
+- Local availability is `Wheat 6` and `Water 14`
+
+The bakery can only produce `6` Bread, because Wheat is the limiting input.
+
+If the required precursor set is not available locally, production of that output traffic halts for that period.
 
 ## A safe way to build a good model
 
@@ -212,6 +260,8 @@ Then add:
 - capacities
 - premiums
 - schedules
+- repeating windows
+- precursor input requirements
 - storage
 
 Run the simulation again and compare results.
@@ -225,6 +275,9 @@ If too many nodes are producers, consumers, and transshipment points all at once
 
 ### Using too many traffic types too early
 Start with one traffic type until the structure behaves correctly.
+
+### Adding recipes before confirming the base flow
+First confirm the plain producer-consumer path works, then add input requirements.
 
 ### Mixing units
 Do not mix different meanings for time or cost in the same model.
@@ -245,10 +298,15 @@ A node can store traffic, but that is separate from whether it produces, consume
 
 ### Use JSON when you want:
 - a full-fidelity saved model
+- timeline loop length
+- repeated windows
+- precursor input requirements
 - version control
 - manual review of the data structure
 
 ### Use the CLI when you want:
+- repeatable loop-length changes
+- repeatable windows and recipe inputs
 - repeatable setup
 - scripting
 - batch updates

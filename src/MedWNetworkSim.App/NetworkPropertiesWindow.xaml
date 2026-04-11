@@ -86,6 +86,55 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="12" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="12" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="8" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Text="Timeline Loop" />
+                        <TextBlock Grid.Row="2"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Use a loop when your simulation repeats a fixed planning cycle. For example, entering 12 makes period 13 behave like period 1 again."
+                                   TextWrapping="Wrap" />
+                        <CheckBox Grid.Row="4"
+                                  Content="Loop timeline periods"
+                                  FontWeight="SemiBold"
+                                  IsChecked="{Binding IsTimelineLoopEnabled, Mode=TwoWay}" />
+                        <WrapPanel Grid.Row="6"
+                                   VerticalAlignment="Center">
+                            <TextBlock VerticalAlignment="Center"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
+                                       Text="Restart after period" />
+                            <TextBox Width="90"
+                                     Margin="10,0,0,0"
+                                     HorizontalAlignment="Left"
+                                     IsEnabled="{Binding IsTimelineLoopEnabled}"
+                                     Text="{Binding TimelineLoopLength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock VerticalAlignment="Center"
+                                       Margin="8,0,0,0"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
+                                       Text="then continue from period 1" />
+                        </WrapPanel>
+                    </Grid>
+                </Border>
+
+                <Border Margin="0,12,0,0"
+                        Padding="16"
+                        Background="{DynamicResource CardBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="12" />
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="8" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>

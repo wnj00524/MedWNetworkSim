@@ -35,14 +35,6 @@
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource AccentStrongBrush}"
                                Text="MedW Network Simulator" />
-                    <TextBox Margin="0,10,0,0"
-                             Padding="10,8"
-                             FontSize="28"
-                             FontWeight="SemiBold"
-                             Background="{DynamicResource InputBrush}"
-                             BorderBrush="{DynamicResource BorderBrush}"
-                             BorderThickness="1"
-                             Text="{Binding NetworkName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     <Border Margin="0,10,0,0"
                             Padding="10,8"
                             Background="{DynamicResource SectionBrush}"
@@ -55,7 +47,8 @@
                                       FontWeight="SemiBold"
                                       Foreground="{DynamicResource AccentStrongBrush}"
                                       IsChecked="{Binding IsTimelineLoopEnabled, Mode=TwoWay}" />
-                            <DockPanel Margin="0,8,0,0">
+                            <WrapPanel Margin="0,8,0,0"
+                                       VerticalAlignment="Center">
                                 <TextBlock VerticalAlignment="Center"
                                            FontSize="11"
                                            Foreground="{DynamicResource MutedForegroundBrush}"
@@ -73,7 +66,7 @@
                                            FontSize="11"
                                            Foreground="{DynamicResource MutedForegroundBrush}"
                                            Text="then restart at period 1" />
-                            </DockPanel>
+                            </WrapPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>

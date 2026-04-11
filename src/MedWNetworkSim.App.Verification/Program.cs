@@ -23,8 +23,14 @@ ScenarioR_NoOrphanedOrDoubleCountedWaitingOccupancy();
 ScenarioS_StaticRecipeProcurementWithoutInputConsumerProfile();
 ScenarioT_TemporalRecipeProcurementWithoutInputConsumerProfile();
 ScenarioU_TemporalRecipeProcurementUsesLocalStockFirst();
+ScenarioV_ProportionalBranchDemandSplit();
+ScenarioW_ProportionalLocalAndDownstreamDemand();
+ScenarioX_ProportionalCapacityLimitedBranchRedistributes();
+ScenarioY_DefaultAllocationModeRemainsGreedy();
+ScenarioZ_ProportionalAllocationIsDeterministic();
+ScenarioAA_AllocationModeSerializes();
 
-Console.WriteLine("Temporal occupancy verification passed.");
+Console.WriteLine("Verification passed.");
 
 static void ScenarioA_LongEdgeBlocksRelaunch()
 {
@@ -391,6 +397,98 @@ static void ScenarioU_TemporalRecipeProcurementUsesLocalStockFirst()
     AssertEqual(6d, GetAvailableSupply(state, "Bakery", "Wheat"), "U temporal routed wheat retained for later production");
 }
 
+static void ScenarioV_ProportionalBranchDemandSplit()
+{
+    var network = CreateBranchDemandNetwork(allocationMode: AllocationMode.ProportionalBranchDemand);
+    var wheatOutcome = new NetworkSimulationEngine().Simulate(network).Single(outcome => outcome.TrafficType == "Wheat");
+
+    AssertEqual(10d, SumEdgeQuantity(wheatOutcome, "BD"), "V B to D branch");
+    AssertEqual(30d, SumEdgeQuantity(wheatOutcome, "BC"), "V B to C branch");
+    AssertEqual(10d, QuantityTo(wheatOutcome, "C"), "V C local demand");
+    AssertEqual(20d, QuantityTo(wheatOutcome, "E"), "V E downstream demand");
+}
+
+static void ScenarioW_ProportionalLocalAndDownstreamDemand()
+{
+    var network = CreateBranchDemandNetwork(allocationMode: AllocationMode.ProportionalBranchDemand);
+    var wheatOutcome = new NetworkSimulationEngine().Simulate(network).Single(outcome => outcome.TrafficType == "Wheat");
+
+    AssertEqual(30d, SumEdgeQuantity(wheatOutcome, "BC"), "W C branch includes local plus downstream demand");
+    AssertEqual(20d, SumEdgeQuantity(wheatOutcome, "CE"), "W C forwards only remainder after local demand");
+}
+
+static void ScenarioX_ProportionalCapacityLimitedBranchRedistributes()
+{
+    var network = CreateBranchDemandNetwork(
+        allocationMode: AllocationMode.ProportionalBranchDemand,
+        supply: 40d,
+        cDemand: 30d,
+        dDemand: 50d,
+        eDemand: 0d,
+        bcCapacity: 10d);
+    var wheatOutcome = new NetworkSimulationEngine().Simulate(network).Single(outcome => outcome.TrafficType == "Wheat");
+
+    AssertEqual(10d, SumEdgeQuantity(wheatOutcome, "BC"), "X capacity-limited C branch");
+    AssertEqual(30d, SumEdgeQuantity(wheatOutcome, "BD"), "X redistributed D branch");
+}
+
+static void ScenarioY_DefaultAllocationModeRemainsGreedy()
+{
+    var network = CreateBranchDemandNetwork(supply: 40d, cDemand: 30d, dDemand: 30d, eDemand: 0d);
+    if (network.TrafficTypes[0].AllocationMode != AllocationMode.GreedyBestRoute)
+    {
+        throw new InvalidOperationException("Y new traffic definitions should default to greedy allocation.");
+    }
+
+    var wheatOutcome = new NetworkSimulationEngine().Simulate(network).Single(outcome => outcome.TrafficType == "Wheat");
+
+    AssertEqual(30d, SumEdgeQuantity(wheatOutcome, "BC"), "Y default greedy chooses first best route before splitting");
+    AssertEqual(10d, SumEdgeQuantity(wheatOutcome, "BD"), "Y default greedy remainder");
+}
+
+static void ScenarioZ_ProportionalAllocationIsDeterministic()
+{
+    var network = CreateBranchDemandNetwork(allocationMode: AllocationMode.ProportionalBranchDemand);
+    var signatures = Enumerable.Range(0, 3)
+        .Select(_ =>
+        {
+            var outcome = new NetworkSimulationEngine().Simulate(network).Single(item => item.TrafficType == "Wheat");
+            return string.Join(
+                "|",
+                outcome.Allocations.Select(allocation =>
+                    $"{allocation.ConsumerNodeId}:{allocation.Quantity:0.######}:{string.Join(">", allocation.PathEdgeIds)}"));
+        })
+        .Distinct()
+        .ToList();
+
+    AssertEqual(1d, signatures.Count, "Z deterministic proportional allocation signature count");
+}
+
+static void ScenarioAA_AllocationModeSerializes()
+{
+    var service = new NetworkFileService();
+    var network = CreateBranchDemandNetwork(allocationMode: AllocationMode.ProportionalBranchDemand);
+    var path = Path.Combine(Path.GetTempPath(), $"medwnetworksim-allocation-mode-{Guid.NewGuid():N}.json");
+
+    try
+    {
+        service.Save(network, path);
+        var loaded = service.Load(path);
+
+        if (loaded.TrafficTypes.Single(item => item.Name == "Wheat").AllocationMode != AllocationMode.ProportionalBranchDemand)
+        {
+            throw new InvalidOperationException("AA allocation mode did not round-trip through JSON.");
+        }
+    }
+    finally
+    {
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+    }
+}
+
 static NetworkModel CreateNetwork(double edgeTime, bool bidirectional, double production = 100d, double consumption = 100d)
 {
     return new NetworkModel
@@ -424,6 +522,69 @@ static NetworkModel CreateNetwork(double edgeTime, bool bidirectional, double pr
                 Capacity = 100d,
                 IsBidirectional = bidirectional
             }
+        ]
+    };
+}
+
+static NetworkModel CreateBranchDemandNetwork(
+    AllocationMode allocationMode = AllocationMode.GreedyBestRoute,
+    double supply = 40d,
+    double cDemand = 10d,
+    double dDemand = 10d,
+    double eDemand = 20d,
+    double bcCapacity = 100d)
+{
+    return new NetworkModel
+    {
+        Name = "Branch demand split",
+        TrafficTypes =
+        [
+            new TrafficTypeDefinition
+            {
+                Name = "Wheat",
+                RoutingPreference = RoutingPreference.TotalCost,
+                AllocationMode = allocationMode
+            }
+        ],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "A",
+                Name = "A",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Wheat", Production = supply }]
+            },
+            new NodeModel
+            {
+                Id = "B",
+                Name = "B",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Wheat", CanTransship = true }]
+            },
+            new NodeModel
+            {
+                Id = "C",
+                Name = "C",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Wheat", Consumption = cDemand, CanTransship = true }]
+            },
+            new NodeModel
+            {
+                Id = "D",
+                Name = "D",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Wheat", Consumption = dDemand }]
+            },
+            new NodeModel
+            {
+                Id = "E",
+                Name = "E",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Wheat", Consumption = eDemand }]
+            }
+        ],
+        Edges =
+        [
+            new EdgeModel { Id = "AB", FromNodeId = "A", ToNodeId = "B", Time = 1d, Cost = 1d, Capacity = 100d, IsBidirectional = false },
+            new EdgeModel { Id = "BC", FromNodeId = "B", ToNodeId = "C", Time = 1d, Cost = 1d, Capacity = bcCapacity, IsBidirectional = false },
+            new EdgeModel { Id = "BD", FromNodeId = "B", ToNodeId = "D", Time = 1d, Cost = 2d, Capacity = 100d, IsBidirectional = false },
+            new EdgeModel { Id = "CE", FromNodeId = "C", ToNodeId = "E", Time = 1d, Cost = 1d, Capacity = 100d, IsBidirectional = false }
         ]
     };
 }
@@ -672,6 +833,20 @@ static double GetAvailableSupply(
     return state.NodeStates.TryGetValue(new TemporalNetworkSimulationEngine.TemporalNodeTrafficKey(nodeId, trafficType), out var nodeState)
         ? nodeState.AvailableSupply
         : 0d;
+}
+
+static double SumEdgeQuantity(TrafficSimulationOutcome outcome, string edgeId)
+{
+    return outcome.Allocations
+        .Where(allocation => allocation.PathEdgeIds.Contains(edgeId))
+        .Sum(allocation => allocation.Quantity);
+}
+
+static double QuantityTo(TrafficSimulationOutcome outcome, string nodeId)
+{
+    return outcome.Allocations
+        .Where(allocation => allocation.ConsumerNodeId == nodeId)
+        .Sum(allocation => allocation.Quantity);
 }
 
 static void AssertEqual(double expected, double actual, string label)

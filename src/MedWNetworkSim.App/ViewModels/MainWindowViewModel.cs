@@ -73,6 +73,18 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public Array RoutingPreferences { get; } = Enum.GetValues(typeof(RoutingPreference));
 
+    public IReadOnlyList<AllocationModeOptionViewModel> AllocationModeOptions { get; } =
+    [
+        new(
+            AllocationMode.GreedyBestRoute,
+            TrafficTypeDefinitionEditorViewModel.GetAllocationModeLabel(AllocationMode.GreedyBestRoute),
+            TrafficTypeDefinitionEditorViewModel.GetAllocationModeHelpText(AllocationMode.GreedyBestRoute)),
+        new(
+            AllocationMode.ProportionalBranchDemand,
+            TrafficTypeDefinitionEditorViewModel.GetAllocationModeLabel(AllocationMode.ProportionalBranchDemand),
+            TrafficTypeDefinitionEditorViewModel.GetAllocationModeHelpText(AllocationMode.ProportionalBranchDemand))
+    ];
+
     public Array ThemeOptions { get; } = Enum.GetValues(typeof(AppTheme));
 
     public string ActiveFileLabel
@@ -1615,6 +1627,7 @@ public sealed class MainWindowViewModel : ObservableObject
             TrafficTypes.Add(new TrafficSummaryViewModel(
                 trafficName,
                 definition.RoutingPreference,
+                definition.AllocationMode,
                 profiles.Sum(profile => profile.Production),
                 profiles.Sum(profile => profile.Consumption),
                 profiles.Count(profile => profile.Production > 0),

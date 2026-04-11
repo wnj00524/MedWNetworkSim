@@ -24,6 +24,11 @@ public sealed class RouteAllocation
     public RoutingPreference RoutingPreference { get; init; }
 
     /// <summary>
+    /// Gets the allocation strategy that assigned this movement.
+    /// </summary>
+    public AllocationMode AllocationMode { get; init; }
+
+    /// <summary>
     /// Gets the producing node identifier.
     /// </summary>
     public string ProducerNodeId { get; init; } = string.Empty;

@@ -13,6 +13,7 @@ public sealed class TrafficSummaryViewModel : ObservableObject
     public TrafficSummaryViewModel(
         string name,
         RoutingPreference routingPreference,
+        AllocationMode allocationMode,
         double totalProduction,
         double totalConsumption,
         int producerCount,
@@ -21,6 +22,7 @@ public sealed class TrafficSummaryViewModel : ObservableObject
     {
         Name = name;
         RoutingPreference = routingPreference;
+        AllocationMode = allocationMode;
         TotalProduction = totalProduction;
         TotalConsumption = totalConsumption;
         ProducerCount = producerCount;
@@ -31,6 +33,8 @@ public sealed class TrafficSummaryViewModel : ObservableObject
     public string Name { get; }
 
     public RoutingPreference RoutingPreference { get; }
+
+    public AllocationMode AllocationMode { get; }
 
     public double TotalProduction { get; }
 
@@ -91,8 +95,10 @@ public sealed class TrafficSummaryViewModel : ObservableObject
         _ => "Lowest total cost"
     };
 
+    public string AllocationModeLabel => TrafficTypeDefinitionEditorViewModel.GetAllocationModeLabel(AllocationMode);
+
     public string SupplyDemandSummary =>
-        $"P {TotalProduction:0.##} in {ProducerCount} producer(s)  |  C {TotalConsumption:0.##} in {ConsumerCount} consumer(s)  |  T {TransshipmentCount}";
+        $"P {TotalProduction:0.##} in {ProducerCount} producer(s)  |  C {TotalConsumption:0.##} in {ConsumerCount} consumer(s)  |  T {TransshipmentCount}  |  {AllocationModeLabel}";
 
     public string OutcomeSummary =>
         $"Delivered {Delivered:0.##}  |  Unmet {UnmetDemand:0.##}  |  Unused {UnusedSupply:0.##}";

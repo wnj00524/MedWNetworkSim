@@ -31,7 +31,7 @@
                 <TextBlock Margin="0,8,0,0"
                            FontSize="12"
                            Foreground="{DynamicResource MutedForegroundBrush}"
-                           Text="Add, rename, and edit traffic types in a full-size editor. Changes update the shared network immediately, including routing preference and capacity bidding defaults."
+                           Text="Add, rename, and edit traffic types in a full-size editor. Changes update the shared network immediately, including routing preference, allocation mode, and capacity bidding defaults."
                            TextWrapping="Wrap" />
             </StackPanel>
         </Border>
@@ -94,6 +94,24 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Allocation Mode" Width="190">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock VerticalAlignment="Center"
+                                                   Text="{Binding AllocationModeLabel}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox Padding="2"
+                                                  MinWidth="170"
+                                                  DisplayMemberPath="Label"
+                                                  SelectedValuePath="Value"
+                                                  ItemsSource="{Binding DataContext.AllocationModeOptions, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                  SelectedValue="{Binding AllocationMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Binding="{Binding CapacityBidPerUnit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.##}}" Header="Bid / Unit" Width="105" />
                             <DataGridTextColumn Binding="{Binding Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Header="Description" Width="*" />
                         </DataGrid.Columns>
@@ -135,6 +153,8 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="10" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <TextBlock VerticalAlignment="Center"
@@ -158,17 +178,29 @@
                                    VerticalAlignment="Center"
                                    FontSize="11"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Allocation Mode" />
+                        <ComboBox Grid.Row="4"
+                                  Grid.Column="1"
+                                  DisplayMemberPath="Label"
+                                  SelectedValuePath="Value"
+                                  ItemsSource="{Binding AllocationModeOptions}"
+                                  SelectedValue="{Binding SelectedTrafficDefinition.AllocationMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Grid.Row="6"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Bid / Unit" />
-                        <TextBox Grid.Row="4"
+                        <TextBox Grid.Row="6"
                                  Grid.Column="1"
                                  Text="{Binding SelectedTrafficDefinition.CapacityBidPerUnit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
-                        <TextBlock Grid.Row="6"
+                        <TextBlock Grid.Row="8"
                                    VerticalAlignment="Top"
                                    FontSize="11"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Description" />
-                        <TextBox Grid.Row="6"
+                        <TextBox Grid.Row="8"
                                  Grid.Column="1"
                                  MinHeight="120"
                                  AcceptsReturn="True"
@@ -185,7 +217,7 @@
                             CornerRadius="12">
                         <TextBlock FontSize="12"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Use routing preference to control how this traffic type chooses routes, and use bid per unit to compete for shared edge and node transhipment capacity."
+                                   Text="{Binding SelectedTrafficDefinition.AllocationModeHelpText}"
                                    TextWrapping="Wrap" />
                     </Border>
 

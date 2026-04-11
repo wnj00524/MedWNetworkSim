@@ -20,6 +20,9 @@ ScenarioO_WaitingOnBlockedNextEdge();
 ScenarioP_RetryAfterCapacityFrees();
 ScenarioQ_BlockedByTranshipmentCapacity();
 ScenarioR_NoOrphanedOrDoubleCountedWaitingOccupancy();
+ScenarioS_StaticRecipeProcurementWithoutInputConsumerProfile();
+ScenarioT_TemporalRecipeProcurementWithoutInputConsumerProfile();
+ScenarioU_TemporalRecipeProcurementUsesLocalStockFirst();
 
 Console.WriteLine("Temporal occupancy verification passed.");
 
@@ -348,6 +351,46 @@ static void ScenarioR_NoOrphanedOrDoubleCountedWaitingOccupancy()
     AssertStateAtMostConfiguredCapacity(network, state, "R durable state");
 }
 
+static void ScenarioS_StaticRecipeProcurementWithoutInputConsumerProfile()
+{
+    var network = CreateRecipeProcurementNetwork(edgeTime: 1d, wheatProduction: 10d, breadProduction: 10d);
+    var outcomes = new NetworkSimulationEngine().Simulate(network);
+    var wheatOutcome = outcomes.Single(outcome => outcome.TrafficType == "Wheat");
+    var wheatAllocation = wheatOutcome.Allocations.Single(allocation => allocation.ProducerNodeId == "Farm" && allocation.ConsumerNodeId == "Bakery");
+
+    AssertEqual(10d, wheatAllocation.Quantity, "S static recipe wheat allocation");
+    AssertEqual(10d, wheatOutcome.TotalConsumption, "S static implicit wheat demand");
+}
+
+static void ScenarioT_TemporalRecipeProcurementWithoutInputConsumerProfile()
+{
+    var network = CreateRecipeProcurementNetwork(edgeTime: 1d, wheatProduction: 10d, breadProduction: 10d);
+    var engine = new TemporalNetworkSimulationEngine();
+    var state = engine.Initialize(network);
+
+    var period1 = engine.Advance(network, state);
+    var period2 = engine.Advance(network, state);
+
+    AssertEqual(10d, period1.Allocations.Where(allocation => allocation.TrafficType == "Wheat").Sum(allocation => allocation.Quantity), "T temporal wheat procurement");
+    AssertEqual(10d, GetAvailableSupply(state, "Bakery", "Bread"), "T temporal bread output after input arrives");
+    AssertEqual(0d, GetAvailableSupply(state, "Bakery", "Wheat"), "T temporal wheat consumed by recipe");
+    AssertEqual(0d, period2.Allocations.Where(allocation => allocation.TrafficType == "Wheat").Sum(allocation => allocation.Quantity), "T temporal no duplicate wheat procurement");
+}
+
+static void ScenarioU_TemporalRecipeProcurementUsesLocalStockFirst()
+{
+    var network = CreateRecipeProcurementNetwork(edgeTime: 1d, wheatProduction: 10d, breadProduction: 10d);
+    var engine = new TemporalNetworkSimulationEngine();
+    var state = engine.Initialize(network);
+    state.GetOrCreateNodeTrafficState("Bakery", "Wheat").AvailableSupply = 4d;
+
+    var period1 = engine.Advance(network, state);
+
+    AssertEqual(6d, period1.Allocations.Where(allocation => allocation.TrafficType == "Wheat").Sum(allocation => allocation.Quantity), "U temporal unmet wheat procurement");
+    AssertEqual(4d, GetAvailableSupply(state, "Bakery", "Bread"), "U temporal local-stock bread output");
+    AssertEqual(6d, GetAvailableSupply(state, "Bakery", "Wheat"), "U temporal routed wheat retained for later production");
+}
+
 static NetworkModel CreateNetwork(double edgeTime, bool bidirectional, double production = 100d, double consumption = 100d)
 {
     return new NetworkModel
@@ -461,6 +504,49 @@ static NetworkModel CreateFourNodeNetwork(double abTime, double bcTime, double c
             new EdgeModel { Id = "AB", FromNodeId = "A", ToNodeId = "B", Time = abTime, Cost = 1d, Capacity = 100d, IsBidirectional = false },
             new EdgeModel { Id = "BC", FromNodeId = "B", ToNodeId = "C", Time = bcTime, Cost = 1d, Capacity = 200d, IsBidirectional = false },
             new EdgeModel { Id = "CD", FromNodeId = "C", ToNodeId = "D", Time = cdTime, Cost = 1d, Capacity = 200d, IsBidirectional = false }
+        ]
+    };
+}
+
+static NetworkModel CreateRecipeProcurementNetwork(double edgeTime, double wheatProduction, double breadProduction)
+{
+    return new NetworkModel
+    {
+        Name = "Recipe procurement",
+        TrafficTypes =
+        [
+            new TrafficTypeDefinition { Name = "Bread", RoutingPreference = RoutingPreference.TotalCost },
+            new TrafficTypeDefinition { Name = "Wheat", RoutingPreference = RoutingPreference.TotalCost }
+        ],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "Farm",
+                Name = "Farm",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Wheat", Production = wheatProduction }]
+            },
+            new NodeModel
+            {
+                Id = "Bakery",
+                Name = "Bakery",
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile
+                    {
+                        TrafficType = "Bread",
+                        Production = breadProduction,
+                        InputRequirements =
+                        [
+                            new ProductionInputRequirement { TrafficType = "Wheat", QuantityPerOutputUnit = 1d }
+                        ]
+                    }
+                ]
+            }
+        ],
+        Edges =
+        [
+            new EdgeModel { Id = "FarmBakery", FromNodeId = "Farm", ToNodeId = "Bakery", Time = edgeTime, Cost = 1d, Capacity = 100d, IsBidirectional = false }
         ]
     };
 }

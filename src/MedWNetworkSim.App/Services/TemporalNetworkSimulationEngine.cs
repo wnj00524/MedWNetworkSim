@@ -185,6 +185,11 @@ public sealed class TemporalNetworkSimulationEngine
 
                 if (profile.Production > Epsilon && IsProductionActive(profile, period) && !profile.IsStore)
                 {
+                    AddImplicitRecipeDemand(
+                        node.Id,
+                        profile,
+                        nodeStates,
+                        profilesByNodeAndTraffic.GetValueOrDefault(node.Id) ?? new Dictionary<string, NodeTrafficProfile>(Comparer));
                     state.AvailableSupply += CalculateAndConsumeProductionInputs(
                         node.Id,
                         profile,
@@ -336,21 +341,17 @@ public sealed class TemporalNetworkSimulationEngine
         var committedDemand = new Dictionary<string, double>(Comparer);
         var storeSupplyNodes = new HashSet<string>(Comparer);
         var storeDemandNodes = new HashSet<string>(Comparer);
+        var recipeInputDemandNodes = new HashSet<string>(Comparer);
 
         foreach (var node in network.Nodes)
         {
             var profile = profilesByNodeId[node.Id];
-            if (profile is null)
-            {
-                continue;
-            }
-
             var key = new TemporalNodeTrafficKey(node.Id, definition.Name);
             nodeStates.TryGetValue(key, out var nodeState);
             nodeState ??= new TemporalNodeTrafficState();
 
             var availableSupply = nodeState.AvailableSupply;
-            if (profile.IsStore &&
+            if (profile?.IsStore == true &&
                 profile.Production > Epsilon &&
                 IsProductionActive(profile, effectivePeriod))
             {
@@ -365,7 +366,7 @@ public sealed class TemporalNetworkSimulationEngine
             }
 
             var availableDemand = 0d;
-            if (profile.IsStore &&
+            if (profile?.IsStore == true &&
                 profile.Consumption > Epsilon &&
                 IsConsumptionActive(profile, effectivePeriod))
             {
@@ -387,6 +388,10 @@ public sealed class TemporalNetworkSimulationEngine
             {
                 demand[node.Id] = availableDemand;
                 committedDemand[node.Id] = 0d;
+                if (IsRecipeInputTraffic(node, definition.Name))
+                {
+                    recipeInputDemandNodes.Add(node.Id);
+                }
             }
         }
 
@@ -402,6 +407,7 @@ public sealed class TemporalNetworkSimulationEngine
             committedDemand,
             storeSupplyNodes,
             storeDemandNodes,
+            recipeInputDemandNodes,
             []);
     }
 
@@ -411,7 +417,9 @@ public sealed class TemporalNetworkSimulationEngine
     {
         foreach (var nodeId in context.Supply.Keys.Intersect(context.Demand.Keys, Comparer).ToList())
         {
-            if (context.StoreSupplyNodes.Contains(nodeId) || context.StoreDemandNodes.Contains(nodeId))
+            if (context.StoreSupplyNodes.Contains(nodeId) ||
+                context.StoreDemandNodes.Contains(nodeId) ||
+                context.RecipeInputDemandNodes.Contains(nodeId))
             {
                 continue;
             }
@@ -457,7 +465,13 @@ public sealed class TemporalNetworkSimulationEngine
                 continue;
             }
 
-            var state = nodeStates[new TemporalNodeTrafficKey(pair.Key, context.TrafficType)];
+            var key = new TemporalNodeTrafficKey(pair.Key, context.TrafficType);
+            if (!nodeStates.TryGetValue(key, out var state))
+            {
+                state = new TemporalNodeTrafficState();
+                nodeStates[key] = state;
+            }
+
             if (context.StoreDemandNodes.Contains(pair.Key))
             {
                 state.ReservedStoreReceipts += pair.Value;
@@ -489,7 +503,21 @@ public sealed class TemporalNetworkSimulationEngine
         {
             nodeState.StoreInventory += movement.Quantity;
             nodeState.ReservedStoreReceipts = Math.Max(0d, nodeState.ReservedStoreReceipts - movement.Quantity);
+            return;
         }
+
+        if (IsRecipeInputTraffic(nodeLookup[finalNodeId], movement.TrafficType))
+        {
+            nodeState.AvailableSupply += movement.Quantity;
+        }
+    }
+
+    private static bool IsRecipeInputTraffic(NodeModel node, string trafficType)
+    {
+        return node.TrafficProfiles
+            .Where(profile => profile.Production > Epsilon)
+            .SelectMany(profile => profile.InputRequirements)
+            .Any(requirement => Comparer.Equals(requirement.TrafficType, trafficType));
     }
 
     private static double CalculateAndConsumeProductionInputs(
@@ -526,6 +554,38 @@ public sealed class TemporalNetworkSimulationEngine
         }
 
         return outputQuantity;
+    }
+
+    private static void AddImplicitRecipeDemand(
+        string nodeId,
+        NodeTrafficProfile outputProfile,
+        IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
+        IReadOnlyDictionary<string, NodeTrafficProfile> profilesByTrafficType)
+    {
+        if (outputProfile.InputRequirements.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var requirement in outputProfile.InputRequirements)
+        {
+            var requiredInput = outputProfile.Production * requirement.QuantityPerOutputUnit;
+            var availableInput = GetLocalInputQuantity(nodeId, requirement.TrafficType, nodeStates, profilesByTrafficType);
+            var unmetInput = Math.Max(0d, requiredInput - availableInput);
+            if (unmetInput <= Epsilon)
+            {
+                continue;
+            }
+
+            var key = new TemporalNodeTrafficKey(nodeId, requirement.TrafficType);
+            if (!nodeStates.TryGetValue(key, out var inputState))
+            {
+                inputState = new TemporalNodeTrafficState();
+                nodeStates[key] = inputState;
+            }
+
+            inputState.DemandBacklog += unmetInput;
+        }
     }
 
     private static double GetLocalInputQuantity(
@@ -1355,6 +1415,10 @@ public sealed class TemporalNetworkSimulationEngine
         var undeclaredTrafficNames = network.Nodes
             .SelectMany(node => node.TrafficProfiles)
             .Select(profile => profile.TrafficType)
+            .Concat(network.Nodes
+                .SelectMany(node => node.TrafficProfiles)
+                .SelectMany(profile => profile.InputRequirements)
+                .Select(requirement => requirement.TrafficType))
             .Where(name => !string.IsNullOrWhiteSpace(name) && !seen.Contains(name))
             .Distinct(Comparer)
             .OrderBy(name => name, Comparer);
@@ -1549,5 +1613,6 @@ public sealed class TemporalNetworkSimulationEngine
         IDictionary<string, double> CommittedDemand,
         ISet<string> StoreSupplyNodes,
         ISet<string> StoreDemandNodes,
+        ISet<string> RecipeInputDemandNodes,
         List<RouteAllocation> Allocations);
 }

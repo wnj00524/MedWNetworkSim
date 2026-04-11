@@ -180,7 +180,8 @@ public sealed class NetworkFileService
             timelineLoopLength = null;
         }
 
-        var trafficDefinitions = NormalizeTrafficDefinitions(model.TrafficTypes, normalizedNodes);
+        var defaultAllocationMode = model.DefaultAllocationMode;
+        var trafficDefinitions = NormalizeTrafficDefinitions(model.TrafficTypes, normalizedNodes, defaultAllocationMode);
         ApplyAutomaticLayout(normalizedNodes, normalizedEdges, forceLayoutAllNodes);
 
         return new NetworkModel
@@ -188,6 +189,7 @@ public sealed class NetworkFileService
             Name = string.IsNullOrWhiteSpace(model.Name) ? "Untitled Network" : model.Name.Trim(),
             Description = model.Description?.Trim() ?? string.Empty,
             TimelineLoopLength = timelineLoopLength,
+            DefaultAllocationMode = defaultAllocationMode,
             Nodes = normalizedNodes,
             Edges = normalizedEdges,
             TrafficTypes = trafficDefinitions
@@ -420,7 +422,8 @@ public sealed class NetworkFileService
 
     private static List<TrafficTypeDefinition> NormalizeTrafficDefinitions(
         IEnumerable<TrafficTypeDefinition>? definitions,
-        IEnumerable<NodeModel> nodes)
+        IEnumerable<NodeModel> nodes,
+        AllocationMode defaultAllocationMode)
     {
         var result = new Dictionary<string, TrafficTypeDefinition>(Comparer);
 
@@ -462,7 +465,8 @@ public sealed class NetworkFileService
                 result[trafficName] = new TrafficTypeDefinition
                 {
                     Name = trafficName,
-                    RoutingPreference = RoutingPreference.TotalCost
+                    RoutingPreference = RoutingPreference.TotalCost,
+                    AllocationMode = defaultAllocationMode
                 };
             }
         }

@@ -55,6 +55,16 @@ public partial class MainWindow : Window
         window.ShowDialog();
     }
 
+    private void NetworkProperties_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new NetworkPropertiesWindow(ViewModel)
+        {
+            Owner = this
+        };
+
+        window.ShowDialog();
+    }
+
     private void Reports_Click(object sender, RoutedEventArgs e)
     {
         var window = new ReportExportWindow(ViewModel)

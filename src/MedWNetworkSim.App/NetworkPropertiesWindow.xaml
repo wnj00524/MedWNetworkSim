@@ -1,0 +1,188 @@
+<Window x:Class="MedWNetworkSim.App.NetworkPropertiesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Network Properties"
+        Width="740"
+        Height="620"
+        MinWidth="680"
+        MinHeight="560"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="12" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Padding="16"
+                Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+            <StackPanel>
+                <TextBlock FontSize="18"
+                           FontWeight="SemiBold"
+                           Text="Network Properties" />
+                <TextBlock Margin="0,8,0,0"
+                           FontSize="12"
+                           Foreground="{DynamicResource MutedForegroundBrush}"
+                           Text="Name the network, explain its purpose, and choose how new traffic types should allocate flow by default."
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="2"
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <Border Padding="16"
+                        Background="{DynamicResource CardBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="12" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="8" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="8" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Text="Network Identity" />
+
+                        <TextBlock Grid.Row="2"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Network name" />
+                        <TextBox Grid.Row="4"
+                                 MinWidth="420"
+                                 Text="{Binding NetworkName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Grid.Row="6"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="This name appears in the window title, reports, and suggested file names."
+                                   TextWrapping="Wrap" />
+                    </Grid>
+                </Border>
+
+                <Border Margin="0,12,0,0"
+                        Padding="16"
+                        Background="{DynamicResource CardBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="12" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="8" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Text="Description" />
+                        <TextBlock Grid.Row="2"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Write a short note about what this network represents. Reports and saved JSON keep this text with the network."
+                                   TextWrapping="Wrap" />
+                        <TextBox Grid.Row="4"
+                                 MinHeight="140"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 Text="{Binding NetworkDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </Grid>
+                </Border>
+
+                <Border Margin="0,12,0,0"
+                        Padding="16"
+                        Background="{DynamicResource CardBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="12" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="8" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="12" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Text="Default Allocation For New Traffic" />
+                        <TextBlock Grid.Row="2"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Choose the starting allocation mode for traffic types you add later. Existing traffic keeps its current setting unless you apply the default below."
+                                   TextWrapping="Wrap" />
+                        <ComboBox Grid.Row="4"
+                                  Width="280"
+                                  HorizontalAlignment="Left"
+                                  DisplayMemberPath="Label"
+                                  SelectedValuePath="Value"
+                                  ItemsSource="{Binding AllocationModeOptions}"
+                                  SelectedValue="{Binding DefaultAllocationMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Grid.Row="6"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="{Binding DefaultAllocationModeHelpText}"
+                                   TextWrapping="Wrap" />
+                    </Grid>
+                </Border>
+
+                <Border Margin="0,12,0,0"
+                        Padding="16"
+                        Background="{DynamicResource InfoPanelBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <DockPanel LastChildFill="True">
+                        <Button DockPanel.Dock="Right"
+                                Margin="14,0,0,0"
+                                Content="Apply Default To All Traffic"
+                                Click="ApplyDefaultAllocationModeToAll_Click" />
+                        <StackPanel>
+                            <TextBlock FontSize="15"
+                                       FontWeight="SemiBold"
+                                       Text="Update Existing Traffic" />
+                            <TextBlock Margin="0,8,0,0"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
+                                       Text="Use this when you want every current traffic type to use the selected default allocation mode. This can change future simulation results, so run the simulation again afterwards."
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <DockPanel Grid.Row="4">
+            <TextBlock VerticalAlignment="Center"
+                       FontSize="12"
+                       Foreground="{DynamicResource MutedForegroundBrush}"
+                       Text="{Binding StatusMessage}"
+                       TextWrapping="Wrap" />
+            <Button DockPanel.Dock="Right"
+                    Margin="12,0,0,0"
+                    Content="Close"
+                    Click="Close_Click" />
+        </DockPanel>
+    </Grid>
+</Window>

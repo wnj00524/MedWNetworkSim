@@ -6,10 +6,10 @@
         xmlns:vm="clr-namespace:MedWNetworkSim.App.ViewModels"
         mc:Ignorable="d"
         Title="Edge Editor"
-        Width="980"
-        Height="700"
-        MinWidth="860"
-        MinHeight="620"
+        Width="1100"
+        Height="760"
+        MinWidth="940"
+        MinHeight="680"
         WindowStartupLocation="CenterOwner">
     <Grid Margin="18">
         <Grid.RowDefinitions>
@@ -37,7 +37,10 @@
             </StackPanel>
         </Border>
 
-        <Grid Grid.Row="2">
+        <ScrollViewer Grid.Row="2"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+        <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="1.4*" />
                 <ColumnDefinition Width="14" />
@@ -275,6 +278,7 @@
                 </Grid>
             </Border>
         </Grid>
+        </ScrollViewer>
 
         <DockPanel Grid.Row="4">
             <TextBlock VerticalAlignment="Center"

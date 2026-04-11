@@ -792,6 +792,7 @@
                                     <DataGridTextColumn Binding="{Binding Period}" Header="Period" Width="65" />
                                     <DataGridTextColumn Binding="{Binding TrafficType}" Header="Traffic" Width="120" />
                                     <DataGridTextColumn Binding="{Binding RoutingPreferenceLabel}" Header="Preference" Width="95" />
+                                    <DataGridTextColumn Binding="{Binding AllocationModeLabel}" Header="Allocation" Width="165" />
                                     <DataGridTextColumn Binding="{Binding SourceLabel}" Header="Source" Width="85" />
                                     <DataGridTextColumn Binding="{Binding ProducerName}" Header="Producer" Width="135" />
                                     <DataGridTextColumn Binding="{Binding ConsumerName}" Header="Consumer" Width="135" />
@@ -953,7 +954,7 @@
                                         <TextBlock Grid.Row="4"
                                                    FontSize="11"
                                                    Foreground="{DynamicResource MutedForegroundBrush}"
-                                                   Text="Traffic type definitions control routing preference and shared capacity bidding defaults for both edges and node transhipment." />
+                                                   Text="Traffic type definitions control route choice, branch splitting behavior, and shared capacity bidding defaults for both edges and node transhipment." />
 
                                         <DataGrid Grid.Row="6"
                                                   MinHeight="150"
@@ -979,6 +980,23 @@
                                                                       MinWidth="96"
                                                                       ItemsSource="{Binding DataContext.RoutingPreferences, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                       SelectedItem="{Binding RoutingPreference, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellEditingTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTemplateColumn Header="Allocation" Width="180">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate DataType="{x:Type vm:TrafficTypeDefinitionEditorViewModel}">
+                                                            <TextBlock Text="{Binding AllocationModeLabel}" VerticalAlignment="Center" />
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                    <DataGridTemplateColumn.CellEditingTemplate>
+                                                        <DataTemplate DataType="{x:Type vm:TrafficTypeDefinitionEditorViewModel}">
+                                                            <ComboBox Padding="2"
+                                                                      MinWidth="160"
+                                                                      DisplayMemberPath="Label"
+                                                                      SelectedValuePath="Value"
+                                                                      ItemsSource="{Binding DataContext.AllocationModeOptions, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                      SelectedValue="{Binding AllocationMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                                         </DataTemplate>
                                                     </DataGridTemplateColumn.CellEditingTemplate>
                                                 </DataGridTemplateColumn>

@@ -444,6 +444,7 @@ public sealed class NetworkFileService
                 Name = name,
                 Description = definition.Description?.Trim() ?? string.Empty,
                 RoutingPreference = definition.RoutingPreference,
+                AllocationMode = definition.AllocationMode,
                 CapacityBidPerUnit = capacityBidPerUnit
             };
         }

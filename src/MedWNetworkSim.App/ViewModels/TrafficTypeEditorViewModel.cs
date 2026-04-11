@@ -18,6 +18,8 @@ public sealed class TrafficTypeEditorViewModel : ObservableObject, IDisposable
 
     public Array RoutingPreferences => mainWindowViewModel.RoutingPreferences;
 
+    public IReadOnlyList<AllocationModeOptionViewModel> AllocationModeOptions => mainWindowViewModel.AllocationModeOptions;
+
     public TrafficTypeDefinitionEditorViewModel? SelectedTrafficDefinition
     {
         get => mainWindowViewModel.SelectedTrafficDefinition;

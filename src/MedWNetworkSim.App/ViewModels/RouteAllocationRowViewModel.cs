@@ -11,12 +11,16 @@ public sealed class RouteAllocationRowViewModel(RouteAllocation allocation) : Ob
 
     public RoutingPreference RoutingPreference { get; } = allocation.RoutingPreference;
 
+    public AllocationMode AllocationMode { get; } = allocation.AllocationMode;
+
     public string RoutingPreferenceLabel => RoutingPreference switch
     {
         RoutingPreference.Speed => "Speed",
         RoutingPreference.Cost => "Cost",
         _ => "Total cost"
     };
+
+    public string AllocationModeLabel => TrafficTypeDefinitionEditorViewModel.GetAllocationModeLabel(AllocationMode);
 
     public string ProducerName { get; } = allocation.ProducerName;
 

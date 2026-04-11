@@ -7,6 +7,7 @@ public sealed class TrafficTypeDefinitionEditorViewModel : ObservableObject
     private string name;
     private string description;
     private RoutingPreference routingPreference;
+    private AllocationMode allocationMode;
     private double? capacityBidPerUnit;
 
     public TrafficTypeDefinitionEditorViewModel(TrafficTypeDefinition definition)
@@ -14,6 +15,7 @@ public sealed class TrafficTypeDefinitionEditorViewModel : ObservableObject
         name = definition.Name;
         description = definition.Description;
         routingPreference = definition.RoutingPreference;
+        allocationMode = definition.AllocationMode;
         capacityBidPerUnit = definition.CapacityBidPerUnit;
     }
 
@@ -46,6 +48,23 @@ public sealed class TrafficTypeDefinitionEditorViewModel : ObservableObject
         set => SetProperty(ref routingPreference, value);
     }
 
+    public AllocationMode AllocationMode
+    {
+        get => allocationMode;
+        set
+        {
+            if (SetProperty(ref allocationMode, value))
+            {
+                OnPropertyChanged(nameof(AllocationModeLabel));
+                OnPropertyChanged(nameof(AllocationModeHelpText));
+            }
+        }
+    }
+
+    public string AllocationModeLabel => GetAllocationModeLabel(AllocationMode);
+
+    public string AllocationModeHelpText => GetAllocationModeHelpText(AllocationMode);
+
     public double? CapacityBidPerUnit
     {
         get => capacityBidPerUnit;
@@ -59,7 +78,26 @@ public sealed class TrafficTypeDefinitionEditorViewModel : ObservableObject
             Name = Name,
             Description = Description,
             RoutingPreference = RoutingPreference,
+            AllocationMode = AllocationMode,
             CapacityBidPerUnit = CapacityBidPerUnit
+        };
+    }
+
+    public static string GetAllocationModeLabel(AllocationMode allocationMode)
+    {
+        return allocationMode switch
+        {
+            AllocationMode.ProportionalBranchDemand => "Split by downstream demand",
+            _ => "Greedy best route"
+        };
+    }
+
+    public static string GetAllocationModeHelpText(AllocationMode allocationMode)
+    {
+        return allocationMode switch
+        {
+            AllocationMode.ProportionalBranchDemand => "Split by downstream demand: divides flow across branches in proportion to the total reachable demand beyond each branch.",
+            _ => "Greedy best route: sends flow to the current best destination route first."
         };
     }
 }

@@ -30,7 +30,8 @@ public sealed class NetworkSimulationEngine
                     ?? new TrafficTypeDefinition
                     {
                         Name = trafficType,
-                        RoutingPreference = RoutingPreference.TotalCost
+                        RoutingPreference = RoutingPreference.TotalCost,
+                        AllocationMode = AllocationMode.GreedyBestRoute
                     };
 
                 return BuildContext(network, definition);
@@ -63,83 +64,20 @@ public sealed class NetworkSimulationEngine
             ApplyLocalAllocations(context);
         }
 
-        while (true)
+        AllocateGreedyBestRoutes(
+            contexts.Where(context => context.AllocationMode == AllocationMode.GreedyBestRoute).ToList(),
+            adjacency,
+            remainingCapacityByEdgeId,
+            remainingTranshipmentCapacityByNodeId);
+
+        foreach (var context in contexts.Where(context => context.AllocationMode == AllocationMode.ProportionalBranchDemand))
         {
-            // Capacity bidding is resolved globally: every traffic type competes for the next best route.
-            var nextCandidate = contexts
-                .SelectMany(context => BuildCandidateRoutes(context, adjacency, remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId))
-                .OrderByDescending(candidate => candidate.CapacityBidPerUnit)
-                .ThenBy(candidate => candidate.TotalScore)
-                .ThenBy(candidate => candidate.TotalTime)
-                .ThenBy(candidate => candidate.TransitCostPerUnit)
-                .ThenBy(candidate => candidate.ProducerNodeId, Comparer)
-                .ThenBy(candidate => candidate.ConsumerNodeId, Comparer)
-                .FirstOrDefault();
-
-            if (nextCandidate is null)
-            {
-                break;
-            }
-
-            var context = nextCandidate.Context;
-            var remainingSupply = context.Supply.TryGetValue(nextCandidate.ProducerNodeId, out var supplyValue) ? supplyValue : 0d;
-            var remainingDemand = context.Demand.TryGetValue(nextCandidate.ConsumerNodeId, out var demandValue) ? demandValue : 0d;
-            var quantity = Math.Min(remainingSupply, remainingDemand);
-            var routeCapacity = GetRouteRemainingCapacity(
-                nextCandidate.PathEdgeIds,
-                nextCandidate.PathTranshipmentNodeIds,
+            context.Notes.Add("Split by downstream demand is active: routed supply is divided across reachable branches in proportion to the demand beyond each branch.");
+            AllocateProportionallyByBranchDemand(
+                context,
+                adjacency,
                 remainingCapacityByEdgeId,
                 remainingTranshipmentCapacityByNodeId);
-
-            if (!double.IsPositiveInfinity(routeCapacity))
-            {
-                quantity = Math.Min(quantity, routeCapacity);
-            }
-
-            if (quantity <= Epsilon)
-            {
-                break;
-            }
-
-            var bidCostPerUnit = CalculateBidCostPerUnit(
-                nextCandidate.PathEdgeIds,
-                nextCandidate.PathTranshipmentNodeIds,
-                remainingCapacityByEdgeId,
-                remainingTranshipmentCapacityByNodeId,
-                nextCandidate.CapacityBidPerUnit,
-                quantity,
-                routeCapacity);
-            var deliveredCostPerUnit = nextCandidate.TransitCostPerUnit + bidCostPerUnit;
-
-            context.Allocations.Add(new RouteAllocation
-            {
-                TrafficType = context.TrafficType,
-                RoutingPreference = context.RoutingPreference,
-                ProducerNodeId = nextCandidate.ProducerNodeId,
-                ProducerName = context.NodesById[nextCandidate.ProducerNodeId].Name,
-                ConsumerNodeId = nextCandidate.ConsumerNodeId,
-                ConsumerName = context.NodesById[nextCandidate.ConsumerNodeId].Name,
-                Quantity = quantity,
-                IsLocalSupply = false,
-                TotalTime = nextCandidate.TotalTime,
-                TotalCost = nextCandidate.TransitCostPerUnit,
-                BidCostPerUnit = bidCostPerUnit,
-                DeliveredCostPerUnit = deliveredCostPerUnit,
-                TotalMovementCost = deliveredCostPerUnit * quantity,
-                TotalScore = nextCandidate.TotalScore,
-                PathNodeNames = nextCandidate.PathNodeIds.Select(nodeId => context.NodesById[nodeId].Name).ToList(),
-                PathNodeIds = nextCandidate.PathNodeIds.ToList(),
-                PathEdgeIds = nextCandidate.PathEdgeIds.ToList()
-            });
-
-            context.Supply[nextCandidate.ProducerNodeId] -= quantity;
-            context.Demand[nextCandidate.ConsumerNodeId] -= quantity;
-            ReserveCapacity(
-                nextCandidate.PathEdgeIds,
-                nextCandidate.PathTranshipmentNodeIds,
-                remainingCapacityByEdgeId,
-                remainingTranshipmentCapacityByNodeId,
-                quantity);
         }
 
         foreach (var context in contexts)
@@ -179,6 +117,7 @@ public sealed class NetworkSimulationEngine
             {
                 TrafficType = context.TrafficType,
                 RoutingPreference = context.RoutingPreference,
+                AllocationMode = context.AllocationMode,
                 TotalProduction = context.TotalProduction,
                 TotalConsumption = context.TotalConsumption,
                 TotalDelivered = context.Allocations.Sum(allocation => allocation.Quantity),
@@ -257,6 +196,7 @@ public sealed class NetworkSimulationEngine
         return new TrafficContext(
             definition.Name,
             definition.RoutingPreference,
+            definition.AllocationMode,
             GetCapacityBidPerUnit(definition),
             nodesById,
             profilesByNodeId,
@@ -307,6 +247,7 @@ public sealed class NetworkSimulationEngine
             {
                 TrafficType = context.TrafficType,
                 RoutingPreference = context.RoutingPreference,
+                AllocationMode = context.AllocationMode,
                 ProducerNodeId = nodeId,
                 ProducerName = node.Name,
                 ConsumerNodeId = nodeId,
@@ -327,6 +268,390 @@ public sealed class NetworkSimulationEngine
             context.Supply[nodeId] -= quantity;
             context.Demand[nodeId] -= quantity;
         }
+    }
+
+    private static void AllocateGreedyBestRoutes(
+        IReadOnlyList<TrafficContext> contexts,
+        IReadOnlyDictionary<string, List<GraphArc>> adjacency,
+        IDictionary<string, double> remainingCapacityByEdgeId,
+        IDictionary<string, double> remainingTranshipmentCapacityByNodeId)
+    {
+        while (true)
+        {
+            // Capacity bidding is resolved globally: every greedy traffic type competes for the next best route.
+            var nextCandidate = contexts
+                .SelectMany(context => BuildCandidateRoutes(context, adjacency, remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId))
+                .OrderByDescending(candidate => candidate.CapacityBidPerUnit)
+                .ThenBy(candidate => candidate.TotalScore)
+                .ThenBy(candidate => candidate.TotalTime)
+                .ThenBy(candidate => candidate.TransitCostPerUnit)
+                .ThenBy(candidate => candidate.ProducerNodeId, Comparer)
+                .ThenBy(candidate => candidate.ConsumerNodeId, Comparer)
+                .FirstOrDefault();
+
+            if (nextCandidate is null)
+            {
+                break;
+            }
+
+            var context = nextCandidate.Context;
+            var remainingSupply = context.Supply.TryGetValue(nextCandidate.ProducerNodeId, out var supplyValue) ? supplyValue : 0d;
+            var remainingDemand = context.Demand.TryGetValue(nextCandidate.ConsumerNodeId, out var demandValue) ? demandValue : 0d;
+            var quantity = Math.Min(remainingSupply, remainingDemand);
+            var routeCapacity = GetRouteRemainingCapacity(
+                nextCandidate.PathEdgeIds,
+                nextCandidate.PathTranshipmentNodeIds,
+                remainingCapacityByEdgeId,
+                remainingTranshipmentCapacityByNodeId);
+
+            if (!double.IsPositiveInfinity(routeCapacity))
+            {
+                quantity = Math.Min(quantity, routeCapacity);
+            }
+
+            if (quantity <= Epsilon)
+            {
+                break;
+            }
+
+            AddRouteAllocation(
+                context,
+                nextCandidate.ProducerNodeId,
+                nextCandidate.ConsumerNodeId,
+                quantity,
+                isLocalSupply: false,
+                nextCandidate.PathNodeIds,
+                nextCandidate.PathEdgeIds,
+                nextCandidate.PathTranshipmentNodeIds,
+                nextCandidate.TotalTime,
+                nextCandidate.TransitCostPerUnit,
+                nextCandidate.TotalScore,
+                nextCandidate.CapacityBidPerUnit,
+                remainingCapacityByEdgeId,
+                remainingTranshipmentCapacityByNodeId);
+
+            context.Supply[nextCandidate.ProducerNodeId] -= quantity;
+            context.Demand[nextCandidate.ConsumerNodeId] -= quantity;
+        }
+    }
+
+    private static void AllocateProportionallyByBranchDemand(
+        TrafficContext context,
+        IReadOnlyDictionary<string, List<GraphArc>> adjacency,
+        IDictionary<string, double> remainingCapacityByEdgeId,
+        IDictionary<string, double> remainingTranshipmentCapacityByNodeId)
+    {
+        foreach (var producerNodeId in context.Supply.Keys.OrderBy(nodeId => nodeId, Comparer).ToList())
+        {
+            while (context.Supply.TryGetValue(producerNodeId, out var supply) && supply > Epsilon)
+            {
+                var delivered = AllocateProportionallyFromNode(
+                    context,
+                    producerNodeId,
+                    producerNodeId,
+                    supply,
+                    [producerNodeId],
+                    [],
+                    [],
+                    0d,
+                    0d,
+                    0d,
+                    adjacency,
+                    remainingCapacityByEdgeId,
+                    remainingTranshipmentCapacityByNodeId);
+
+                if (delivered <= Epsilon)
+                {
+                    break;
+                }
+
+                context.Supply[producerNodeId] -= delivered;
+            }
+        }
+    }
+
+    private static double AllocateProportionallyFromNode(
+        TrafficContext context,
+        string producerNodeId,
+        string currentNodeId,
+        double availableSupply,
+        IReadOnlyList<string> pathNodeIds,
+        IReadOnlyList<string> pathEdgeIds,
+        IReadOnlyList<string> pathTranshipmentNodeIds,
+        double totalTime,
+        double transitCostPerUnit,
+        double totalScore,
+        IReadOnlyDictionary<string, List<GraphArc>> adjacency,
+        IDictionary<string, double> remainingCapacityByEdgeId,
+        IDictionary<string, double> remainingTranshipmentCapacityByNodeId)
+    {
+        var delivered = 0d;
+        var supplyAtNode = availableSupply;
+
+        if (context.Demand.TryGetValue(currentNodeId, out var localDemand) && localDemand > Epsilon)
+        {
+            var localQuantity = Math.Min(supplyAtNode, localDemand);
+            var routeCapacity = GetRouteRemainingCapacity(pathEdgeIds, pathTranshipmentNodeIds, remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId);
+            if (!double.IsPositiveInfinity(routeCapacity))
+            {
+                localQuantity = Math.Min(localQuantity, routeCapacity);
+            }
+
+            if (localQuantity > Epsilon)
+            {
+                AddRouteAllocation(
+                    context,
+                    producerNodeId,
+                    currentNodeId,
+                    localQuantity,
+                    isLocalSupply: pathEdgeIds.Count == 0,
+                    pathNodeIds,
+                    pathEdgeIds,
+                    pathTranshipmentNodeIds,
+                    totalTime,
+                    transitCostPerUnit,
+                    totalScore,
+                    GetCapacityBidPerUnit(context, currentNodeId),
+                    remainingCapacityByEdgeId,
+                    remainingTranshipmentCapacityByNodeId);
+
+                context.Demand[currentNodeId] -= localQuantity;
+                supplyAtNode -= localQuantity;
+                delivered += localQuantity;
+            }
+        }
+
+        while (supplyAtNode > Epsilon)
+        {
+            var branches = BuildBranchDemandMap(
+                context,
+                producerNodeId,
+                currentNodeId,
+                adjacency,
+                remainingCapacityByEdgeId,
+                remainingTranshipmentCapacityByNodeId);
+            var branchShares = AllocateAcrossBranchRoutes(supplyAtNode, branches);
+            if (branchShares.Count == 0)
+            {
+                break;
+            }
+
+            var passDelivered = 0d;
+            foreach (var share in branchShares)
+            {
+                var branch = share.Branch;
+                var nextPathNodeIds = pathNodeIds.Concat([branch.ToNodeId]).ToList();
+                var nextPathEdgeIds = pathEdgeIds.Concat([branch.EdgeId]).ToList();
+                var nextPathTranshipmentNodeIds = pathTranshipmentNodeIds.ToList();
+                if (!Comparer.Equals(currentNodeId, producerNodeId))
+                {
+                    nextPathTranshipmentNodeIds.Add(currentNodeId);
+                }
+
+                var branchDelivered = AllocateProportionallyFromNode(
+                    context,
+                    producerNodeId,
+                    branch.ToNodeId,
+                    share.Quantity,
+                    nextPathNodeIds,
+                    nextPathEdgeIds,
+                    nextPathTranshipmentNodeIds,
+                    totalTime + branch.Time,
+                    transitCostPerUnit + branch.Cost,
+                    totalScore + Score(branch.Time, branch.Cost, context.RoutingPreference),
+                    adjacency,
+                    remainingCapacityByEdgeId,
+                    remainingTranshipmentCapacityByNodeId);
+
+                passDelivered += branchDelivered;
+            }
+
+            if (passDelivered <= Epsilon)
+            {
+                break;
+            }
+
+            supplyAtNode -= passDelivered;
+            delivered += passDelivered;
+        }
+
+        return delivered;
+    }
+
+    private static List<BranchDemand> BuildBranchDemandMap(
+        TrafficContext context,
+        string producerNodeId,
+        string currentNodeId,
+        IReadOnlyDictionary<string, List<GraphArc>> adjacency,
+        IDictionary<string, double> remainingCapacityByEdgeId,
+        IDictionary<string, double> remainingTranshipmentCapacityByNodeId)
+    {
+        var branchesByKey = new Dictionary<string, BranchDemand>(Comparer);
+
+        foreach (var consumerNodeId in context.Demand
+                     .Where(pair => pair.Value > Epsilon && !Comparer.Equals(pair.Key, currentNodeId))
+                     .Select(pair => pair.Key)
+                     .OrderBy(nodeId => context.NodesById[nodeId].Name, Comparer)
+                     .ThenBy(nodeId => nodeId, Comparer))
+        {
+            var route = FindBestRoute(
+                context,
+                currentNodeId,
+                consumerNodeId,
+                adjacency,
+                remainingCapacityByEdgeId,
+                remainingTranshipmentCapacityByNodeId);
+            if (route is null || route.PathEdgeIds.Count == 0 || route.PathNodeIds.Count < 2)
+            {
+                continue;
+            }
+
+            var edgeId = route.PathEdgeIds[0];
+            if (!remainingCapacityByEdgeId.TryGetValue(edgeId, out var edgeCapacity) || edgeCapacity <= Epsilon)
+            {
+                continue;
+            }
+
+            var firstHopCapacity = edgeCapacity;
+            if (!Comparer.Equals(currentNodeId, producerNodeId) &&
+                remainingTranshipmentCapacityByNodeId.TryGetValue(currentNodeId, out var transhipmentCapacity))
+            {
+                firstHopCapacity = Math.Min(firstHopCapacity, transhipmentCapacity);
+            }
+
+            if (firstHopCapacity <= Epsilon)
+            {
+                continue;
+            }
+
+            var toNodeId = route.PathNodeIds[1];
+            var key = $"{edgeId}\u001f{toNodeId}";
+            if (!branchesByKey.TryGetValue(key, out var branch))
+            {
+                var arc = adjacency.GetValueOrDefault(currentNodeId)?
+                    .FirstOrDefault(item => Comparer.Equals(item.EdgeId, edgeId) && Comparer.Equals(item.ToNodeId, toNodeId));
+                if (arc is null)
+                {
+                    continue;
+                }
+
+                branch = new BranchDemand(edgeId, toNodeId, arc.Time, arc.Cost, firstHopCapacity);
+                branchesByKey[key] = branch;
+            }
+
+            branch.DownstreamDemand += context.Demand[consumerNodeId];
+            branch.FirstHopCapacity = Math.Min(branch.FirstHopCapacity, firstHopCapacity);
+        }
+
+        return branchesByKey.Values
+            .Where(branch => branch.DownstreamDemand > Epsilon && branch.FirstHopCapacity > Epsilon)
+            .OrderBy(branch => context.NodesById[branch.ToNodeId].Name, Comparer)
+            .ThenBy(branch => branch.ToNodeId, Comparer)
+            .ThenBy(branch => branch.EdgeId, Comparer)
+            .ToList();
+    }
+
+    private static List<BranchShare> AllocateAcrossBranchRoutes(double availableSupply, IReadOnlyList<BranchDemand> branches)
+    {
+        var states = branches
+            .Select(branch => new BranchShareState(branch, branch.DownstreamDemand, Math.Min(branch.DownstreamDemand, branch.FirstHopCapacity)))
+            .Where(state => state.RemainingCapacity > Epsilon)
+            .ToList();
+        var remainingSupply = availableSupply;
+
+        while (remainingSupply > Epsilon)
+        {
+            var totalDemand = states.Sum(state => state.RemainingDemand);
+            if (totalDemand <= Epsilon)
+            {
+                break;
+            }
+
+            var progress = 0d;
+            foreach (var state in states.Where(state => state.RemainingDemand > Epsilon).OrderBy(state => state.Branch.ToNodeId, Comparer).ThenBy(state => state.Branch.EdgeId, Comparer))
+            {
+                var targetShare = remainingSupply * state.RemainingDemand / totalDemand;
+                var quantity = Math.Min(targetShare, Math.Min(state.RemainingDemand, state.RemainingCapacity));
+                if (quantity <= Epsilon)
+                {
+                    continue;
+                }
+
+                state.Quantity += quantity;
+                state.RemainingDemand -= quantity;
+                state.RemainingCapacity -= quantity;
+                progress += quantity;
+            }
+
+            if (progress <= Epsilon)
+            {
+                break;
+            }
+
+            remainingSupply -= progress;
+        }
+
+        return states
+            .Where(state => state.Quantity > Epsilon)
+            .Select(state => new BranchShare(state.Branch, state.Quantity))
+            .ToList();
+    }
+
+    private static void AddRouteAllocation(
+        TrafficContext context,
+        string producerNodeId,
+        string consumerNodeId,
+        double quantity,
+        bool isLocalSupply,
+        IReadOnlyList<string> pathNodeIds,
+        IReadOnlyList<string> pathEdgeIds,
+        IReadOnlyList<string> pathTranshipmentNodeIds,
+        double totalTime,
+        double transitCostPerUnit,
+        double totalScore,
+        double capacityBidPerUnit,
+        IDictionary<string, double> remainingCapacityByEdgeId,
+        IDictionary<string, double> remainingTranshipmentCapacityByNodeId)
+    {
+        var routeCapacity = GetRouteRemainingCapacity(pathEdgeIds, pathTranshipmentNodeIds, remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId);
+        var bidCostPerUnit = CalculateBidCostPerUnit(
+            pathEdgeIds,
+            pathTranshipmentNodeIds,
+            remainingCapacityByEdgeId,
+            remainingTranshipmentCapacityByNodeId,
+            capacityBidPerUnit,
+            quantity,
+            routeCapacity);
+        var deliveredCostPerUnit = transitCostPerUnit + bidCostPerUnit;
+
+        context.Allocations.Add(new RouteAllocation
+        {
+            TrafficType = context.TrafficType,
+            RoutingPreference = context.RoutingPreference,
+            AllocationMode = context.AllocationMode,
+            ProducerNodeId = producerNodeId,
+            ProducerName = context.NodesById[producerNodeId].Name,
+            ConsumerNodeId = consumerNodeId,
+            ConsumerName = context.NodesById[consumerNodeId].Name,
+            Quantity = quantity,
+            IsLocalSupply = isLocalSupply,
+            TotalTime = totalTime,
+            TotalCost = transitCostPerUnit,
+            BidCostPerUnit = bidCostPerUnit,
+            DeliveredCostPerUnit = deliveredCostPerUnit,
+            TotalMovementCost = deliveredCostPerUnit * quantity,
+            TotalScore = totalScore,
+            PathNodeNames = pathNodeIds.Select(nodeId => context.NodesById[nodeId].Name).ToList(),
+            PathNodeIds = pathNodeIds.ToList(),
+            PathEdgeIds = pathEdgeIds.ToList()
+        });
+
+        ReserveCapacity(
+            pathEdgeIds,
+            pathTranshipmentNodeIds,
+            remainingCapacityByEdgeId,
+            remainingTranshipmentCapacityByNodeId,
+            quantity);
     }
 
     private static List<RouteCandidate> BuildCandidateRoutes(
@@ -700,6 +1025,7 @@ public sealed class NetworkSimulationEngine
     private sealed record TrafficContext(
         string TrafficType,
         RoutingPreference RoutingPreference,
+        AllocationMode AllocationMode,
         double CapacityBidPerUnit,
         IReadOnlyDictionary<string, NodeModel> NodesById,
         IReadOnlyDictionary<string, NodeTrafficProfile?> ProfilesByNodeId,
@@ -709,4 +1035,37 @@ public sealed class NetworkSimulationEngine
         double TotalConsumption,
         List<RouteAllocation> Allocations,
         List<string> Notes);
+
+    private sealed class BranchDemand(
+        string edgeId,
+        string toNodeId,
+        double time,
+        double cost,
+        double firstHopCapacity)
+    {
+        public string EdgeId { get; } = edgeId;
+
+        public string ToNodeId { get; } = toNodeId;
+
+        public double Time { get; } = time;
+
+        public double Cost { get; } = cost;
+
+        public double FirstHopCapacity { get; set; } = firstHopCapacity;
+
+        public double DownstreamDemand { get; set; }
+    }
+
+    private sealed record BranchShare(BranchDemand Branch, double Quantity);
+
+    private sealed class BranchShareState(BranchDemand branch, double remainingDemand, double remainingCapacity)
+    {
+        public BranchDemand Branch { get; } = branch;
+
+        public double RemainingDemand { get; set; } = remainingDemand;
+
+        public double RemainingCapacity { get; set; } = remainingCapacity;
+
+        public double Quantity { get; set; }
+    }
 }

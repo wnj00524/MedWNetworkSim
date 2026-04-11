@@ -21,6 +21,11 @@ public sealed class TrafficTypeDefinition
     public RoutingPreference RoutingPreference { get; set; } = RoutingPreference.TotalCost;
 
     /// <summary>
+    /// Gets or sets how supply is allocated across feasible routes for this traffic type.
+    /// </summary>
+    public AllocationMode AllocationMode { get; set; } = AllocationMode.GreedyBestRoute;
+
+    /// <summary>
     /// Gets or sets the optional per-unit bid used when competing for constrained edge or node transhipment capacity.
     /// </summary>
     public double? CapacityBidPerUnit { get; set; }

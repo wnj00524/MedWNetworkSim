@@ -19,6 +19,11 @@ public sealed class TrafficSimulationOutcome
     public RoutingPreference RoutingPreference { get; init; }
 
     /// <summary>
+    /// Gets the allocation strategy used for this traffic type.
+    /// </summary>
+    public AllocationMode AllocationMode { get; init; }
+
+    /// <summary>
     /// Gets the total available production for this traffic type.
     /// </summary>
     public double TotalProduction { get; init; }

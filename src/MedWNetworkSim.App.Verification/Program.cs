@@ -16,6 +16,10 @@ ScenarioK_NoPrecursorLegacyProduction();
 ScenarioL_CliGuiOverride();
 ScenarioM_LegacySingleWindowLoadCompatibility();
 ScenarioN_DotnetRunProjectArgumentDoesNotEnterCli();
+ScenarioO_WaitingOnBlockedNextEdge();
+ScenarioP_RetryAfterCapacityFrees();
+ScenarioQ_BlockedByTranshipmentCapacity();
+ScenarioR_NoOrphanedOrDoubleCountedWaitingOccupancy();
 
 Console.WriteLine("Temporal occupancy verification passed.");
 
@@ -257,6 +261,93 @@ static void ScenarioN_DotnetRunProjectArgumentDoesNotEnterCli()
     }
 }
 
+static void ScenarioO_WaitingOnBlockedNextEdge()
+{
+    var network = CreateThreeNodeNetwork(abTime: 1d, bcTime: 3d, bcCapacity: 100d);
+    var engine = new TemporalNetworkSimulationEngine();
+    var state = CreateBlockedTransitionState(network, blockingRemainingPeriods: 3);
+
+    var result = engine.Advance(network, state);
+
+    AssertEqual(0d, state.OccupiedEdgeCapacity.GetValueOrDefault("AB"), "O released completed edge");
+    AssertEqual(100d, state.OccupiedEdgeCapacity.GetValueOrDefault("BC"), "O blocked edge remains within capacity");
+    AssertEqual(1d, state.InFlightMovements.Count(movement => movement.IsWaitingBetweenEdges), "O waiting movement count");
+    AssertResultAtMostConfiguredCapacity(network, result, "O period snapshot");
+    AssertStateAtMostConfiguredCapacity(network, state, "O durable state");
+}
+
+static void ScenarioP_RetryAfterCapacityFrees()
+{
+    var network = CreateThreeNodeNetwork(abTime: 1d, bcTime: 2d, bcCapacity: 100d);
+    var engine = new TemporalNetworkSimulationEngine();
+    var state = CreateBlockedTransitionState(network, blockingRemainingPeriods: 1);
+
+    engine.Advance(network, state);
+    AssertEqual(1d, state.InFlightMovements.Count(movement => movement.IsWaitingBetweenEdges), "P waiting before retry");
+
+    engine.Advance(network, state);
+
+    AssertEqual(0d, state.InFlightMovements.Count(movement => movement.IsWaitingBetweenEdges), "P waiting after retry");
+    AssertEqual(100d, state.OccupiedEdgeCapacity.GetValueOrDefault("BC"), "P retried movement occupies next edge");
+    AssertStateAtMostConfiguredCapacity(network, state, "P durable state");
+}
+
+static void ScenarioQ_BlockedByTranshipmentCapacity()
+{
+    var network = CreateFourNodeNetwork(abTime: 1d, bcTime: 3d, cdTime: 3d, transhipmentCapacityAtC: 100d);
+    var engine = new TemporalNetworkSimulationEngine();
+    var state = engine.Initialize(network);
+
+    state.InFlightMovements.Add(new TemporalNetworkSimulationEngine.TemporalInFlightMovement
+    {
+        TrafficType = "med",
+        Quantity = 100d,
+        PathNodeIds = ["A", "B", "C", "D"],
+        PathNodeNames = ["A", "B", "C", "D"],
+        PathEdgeIds = ["AB", "BC", "CD"],
+        CurrentEdgeIndex = 0,
+        RemainingPeriodsOnCurrentEdge = 1
+    });
+    state.InFlightMovements.Add(new TemporalNetworkSimulationEngine.TemporalInFlightMovement
+    {
+        TrafficType = "med",
+        Quantity = 100d,
+        PathNodeIds = ["A", "B", "C", "D"],
+        PathNodeNames = ["A", "B", "C", "D"],
+        PathEdgeIds = ["AB", "BC", "CD"],
+        CurrentEdgeIndex = 1,
+        RemainingPeriodsOnCurrentEdge = 3
+    });
+    state.OccupiedEdgeCapacity["AB"] = 100d;
+    state.OccupiedEdgeCapacity["BC"] = 100d;
+    state.OccupiedTranshipmentCapacity["B"] = 100d;
+    state.OccupiedTranshipmentCapacity["C"] = 100d;
+
+    var result = engine.Advance(network, state);
+
+    AssertEqual(1d, state.InFlightMovements.Count(movement => movement.IsWaitingBetweenEdges), "Q waiting movement count");
+    AssertEqual(0d, state.OccupiedEdgeCapacity.GetValueOrDefault("AB"), "Q released completed edge");
+    AssertEqual(100d, state.OccupiedTranshipmentCapacity.GetValueOrDefault("C"), "Q blocked transhipment remains within capacity");
+    AssertResultAtMostConfiguredCapacity(network, result, "Q period snapshot");
+    AssertStateAtMostConfiguredCapacity(network, state, "Q durable state");
+}
+
+static void ScenarioR_NoOrphanedOrDoubleCountedWaitingOccupancy()
+{
+    var network = CreateThreeNodeNetwork(abTime: 1d, bcTime: 3d, bcCapacity: 100d);
+    var engine = new TemporalNetworkSimulationEngine();
+    var state = CreateBlockedTransitionState(network, blockingRemainingPeriods: 3);
+
+    engine.Advance(network, state);
+    engine.Advance(network, state);
+
+    AssertEqual(1d, state.InFlightMovements.Count(movement => movement.IsWaitingBetweenEdges), "R waiting movement count");
+    AssertEqual(2d, state.InFlightMovements.Count, "R in-flight movement count");
+    AssertEqual(0d, state.OccupiedEdgeCapacity.GetValueOrDefault("AB"), "R completed edge not retained");
+    AssertEqual(100d, state.OccupiedEdgeCapacity.GetValueOrDefault("BC"), "R blocked edge not double-counted");
+    AssertStateAtMostConfiguredCapacity(network, state, "R durable state");
+}
+
 static NetworkModel CreateNetwork(double edgeTime, bool bidirectional, double production = 100d, double consumption = 100d)
 {
     return new NetworkModel
@@ -292,6 +383,116 @@ static NetworkModel CreateNetwork(double edgeTime, bool bidirectional, double pr
             }
         ]
     };
+}
+
+static NetworkModel CreateThreeNodeNetwork(double abTime, double bcTime, double bcCapacity)
+{
+    return new NetworkModel
+    {
+        Name = "Three node transition",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "med", RoutingPreference = RoutingPreference.TotalCost }],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "A",
+                Name = "A",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "med" }]
+            },
+            new NodeModel
+            {
+                Id = "B",
+                Name = "B",
+                TranshipmentCapacity = 100d,
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "med", CanTransship = true }]
+            },
+            new NodeModel
+            {
+                Id = "C",
+                Name = "C",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "med" }]
+            }
+        ],
+        Edges =
+        [
+            new EdgeModel { Id = "AB", FromNodeId = "A", ToNodeId = "B", Time = abTime, Cost = 1d, Capacity = 100d, IsBidirectional = false },
+            new EdgeModel { Id = "BC", FromNodeId = "B", ToNodeId = "C", Time = bcTime, Cost = 1d, Capacity = bcCapacity, IsBidirectional = false }
+        ]
+    };
+}
+
+static NetworkModel CreateFourNodeNetwork(double abTime, double bcTime, double cdTime, double transhipmentCapacityAtC)
+{
+    return new NetworkModel
+    {
+        Name = "Four node transition",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "med", RoutingPreference = RoutingPreference.TotalCost }],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "A",
+                Name = "A",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "med" }]
+            },
+            new NodeModel
+            {
+                Id = "B",
+                Name = "B",
+                TranshipmentCapacity = 100d,
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "med", CanTransship = true }]
+            },
+            new NodeModel
+            {
+                Id = "C",
+                Name = "C",
+                TranshipmentCapacity = transhipmentCapacityAtC,
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "med", CanTransship = true }]
+            },
+            new NodeModel
+            {
+                Id = "D",
+                Name = "D",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "med" }]
+            }
+        ],
+        Edges =
+        [
+            new EdgeModel { Id = "AB", FromNodeId = "A", ToNodeId = "B", Time = abTime, Cost = 1d, Capacity = 100d, IsBidirectional = false },
+            new EdgeModel { Id = "BC", FromNodeId = "B", ToNodeId = "C", Time = bcTime, Cost = 1d, Capacity = 200d, IsBidirectional = false },
+            new EdgeModel { Id = "CD", FromNodeId = "C", ToNodeId = "D", Time = cdTime, Cost = 1d, Capacity = 200d, IsBidirectional = false }
+        ]
+    };
+}
+
+static TemporalNetworkSimulationEngine.TemporalSimulationState CreateBlockedTransitionState(NetworkModel network, int blockingRemainingPeriods)
+{
+    var engine = new TemporalNetworkSimulationEngine();
+    var state = engine.Initialize(network);
+    state.InFlightMovements.Add(new TemporalNetworkSimulationEngine.TemporalInFlightMovement
+    {
+        TrafficType = "med",
+        Quantity = 100d,
+        PathNodeIds = ["A", "B", "C"],
+        PathNodeNames = ["A", "B", "C"],
+        PathEdgeIds = ["AB", "BC"],
+        CurrentEdgeIndex = 0,
+        RemainingPeriodsOnCurrentEdge = 1
+    });
+    state.InFlightMovements.Add(new TemporalNetworkSimulationEngine.TemporalInFlightMovement
+    {
+        TrafficType = "med",
+        Quantity = 100d,
+        PathNodeIds = ["A", "B", "C"],
+        PathNodeNames = ["A", "B", "C"],
+        PathEdgeIds = ["AB", "BC"],
+        CurrentEdgeIndex = 1,
+        RemainingPeriodsOnCurrentEdge = blockingRemainingPeriods
+    });
+    state.OccupiedEdgeCapacity["AB"] = 100d;
+    state.OccupiedEdgeCapacity["BC"] = 100d;
+    state.OccupiedTranshipmentCapacity["B"] = 100d;
+    return state;
 }
 
 static NetworkModel CreateProductionOnlyNetwork(double production)
@@ -400,6 +601,38 @@ static void AssertAtMost(double expectedMax, double actual, string label)
     if (actual > expectedMax + 0.000001d)
     {
         throw new InvalidOperationException($"{label}: expected at most {expectedMax}, actual {actual}.");
+    }
+}
+
+static void AssertResultAtMostConfiguredCapacity(NetworkModel network, TemporalNetworkSimulationEngine.TemporalSimulationStepResult result, string label)
+{
+    foreach (var edge in network.Edges.Where(edge => edge.Capacity.HasValue))
+    {
+        AssertAtMost(edge.Capacity!.Value, result.EdgeOccupancy.GetValueOrDefault(edge.Id), $"{label} edge {edge.Id}");
+    }
+
+    foreach (var node in network.Nodes.Where(node => node.TranshipmentCapacity.HasValue))
+    {
+        AssertAtMost(
+            node.TranshipmentCapacity!.Value,
+            result.TranshipmentOccupancy.GetValueOrDefault(node.Id),
+            $"{label} transhipment {node.Id}");
+    }
+}
+
+static void AssertStateAtMostConfiguredCapacity(NetworkModel network, TemporalNetworkSimulationEngine.TemporalSimulationState state, string label)
+{
+    foreach (var edge in network.Edges.Where(edge => edge.Capacity.HasValue))
+    {
+        AssertAtMost(edge.Capacity!.Value, state.OccupiedEdgeCapacity.GetValueOrDefault(edge.Id), $"{label} edge {edge.Id}");
+    }
+
+    foreach (var node in network.Nodes.Where(node => node.TranshipmentCapacity.HasValue))
+    {
+        AssertAtMost(
+            node.TranshipmentCapacity!.Value,
+            state.OccupiedTranshipmentCapacity.GetValueOrDefault(node.Id),
+            $"{label} transhipment {node.Id}");
     }
 }
 

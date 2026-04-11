@@ -49,6 +49,7 @@
             <Setter Property="FontFamily" Value="{DynamicResource AppFontFamily}" />
             <Setter Property="Foreground" Value="{DynamicResource StrongForegroundBrush}" />
             <Setter Property="Background" Value="{DynamicResource WindowBrush}" />
+            <Setter Property="Icon" Value="/Assets/AppIcon.ico" />
         </Style>
 
         <Style TargetType="Button">

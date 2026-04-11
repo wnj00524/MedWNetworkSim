@@ -26,6 +26,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private string activeFileLabel = "Bundled sample";
     private string networkName = "MedW Network Simulator";
     private string networkDescription = "Load a JSON network file, or create a new one and edit it directly in the app.";
+    private AllocationMode defaultAllocationMode = AllocationMode.GreedyBestRoute;
     private int? timelineLoopLength;
     private string statusMessage = "Load a network file or create a new one, then edit nodes and edges directly in the application.";
     private AppTheme selectedTheme = AppTheme.Classic;
@@ -37,6 +38,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private bool isNormalizingNodeTrafficProfiles;
     private bool isAdjustingTrafficDefinitionNames;
     private bool isBulkUpdatingTrafficProfiles;
+    private bool isBulkUpdatingTrafficDefinitions;
     private bool hasSimulationSnapshot;
     private TemporalNetworkSimulationEngine.TemporalSimulationState? temporalSimulationState;
     private TemporalNetworkSimulationEngine.TemporalSimulationStepResult? lastTimelineStepResult;
@@ -126,6 +128,23 @@ public sealed class MainWindowViewModel : ObservableObject
         get => networkDescription;
         set => SetProperty(ref networkDescription, value);
     }
+
+    public AllocationMode DefaultAllocationMode
+    {
+        get => defaultAllocationMode;
+        set
+        {
+            if (SetProperty(ref defaultAllocationMode, value))
+            {
+                OnPropertyChanged(nameof(DefaultAllocationModeLabel));
+                OnPropertyChanged(nameof(DefaultAllocationModeHelpText));
+            }
+        }
+    }
+
+    public string DefaultAllocationModeLabel => TrafficTypeDefinitionEditorViewModel.GetAllocationModeLabel(DefaultAllocationMode);
+
+    public string DefaultAllocationModeHelpText => TrafficTypeDefinitionEditorViewModel.GetAllocationModeHelpText(DefaultAllocationMode);
 
     public int? TimelineLoopLength
     {
@@ -820,6 +839,33 @@ public sealed class MainWindowViewModel : ObservableObject
         RefreshDerivedStateAfterStructureChange("Removed the selected traffic type definition.");
     }
 
+    public void ApplyDefaultAllocationModeToAllTrafficDefinitions()
+    {
+        EnsureNetworkExists();
+
+        var definitions = TrafficDefinitions.ToList();
+        if (definitions.Count == 0)
+        {
+            StatusMessage = "No traffic types exist yet. New traffic types will use the selected default allocation mode.";
+            return;
+        }
+
+        isBulkUpdatingTrafficDefinitions = true;
+        try
+        {
+            foreach (var definition in definitions)
+            {
+                definition.AllocationMode = DefaultAllocationMode;
+            }
+        }
+        finally
+        {
+            isBulkUpdatingTrafficDefinitions = false;
+        }
+
+        RefreshDerivedStateAfterStructureChange($"Applied {DefaultAllocationModeLabel.ToLowerInvariant()} to all {definitions.Count} traffic type(s).");
+    }
+
     public void AddNode()
     {
         AddNodeAt(null, null);
@@ -1205,7 +1251,8 @@ public sealed class MainWindowViewModel : ObservableObject
         var definition = new TrafficTypeDefinitionEditorViewModel(new TrafficTypeDefinition
         {
             Name = normalizedName,
-            RoutingPreference = RoutingPreference.TotalCost
+            RoutingPreference = RoutingPreference.TotalCost,
+            AllocationMode = DefaultAllocationMode
         });
 
         RegisterTrafficDefinition(definition);
@@ -1283,6 +1330,7 @@ public sealed class MainWindowViewModel : ObservableObject
         NetworkDescription = string.IsNullOrWhiteSpace(network.Description)
             ? string.Empty
             : network.Description;
+        DefaultAllocationMode = network.DefaultAllocationMode;
         timelineLoopLength = network.TimelineLoopLength is > 0 ? network.TimelineLoopLength : null;
         OnPropertyChanged(nameof(TimelineLoopLength));
         OnPropertyChanged(nameof(IsTimelineLoopEnabled));
@@ -1325,7 +1373,8 @@ public sealed class MainWindowViewModel : ObservableObject
                 return new TrafficTypeDefinitionEditorViewModel(definition ?? new TrafficTypeDefinition
                 {
                     Name = name,
-                    RoutingPreference = RoutingPreference.TotalCost
+                    RoutingPreference = RoutingPreference.TotalCost,
+                    AllocationMode = DefaultAllocationMode
                 });
             })
             .ToList();
@@ -1343,6 +1392,7 @@ public sealed class MainWindowViewModel : ObservableObject
             Name = NetworkName,
             Description = NetworkDescription,
             TimelineLoopLength = TimelineLoopLength,
+            DefaultAllocationMode = DefaultAllocationMode,
             TrafficTypes = TrafficDefinitions.Select(definition => definition.ToModel()).ToList(),
             Nodes = Nodes.Select(node => node.ToModel()).ToList(),
             Edges = Edges.Select(edge => edge.ToModel()).ToList()
@@ -1441,6 +1491,17 @@ public sealed class MainWindowViewModel : ObservableObject
     private void HandleTrafficDefinitionPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(TrafficTypeDefinitionEditorViewModel.Name))
+        {
+            return;
+        }
+
+        if (e.PropertyName is nameof(TrafficTypeDefinitionEditorViewModel.AllocationModeLabel) or
+            nameof(TrafficTypeDefinitionEditorViewModel.AllocationModeHelpText))
+        {
+            return;
+        }
+
+        if (isBulkUpdatingTrafficDefinitions)
         {
             return;
         }
@@ -2060,7 +2121,8 @@ public sealed class MainWindowViewModel : ObservableObject
         var definition = new TrafficTypeDefinitionEditorViewModel(new TrafficTypeDefinition
         {
             Name = GetNextUniqueName("Traffic", TrafficDefinitions.Select(item => item.Name)),
-            RoutingPreference = RoutingPreference.TotalCost
+            RoutingPreference = RoutingPreference.TotalCost,
+            AllocationMode = DefaultAllocationMode
         });
 
         RegisterTrafficDefinition(definition);

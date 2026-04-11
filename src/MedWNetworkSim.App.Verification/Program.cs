@@ -1,5 +1,6 @@
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Services;
+using MedWNetworkSim.App.ViewModels;
 
 ScenarioA_LongEdgeBlocksRelaunch();
 ScenarioB_CapacityFreesAfterCompletion();
@@ -29,6 +30,8 @@ ScenarioX_ProportionalCapacityLimitedBranchRedistributes();
 ScenarioY_DefaultAllocationModeRemainsGreedy();
 ScenarioZ_ProportionalAllocationIsDeterministic();
 ScenarioAA_AllocationModeSerializes();
+ScenarioAB_DefaultAllocationModeSerializesAndBackfillsTraffic();
+ScenarioAC_DefaultAllocationModeAppliesToAllTrafficDefinitions();
 
 Console.WriteLine("Verification passed.");
 
@@ -486,6 +489,59 @@ static void ScenarioAA_AllocationModeSerializes()
         {
             File.Delete(path);
         }
+    }
+}
+
+static void ScenarioAB_DefaultAllocationModeSerializesAndBackfillsTraffic()
+{
+    const string json = """
+{
+  "name": "Default allocation",
+  "defaultAllocationMode": "proportionalBranchDemand",
+  "nodes": [
+    {
+      "id": "A",
+      "trafficProfiles": [
+        {
+          "trafficType": "Wheat",
+          "production": 1
+        }
+      ]
+    }
+  ],
+  "edges": []
+}
+""";
+    var network = new NetworkFileService().LoadJson(json);
+
+    if (network.DefaultAllocationMode != AllocationMode.ProportionalBranchDemand)
+    {
+        throw new InvalidOperationException("AB default allocation mode did not load from JSON.");
+    }
+
+    if (network.TrafficTypes.Single(item => item.Name == "Wheat").AllocationMode != AllocationMode.ProportionalBranchDemand)
+    {
+        throw new InvalidOperationException("AB back-filled traffic type did not use the network default allocation mode.");
+    }
+}
+
+static void ScenarioAC_DefaultAllocationModeAppliesToAllTrafficDefinitions()
+{
+    var viewModel = new MainWindowViewModel
+    {
+        DefaultAllocationMode = AllocationMode.ProportionalBranchDemand
+    };
+
+    foreach (var definition in viewModel.TrafficDefinitions)
+    {
+        definition.AllocationMode = AllocationMode.GreedyBestRoute;
+    }
+
+    viewModel.ApplyDefaultAllocationModeToAllTrafficDefinitions();
+
+    if (viewModel.TrafficDefinitions.Any(definition => definition.AllocationMode != AllocationMode.ProportionalBranchDemand))
+    {
+        throw new InvalidOperationException("AC default allocation mode was not applied to all traffic definitions.");
     }
 }
 

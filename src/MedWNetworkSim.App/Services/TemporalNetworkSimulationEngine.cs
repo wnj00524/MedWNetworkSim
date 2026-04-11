@@ -183,7 +183,7 @@ public sealed class TemporalNetworkSimulationEngine
                     nodeStates[key] = state;
                 }
 
-                if (profile.Production > Epsilon && IsProductionActive(profile, period) && !profile.IsStore)
+                if (profile.Production > Epsilon && IsProductionActive(profile, period))
                 {
                     AddImplicitRecipeDemand(
                         node.Id,

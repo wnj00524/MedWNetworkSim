@@ -252,6 +252,7 @@ public sealed class NetworkSimulationEngine
         var demand = profilesByNodeId
             .Where(pair => pair.Value?.Consumption > Epsilon)
             .ToDictionary(pair => pair.Key, pair => pair.Value!.Consumption, Comparer);
+        AddImplicitRecipeDemand(network, definition.Name, demand);
 
         return new TrafficContext(
             definition.Name,
@@ -265,6 +266,30 @@ public sealed class NetworkSimulationEngine
             demand.Values.Sum(),
             [],
             []);
+    }
+
+    private static void AddImplicitRecipeDemand(
+        NetworkModel network,
+        string trafficType,
+        IDictionary<string, double> demand)
+    {
+        foreach (var node in network.Nodes)
+        {
+            var implicitDemand = 0d;
+            foreach (var profile in node.TrafficProfiles.Where(profile => profile.Production > Epsilon))
+            {
+                implicitDemand += profile.InputRequirements
+                    .Where(requirement => Comparer.Equals(requirement.TrafficType, trafficType))
+                    .Sum(requirement => profile.Production * requirement.QuantityPerOutputUnit);
+            }
+
+            if (implicitDemand <= Epsilon)
+            {
+                continue;
+            }
+
+            demand[node.Id] = (demand.TryGetValue(node.Id, out var existing) ? existing : 0d) + implicitDemand;
+        }
     }
 
     private static void ApplyLocalAllocations(TrafficContext context)
@@ -610,6 +635,10 @@ public sealed class NetworkSimulationEngine
         var undeclaredTrafficNames = network.Nodes
             .SelectMany(node => node.TrafficProfiles)
             .Select(profile => profile.TrafficType)
+            .Concat(network.Nodes
+                .SelectMany(node => node.TrafficProfiles)
+                .SelectMany(profile => profile.InputRequirements)
+                .Select(requirement => requirement.TrafficType))
             .Where(name => !string.IsNullOrWhiteSpace(name) && !seen.Contains(name))
             .Distinct(Comparer)
             .OrderBy(name => name, Comparer);

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.ViewModels;
 
@@ -19,6 +20,10 @@ public sealed class TrafficTypeEditorViewModel : ObservableObject, IDisposable
     public Array RoutingPreferences => mainWindowViewModel.RoutingPreferences;
 
     public IReadOnlyList<AllocationModeOptionViewModel> AllocationModeOptions => mainWindowViewModel.AllocationModeOptions;
+
+    public Array RouteChoiceModels { get; } = Enum.GetValues(typeof(RouteChoiceModel));
+
+    public Array FlowSplitPolicies { get; } = Enum.GetValues(typeof(FlowSplitPolicy));
 
     public TrafficTypeDefinitionEditorViewModel? SelectedTrafficDefinition
     {

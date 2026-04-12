@@ -28,6 +28,11 @@ public sealed class NetworkModel
     public AllocationMode DefaultAllocationMode { get; set; } = AllocationMode.GreedyBestRoute;
 
     /// <summary>
+    /// Gets or sets the deterministic seed used for stochastic route choice.
+    /// </summary>
+    public int SimulationSeed { get; set; } = 12345;
+
+    /// <summary>
     /// Gets or sets the declared traffic types that can move through the network.
     /// </summary>
     public List<TrafficTypeDefinition> TrafficTypes { get; set; } = [];

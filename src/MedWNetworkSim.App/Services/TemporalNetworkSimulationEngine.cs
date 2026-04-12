@@ -214,11 +214,10 @@ public sealed class TemporalNetworkSimulationEngine
         IReadOnlyDictionary<string, double> availableCapacityByEdgeId,
         IReadOnlyDictionary<string, double> availableTranshipmentCapacityByNodeId)
     {
-        var adjacency = BuildAdjacency(network);
         var remainingCapacityByEdgeId = availableCapacityByEdgeId.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
         var remainingTranshipmentCapacityByNodeId = availableTranshipmentCapacityByNodeId.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
         var contexts = GetOrderedTrafficNames(network)
-            .Select(trafficType =>
+            .Select((trafficType, index) =>
             {
                 definitionsByTraffic.TryGetValue(trafficType, out var definition);
                 return BuildTemporalContext(
@@ -226,7 +225,8 @@ public sealed class TemporalNetworkSimulationEngine
                     definition ?? new TrafficTypeDefinition { Name = trafficType, RoutingPreference = RoutingPreference.TotalCost },
                     nodeStates,
                     period,
-                    effectivePeriod);
+                    effectivePeriod,
+                    network.SimulationSeed + (index * 997));
             })
             .ToList();
 
@@ -235,84 +235,13 @@ public sealed class TemporalNetworkSimulationEngine
             ApplyLocalAllocations(context, nodeStates);
         }
 
-        while (true)
+        var routingContexts = contexts.Select(ToRoutingContext).ToList();
+        MixedRoutingAllocator.Allocate(network, routingContexts, remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId, period);
+        for (var index = 0; index < contexts.Count; index++)
         {
-            var nextCandidate = contexts
-                .SelectMany(context => BuildCandidateRoutes(context, adjacency, remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId))
-                .OrderByDescending(candidate => candidate.CapacityBidPerUnit)
-                .ThenBy(candidate => candidate.TotalScore)
-                .ThenBy(candidate => candidate.TotalTime)
-                .ThenBy(candidate => candidate.TransitCostPerUnit)
-                .ThenBy(candidate => candidate.ProducerNodeId, Comparer)
-                .ThenBy(candidate => candidate.ConsumerNodeId, Comparer)
-                .FirstOrDefault();
-
-            if (nextCandidate is null)
-            {
-                break;
-            }
-
-            var context = nextCandidate.Context;
-            var remainingSupply = context.Supply.TryGetValue(nextCandidate.ProducerNodeId, out var supplyValue)
-                ? supplyValue
-                : 0d;
-            var remainingDemand = context.Demand.TryGetValue(nextCandidate.ConsumerNodeId, out var demandValue)
-                ? demandValue
-                : 0d;
-            var quantity = Math.Min(remainingSupply, remainingDemand);
-            var routeCapacity = GetRouteRemainingCapacity(
-                nextCandidate.PathEdgeIds,
-                nextCandidate.PathTranshipmentNodeIds,
-                remainingCapacityByEdgeId,
-                remainingTranshipmentCapacityByNodeId);
-
-            if (!double.IsPositiveInfinity(routeCapacity))
-            {
-                quantity = Math.Min(quantity, routeCapacity);
-            }
-
-            if (quantity <= Epsilon)
-            {
-                break;
-            }
-
-            var bidCostPerUnit = CalculateBidCostPerUnit(
-                nextCandidate.PathEdgeIds,
-                nextCandidate.PathTranshipmentNodeIds,
-                remainingCapacityByEdgeId,
-                remainingTranshipmentCapacityByNodeId,
-                nextCandidate.CapacityBidPerUnit,
-                quantity,
-                routeCapacity);
-            var deliveredCostPerUnit = nextCandidate.TransitCostPerUnit + bidCostPerUnit;
-
-            context.Allocations.Add(new RouteAllocation
-            {
-                Period = period,
-                TrafficType = context.TrafficType,
-                RoutingPreference = context.RoutingPreference,
-                ProducerNodeId = nextCandidate.ProducerNodeId,
-                ProducerName = context.NodesById[nextCandidate.ProducerNodeId].Name,
-                ConsumerNodeId = nextCandidate.ConsumerNodeId,
-                ConsumerName = context.NodesById[nextCandidate.ConsumerNodeId].Name,
-                Quantity = quantity,
-                IsLocalSupply = false,
-                TotalTime = nextCandidate.TotalTime,
-                TotalCost = nextCandidate.TransitCostPerUnit,
-                BidCostPerUnit = bidCostPerUnit,
-                DeliveredCostPerUnit = deliveredCostPerUnit,
-                TotalMovementCost = deliveredCostPerUnit * quantity,
-                TotalScore = nextCandidate.TotalScore,
-                PathNodeNames = nextCandidate.PathNodeIds.Select(nodeId => context.NodesById[nodeId].Name).ToList(),
-                PathNodeIds = nextCandidate.PathNodeIds.ToList(),
-                PathEdgeIds = nextCandidate.PathEdgeIds.ToList()
-            });
-
-            context.Supply[nextCandidate.ProducerNodeId] -= quantity;
-            context.Demand[nextCandidate.ConsumerNodeId] -= quantity;
-            context.CommittedSupply[nextCandidate.ProducerNodeId] += quantity;
-            context.CommittedDemand[nextCandidate.ConsumerNodeId] += quantity;
-            ReserveCapacity(nextCandidate.PathEdgeIds, nextCandidate.PathTranshipmentNodeIds, remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId, quantity);
+            contexts[index].Allocations.AddRange(routingContexts[index].Allocations);
+            CopyCommittedQuantities(routingContexts[index].CommittedSupply, contexts[index].CommittedSupply);
+            CopyCommittedQuantities(routingContexts[index].CommittedDemand, contexts[index].CommittedDemand);
         }
 
         foreach (var context in contexts)
@@ -328,7 +257,8 @@ public sealed class TemporalNetworkSimulationEngine
         TrafficTypeDefinition definition,
         IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
         int period,
-        int effectivePeriod)
+        int effectivePeriod,
+        int seed)
     {
         var profilesByNodeId = network.Nodes.ToDictionary(
             node => node.Id,
@@ -398,7 +328,12 @@ public sealed class TemporalNetworkSimulationEngine
         return new TemporalTrafficContext(
             definition.Name,
             definition.RoutingPreference,
+            definition.AllocationMode,
+            definition.RouteChoiceModel,
+            definition.FlowSplitPolicy,
+            definition.RouteChoiceSettings,
             GetCapacityBidPerUnit(definition),
+            seed,
             nodesById,
             profilesByNodeId,
             supply,
@@ -436,6 +371,35 @@ public sealed class TemporalNetworkSimulationEngine
             var state = nodeStates[new TemporalNodeTrafficKey(nodeId, context.TrafficType)];
             state.AvailableSupply = Math.Max(0d, state.AvailableSupply - quantity);
             state.DemandBacklog = Math.Max(0d, state.DemandBacklog - quantity);
+        }
+    }
+
+    private static RoutingTrafficContext ToRoutingContext(TemporalTrafficContext context)
+    {
+        return new RoutingTrafficContext
+        {
+            TrafficType = context.TrafficType,
+            RoutingPreference = context.RoutingPreference,
+            AllocationMode = context.AllocationMode,
+            RouteChoiceModel = context.RouteChoiceModel,
+            FlowSplitPolicy = context.FlowSplitPolicy,
+            RouteChoiceSettings = context.RouteChoiceSettings,
+            CapacityBidPerUnit = context.CapacityBidPerUnit,
+            Seed = context.Seed,
+            NodesById = context.NodesById,
+            ProfilesByNodeId = context.ProfilesByNodeId,
+            Supply = context.Supply.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
+            Demand = context.Demand.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer)
+        };
+    }
+
+    private static void CopyCommittedQuantities(
+        IReadOnlyDictionary<string, double> source,
+        IDictionary<string, double> target)
+    {
+        foreach (var pair in source)
+        {
+            target[pair.Key] = (target.TryGetValue(pair.Key, out var existing) ? existing : 0d) + pair.Value;
         }
     }
 
@@ -1604,7 +1568,12 @@ public sealed class TemporalNetworkSimulationEngine
     private sealed record TemporalTrafficContext(
         string TrafficType,
         RoutingPreference RoutingPreference,
+        AllocationMode AllocationMode,
+        RouteChoiceModel RouteChoiceModel,
+        FlowSplitPolicy FlowSplitPolicy,
+        RouteChoiceSettings RouteChoiceSettings,
         double CapacityBidPerUnit,
+        int Seed,
         IReadOnlyDictionary<string, NodeModel> NodesById,
         IReadOnlyDictionary<string, NodeTrafficProfile?> ProfilesByNodeId,
         IDictionary<string, double> Supply,

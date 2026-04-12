@@ -10,6 +10,9 @@
         MinWidth="860"
         MinHeight="620"
         WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    </Window.Resources>
     <Grid Margin="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -113,6 +116,38 @@
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
                             <DataGridTextColumn Binding="{Binding CapacityBidPerUnit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.##}}" Header="Bid / Unit" Width="105" />
+                            <DataGridTemplateColumn Header="Route Model" Width="180">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock VerticalAlignment="Center"
+                                                   Text="{Binding RouteChoiceModel}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox Padding="2"
+                                                  MinWidth="160"
+                                                  ItemsSource="{Binding DataContext.RouteChoiceModels, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                  SelectedItem="{Binding RouteChoiceModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Split Policy" Width="140">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock VerticalAlignment="Center"
+                                                   Text="{Binding FlowSplitPolicy}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox Padding="2"
+                                                  MinWidth="120"
+                                                  ItemsSource="{Binding DataContext.FlowSplitPolicies, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                  SelectedItem="{Binding FlowSplitPolicy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Binding="{Binding Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Header="Description" Width="*" />
                         </DataGrid.Columns>
                     </DataGrid>
@@ -146,6 +181,24 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="10" />
                             <RowDefinition Height="Auto" />
@@ -196,11 +249,83 @@
                                  Text="{Binding SelectedTrafficDefinition.CapacityBidPerUnit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
                         <TextBlock Grid.Row="8"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Route Model" />
+                        <ComboBox Grid.Row="8"
+                                  Grid.Column="1"
+                                  ItemsSource="{Binding RouteChoiceModels}"
+                                  SelectedItem="{Binding SelectedTrafficDefinition.RouteChoiceModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Grid.Row="10"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Flow Split" />
+                        <ComboBox Grid.Row="10"
+                                  Grid.Column="1"
+                                  ItemsSource="{Binding FlowSplitPolicies}"
+                                  SelectedItem="{Binding SelectedTrafficDefinition.FlowSplitPolicy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Grid.Row="12"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Candidate Routes" />
+                        <TextBox Grid.Row="12"
+                                 Grid.Column="1"
+                                 Text="{Binding SelectedTrafficDefinition.MaxCandidateRoutes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Grid.Row="14"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Priority" />
+                        <TextBox Grid.Row="14"
+                                 Grid.Column="1"
+                                 Text="{Binding SelectedTrafficDefinition.Priority, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Grid.Row="16"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Congestion Sensitivity" />
+                        <TextBox Grid.Row="16"
+                                 Grid.Column="1"
+                                 Text="{Binding SelectedTrafficDefinition.CongestionSensitivity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <StackPanel Grid.Row="18"
+                                    Grid.ColumnSpan="2"
+                                    Visibility="{Binding SelectedTrafficDefinition.IsStochasticUserResponsive, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <TextBlock FontSize="11"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
+                                       Text="Stochastic Settings" />
+                            <UniformGrid Margin="0,6,0,0"
+                                         Columns="2">
+                                <TextBox ToolTip="Information Accuracy"
+                                         Text="{Binding SelectedTrafficDefinition.InformationAccuracy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox ToolTip="Route Diversity"
+                                         Text="{Binding SelectedTrafficDefinition.RouteDiversity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox ToolTip="Reroute Threshold"
+                                         Text="{Binding SelectedTrafficDefinition.RerouteThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox ToolTip="Stickiness"
+                                         Text="{Binding SelectedTrafficDefinition.Stickiness, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </UniformGrid>
+                        </StackPanel>
+
+                        <CheckBox Grid.Row="20"
+                                  Grid.ColumnSpan="2"
+                                  Content="Internalize congestion"
+                                  IsChecked="{Binding SelectedTrafficDefinition.InternalizeCongestion, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                  Visibility="{Binding SelectedTrafficDefinition.IsSystemOptimal, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                        <TextBlock Grid.Row="22"
                                    VerticalAlignment="Top"
                                    FontSize="11"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Description" />
-                        <TextBox Grid.Row="8"
+                        <TextBox Grid.Row="22"
                                  Grid.Column="1"
                                  MinHeight="120"
                                  AcceptsReturn="True"

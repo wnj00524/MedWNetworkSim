@@ -19,24 +19,7 @@ public sealed class NetworkSimulationEngine
     {
         ArgumentNullException.ThrowIfNull(network);
 
-        // Build shared graph data once, then route every traffic type against the same pool of edge and node transhipment capacity.
-        var adjacency = BuildAdjacency(network);
-        var definitionsByTraffic = network.TrafficTypes
-            .ToDictionary(definition => definition.Name, definition => definition, Comparer);
-        var contexts = GetOrderedTrafficNames(network)
-            .Select(trafficType =>
-            {
-                var definition = definitionsByTraffic.GetValueOrDefault(trafficType)
-                    ?? new TrafficTypeDefinition
-                    {
-                        Name = trafficType,
-                        RoutingPreference = RoutingPreference.TotalCost,
-                        AllocationMode = AllocationMode.GreedyBestRoute
-                    };
-
-                return BuildContext(network, definition);
-            })
-            .ToList();
+        var contexts = MixedRoutingAllocator.BuildStaticContexts(network).ToList();
         var remainingCapacityByEdgeId = network.Edges.ToDictionary(
             edge => edge.Id,
             edge => edge.Capacity ?? double.PositiveInfinity,
@@ -48,37 +31,7 @@ public sealed class NetworkSimulationEngine
         var hasFiniteCapacities = network.Edges.Any(edge => edge.Capacity.HasValue) ||
             network.Nodes.Any(node => node.TranshipmentCapacity.HasValue);
 
-        foreach (var context in contexts)
-        {
-            if (context.TotalProduction <= Epsilon)
-            {
-                context.Notes.Add("No producer nodes were defined for this traffic type.");
-            }
-
-            if (context.TotalConsumption <= Epsilon)
-            {
-                context.Notes.Add("No consumer nodes were defined for this traffic type.");
-            }
-
-            // Same-node supply satisfies same-node demand before any network routing is attempted.
-            ApplyLocalAllocations(context);
-        }
-
-        AllocateGreedyBestRoutes(
-            contexts.Where(context => context.AllocationMode == AllocationMode.GreedyBestRoute).ToList(),
-            adjacency,
-            remainingCapacityByEdgeId,
-            remainingTranshipmentCapacityByNodeId);
-
-        foreach (var context in contexts.Where(context => context.AllocationMode == AllocationMode.ProportionalBranchDemand))
-        {
-            context.Notes.Add("Split by downstream demand is active: routed supply is divided across reachable branches in proportion to the demand beyond each branch.");
-            AllocateProportionallyByBranchDemand(
-                context,
-                adjacency,
-                remainingCapacityByEdgeId,
-                remainingTranshipmentCapacityByNodeId);
-        }
+        MixedRoutingAllocator.Allocate(network, contexts, remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId);
 
         foreach (var context in contexts)
         {

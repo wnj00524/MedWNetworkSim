@@ -39,6 +39,11 @@ ScenarioAG_SeededStochasticIsRepeatableAndSeedSensitive();
 ScenarioAH_CongestionCanShiftRouteChoice();
 ScenarioAI_TemporalMixedRoutingLaunches();
 ScenarioAJ_FlagshipSampleLoadsAndExercisesMixedRouting();
+ScenarioAK_CanvasLayersDefaultCombinedAndVisible();
+ScenarioAL_LayerTogglesDriveVisibleTraffic();
+ScenarioAM_InspectorAndReportsOpenOnDemand();
+ScenarioAN_ReportRouteSelectionHighlightsCanvas();
+ScenarioAO_TimelineAndCanvasOnlyUpdateSurfaces();
 
 Console.WriteLine("Verification passed.");
 
@@ -679,6 +684,100 @@ static void ScenarioAJ_FlagshipSampleLoadsAndExercisesMixedRouting()
     if (outcomes.Count == 0 || outcomes.All(outcome => outcome.Allocations.Count == 0))
     {
         throw new InvalidOperationException("AJ flagship sample loaded but did not simulate any allocations.");
+    }
+}
+
+static void ScenarioAK_CanvasLayersDefaultCombinedAndVisible()
+{
+    var viewModel = new MainWindowViewModel();
+
+    if (viewModel.LayersPanel.SelectedDisplayMode != CanvasDisplayMode.Combined)
+    {
+        throw new InvalidOperationException("AK default canvas display mode should be Combined.");
+    }
+
+    if (!viewModel.LayersPanel.ShowCombinedTraffic || viewModel.LayersPanel.TrafficLayers.Any(layer => !layer.IsVisible))
+    {
+        throw new InvalidOperationException("AK all traffic should be visible by default.");
+    }
+}
+
+static void ScenarioAL_LayerTogglesDriveVisibleTraffic()
+{
+    var viewModel = new MainWindowViewModel();
+    viewModel.LayersPanel.SelectedDisplayMode = CanvasDisplayMode.SelectedOnly;
+    foreach (var layer in viewModel.LayersPanel.TrafficLayers)
+    {
+        layer.IsVisible = false;
+    }
+
+    var grain = viewModel.LayersPanel.TrafficLayers.First(layer => layer.TrafficType == "Grain");
+    grain.IsVisible = true;
+    grain.IsHighlighted = true;
+
+    if (!viewModel.LayersPanel.ShouldIncludeTraffic("Grain") || viewModel.LayersPanel.ShouldIncludeTraffic("Bread"))
+    {
+        throw new InvalidOperationException("AL layer visible state did not drive selected-only inclusion.");
+    }
+
+    if (!viewModel.LayersPanel.HighlightedTrafficTypes.Contains("Grain"))
+    {
+        throw new InvalidOperationException("AL highlighted traffic state did not update.");
+    }
+}
+
+static void ScenarioAM_InspectorAndReportsOpenOnDemand()
+{
+    var viewModel = new MainWindowViewModel();
+
+    if (viewModel.InspectorPanel.IsOpen || viewModel.ReportsDrawer.IsOpen)
+    {
+        throw new InvalidOperationException("AM inspector and reports should be hidden by default.");
+    }
+
+    viewModel.SelectedNode = viewModel.Nodes.First();
+    viewModel.ToggleReportsDrawer();
+
+    if (!viewModel.InspectorPanel.IsOpen || !viewModel.ReportsDrawer.IsOpen)
+    {
+        throw new InvalidOperationException("AM inspector or reports did not open on demand.");
+    }
+}
+
+static void ScenarioAN_ReportRouteSelectionHighlightsCanvas()
+{
+    var viewModel = new MainWindowViewModel();
+    viewModel.RunSimulation();
+    viewModel.ToggleReportsDrawer();
+
+    var route = viewModel.VisibleAllocations.First(allocation => allocation.PathEdgeIds.Count > 0);
+    viewModel.ReportsDrawer.SelectedReportRow = route;
+
+    if (viewModel.Canvas.HighlightedRouteTrafficType != route.TrafficType ||
+        string.IsNullOrWhiteSpace(viewModel.Canvas.HighlightedRoutePath) ||
+        !viewModel.InspectorPanel.IsOpen)
+    {
+        throw new InvalidOperationException("AN route report selection did not sync to canvas highlight and inspector.");
+    }
+}
+
+static void ScenarioAO_TimelineAndCanvasOnlyUpdateSurfaces()
+{
+    var viewModel = new MainWindowViewModel();
+    viewModel.ToggleLayersPanel();
+    viewModel.ToggleReportsDrawer();
+    viewModel.AdvanceTimeline();
+
+    if (viewModel.Canvas.CurrentPeriod != viewModel.CurrentPeriod || viewModel.TimelineToolbar.CurrentPeriod != viewModel.CurrentPeriod)
+    {
+        throw new InvalidOperationException("AO timeline context did not update visible surface state.");
+    }
+
+    viewModel.ToggleCanvasOnlyMode();
+    if (viewModel.OptionalSidePanelVisibility != System.Windows.Visibility.Collapsed ||
+        viewModel.BottomWorkspaceVisibility != System.Windows.Visibility.Collapsed)
+    {
+        throw new InvalidOperationException("AO Canvas Only mode did not hide optional side/drawer surfaces.");
     }
 }
 

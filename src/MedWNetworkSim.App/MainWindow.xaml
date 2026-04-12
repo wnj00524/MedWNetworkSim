@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:MedWNetworkSim.App.ViewModels"
+        xmlns:local="clr-namespace:MedWNetworkSim.App"
         mc:Ignorable="d"
         x:Name="RootWindow"
         Title="{Binding WindowTitle}"
@@ -19,11 +20,11 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border Padding="22"
+        <Border Padding="14"
                 Background="{DynamicResource PanelBrush}"
                 BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
-                CornerRadius="22">
+                CornerRadius="12">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -35,7 +36,7 @@
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource AccentStrongBrush}"
                                Text="MedW Network Simulator" />
-                    <Border Margin="0,10,0,0"
+                    <Border Margin="0,8,0,0"
                             Padding="10,8"
                             Background="{DynamicResource SectionBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
@@ -75,7 +76,7 @@
                            HorizontalAlignment="Right"
                            VerticalAlignment="Top"
                            ItemWidth="Auto"
-                           Margin="0,-4,0,0">
+                            Margin="0,-4,0,0">
                     <Border Margin="0,4,10,0"
                             Padding="12"
                             Background="{DynamicResource SectionBrush}"
@@ -94,11 +95,8 @@
                                 <Button Content="Save JSON..."
                                         Click="SaveFile_Click"
                                         IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="Properties..."
-                                        Click="NetworkProperties_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
                                 <Button Content="GraphML..." Click="GraphMl_Click" />
-                                <Button Content="Reports..."
+                                <Button Content="Export..."
                                         Click="Reports_Click"
                                         IsEnabled="{Binding HasNetwork}" />
                             </WrapPanel>
@@ -119,6 +117,9 @@
                             <WrapPanel Margin="0,8,0,0">
                                 <Button Content="Traffic Types..." Click="EditTrafficTypes_Click" />
                                 <Button Content="Edges..." Click="EditEdges_Click" />
+                                <Button Content="Properties..."
+                                        Click="NetworkProperties_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
                             </WrapPanel>
                         </StackPanel>
                     </Border>
@@ -138,7 +139,19 @@
                                 <Button Content="{Binding CanvasOnlyButtonLabel}"
                                         Click="ToggleCanvasOnly_Click"
                                         IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="Auto Arrange"
+                                <Button Content="Layers"
+                                        Click="ToggleLayers_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="Inspector"
+                                        Click="ToggleInspector_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="Reports"
+                                        Click="ToggleReportsDrawer_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="Legend"
+                                        Click="ToggleLegend_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="Fit"
                                         Click="AutoArrange_Click"
                                         IsEnabled="{Binding HasNetwork}" />
                             </WrapPanel>
@@ -167,6 +180,7 @@
                                         Click="NextTimelinePeriod_Click"
                                         IsEnabled="{Binding HasNetwork}" />
                             </WrapPanel>
+                            <local:TimelineToolbarControl Margin="0,8,0,0" />
                         </StackPanel>
                     </Border>
 
@@ -221,22 +235,7 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <DockPanel>
-                        <TextBlock FontSize="20"
-                                   FontWeight="SemiBold"
-                                   Text="Network Canvas" />
-                        <TextBlock DockPanel.Dock="Right"
-                                   Margin="18,0,0,0"
-                                   VerticalAlignment="Center"
-                                   FontSize="12"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource AccentStrongBrush}"
-                                   Text="{Binding TimelineHeadline}" />
-                        <TextBlock DockPanel.Dock="Right"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Primary workspace: drag node cards to reposition them. Canvas flow visuals follow the selected traffic filter after a simulation run." />
-                    </DockPanel>
+                    <local:NetworkCanvasControl />
 
                     <ScrollViewer Grid.Row="2"
                                   HorizontalScrollBarVisibility="Auto"
@@ -298,6 +297,17 @@
                                                   StrokeEndLineCap="Round"
                                                   Opacity="0.92"
                                                   Visibility="{Binding FlowOverlayVisibility}" />
+
+                                            <Line X1="{Binding X1}"
+                                                  Y1="{Binding Y1}"
+                                                  X2="{Binding X2}"
+                                                  Y2="{Binding Y2}"
+                                                  Stroke="{DynamicResource AccentStrongBrush}"
+                                                  StrokeThickness="{Binding RouteHighlightStrokeThickness}"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeEndLineCap="Round"
+                                                  Opacity="0.78"
+                                                  Visibility="{Binding RouteHighlightVisibility}" />
 
                                             <Polygon Points="{Binding ArrowPoints}"
                                                      Fill="{DynamicResource EdgeBrush}"
@@ -535,168 +545,13 @@
                           HorizontalScrollBarVisibility="Disabled"
                           Visibility="{Binding DataContext.RightRailVisibility, ElementName=RootWindow}">
                 <StackPanel>
-                    <Border Padding="18"
-                            Background="{DynamicResource PanelBrush}"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="22">
-                        <Expander IsExpanded="True">
-                            <Expander.Header>
-                                <TextBlock FontSize="18"
-                                           FontWeight="SemiBold"
-                                           Text="Network Overview" />
-                            </Expander.Header>
-
-                            <UniformGrid Margin="0,18,0,0" Columns="3">
-                                <Border Margin="0,0,8,0"
-                                        Padding="12"
-                                        Background="{DynamicResource CardBrush}"
-                                        CornerRadius="16">
-                                    <StackPanel>
-                                        <TextBlock FontSize="12"
-                                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                                   Text="Nodes" />
-                                        <TextBlock FontSize="24"
-                                                   FontWeight="SemiBold"
-                                                   Text="{Binding NodeCount}" />
-                                    </StackPanel>
-                                </Border>
-
-                                <Border Margin="0,0,8,0"
-                                        Padding="12"
-                                        Background="{DynamicResource CardBrush}"
-                                        CornerRadius="16">
-                                    <StackPanel>
-                                        <TextBlock FontSize="12"
-                                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                                   Text="Edges" />
-                                        <TextBlock FontSize="24"
-                                                   FontWeight="SemiBold"
-                                                   Text="{Binding EdgeCount}" />
-                                    </StackPanel>
-                                </Border>
-
-                                <Border Padding="12"
-                                        Background="{DynamicResource CardBrush}"
-                                        CornerRadius="16">
-                                    <StackPanel>
-                                        <TextBlock FontSize="12"
-                                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                                   Text="Traffic Types" />
-                                        <TextBlock FontSize="24"
-                                                   FontWeight="SemiBold"
-                                                   Text="{Binding TrafficTypeCount}" />
-                                    </StackPanel>
-                                </Border>
-                            </UniformGrid>
-                        </Expander>
-                    </Border>
-
-                    <Border Margin="0,16,0,0"
-                            Padding="18"
-                            Background="{DynamicResource PanelBrush}"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="22">
-                        <Expander IsExpanded="True">
-                            <Expander.Header>
-                                <TextBlock FontSize="18"
-                                           FontWeight="SemiBold"
-                                           Text="Traffic Types" />
-                            </Expander.Header>
-
-                            <ListBox Margin="0,12,0,0"
-                                     MinHeight="180"
-                                     MaxHeight="420"
-                                     ItemsSource="{Binding TrafficTypes}"
-                                     SelectedItem="{Binding SelectedTraffic, Mode=TwoWay}">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate DataType="{x:Type vm:TrafficSummaryViewModel}">
-                                        <Border x:Name="TrafficCard"
-                                                Padding="14"
-                                                Background="{DynamicResource CardBrush}"
-                                                BorderBrush="{DynamicResource BorderBrush}"
-                                                BorderThickness="1"
-                                                CornerRadius="18">
-                                            <Grid>
-                                                <Grid.RowDefinitions>
-                                                    <RowDefinition Height="Auto" />
-                                                    <RowDefinition Height="8" />
-                                                    <RowDefinition Height="Auto" />
-                                                    <RowDefinition Height="8" />
-                                                    <RowDefinition Height="Auto" />
-                                                    <RowDefinition Height="6" />
-                                                    <RowDefinition Height="Auto" />
-                                                </Grid.RowDefinitions>
-
-                                                <DockPanel>
-                                                    <TextBlock FontSize="16"
-                                                               FontWeight="SemiBold"
-                                                               Text="{Binding Name}" />
-                                                    <Border DockPanel.Dock="Right"
-                                                            Padding="10,4"
-                                                            Background="{DynamicResource CardAltBrush}"
-                                                            CornerRadius="12">
-                                                        <TextBlock FontSize="11"
-                                                                   FontWeight="SemiBold"
-                                                                   Text="{Binding RoutingPreferenceLabel}" />
-                                                    </Border>
-                                                </DockPanel>
-
-                                                <TextBlock Grid.Row="2"
-                                                           FontSize="12"
-                                                           Foreground="{DynamicResource MutedForegroundBrush}"
-                                                           Text="{Binding SupplyDemandSummary}"
-                                                           TextWrapping="Wrap" />
-
-                                                <TextBlock Grid.Row="4"
-                                                           FontSize="12"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{DynamicResource AccentStrongBrush}"
-                                                           Text="{Binding OutcomeSummary}"
-                                                           TextWrapping="Wrap" />
-
-                                                <TextBlock Grid.Row="6"
-                                                           FontSize="11"
-                                                           Foreground="{DynamicResource MutedForegroundBrush}"
-                                                           Text="{Binding NotesSummary}"
-                                                           TextWrapping="Wrap" />
-                                            </Grid>
-                                        </Border>
-
-                                        <DataTemplate.Triggers>
-                                            <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
-                                                         Value="True">
-                                                <Setter TargetName="TrafficCard" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                                                <Setter TargetName="TrafficCard" Property="Background" Value="{DynamicResource CardBrush}" />
-                                            </DataTrigger>
-                                        </DataTemplate.Triggers>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </Expander>
-                    </Border>
-
-                    <Border Margin="0,16,0,0"
-                            Padding="18"
-                            Background="{DynamicResource PanelBrush}"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="22">
-                        <Expander IsExpanded="True">
-                            <Expander.Header>
-                                <TextBlock FontSize="17"
-                                           FontWeight="SemiBold"
-                                           Text="How To Use It" />
-                            </Expander.Header>
-
-                            <TextBlock Margin="0,10,0,0"
-                                       FontSize="13"
-                                       Foreground="{DynamicResource MutedForegroundBrush}"
-                                       Text="Create a new network or load an existing JSON file. Use the Network Editor tab to add traffic types, nodes, node traffic profiles, and edges directly in the app, then drag nodes on the canvas and run the simulation."
-                                       TextWrapping="Wrap" />
-                        </Expander>
-                    </Border>
+                    <local:LayersPanelControl DataContext="{Binding LayersPanel}"
+                                              Visibility="{Binding LayersPanelVisibility}" />
+                    <local:InspectorPanelControl Margin="0,14,0,0"
+                                                 DataContext="{Binding InspectorPanel}"
+                                                 Visibility="{Binding InspectorPanel.Visibility}" />
+                    <local:LegendPanelControl Margin="0,14,0,0"
+                                              Visibility="{Binding LegendPanelVisibility}" />
                 </StackPanel>
             </ScrollViewer>
 
@@ -710,7 +565,10 @@
                 CornerRadius="22"
                 MaxHeight="360"
                 Visibility="{Binding DataContext.BottomWorkspaceVisibility, ElementName=RootWindow}">
-            <Expander IsExpanded="True">
+            <Grid>
+                <local:ReportsDrawerControl />
+                <Expander IsExpanded="False"
+                          Visibility="Collapsed">
                 <Expander.Header>
                     <DockPanel LastChildFill="False">
                         <StackPanel Margin="0,0,18,0">
@@ -1190,7 +1048,8 @@
                                Text="{Binding StatusMessage}"
                                TextWrapping="Wrap" />
                 </Grid>
-            </Expander>
+                </Expander>
+            </Grid>
         </Border>
     </Grid>
 </Window>

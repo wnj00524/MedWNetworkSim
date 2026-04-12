@@ -60,6 +60,7 @@ public sealed class EdgeViewModel : ObservableObject
                 return;
             }
 
+            OnPropertyChanged(nameof(EdgeToolTipText));
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -74,6 +75,7 @@ public sealed class EdgeViewModel : ObservableObject
                 return;
             }
 
+            OnPropertyChanged(nameof(EdgeToolTipText));
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -88,6 +90,7 @@ public sealed class EdgeViewModel : ObservableObject
                 return;
             }
 
+            OnPropertyChanged(nameof(EdgeToolTipText));
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -104,6 +107,7 @@ public sealed class EdgeViewModel : ObservableObject
 
             OnPropertyChanged(nameof(TotalCost));
             OnPropertyChanged(nameof(SummaryLabel));
+            OnPropertyChanged(nameof(EdgeToolTipText));
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -120,6 +124,7 @@ public sealed class EdgeViewModel : ObservableObject
 
             OnPropertyChanged(nameof(TotalCost));
             OnPropertyChanged(nameof(SummaryLabel));
+            OnPropertyChanged(nameof(EdgeToolTipText));
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -135,6 +140,8 @@ public sealed class EdgeViewModel : ObservableObject
             }
 
             OnPropertyChanged(nameof(CapacityLabel));
+            OnPropertyChanged(nameof(EdgeToolTipText));
+            OnPropertyChanged(nameof(UtilizationPercentLabel));
             RefreshSimulationDerivedState();
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -155,6 +162,7 @@ public sealed class EdgeViewModel : ObservableObject
             OnPropertyChanged(nameof(FlowArrowVisibility));
             OnPropertyChanged(nameof(ArrowPoints));
             OnPropertyChanged(nameof(FlowSummaryLabel));
+            OnPropertyChanged(nameof(EdgeToolTipText));
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -174,6 +182,18 @@ public sealed class EdgeViewModel : ObservableObject
         : Capacity.HasValue
             ? $"used {RoutedTotalQuantity:0.##} / {Capacity.Value:0.##} ({capacityUtilizationRatio:0%})"
             : $"used {RoutedTotalQuantity:0.##} | cap inf";
+
+    public string UtilizationPercentLabel => Capacity.HasValue
+        ? $"{capacityUtilizationRatio:0%}"
+        : "Unlimited capacity";
+
+    public string EdgeToolTipText =>
+        $"{Id}{Environment.NewLine}" +
+        $"{FromNodeId} -> {ToNodeId} ({DirectionLabel}){Environment.NewLine}" +
+        $"Time {Time:0.##} | Cost {Cost:0.##} | Total {TotalCost:0.##}{Environment.NewLine}" +
+        $"{CapacityDisplayLabel}{Environment.NewLine}" +
+        $"Flow: {(HasSimulationDetails ? FlowSummaryLabel : "none visible")}{Environment.NewLine}" +
+        $"Utilization: {UtilizationPercentLabel}";
 
     public string FlowSummaryLabel
     {
@@ -460,6 +480,8 @@ public sealed class EdgeViewModel : ObservableObject
 
         OnPropertyChanged(nameof(RoutedTotalQuantity));
         OnPropertyChanged(nameof(CapacityDisplayLabel));
+        OnPropertyChanged(nameof(UtilizationPercentLabel));
+        OnPropertyChanged(nameof(EdgeToolTipText));
         OnPropertyChanged(nameof(FlowSummaryLabel));
         OnPropertyChanged(nameof(HasSimulationDetails));
         OnPropertyChanged(nameof(LabelHeight));

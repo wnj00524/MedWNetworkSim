@@ -24,7 +24,7 @@
             </DockPanel>
             <TabControl Grid.Row="2"
                         MinHeight="250">
-                <TabItem Header="Routes">
+                <TabItem Header="{Binding RoutesTabHeader}">
                     <Grid Margin="10">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -37,7 +37,8 @@
                                   ItemsSource="{Binding VisibleAllocations}"
                                   SelectedItem="{Binding ReportsDrawer.SelectedReportRow, Mode=TwoWay}"
                                   AutoGenerateColumns="False"
-                                  IsReadOnly="True">
+                                  IsReadOnly="True"
+                                  Visibility="{Binding RoutesGridVisibility}">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Binding="{Binding Period}" Header="Period" Width="65" />
                                 <DataGridTextColumn Binding="{Binding TrafficType}" Header="Traffic" Width="130" />
@@ -55,10 +56,19 @@
                                 </DataGridTemplateColumn>
                             </DataGrid.Columns>
                         </DataGrid>
+                        <TextBlock Grid.Row="2"
+                                   Margin="0,24,0,0"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="14"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="{Binding RoutesEmptyText}"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding RoutesEmptyStateVisibility}" />
                     </Grid>
                 </TabItem>
 
-                <TabItem Header="Consumer Costs">
+                <TabItem Header="{Binding ConsumerCostsTabHeader}">
                     <Grid Margin="10">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -70,7 +80,8 @@
                         <DataGrid Grid.Row="2"
                                   ItemsSource="{Binding VisibleConsumerCostSummaries}"
                                   AutoGenerateColumns="False"
-                                  IsReadOnly="True">
+                                  IsReadOnly="True"
+                                  Visibility="{Binding ConsumerCostsGridVisibility}">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Binding="{Binding TrafficType}" Header="Traffic" Width="140" />
                                 <DataGridTextColumn Binding="{Binding ConsumerName}" Header="Consumer" Width="170" />
@@ -80,14 +91,16 @@
                                 <DataGridTextColumn Binding="{Binding TotalMovementCost, StringFormat={}{0:0.##}}" Header="Total Movement Cost" Width="150" />
                             </DataGrid.Columns>
                         </DataGrid>
+                        <TextBlock Grid.Row="2"
+                                   Margin="0,24,0,0"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="14"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="{Binding ConsumerCostsEmptyText}"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding ConsumerCostsEmptyStateVisibility}" />
                     </Grid>
-                </TabItem>
-
-                <TabItem Header="Network Editor">
-                    <TextBlock Margin="12"
-                               Foreground="{DynamicResource MutedForegroundBrush}"
-                               Text="Bulk editing now lives in the toolbar dialogs. Select a node or edge on the canvas to inspect it, or open Traffic Types, Edges, and Properties from the Edit group."
-                               TextWrapping="Wrap" />
                 </TabItem>
             </TabControl>
         </Grid>

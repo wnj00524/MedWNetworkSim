@@ -44,6 +44,8 @@ ScenarioAL_LayerTogglesDriveVisibleTraffic();
 ScenarioAM_InspectorAndReportsOpenOnDemand();
 ScenarioAN_ReportRouteSelectionHighlightsCanvas();
 ScenarioAO_TimelineAndCanvasOnlyUpdateSurfaces();
+ScenarioAP_InspectorTabsAndManualCloseBehave();
+ScenarioAQ_EdgeToolTipAndReportEmptyStatesArePopulated();
 
 Console.WriteLine("Verification passed.");
 
@@ -742,6 +744,22 @@ static void ScenarioAM_InspectorAndReportsOpenOnDemand()
     {
         throw new InvalidOperationException("AM inspector or reports did not open on demand.");
     }
+
+    viewModel.ToggleLayersPanel();
+    viewModel.ToggleLegendPanel();
+    if (!viewModel.IsLayersPanelOpen || !viewModel.IsLegendPanelOpen)
+    {
+        throw new InvalidOperationException("AM layers or legend panel did not open.");
+    }
+
+    viewModel.ToggleLayersPanel();
+    viewModel.ToggleInspectorPanel();
+    viewModel.ToggleReportsDrawer();
+    viewModel.ToggleLegendPanel();
+    if (viewModel.IsLayersPanelOpen || viewModel.InspectorPanel.IsOpen || viewModel.ReportsDrawer.IsOpen || viewModel.IsLegendPanelOpen)
+    {
+        throw new InvalidOperationException("AM optional panels did not close cleanly.");
+    }
 }
 
 static void ScenarioAN_ReportRouteSelectionHighlightsCanvas()
@@ -755,7 +773,8 @@ static void ScenarioAN_ReportRouteSelectionHighlightsCanvas()
 
     if (viewModel.Canvas.HighlightedRouteTrafficType != route.TrafficType ||
         string.IsNullOrWhiteSpace(viewModel.Canvas.HighlightedRoutePath) ||
-        !viewModel.InspectorPanel.IsOpen)
+        !viewModel.InspectorPanel.IsOpen ||
+        !viewModel.Canvas.HighlightedRouteEdgeIds.SequenceEqual(route.PathEdgeIds))
     {
         throw new InvalidOperationException("AN route report selection did not sync to canvas highlight and inspector.");
     }
@@ -778,6 +797,73 @@ static void ScenarioAO_TimelineAndCanvasOnlyUpdateSurfaces()
         viewModel.BottomWorkspaceVisibility != System.Windows.Visibility.Collapsed)
     {
         throw new InvalidOperationException("AO Canvas Only mode did not hide optional side/drawer surfaces.");
+    }
+
+    viewModel.ToggleCanvasOnlyMode();
+    if (viewModel.OptionalSidePanelVisibility != System.Windows.Visibility.Visible ||
+        viewModel.BottomWorkspaceVisibility != System.Windows.Visibility.Visible)
+    {
+        throw new InvalidOperationException("AO exiting Canvas Only mode did not restore previous optional surface states.");
+    }
+}
+
+static void ScenarioAP_InspectorTabsAndManualCloseBehave()
+{
+    var viewModel = new MainWindowViewModel();
+    viewModel.SelectedNode = viewModel.Nodes.First();
+
+    if (!viewModel.InspectorPanel.IsOpen ||
+        viewModel.InspectorPanel.SummaryText == viewModel.InspectorPanel.FlowsText ||
+        viewModel.InspectorPanel.SummaryText == viewModel.InspectorPanel.CapacityText)
+    {
+        throw new InvalidOperationException("AP inspector tabs should expose distinct node content.");
+    }
+
+    viewModel.InspectorPanel.SelectedTab = InspectorTab.Flows;
+    if (viewModel.InspectorPanel.SelectedTabIndex != (int)InspectorTab.Flows)
+    {
+        throw new InvalidOperationException("AP inspector tab selection did not track the selected enum value.");
+    }
+
+    viewModel.ToggleInspectorPanel();
+    viewModel.SelectedEdge = viewModel.Edges.First();
+    if (viewModel.InspectorPanel.IsOpen)
+    {
+        throw new InvalidOperationException("AP manually closed inspector should stay closed during contextual selection.");
+    }
+
+    viewModel.ToggleInspectorPanel();
+    if (!viewModel.InspectorPanel.IsOpen)
+    {
+        throw new InvalidOperationException("AP inspector did not reopen explicitly after manual close.");
+    }
+}
+
+static void ScenarioAQ_EdgeToolTipAndReportEmptyStatesArePopulated()
+{
+    var viewModel = new MainWindowViewModel();
+    var edge = viewModel.Edges.First();
+    if (!edge.EdgeToolTipText.Contains(edge.Id, StringComparison.Ordinal) ||
+        !edge.EdgeToolTipText.Contains(edge.FromNodeId, StringComparison.Ordinal) ||
+        !edge.EdgeToolTipText.Contains(edge.ToNodeId, StringComparison.Ordinal) ||
+        !edge.EdgeToolTipText.Contains("Utilization:", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("AQ edge tooltip text is missing expected routing/capacity details.");
+    }
+
+    viewModel.ToggleReportsDrawer();
+    if (viewModel.BottomWorkspaceVisibility != System.Windows.Visibility.Visible ||
+        viewModel.RoutesEmptyStateVisibility != System.Windows.Visibility.Visible ||
+        !viewModel.RoutesEmptyText.Contains("No results yet", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("AQ reports drawer did not expose the no-results empty state.");
+    }
+
+    viewModel.RunSimulation();
+    if (viewModel.RoutesGridVisibility != System.Windows.Visibility.Visible ||
+        !viewModel.RoutesTabHeader.Contains(viewModel.VisibleAllocations.Count.ToString(), StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("AQ reports drawer did not expose populated rows and counts after simulation.");
     }
 }
 

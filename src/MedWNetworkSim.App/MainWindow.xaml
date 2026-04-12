@@ -136,21 +136,26 @@
                                        Foreground="{DynamicResource AccentStrongBrush}"
                                        Text="Workspace" />
                             <WrapPanel Margin="0,8,0,0">
-                                <Button Content="{Binding CanvasOnlyButtonLabel}"
-                                        Click="ToggleCanvasOnly_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="Layers"
-                                        Click="ToggleLayers_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="Inspector"
-                                        Click="ToggleInspector_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="Reports"
-                                        Click="ToggleReportsDrawer_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="Legend"
-                                        Click="ToggleLegend_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
+                                <ToggleButton Content="{Binding CanvasOnlyButtonLabel}"
+                                              Click="ToggleCanvasOnly_Click"
+                                              IsChecked="{Binding IsCanvasOnlyMode, Mode=OneWay}"
+                                              IsEnabled="{Binding HasNetwork}" />
+                                <ToggleButton Content="Layers"
+                                              Click="ToggleLayers_Click"
+                                              IsChecked="{Binding IsLayersPanelOpen, Mode=OneWay}"
+                                              IsEnabled="{Binding HasNetwork}" />
+                                <ToggleButton Content="Inspector"
+                                              Click="ToggleInspector_Click"
+                                              IsChecked="{Binding InspectorPanel.IsOpen, Mode=OneWay}"
+                                              IsEnabled="{Binding HasNetwork}" />
+                                <ToggleButton Content="Reports"
+                                              Click="ToggleReportsDrawer_Click"
+                                              IsChecked="{Binding ReportsDrawer.IsOpen, Mode=OneWay}"
+                                              IsEnabled="{Binding HasNetwork}" />
+                                <ToggleButton Content="Legend"
+                                              Click="ToggleLegend_Click"
+                                              IsChecked="{Binding IsLegendPanelOpen, Mode=OneWay}"
+                                              IsEnabled="{Binding HasNetwork}" />
                                 <Button Content="Fit"
                                         Click="AutoArrange_Click"
                                         IsEnabled="{Binding HasNetwork}" />
@@ -285,6 +290,20 @@
                                                   StrokeThickness="3"
                                                   StrokeStartLineCap="Round"
                                                   StrokeEndLineCap="Round"
+                                                  MouseLeftButtonDown="EdgeVisual_OnMouseLeftButtonDown"
+                                                  ToolTip="{Binding EdgeToolTipText}"
+                                                  Visibility="{Binding EdgeVisibility}" />
+
+                                            <Line X1="{Binding X1}"
+                                                  Y1="{Binding Y1}"
+                                                  X2="{Binding X2}"
+                                                  Y2="{Binding Y2}"
+                                                  Stroke="Transparent"
+                                                  StrokeThickness="18"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeEndLineCap="Round"
+                                                  MouseLeftButtonDown="EdgeVisual_OnMouseLeftButtonDown"
+                                                  ToolTip="{Binding EdgeToolTipText}"
                                                   Visibility="{Binding EdgeVisibility}" />
 
                                             <Line X1="{Binding X1}"
@@ -296,6 +315,8 @@
                                                   StrokeStartLineCap="Round"
                                                   StrokeEndLineCap="Round"
                                                   Opacity="0.92"
+                                                  MouseLeftButtonDown="EdgeVisual_OnMouseLeftButtonDown"
+                                                  ToolTip="{Binding EdgeToolTipText}"
                                                   Visibility="{Binding FlowOverlayVisibility}" />
 
                                             <Line X1="{Binding X1}"
@@ -327,6 +348,8 @@
                                                     BorderBrush="{DynamicResource BorderBrush}"
                                                     BorderThickness="1"
                                                     CornerRadius="14"
+                                                    MouseLeftButtonDown="EdgeVisual_OnMouseLeftButtonDown"
+                                                    ToolTip="{Binding EdgeToolTipText}"
                                                     Visibility="{Binding EdgeVisibility}">
                                                 <StackPanel>
                                                     <TextBlock FontSize="11"
@@ -565,491 +588,7 @@
                 CornerRadius="22"
                 MaxHeight="360"
                 Visibility="{Binding DataContext.BottomWorkspaceVisibility, ElementName=RootWindow}">
-            <Grid>
-                <local:ReportsDrawerControl />
-                <Expander IsExpanded="False"
-                          Visibility="Collapsed">
-                <Expander.Header>
-                    <DockPanel LastChildFill="False">
-                        <StackPanel Margin="0,0,18,0">
-                            <TextBlock FontSize="18"
-                                       FontWeight="SemiBold"
-                                       Text="Simulation And Editing" />
-                            <TextBlock Margin="0,4,0,0"
-                                       FontSize="12"
-                                       Foreground="{DynamicResource MutedForegroundBrush}"
-                                       Text="Select a traffic type to filter simulation outputs, or collapse this section while arranging the network."
-                                       TextWrapping="Wrap" />
-                        </StackPanel>
-                        <TextBlock DockPanel.Dock="Right"
-                                   VerticalAlignment="Center"
-                                   FontSize="12"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource AccentStrongBrush}"
-                                   Text="Canvas Focus Mode" />
-                    </DockPanel>
-                </Expander.Header>
-
-                <Grid Margin="0,14,0,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="12" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <TabControl Grid.Row="0"
-                                MinHeight="280">
-                    <TabItem Header="Consumer Costs">
-                        <Grid Margin="10">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="8" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-
-                            <TextBlock FontSize="12"
-                                       Foreground="{DynamicResource MutedForegroundBrush}"
-                                       Text="{Binding VisibleConsumerCostHeadline}" />
-
-                            <DataGrid Grid.Row="2"
-                                      ItemsSource="{Binding VisibleConsumerCostSummaries}"
-                                      AutoGenerateColumns="False"
-                                      IsReadOnly="True"
-                                      SelectionMode="Single"
-                                      SelectionUnit="FullRow">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Binding="{Binding TrafficType}" Header="Traffic" Width="140" />
-                                    <DataGridTextColumn Binding="{Binding ConsumerName}" Header="Consumer" Width="170" />
-                                    <DataGridTextColumn Binding="{Binding LocalQuantity, StringFormat={}{0:0.##}}" Header="Local Qty" Width="90" />
-                                    <DataGridTextColumn Binding="{Binding LocalUnitCost, StringFormat={}{0:0.##}}" Header="Local Unit Cost" Width="110" />
-                                    <DataGridTextColumn Binding="{Binding ImportedQuantity, StringFormat={}{0:0.##}}" Header="Imported Qty" Width="100" />
-                                    <DataGridTextColumn Binding="{Binding ImportedUnitCost, StringFormat={}{0:0.##}}" Header="Imported Unit Cost" Width="125" />
-                                    <DataGridTextColumn Binding="{Binding BlendedUnitCost, StringFormat={}{0:0.##}}" Header="Blended Unit Cost" Width="125" />
-                                    <DataGridTextColumn Binding="{Binding TotalMovementCost, StringFormat={}{0:0.##}}" Header="Total Movement Cost" Width="140" />
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </Grid>
-                    </TabItem>
-
-                    <TabItem Header="Routed Movements">
-                        <Grid Margin="10">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="8" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-
-                            <TextBlock FontSize="12"
-                                       Foreground="{DynamicResource MutedForegroundBrush}"
-                                       Text="{Binding VisibleAllocationHeadline}" />
-
-                            <DataGrid Grid.Row="2"
-                                      ItemsSource="{Binding VisibleAllocations}"
-                                      AutoGenerateColumns="False"
-                                      IsReadOnly="True"
-                                      SelectionMode="Single"
-                                      SelectionUnit="FullRow">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Binding="{Binding Period}" Header="Period" Width="65" />
-                                    <DataGridTextColumn Binding="{Binding TrafficType}" Header="Traffic" Width="120" />
-                                    <DataGridTextColumn Binding="{Binding RoutingPreferenceLabel}" Header="Preference" Width="95" />
-                                    <DataGridTextColumn Binding="{Binding AllocationModeLabel}" Header="Allocation" Width="165" />
-                                    <DataGridTextColumn Binding="{Binding SourceLabel}" Header="Source" Width="85" />
-                                    <DataGridTextColumn Binding="{Binding ProducerName}" Header="Producer" Width="135" />
-                                    <DataGridTextColumn Binding="{Binding ConsumerName}" Header="Consumer" Width="135" />
-                                    <DataGridTextColumn Binding="{Binding Quantity, StringFormat={}{0:0.##}}" Header="Qty" Width="65" />
-                                    <DataGridTextColumn Binding="{Binding TotalTime, StringFormat={}{0:0.##}}" Header="Time" Width="70" />
-                                    <DataGridTextColumn Binding="{Binding TransitCostPerUnit, StringFormat={}{0:0.##}}" Header="Transit / Unit" Width="95" />
-                                    <DataGridTextColumn Binding="{Binding BidCostPerUnit, StringFormat={}{0:0.##}}" Header="Bid / Unit" Width="80" />
-                                    <DataGridTextColumn Binding="{Binding DeliveredCostPerUnit, StringFormat={}{0:0.##}}" Header="Landed / Unit" Width="95" />
-                                    <DataGridTextColumn Binding="{Binding TotalMovementCost, StringFormat={}{0:0.##}}" Header="Total Cost" Width="90" />
-                                    <DataGridTemplateColumn Header="Path" Width="*">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate DataType="{x:Type vm:RouteAllocationRowViewModel}">
-                                                <TextBlock Text="{Binding PathDescription}" TextWrapping="Wrap" />
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </Grid>
-                    </TabItem>
-
-                    <TabItem Header="Node Roles">
-                        <Grid Margin="10">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="8" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="12" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-
-                            <TextBlock FontSize="12"
-                                       Foreground="{DynamicResource MutedForegroundBrush}"
-                                       Text="Choose the node and traffic-role entry from dropdown lists here, then open the dedicated node editor window to make changes."
-                                       TextWrapping="Wrap" />
-
-                            <Grid Grid.Row="2">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="280" />
-                                    <ColumnDefinition Width="16" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="280" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-
-                                <TextBlock VerticalAlignment="Center"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Text="Node" />
-                                <ComboBox Grid.Column="1"
-                                          ItemsSource="{Binding Nodes}"
-                                          SelectedItem="{Binding SelectedNode, Mode=TwoWay}">
-                                    <ComboBox.ItemTemplate>
-                                        <DataTemplate DataType="{x:Type vm:NodeViewModel}">
-                                            <TextBlock>
-                                                <Run Text="{Binding Name}" />
-                                                <Run Text=" (" />
-                                                <Run Text="{Binding Id}" />
-                                                <Run Text=")" />
-                                            </TextBlock>
-                                        </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
-
-                                <TextBlock Grid.Column="3"
-                                           VerticalAlignment="Center"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Text="Traffic Role" />
-                                <ComboBox Grid.Column="4"
-                                          ItemsSource="{Binding SelectedNode.TrafficProfiles}"
-                                          SelectedItem="{Binding SelectedNodeTrafficProfile, Mode=TwoWay}"
-                                          DisplayMemberPath="SelectionLabel" />
-                            </Grid>
-
-                            <Border Grid.Row="4"
-                                    Padding="14"
-                                    Background="{DynamicResource CardBrush}"
-                                    BorderBrush="{DynamicResource BorderBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="14">
-                                <StackPanel>
-                                    <TextBlock FontSize="15"
-                                               FontWeight="SemiBold"
-                                               Text="Use The Node Editor Window" />
-                                    <TextBlock Margin="0,8,0,0"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource MutedForegroundBrush}"
-                                               Text="The dedicated node editor provides dropdowns for node, traffic role, traffic type, and role, and keeps the amount fields together in a single place."
-                                               TextWrapping="Wrap" />
-                                    <WrapPanel Margin="0,14,0,0">
-                                        <Button Content="Open Node Editor..." Click="EditSelectedNode_Click" />
-                                        <Button Content="Apply Role To All Nodes..." Click="ApplyTrafficRoleToAllNodes_Click" />
-                                        <Button Content="Add Traffic Role" Click="AddTrafficProfile_Click" />
-                                        <Button Content="Remove Selected" Click="RemoveTrafficProfile_Click" />
-                                    </WrapPanel>
-                                    <TextBlock Margin="0,14,0,0"
-                                               FontSize="12"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource AccentStrongBrush}"
-                                               Text="{Binding SelectedNodeTrafficProfile.SelectionLabel}" />
-                                    <TextBlock Margin="0,4,0,0"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource MutedForegroundBrush}"
-                                               Text="{Binding SelectedNodeTrafficProfile.RoleSummary}" />
-                                </StackPanel>
-                            </Border>
-                        </Grid>
-                    </TabItem>
-
-                    <TabItem Header="Network Editor">
-                        <Grid Margin="10">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="8" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-
-                            <TextBlock FontSize="12"
-                                       Foreground="{DynamicResource MutedForegroundBrush}"
-                                       Text="Create a network, maintain traffic types, edit nodes and their traffic roles, and edit edges directly in the app." />
-
-                            <Grid Grid.Row="2">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="1.1*" />
-                                    <ColumnDefinition Width="12" />
-                                    <ColumnDefinition Width="1.25*" />
-                                    <ColumnDefinition Width="12" />
-                                    <ColumnDefinition Width="1.15*" />
-                                </Grid.ColumnDefinitions>
-
-                                <Border Padding="12"
-                                        Background="{DynamicResource CardBrush}"
-                                        BorderBrush="{DynamicResource BorderBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="16">
-                                    <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="8" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="8" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="8" />
-                                            <RowDefinition Height="*" />
-                                        </Grid.RowDefinitions>
-
-                                        <TextBlock FontSize="16"
-                                                   FontWeight="SemiBold"
-                                                   Text="Traffic Types" />
-
-                                        <WrapPanel Grid.Row="2">
-                                            <Button Content="Add Traffic Type" Click="AddTrafficType_Click" />
-                                            <Button Content="Open Traffic Type Editor..." Click="EditTrafficTypes_Click" />
-                                            <Button Content="Remove Selected" Click="RemoveTrafficType_Click" />
-                                        </WrapPanel>
-
-                                        <TextBlock Grid.Row="4"
-                                                   FontSize="11"
-                                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                                   Text="Traffic type definitions control route choice, branch splitting behavior, and shared capacity bidding defaults for both edges and node transhipment." />
-
-                                        <DataGrid Grid.Row="6"
-                                                  MinHeight="150"
-                                                  ItemsSource="{Binding TrafficDefinitions}"
-                                                  SelectedItem="{Binding SelectedTrafficDefinition, Mode=TwoWay}"
-                                                  AutoGenerateColumns="False"
-                                                  CanUserAddRows="False"
-                                                  IsReadOnly="False"
-                                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                                  SelectionMode="Single"
-                                                  SelectionUnit="FullRow">
-                                            <DataGrid.Columns>
-                                                <DataGridTextColumn Binding="{Binding Name, Mode=TwoWay}" Header="Name" Width="95" />
-                                                <DataGridTemplateColumn Header="Preference" Width="118">
-                                                    <DataGridTemplateColumn.CellTemplate>
-                                                        <DataTemplate DataType="{x:Type vm:TrafficTypeDefinitionEditorViewModel}">
-                                                            <TextBlock Text="{Binding RoutingPreference}" VerticalAlignment="Center" />
-                                                        </DataTemplate>
-                                                    </DataGridTemplateColumn.CellTemplate>
-                                                    <DataGridTemplateColumn.CellEditingTemplate>
-                                                        <DataTemplate DataType="{x:Type vm:TrafficTypeDefinitionEditorViewModel}">
-                                                            <ComboBox Padding="2"
-                                                                      MinWidth="96"
-                                                                      ItemsSource="{Binding DataContext.RoutingPreferences, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                      SelectedItem="{Binding RoutingPreference, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        </DataTemplate>
-                                                    </DataGridTemplateColumn.CellEditingTemplate>
-                                                </DataGridTemplateColumn>
-                                                <DataGridTemplateColumn Header="Allocation" Width="180">
-                                                    <DataGridTemplateColumn.CellTemplate>
-                                                        <DataTemplate DataType="{x:Type vm:TrafficTypeDefinitionEditorViewModel}">
-                                                            <TextBlock Text="{Binding AllocationModeLabel}" VerticalAlignment="Center" />
-                                                        </DataTemplate>
-                                                    </DataGridTemplateColumn.CellTemplate>
-                                                    <DataGridTemplateColumn.CellEditingTemplate>
-                                                        <DataTemplate DataType="{x:Type vm:TrafficTypeDefinitionEditorViewModel}">
-                                                            <ComboBox Padding="2"
-                                                                      MinWidth="160"
-                                                                      DisplayMemberPath="Label"
-                                                                      SelectedValuePath="Value"
-                                                                      ItemsSource="{Binding DataContext.AllocationModeOptions, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                      SelectedValue="{Binding AllocationMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        </DataTemplate>
-                                                    </DataGridTemplateColumn.CellEditingTemplate>
-                                                </DataGridTemplateColumn>
-                                                <DataGridTextColumn Binding="{Binding CapacityBidPerUnit, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="Bid / Unit" Width="90" />
-                                                <DataGridTextColumn Binding="{Binding Description, Mode=TwoWay}" Header="Description" Width="*" />
-                                            </DataGrid.Columns>
-                                        </DataGrid>
-                                    </Grid>
-                                </Border>
-
-                                <Border Grid.Column="2"
-                                        Padding="12"
-                                        Background="{DynamicResource CardBrush}"
-                                        BorderBrush="{DynamicResource BorderBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="16">
-                                    <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="8" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="8" />
-                                            <RowDefinition Height="125" />
-                                            <RowDefinition Height="10" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="8" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="8" />
-                                            <RowDefinition Height="*" />
-                                        </Grid.RowDefinitions>
-
-                                        <TextBlock FontSize="16"
-                                                   FontWeight="SemiBold"
-                                                   Text="Nodes" />
-
-                                        <WrapPanel Grid.Row="2">
-                                            <Button Content="Add Node" Click="AddNode_Click" />
-                                            <Button Content="Edit Selected Node..." Click="EditSelectedNode_Click" />
-                                            <Button Content="Apply Role To All Nodes..." Click="ApplyTrafficRoleToAllNodes_Click" />
-                                            <Button Content="Remove Selected" Click="RemoveNode_Click" />
-                                        </WrapPanel>
-
-                                        <DataGrid Grid.Row="4"
-                                                  ItemsSource="{Binding Nodes}"
-                                                  SelectedItem="{Binding SelectedNode, Mode=TwoWay}"
-                                                  AutoGenerateColumns="False"
-                                                  CanUserAddRows="False"
-                                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                                  SelectionMode="Single"
-                                                  SelectionUnit="FullRow">
-                                            <DataGrid.Columns>
-                                                <DataGridTextColumn Binding="{Binding Id, Mode=TwoWay}" Header="Id" Width="85" />
-                                                <DataGridTextColumn Binding="{Binding Name, Mode=TwoWay}" Header="Name" Width="*" />
-                                                <DataGridTemplateColumn Header="Shape" Width="96">
-                                                    <DataGridTemplateColumn.CellTemplate>
-                                                        <DataTemplate DataType="{x:Type vm:NodeViewModel}">
-                                                            <TextBlock VerticalAlignment="Center"
-                                                                       Text="{Binding Shape}" />
-                                                        </DataTemplate>
-                                                    </DataGridTemplateColumn.CellTemplate>
-                                                    <DataGridTemplateColumn.CellEditingTemplate>
-                                                        <DataTemplate DataType="{x:Type vm:NodeViewModel}">
-                                                            <ComboBox ItemsSource="{Binding ShapeOptions}"
-                                                                      SelectedItem="{Binding Shape, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        </DataTemplate>
-                                                    </DataGridTemplateColumn.CellEditingTemplate>
-                                                </DataGridTemplateColumn>
-                                                <DataGridTextColumn Binding="{Binding X, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="X" Width="60" />
-                                                <DataGridTextColumn Binding="{Binding Y, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="Y" Width="60" />
-                                                <DataGridTextColumn Binding="{Binding TranshipmentCapacity, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="Tranship Cap" Width="92" />
-                                            </DataGrid.Columns>
-                                        </DataGrid>
-
-                                        <TextBlock Grid.Row="6"
-                                                   FontSize="16"
-                                                   FontWeight="SemiBold"
-                                                   Text="Node Role Editing" />
-
-                                        <WrapPanel Grid.Row="8">
-                                            <Button Content="Open Node Editor..." Click="EditSelectedNode_Click" />
-                                        </WrapPanel>
-
-                                        <Border Grid.Row="10"
-                                                Padding="12"
-                                                Background="{DynamicResource InfoPanelBrush}"
-                                                BorderBrush="{DynamicResource BorderBrush}"
-                                                BorderThickness="1"
-                                                CornerRadius="12">
-                                            <StackPanel>
-                                                <TextBlock FontSize="12"
-                                                           Foreground="{DynamicResource MutedForegroundBrush}"
-                                                           Text="Use the dedicated node editor window to choose nodes, set optional shared transhipment capacity, manage traffic-role entries from dropdown lists, or stamp one traffic role across every node in a single step."
-                                                           TextWrapping="Wrap" />
-                                                <TextBlock Margin="0,10,0,0"
-                                                           FontSize="12"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{DynamicResource AccentStrongBrush}"
-                                                           Text="{Binding SelectedNodeTrafficProfile.SelectionLabel}" />
-                                                <TextBlock Margin="0,4,0,0"
-                                                           FontSize="12"
-                                                           Foreground="{DynamicResource MutedForegroundBrush}"
-                                                           Text="{Binding SelectedNodeTrafficProfile.RoleSummary}" />
-                                            </StackPanel>
-                                        </Border>
-                                    </Grid>
-                                </Border>
-
-                                <Border Grid.Column="4"
-                                        Padding="12"
-                                        Background="{DynamicResource CardBrush}"
-                                        BorderBrush="{DynamicResource BorderBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="16">
-                                    <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="8" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="8" />
-                                            <RowDefinition Height="*" />
-                                        </Grid.RowDefinitions>
-
-                                        <TextBlock FontSize="16"
-                                                   FontWeight="SemiBold"
-                                                   Text="Edges" />
-
-                                        <WrapPanel Grid.Row="2">
-                                            <Button Content="Add Edge" Click="AddEdge_Click" />
-                                            <Button Content="Open Edge Editor..." Click="EditEdges_Click" />
-                                            <Button Content="Remove Selected" Click="RemoveEdge_Click" />
-                                        </WrapPanel>
-
-                                        <DataGrid Grid.Row="4"
-                                                  MinHeight="150"
-                                                  ItemsSource="{Binding Edges}"
-                                                  SelectedItem="{Binding SelectedEdge, Mode=TwoWay}"
-                                                  AutoGenerateColumns="False"
-                                                  CanUserAddRows="False"
-                                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                                  SelectionMode="Single"
-                                                  SelectionUnit="FullRow">
-                                            <DataGrid.Columns>
-                                                <DataGridTextColumn Binding="{Binding Id, Mode=TwoWay}" Header="Id" Width="70" />
-                                                <DataGridTemplateColumn Header="From" Width="110">
-                                                    <DataGridTemplateColumn.CellTemplate>
-                                                        <DataTemplate DataType="{x:Type vm:EdgeViewModel}">
-                                                            <TextBlock VerticalAlignment="Center"
-                                                                       Text="{Binding FromNodeId}" />
-                                                        </DataTemplate>
-                                                    </DataGridTemplateColumn.CellTemplate>
-                                                    <DataGridTemplateColumn.CellEditingTemplate>
-                                                        <DataTemplate DataType="{x:Type vm:EdgeViewModel}">
-                                                            <ComboBox ItemsSource="{Binding DataContext.NodeIdOptions, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                      SelectedItem="{Binding FromNodeId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        </DataTemplate>
-                                                    </DataGridTemplateColumn.CellEditingTemplate>
-                                                </DataGridTemplateColumn>
-                                                <DataGridTemplateColumn Header="To" Width="110">
-                                                    <DataGridTemplateColumn.CellTemplate>
-                                                        <DataTemplate DataType="{x:Type vm:EdgeViewModel}">
-                                                            <TextBlock VerticalAlignment="Center"
-                                                                       Text="{Binding ToNodeId}" />
-                                                        </DataTemplate>
-                                                    </DataGridTemplateColumn.CellTemplate>
-                                                    <DataGridTemplateColumn.CellEditingTemplate>
-                                                        <DataTemplate DataType="{x:Type vm:EdgeViewModel}">
-                                                            <ComboBox ItemsSource="{Binding DataContext.NodeIdOptions, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                      SelectedItem="{Binding ToNodeId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                        </DataTemplate>
-                                                    </DataGridTemplateColumn.CellEditingTemplate>
-                                                </DataGridTemplateColumn>
-                                                <DataGridTextColumn Binding="{Binding Time, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="Time" Width="68" />
-                                                <DataGridTextColumn Binding="{Binding Cost, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="Cost" Width="68" />
-                                                <DataGridTextColumn Binding="{Binding Capacity, Mode=TwoWay, StringFormat={}{0:0.##}}" Header="Capacity" Width="80" />
-                                                <DataGridCheckBoxColumn Binding="{Binding IsBidirectional, Mode=TwoWay}" Header="2-way" Width="60" />
-                                            </DataGrid.Columns>
-                                        </DataGrid>
-                                    </Grid>
-                                </Border>
-                            </Grid>
-                        </Grid>
-                    </TabItem>
-                    </TabControl>
-
-                    <TextBlock Grid.Row="2"
-                               FontSize="13"
-                               Foreground="{DynamicResource MutedForegroundBrush}"
-                               Text="{Binding StatusMessage}"
-                               TextWrapping="Wrap" />
-                </Grid>
-                </Expander>
-            </Grid>
+            <local:ReportsDrawerControl />
         </Border>
     </Grid>
 </Window>

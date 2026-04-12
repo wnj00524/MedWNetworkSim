@@ -250,6 +250,15 @@ public partial class MainWindow : Window
         }
     }
 
+    private void EdgeVisual_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: EdgeViewModel edge })
+        {
+            ViewModel.SelectedEdge = edge;
+            e.Handled = true;
+        }
+    }
+
     private void NodeThumb_OnPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         if (edgeCreationSourceNode is null)

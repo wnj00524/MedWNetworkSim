@@ -48,6 +48,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private double workspaceWidth = 1600d;
     private double workspaceHeight = 1000d;
     private bool hasNetwork;
+    private bool isWorldbuilderMode;
     private bool isCanvasOnlyMode;
     private bool isLayersPanelOpen;
     private bool isLegendPanelOpen;
@@ -104,6 +105,12 @@ public sealed class MainWindowViewModel : ObservableObject
     ];
 
     public Array ThemeOptions { get; } = Enum.GetValues(typeof(AppTheme));
+
+    public bool IsWorldbuilderMode
+    {
+        get => isWorldbuilderMode;
+        set => SetProperty(ref isWorldbuilderMode, value);
+    }
 
     public string ActiveFileLabel
     {

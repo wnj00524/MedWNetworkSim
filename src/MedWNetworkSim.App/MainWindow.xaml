@@ -214,6 +214,12 @@
                                           ItemsSource="{Binding ThemeOptions}"
                                           SelectedItem="{Binding SelectedTheme, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </Grid>
+                            <CheckBox Margin="0,8,0,0"
+                                      Content="Worldbuilder mode"
+                                      FontSize="12"
+                                      FontWeight="SemiBold"
+                                      Foreground="{DynamicResource AccentStrongBrush}"
+                                      IsChecked="{Binding IsWorldbuilderMode, Mode=TwoWay}" />
                         </StackPanel>
                     </Border>
                 </WrapPanel>

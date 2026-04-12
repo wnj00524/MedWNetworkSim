@@ -197,9 +197,22 @@ public sealed class TemporalNetworkSimulationEngine
                         profilesByNodeAndTraffic.GetValueOrDefault(node.Id) ?? new Dictionary<string, NodeTrafficProfile>(Comparer));
                 }
 
-                if (profile.Consumption > Epsilon && IsConsumptionActive(profile, period) && !profile.IsStore)
+                if (profile.Consumption > Epsilon && IsConsumptionActive(profile, period))
                 {
-                    state.DemandBacklog += profile.Consumption;
+                    if (profile.IsStore)
+                    {
+                        var consumedFromStore = Math.Min(state.StoreInventory, profile.Consumption);
+                        state.StoreInventory -= consumedFromStore;
+                        var unmetConsumption = profile.Consumption - consumedFromStore;
+                        if (unmetConsumption > Epsilon)
+                        {
+                            state.DemandBacklog += unmetConsumption;
+                        }
+                    }
+                    else
+                    {
+                        state.DemandBacklog += profile.Consumption;
+                    }
                 }
             }
         }
@@ -305,7 +318,8 @@ public sealed class TemporalNetworkSimulationEngine
                     : double.PositiveInfinity;
                 if (spareCapacity > Epsilon)
                 {
-                    availableDemand = Math.Min(profile.Consumption, spareCapacity);
+                    var targetDemand = profile.Consumption + nodeState.DemandBacklog;
+                    availableDemand = Math.Min(targetDemand, spareCapacity);
                     storeDemandNodes.Add(node.Id);
                 }
             }
@@ -439,6 +453,7 @@ public sealed class TemporalNetworkSimulationEngine
             if (context.StoreDemandNodes.Contains(pair.Key))
             {
                 state.ReservedStoreReceipts += pair.Value;
+                state.DemandBacklog = Math.Max(0d, state.DemandBacklog - pair.Value);
             }
             else
             {

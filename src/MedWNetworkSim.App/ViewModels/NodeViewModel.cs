@@ -8,8 +8,8 @@ namespace MedWNetworkSim.App.ViewModels;
 
 public sealed class NodeViewModel : ObservableObject
 {
-    public const double DefaultWidth = 176d;
-    public const double DefaultHeight = 154d;
+    public const double DefaultWidth = 168d;
+    public const double DefaultHeight = 112d;
 
     private const double UtilizationTrackWidth = 92d;
     private const double Epsilon = 0.000001d;
@@ -301,9 +301,76 @@ public sealed class NodeViewModel : ObservableObject
 
     public string TrafficProfileCountLabel => TrafficProfiles.Count switch
     {
-        1 => "1 traffic type",
-        _ => $"{TrafficProfiles.Count} traffic types"
+        1 => "1 flow",
+        _ => $"{TrafficProfiles.Count} flows"
     };
+
+    public string PlaceTypeLabel => string.IsNullOrWhiteSpace(PlaceType)
+        ? GetPrimaryRoleLabel()
+        : PlaceType.Trim();
+
+    public IReadOnlyList<string> RoleBadges
+    {
+        get
+        {
+            var badges = new List<string>();
+
+            if (TrafficProfiles.Any(profile => profile.Production > Epsilon))
+            {
+                badges.Add("Source");
+            }
+
+            if (TrafficProfiles.Any(profile => profile.Consumption > Epsilon))
+            {
+                badges.Add("Need");
+            }
+
+            if (TrafficProfiles.Any(profile => profile.IsStore))
+            {
+                badges.Add("Stockpile");
+            }
+
+            if (CanTransship)
+            {
+                badges.Add("Relay");
+            }
+
+            return badges.Count == 0 ? ["Draft"] : badges;
+        }
+    }
+
+    public string CompactFlowSummary
+    {
+        get
+        {
+            var produced = GetProducedGoods();
+            var consumed = GetConsumedGoods();
+            var stored = GetStoredGoods();
+            var parts = new List<string>();
+
+            if (produced.Count > 0)
+            {
+                parts.Add($"makes {FormatCompactList(produced)}");
+            }
+
+            if (consumed.Count > 0)
+            {
+                parts.Add($"needs {FormatCompactList(consumed)}");
+            }
+
+            if (stored.Count > 0)
+            {
+                parts.Add($"stores {FormatCompactList(stored)}");
+            }
+
+            if (parts.Count == 0 && CanTransship)
+            {
+                parts.Add("moves flows onward");
+            }
+
+            return parts.Count == 0 ? "Add flows to define its role" : string.Join(" | ", parts);
+        }
+    }
 
     public string TranshipmentCapacityLabel => TranshipmentCapacity.HasValue
         ? $"trans cap {TranshipmentCapacity.Value:0.##}"
@@ -704,6 +771,9 @@ public sealed class NodeViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(WorldbuilderSummary));
         OnPropertyChanged(nameof(WorldbuilderImportanceSummary));
+        OnPropertyChanged(nameof(PlaceTypeLabel));
+        OnPropertyChanged(nameof(RoleBadges));
+        OnPropertyChanged(nameof(CompactFlowSummary));
     }
 
     private string GetPlaceIdentity()
@@ -730,6 +800,31 @@ public sealed class NodeViewModel : ObservableObject
 
     private bool CanTransship => TrafficProfiles.Any(profile => profile.CanTransship);
 
+    private string GetPrimaryRoleLabel()
+    {
+        if (CanTransship)
+        {
+            return "Relay";
+        }
+
+        if (TrafficProfiles.Any(profile => profile.Production > Epsilon))
+        {
+            return "Source";
+        }
+
+        if (TrafficProfiles.Any(profile => profile.Consumption > Epsilon))
+        {
+            return "Need";
+        }
+
+        if (TrafficProfiles.Any(profile => profile.IsStore))
+        {
+            return "Stockpile";
+        }
+
+        return "Place";
+    }
+
     private IReadOnlyList<string> GetTrafficTypes(Func<NodeTrafficProfileViewModel, bool> predicate)
     {
         return TrafficProfiles
@@ -750,6 +845,16 @@ public sealed class NodeViewModel : ObservableObject
             1 => items[0],
             2 => $"{items[0]} and {items[1]}",
             _ => $"{string.Join(", ", items.Take(items.Count - 1))}, and {items[^1]}"
+        };
+    }
+
+    private static string FormatCompactList(IReadOnlyList<string> items)
+    {
+        return items.Count switch
+        {
+            0 => string.Empty,
+            <= 2 => string.Join(", ", items),
+            _ => $"{items[0]}, {items[1]} +{items.Count - 2}"
         };
     }
 

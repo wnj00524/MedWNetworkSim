@@ -5,6 +5,68 @@ public static class PlaceTemplateCatalog
     public static IReadOnlyList<PlaceTemplate> Templates { get; } =
     [
         new(
+            "settlement",
+            "Settlement",
+            "Settlement",
+            "Settlement",
+            "A population center with everyday needs and local exchange.",
+            20d,
+            ["settlement", "community", "hub"],
+            [
+                new("Food", Consumption: 18d, CanTransship: true, IsStore: true, StoreCapacity: 35d),
+                new("Tools", Consumption: 4d),
+                new("Local Goods", Production: 6d, CanTransship: true)
+            ]),
+        new(
+            "resource-site",
+            "Resource Site",
+            "Resource Site",
+            "Resource Site",
+            "A place that supplies one or more raw materials into the wider system.",
+            null,
+            ["resource", "source"],
+            [
+                new("Raw Material", Production: 24d),
+                new("Tools", Consumption: 3d)
+            ]),
+        new(
+            "transit-hub",
+            "Transit Hub",
+            "Transit Hub",
+            "Transit Hub",
+            "A transfer point where routes meet and flows can be redirected.",
+            60d,
+            ["relay", "hub", "infrastructure"],
+            [
+                new("Food", CanTransship: true, IsStore: true, StoreCapacity: 40d),
+                new("Tools", CanTransship: true, IsStore: true, StoreCapacity: 20d),
+                new("Raw Material", CanTransship: true)
+            ]),
+        new(
+            "workshop",
+            "Workshop",
+            "Workshop",
+            "Workshop",
+            "A production site that turns inputs into useful local output.",
+            12d,
+            ["production", "craft", "processing"],
+            [
+                new("Raw Material", Consumption: 12d, CanTransship: true),
+                new("Tools", Production: 10d, IsStore: true, StoreCapacity: 18d)
+            ]),
+        new(
+            "storage-depot",
+            "Storage Depot",
+            "Depot",
+            "Storage Depot",
+            "A stockpile location that buffers supply before it moves onward.",
+            35d,
+            ["stockpile", "logistics", "reserve"],
+            [
+                new("Food", CanTransship: true, IsStore: true, StoreCapacity: 80d),
+                new("Tools", CanTransship: true, IsStore: true, StoreCapacity: 30d)
+            ]),
+        new(
             "farm",
             "Farm",
             "Farmstead",

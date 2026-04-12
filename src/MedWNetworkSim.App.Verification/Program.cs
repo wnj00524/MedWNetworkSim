@@ -769,7 +769,7 @@ static void ScenarioAK_CanvasLayersDefaultCombinedAndVisible()
 
 static void ScenarioAL_LayerTogglesDriveVisibleTraffic()
 {
-    var viewModel = new MainWindowViewModel();
+    var viewModel = CreateSampleViewModel();
     viewModel.LayersPanel.SelectedDisplayMode = CanvasDisplayMode.SelectedOnly;
     foreach (var layer in viewModel.LayersPanel.TrafficLayers)
     {
@@ -793,7 +793,7 @@ static void ScenarioAL_LayerTogglesDriveVisibleTraffic()
 
 static void ScenarioAM_InspectorAndReportsOpenOnDemand()
 {
-    var viewModel = new MainWindowViewModel();
+    var viewModel = CreateSampleViewModel();
 
     if (viewModel.InspectorPanel.IsOpen || viewModel.ReportsDrawer.IsOpen)
     {
@@ -827,7 +827,7 @@ static void ScenarioAM_InspectorAndReportsOpenOnDemand()
 
 static void ScenarioAN_ReportRouteSelectionHighlightsCanvas()
 {
-    var viewModel = new MainWindowViewModel();
+    var viewModel = CreateSampleViewModel();
     viewModel.RunSimulation();
     viewModel.ToggleReportsDrawer();
 
@@ -872,7 +872,7 @@ static void ScenarioAO_TimelineAndCanvasOnlyUpdateSurfaces()
 
 static void ScenarioAP_InspectorTabsAndManualCloseBehave()
 {
-    var viewModel = new MainWindowViewModel();
+    var viewModel = CreateSampleViewModel();
     viewModel.SelectedNode = viewModel.Nodes.First();
 
     if (!viewModel.InspectorPanel.IsOpen ||
@@ -904,7 +904,7 @@ static void ScenarioAP_InspectorTabsAndManualCloseBehave()
 
 static void ScenarioAQ_EdgeToolTipAndReportEmptyStatesArePopulated()
 {
-    var viewModel = new MainWindowViewModel();
+    var viewModel = CreateSampleViewModel();
     var edge = viewModel.Edges.First();
     if (!edge.EdgeToolTipText.Contains(edge.Id, StringComparison.Ordinal) ||
         !edge.EdgeToolTipText.Contains(edge.FromNodeId, StringComparison.Ordinal) ||
@@ -928,6 +928,13 @@ static void ScenarioAQ_EdgeToolTipAndReportEmptyStatesArePopulated()
     {
         throw new InvalidOperationException("AQ reports drawer did not expose populated rows and counts after simulation.");
     }
+}
+
+static MainWindowViewModel CreateSampleViewModel()
+{
+    var viewModel = new MainWindowViewModel();
+    viewModel.LoadBundledSample();
+    return viewModel;
 }
 
 static NetworkModel CreateNetwork(double edgeTime, bool bidirectional, double production = 100d, double consumption = 100d)

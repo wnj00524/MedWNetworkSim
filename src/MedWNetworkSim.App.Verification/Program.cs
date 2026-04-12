@@ -24,6 +24,9 @@ ScenarioR_NoOrphanedOrDoubleCountedWaitingOccupancy();
 ScenarioS_StaticRecipeProcurementWithoutInputConsumerProfile();
 ScenarioT_TemporalRecipeProcurementWithoutInputConsumerProfile();
 ScenarioU_TemporalRecipeProcurementUsesLocalStockFirst();
+ScenarioUA_TemporalStoreConsumersReplenishAfterRecurringConsumption();
+ScenarioUB_NonStoreTemporalDemandBacklogStillAccumulates();
+ScenarioUC_RecipeInputStoresStillFeedProduction();
 ScenarioV_ProportionalBranchDemandSplit();
 ScenarioW_ProportionalLocalAndDownstreamDemand();
 ScenarioX_ProportionalCapacityLimitedBranchRedistributes();
@@ -412,6 +415,66 @@ static void ScenarioU_TemporalRecipeProcurementUsesLocalStockFirst()
     AssertEqual(6d, period1.Allocations.Where(allocation => allocation.TrafficType == "Wheat").Sum(allocation => allocation.Quantity), "U temporal unmet wheat procurement");
     AssertEqual(4d, GetAvailableSupply(state, "Bakery", "Bread"), "U temporal local-stock bread output");
     AssertEqual(6d, GetAvailableSupply(state, "Bakery", "Wheat"), "U temporal routed wheat retained for later production");
+}
+
+static void ScenarioUA_TemporalStoreConsumersReplenishAfterRecurringConsumption()
+{
+    var network = CreateStoreReplenishmentNetwork(storeCapacity: 10d, recurringConsumption: 10d, recurringProduction: 10d);
+    var engine = new TemporalNetworkSimulationEngine();
+    var state = engine.Initialize(network);
+    var delivered = 0d;
+    var activeDeliveryPeriods = 0;
+
+    for (var period = 0; period < 6; period++)
+    {
+        var result = engine.Advance(network, state);
+        var periodDelivered = result.Allocations
+            .Where(allocation => allocation.TrafficType == "Grain" && allocation.ConsumerNodeId == "Store")
+            .Sum(allocation => allocation.Quantity);
+        delivered += periodDelivered;
+        if (periodDelivered > 0.001d)
+        {
+            activeDeliveryPeriods++;
+        }
+
+        AssertAtMost(10d, GetStoreInventory(state, "Store", "Grain"), $"UA period {period + 1} store inventory");
+    }
+
+    if (activeDeliveryPeriods < 5)
+    {
+        throw new InvalidOperationException($"UA store demand stopped recurring; only {activeDeliveryPeriods} period(s) delivered.");
+    }
+
+    if (delivered <= 10d)
+    {
+        throw new InvalidOperationException($"UA expected replenishment to exceed one-time store capacity, delivered {delivered}.");
+    }
+}
+
+static void ScenarioUB_NonStoreTemporalDemandBacklogStillAccumulates()
+{
+    var network = CreateUnservedNonStoreDemandNetwork(consumption: 7d);
+    var engine = new TemporalNetworkSimulationEngine();
+    var state = engine.Initialize(network);
+
+    engine.Advance(network, state);
+    engine.Advance(network, state);
+    engine.Advance(network, state);
+
+    AssertEqual(21d, GetDemandBacklog(state, "Consumer", "Grain"), "UB non-store demand backlog");
+}
+
+static void ScenarioUC_RecipeInputStoresStillFeedProduction()
+{
+    var network = CreateRecipeInputStoreNetwork();
+    var engine = new TemporalNetworkSimulationEngine();
+    var state = engine.Initialize(network);
+    state.GetOrCreateNodeTrafficState("Bakery", "Wheat").StoreInventory = 10d;
+
+    engine.Advance(network, state);
+
+    AssertEqual(10d, GetAvailableSupply(state, "Bakery", "Bread"), "UC bread production from store input");
+    AssertEqual(0d, GetStoreInventory(state, "Bakery", "Wheat"), "UC wheat store inventory consumed by recipe");
 }
 
 static void ScenarioV_ProportionalBranchDemandSplit()
@@ -1216,6 +1279,100 @@ static NetworkModel CreateRecipeProcurementNetwork(double edgeTime, double wheat
     };
 }
 
+static NetworkModel CreateStoreReplenishmentNetwork(double storeCapacity, double recurringConsumption, double recurringProduction)
+{
+    return new NetworkModel
+    {
+        Name = "Store replenishment",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "Grain", RoutingPreference = RoutingPreference.TotalCost }],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "Farm",
+                Name = "Farm",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Grain", Production = recurringProduction }]
+            },
+            new NodeModel
+            {
+                Id = "Store",
+                Name = "Store",
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile
+                    {
+                        TrafficType = "Grain",
+                        Consumption = recurringConsumption,
+                        IsStore = true,
+                        StoreCapacity = storeCapacity
+                    }
+                ]
+            }
+        ],
+        Edges =
+        [
+            new EdgeModel { Id = "FarmStore", FromNodeId = "Farm", ToNodeId = "Store", Time = 1d, Cost = 1d, Capacity = recurringProduction, IsBidirectional = false }
+        ]
+    };
+}
+
+static NetworkModel CreateUnservedNonStoreDemandNetwork(double consumption)
+{
+    return new NetworkModel
+    {
+        Name = "Unserved non-store demand",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "Grain", RoutingPreference = RoutingPreference.TotalCost }],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "Consumer",
+                Name = "Consumer",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Grain", Consumption = consumption }]
+            }
+        ]
+    };
+}
+
+static NetworkModel CreateRecipeInputStoreNetwork()
+{
+    return new NetworkModel
+    {
+        Name = "Recipe input store",
+        TrafficTypes =
+        [
+            new TrafficTypeDefinition { Name = "Bread", RoutingPreference = RoutingPreference.TotalCost },
+            new TrafficTypeDefinition { Name = "Wheat", RoutingPreference = RoutingPreference.TotalCost }
+        ],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "Bakery",
+                Name = "Bakery",
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile
+                    {
+                        TrafficType = "Bread",
+                        Production = 10d,
+                        InputRequirements =
+                        [
+                            new ProductionInputRequirement { TrafficType = "Wheat", QuantityPerOutputUnit = 1d }
+                        ]
+                    },
+                    new NodeTrafficProfile
+                    {
+                        TrafficType = "Wheat",
+                        IsStore = true,
+                        StoreCapacity = 20d
+                    }
+                ]
+            }
+        ]
+    };
+}
+
 static TemporalNetworkSimulationEngine.TemporalSimulationState CreateBlockedTransitionState(NetworkModel network, int blockingRemainingPeriods)
 {
     var engine = new TemporalNetworkSimulationEngine();
@@ -1336,6 +1493,26 @@ static double GetAvailableSupply(
 {
     return state.NodeStates.TryGetValue(new TemporalNetworkSimulationEngine.TemporalNodeTrafficKey(nodeId, trafficType), out var nodeState)
         ? nodeState.AvailableSupply
+        : 0d;
+}
+
+static double GetDemandBacklog(
+    TemporalNetworkSimulationEngine.TemporalSimulationState state,
+    string nodeId,
+    string trafficType)
+{
+    return state.NodeStates.TryGetValue(new TemporalNetworkSimulationEngine.TemporalNodeTrafficKey(nodeId, trafficType), out var nodeState)
+        ? nodeState.DemandBacklog
+        : 0d;
+}
+
+static double GetStoreInventory(
+    TemporalNetworkSimulationEngine.TemporalSimulationState state,
+    string nodeId,
+    string trafficType)
+{
+    return state.NodeStates.TryGetValue(new TemporalNetworkSimulationEngine.TemporalNodeTrafficKey(nodeId, trafficType), out var nodeState)
+        ? nodeState.StoreInventory
         : 0d;
 }
 

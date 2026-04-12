@@ -51,6 +51,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private bool isCanvasOnlyMode;
     private bool isLayersPanelOpen;
     private bool isLegendPanelOpen;
+    private bool suppressInspectorAutoOpen;
 
     public MainWindowViewModel()
     {
@@ -223,6 +224,7 @@ public sealed class MainWindowViewModel : ObservableObject
                 OnPropertyChanged(nameof(OptionalSidePanelVisibility));
                 OnPropertyChanged(nameof(OptionalSidePanelColumnWidth));
                 OnPropertyChanged(nameof(OptionalSidePanelSpacerColumnWidth));
+                RaiseOptionalSurfacePropertiesChanged();
             }
         }
     }
@@ -289,6 +291,36 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public Visibility LegendPanelVisibility => IsLegendPanelOpen ? Visibility.Visible : Visibility.Collapsed;
 
+    public string RoutesTabHeader => $"Routes ({VisibleAllocations.Count})";
+
+    public string ConsumerCostsTabHeader => $"Consumer Costs ({VisibleConsumerCostSummaries.Count})";
+
+    public bool HasReportSnapshot => hasSimulationSnapshot || hasTimelineSnapshot;
+
+    public string RoutesEmptyText => !HasReportSnapshot
+        ? "No results yet. Run a simulation or advance the timeline to populate routes."
+        : "No data for current layer/filter.";
+
+    public string ConsumerCostsEmptyText => !HasReportSnapshot
+        ? "No results yet. Run a simulation to populate consumer costs."
+        : "No data for current layer/filter.";
+
+    public Visibility RoutesEmptyStateVisibility => VisibleAllocations.Count == 0
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility RoutesGridVisibility => VisibleAllocations.Count == 0
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+
+    public Visibility ConsumerCostsEmptyStateVisibility => VisibleConsumerCostSummaries.Count == 0
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility ConsumerCostsGridVisibility => VisibleConsumerCostSummaries.Count == 0
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+
     public int NodeCount => Nodes.Count;
 
     public int EdgeCount => Edges.Count;
@@ -307,13 +339,30 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public void ToggleInspectorPanel()
     {
-        InspectorPanel.IsOpen = !InspectorPanel.IsOpen;
+        if (InspectorPanel.IsOpen)
+        {
+            suppressInspectorAutoOpen = true;
+            InspectorPanel.IsOpen = false;
+        }
+        else
+        {
+            suppressInspectorAutoOpen = false;
+            InspectorPanel.IsOpen = true;
+        }
+
         RaiseOptionalSurfacePropertiesChanged();
     }
 
     public void ToggleReportsDrawer()
     {
         ReportsDrawer.IsOpen = !ReportsDrawer.IsOpen;
+        if (!ReportsDrawer.IsOpen)
+        {
+            ReportsDrawer.SelectedReportRow = null;
+            Canvas.ClearRouteHighlight();
+            ApplyRouteHighlights();
+        }
+
         OnPropertyChanged(nameof(BottomWorkspaceVisibility));
     }
 
@@ -348,7 +397,7 @@ public sealed class MainWindowViewModel : ObservableObject
             OnPropertyChanged(nameof(VisibleConsumerCostHeadline));
             if (value is not null)
             {
-                InspectorPanel.InspectTraffic(value);
+                InspectorPanel.InspectTraffic(value, ShouldOpenInspectorForSelection());
                 RaiseOptionalSurfacePropertiesChanged();
             }
         }
@@ -367,7 +416,7 @@ public sealed class MainWindowViewModel : ObservableObject
             SelectedNodeTrafficProfile = value?.TrafficProfiles.FirstOrDefault();
             if (value is not null)
             {
-                InspectorPanel.InspectNode(value);
+                InspectorPanel.InspectNode(value, ShouldOpenInspectorForSelection());
                 RaiseOptionalSurfacePropertiesChanged();
             }
 
@@ -648,7 +697,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
             if (value is not null)
             {
-                InspectorPanel.InspectEdge(value);
+                InspectorPanel.InspectEdge(value, ShouldOpenInspectorForSelection());
                 RaiseOptionalSurfacePropertiesChanged();
             }
         }
@@ -834,6 +883,7 @@ public sealed class MainWindowViewModel : ObservableObject
         RefreshVisibleAllocations();
         RefreshVisibleConsumerCostSummaries();
         RefreshFlowVisuals();
+        RaiseReportStatePropertiesChanged();
 
         var totalDelivered = outcomes.Sum(outcome => outcome.TotalDelivered);
         StatusMessage = $"Simulation complete. Routed {allAllocations.Count} movement(s) delivering {totalDelivered:0.##} unit(s).";
@@ -850,6 +900,7 @@ public sealed class MainWindowViewModel : ObservableObject
         TimelineToolbar.CurrentPeriod = CurrentPeriod;
         TimelineToolbar.Headline = TimelineHeadline;
         ClearTimelineVisuals();
+        RaiseReportStatePropertiesChanged();
         StatusMessage = "Reset the time-step simulation.";
     }
 
@@ -879,6 +930,7 @@ public sealed class MainWindowViewModel : ObservableObject
         allConsumerCostSummaries.Clear();
         VisibleConsumerCostSummaries.Clear();
         RefreshVisibleAllocations();
+        RefreshVisibleConsumerCostSummaries();
         ApplyTimelineVisuals(stepResult);
         StatusMessage = $"Advanced the timeline to period {currentPeriod}. {stepResult.InFlightMovementCount} movement(s) remain in flight.";
     }
@@ -1915,6 +1967,7 @@ public sealed class MainWindowViewModel : ObservableObject
         TimelineToolbar.Headline = TimelineHeadline;
         OnPropertyChanged(nameof(VisibleAllocationHeadline));
         OnPropertyChanged(nameof(VisibleConsumerCostHeadline));
+        RaiseReportStatePropertiesChanged();
         StatusMessage = message;
     }
 
@@ -1930,6 +1983,7 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(VisibleAllocationHeadline));
+        RaiseReportStatePropertiesChanged();
     }
 
     private void RefreshFlowVisuals()
@@ -2112,6 +2166,7 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(VisibleConsumerCostHeadline));
+        RaiseReportStatePropertiesChanged();
     }
 
     private void HandleLayersChanged(object? sender, EventArgs e)
@@ -2125,9 +2180,14 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         Canvas.HighlightRoute(route);
         LayersPanel.HighlightRouteTraffic(route.TrafficType);
-        InspectorPanel.InspectRoute(route);
+        InspectorPanel.InspectRoute(route, ShouldOpenInspectorForSelection());
         ApplyRouteHighlights();
         RaiseOptionalSurfacePropertiesChanged();
+    }
+
+    private bool ShouldOpenInspectorForSelection()
+    {
+        return InspectorPanel.IsOpen || !suppressInspectorAutoOpen;
     }
 
     private void ApplyRouteHighlights()
@@ -2156,6 +2216,19 @@ public sealed class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(BottomWorkspaceVisibility));
         OnPropertyChanged(nameof(LayersPanelVisibility));
         OnPropertyChanged(nameof(LegendPanelVisibility));
+    }
+
+    private void RaiseReportStatePropertiesChanged()
+    {
+        OnPropertyChanged(nameof(HasReportSnapshot));
+        OnPropertyChanged(nameof(RoutesTabHeader));
+        OnPropertyChanged(nameof(ConsumerCostsTabHeader));
+        OnPropertyChanged(nameof(RoutesEmptyText));
+        OnPropertyChanged(nameof(ConsumerCostsEmptyText));
+        OnPropertyChanged(nameof(RoutesEmptyStateVisibility));
+        OnPropertyChanged(nameof(RoutesGridVisibility));
+        OnPropertyChanged(nameof(ConsumerCostsEmptyStateVisibility));
+        OnPropertyChanged(nameof(ConsumerCostsGridVisibility));
     }
 
     private static void AddNodeOutboundQuantity(string nodeId, double quantity, IDictionary<string, NodeFlowVisualSummary> nodeVisualsById)

@@ -10,35 +10,36 @@
             <TextBlock FontSize="18"
                        FontWeight="SemiBold"
                        Text="{Binding Title}" />
-            <TabControl Margin="0,12,0,0">
+            <TabControl Margin="0,12,0,0"
+                        SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}">
                 <TabItem Header="Summary">
                     <TextBlock Margin="10"
                                Foreground="{DynamicResource MutedForegroundBrush}"
-                               Text="{Binding Summary}"
+                               Text="{Binding SummaryText}"
                                TextWrapping="Wrap" />
                 </TabItem>
                 <TabItem Header="Flows">
                     <TextBlock Margin="10"
                                Foreground="{DynamicResource MutedForegroundBrush}"
-                               Text="{Binding Summary}"
+                               Text="{Binding FlowsText}"
                                TextWrapping="Wrap" />
                 </TabItem>
                 <TabItem Header="Capacity">
                     <TextBlock Margin="10"
                                Foreground="{DynamicResource MutedForegroundBrush}"
-                               Text="{Binding Summary}"
+                               Text="{Binding CapacityText}"
                                TextWrapping="Wrap" />
                 </TabItem>
                 <TabItem Header="Routing">
                     <TextBlock Margin="10"
                                Foreground="{DynamicResource MutedForegroundBrush}"
-                               Text="{Binding Summary}"
+                               Text="{Binding RoutingText}"
                                TextWrapping="Wrap" />
                 </TabItem>
                 <TabItem Header="Timeline">
                     <TextBlock Margin="10"
                                Foreground="{DynamicResource MutedForegroundBrush}"
-                               Text="{Binding Summary}"
+                               Text="{Binding TimelineText}"
                                TextWrapping="Wrap" />
                 </TabItem>
             </TabControl>

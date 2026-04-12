@@ -34,6 +34,7 @@ public sealed class EdgeViewModel : ObservableObject
     private double flowStrokeThickness;
     private double capacityUtilizationRatio;
     private Brush flowStrokeBrush = IdleBrush;
+    private bool isRouteHighlighted;
 
     public EdgeViewModel(EdgeModel model, NodeViewModel? sourceNode, NodeViewModel? targetNode)
     {
@@ -231,6 +232,12 @@ public sealed class EdgeViewModel : ObservableObject
         ? Visibility.Visible
         : Visibility.Collapsed;
 
+    public Visibility RouteHighlightVisibility => HasValidEndpoints && isRouteHighlighted
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public double RouteHighlightStrokeThickness => Math.Max(9d, FlowStrokeThickness + 5d);
+
     public Visibility FlowArrowVisibility => FlowOverlayVisibility == Visibility.Visible && ArrowVisibility == Visibility.Visible
         ? Visibility.Visible
         : Visibility.Collapsed;
@@ -316,6 +323,18 @@ public sealed class EdgeViewModel : ObservableObject
         routedReverseQuantity = 0d;
         hasSimulationDetails = false;
         RefreshSimulationDerivedState(0d);
+    }
+
+    public void ApplyRouteHighlight(bool isHighlighted)
+    {
+        if (this.isRouteHighlighted == isHighlighted)
+        {
+            return;
+        }
+
+        this.isRouteHighlighted = isHighlighted;
+        OnPropertyChanged(nameof(RouteHighlightVisibility));
+        OnPropertyChanged(nameof(RouteHighlightStrokeThickness));
     }
 
     public EdgeModel ToModel()
@@ -452,6 +471,7 @@ public sealed class EdgeViewModel : ObservableObject
         OnPropertyChanged(nameof(FlowStrokeThickness));
         OnPropertyChanged(nameof(FlowOverlayVisibility));
         OnPropertyChanged(nameof(FlowArrowVisibility));
+        OnPropertyChanged(nameof(RouteHighlightStrokeThickness));
     }
 
     private static Brush PickUsageBrush(double ratio, bool hasFlow)

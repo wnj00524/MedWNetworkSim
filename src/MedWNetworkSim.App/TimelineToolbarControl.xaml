@@ -1,0 +1,18 @@
+<UserControl x:Class="MedWNetworkSim.App.TimelineToolbarControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Padding="10,6"
+            Background="{DynamicResource CardAltBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1"
+            CornerRadius="8">
+        <StackPanel Orientation="Horizontal">
+            <TextBlock FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentStrongBrush}"
+                       Text="{Binding TimelineHeadline}" />
+            <TextBlock Margin="12,0,0,0"
+                       Foreground="{DynamicResource MutedForegroundBrush}"
+                       Text="{Binding CurrentPeriod, StringFormat=Period {0}}" />
+        </StackPanel>
+    </Border>
+</UserControl>

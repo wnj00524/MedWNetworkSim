@@ -43,4 +43,8 @@ public sealed class RouteAllocationRowViewModel(RouteAllocation allocation) : Ob
     public double TotalScore { get; } = allocation.TotalScore;
 
     public string PathDescription { get; } = string.Join(" -> ", allocation.PathNodeNames);
+
+    public IReadOnlyList<string> PathEdgeIds { get; } = allocation.PathEdgeIds;
+
+    public IReadOnlyList<string> PathNodeIds { get; } = allocation.PathNodeIds;
 }

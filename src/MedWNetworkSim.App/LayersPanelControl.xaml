@@ -1,0 +1,63 @@
+<UserControl x:Class="MedWNetworkSim.App.LayersPanelControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:MedWNetworkSim.App.ViewModels">
+    <Border Padding="16"
+            Background="{DynamicResource PanelBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1"
+            CornerRadius="18">
+        <StackPanel>
+            <TextBlock FontSize="18"
+                       FontWeight="SemiBold"
+                       Text="Layers" />
+            <TextBlock Margin="0,6,0,12"
+                       FontSize="12"
+                       Foreground="{DynamicResource MutedForegroundBrush}"
+                       Text="Choose aggregate, selected-only, or highlighted traffic views."
+                       TextWrapping="Wrap" />
+
+            <ComboBox ItemsSource="{Binding DisplayModes}"
+                      SelectedItem="{Binding SelectedDisplayMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <CheckBox Margin="0,10,0,0"
+                      Content="Show combined traffic"
+                      IsChecked="{Binding ShowCombinedTraffic, Mode=TwoWay}" />
+
+            <ItemsControl Margin="0,14,0,0"
+                          ItemsSource="{Binding TrafficLayers}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="{x:Type vm:LayerVisibilityState}">
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock VerticalAlignment="Center"
+                                       FontWeight="SemiBold"
+                                       Text="{Binding TrafficType}" />
+                            <CheckBox Grid.Column="1"
+                                      Margin="8,0,0,0"
+                                      Content="Visible"
+                                      IsChecked="{Binding IsVisible, Mode=TwoWay}" />
+                            <CheckBox Grid.Column="2"
+                                      Margin="8,0,0,0"
+                                      Content="Highlight"
+                                      IsChecked="{Binding IsHighlighted, Mode=TwoWay}" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Separator Margin="0,10,0,10" />
+            <CheckBox Content="Congestion overlay" IsChecked="{Binding ShowCongestionOverlay, Mode=TwoWay}" />
+            <CheckBox Content="Labels" IsChecked="{Binding ShowLabels, Mode=TwoWay}" />
+            <CheckBox Content="Edge capacities" IsChecked="{Binding ShowEdgeCapacities, Mode=TwoWay}" />
+            <CheckBox Content="Node capacities" IsChecked="{Binding ShowNodeCapacities, Mode=TwoWay}" />
+            <CheckBox Content="Stores and inventory" IsChecked="{Binding ShowStoresInventoryMarkers, Mode=TwoWay}" />
+            <CheckBox Content="Transhipment hubs" IsChecked="{Binding ShowTranshipmentHubs, Mode=TwoWay}" />
+            <CheckBox Content="Route highlights" IsChecked="{Binding ShowRouteHighlights, Mode=TwoWay}" />
+            <CheckBox Content="Temporal / in-flight overlays" IsChecked="{Binding ShowTemporalInFlightOverlays, Mode=TwoWay}" />
+        </StackPanel>
+    </Border>
+</UserControl>

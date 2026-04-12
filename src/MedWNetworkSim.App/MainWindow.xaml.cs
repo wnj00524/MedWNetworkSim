@@ -123,6 +123,26 @@ public partial class MainWindow : Window
         ExecuteWithErrorHandling(ViewModel.ToggleCanvasOnlyMode);
     }
 
+    private void ToggleLayers_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.ToggleLayersPanel);
+    }
+
+    private void ToggleInspector_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.ToggleInspectorPanel);
+    }
+
+    private void ToggleReportsDrawer_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.ToggleReportsDrawer);
+    }
+
+    private void ToggleLegend_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.ToggleLegendPanel);
+    }
+
     private void AddTrafficType_Click(object sender, RoutedEventArgs e)
     {
         ExecuteWithErrorHandling(ViewModel.AddTrafficDefinition);

@@ -26,6 +26,10 @@ public sealed class NodeViewModel : ObservableObject
     private double x;
     private double y;
     private double? transhipmentCapacity;
+    private string? placeType;
+    private string? loreDescription;
+    private string? controllingActor;
+    private string? templateId;
     private bool hasSimulationDetails;
     private double routedOutboundQuantity;
     private double transhipmentQuantity;
@@ -47,6 +51,12 @@ public sealed class NodeViewModel : ObservableObject
         x = model.X ?? 0d;
         y = model.Y ?? 0d;
         transhipmentCapacity = model.TranshipmentCapacity;
+        placeType = model.PlaceType;
+        loreDescription = model.LoreDescription;
+        controllingActor = model.ControllingActor;
+        templateId = model.TemplateId;
+        Tags = new ObservableCollection<string>(model.Tags ?? []);
+        Tags.CollectionChanged += HandleTagsChanged;
         TrafficProfiles = new ObservableCollection<NodeTrafficProfileViewModel>(
             model.TrafficProfiles.Select(profile => new NodeTrafficProfileViewModel(profile)));
         TrafficProfiles.CollectionChanged += HandleTrafficProfilesChanged;
@@ -205,6 +215,64 @@ public sealed class NodeViewModel : ObservableObject
     }
 
     public ObservableCollection<NodeTrafficProfileViewModel> TrafficProfiles { get; }
+
+    public string? PlaceType
+    {
+        get => placeType;
+        set
+        {
+            if (!SetProperty(ref placeType, value))
+            {
+                return;
+            }
+
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public string? LoreDescription
+    {
+        get => loreDescription;
+        set
+        {
+            if (!SetProperty(ref loreDescription, value))
+            {
+                return;
+            }
+
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public string? ControllingActor
+    {
+        get => controllingActor;
+        set
+        {
+            if (!SetProperty(ref controllingActor, value))
+            {
+                return;
+            }
+
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public ObservableCollection<string> Tags { get; }
+
+    public string? TemplateId
+    {
+        get => templateId;
+        set
+        {
+            if (!SetProperty(ref templateId, value))
+            {
+                return;
+            }
+
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     public string TrafficProfileCountLabel => TrafficProfiles.Count switch
     {
@@ -427,6 +495,11 @@ public sealed class NodeViewModel : ObservableObject
             X = X,
             Y = Y,
             TranshipmentCapacity = TranshipmentCapacity,
+            PlaceType = PlaceType,
+            LoreDescription = LoreDescription,
+            ControllingActor = ControllingActor,
+            Tags = Tags.ToList(),
+            TemplateId = TemplateId,
             TrafficProfiles = TrafficProfiles
                 .Select(profile => new NodeTrafficProfile
                 {
@@ -450,6 +523,11 @@ public sealed class NodeViewModel : ObservableObject
     }
 
     private bool HasTranshipmentUsageDetails => HasSimulationDetails && (TranshipmentCapacity.HasValue || transhipmentQuantity > Epsilon);
+
+    private void HandleTagsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        DefinitionChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     private void HandleTrafficProfilesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {

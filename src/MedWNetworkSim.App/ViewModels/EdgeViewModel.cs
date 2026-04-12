@@ -26,6 +26,11 @@ public sealed class EdgeViewModel : ObservableObject
     private double cost;
     private double? capacity;
     private bool isBidirectional;
+    private string? routeType;
+    private string? accessNotes;
+    private string? seasonalRisk;
+    private string? tollNotes;
+    private string? securityNotes;
     private NodeViewModel? sourceNode;
     private NodeViewModel? targetNode;
     private bool hasSimulationDetails;
@@ -45,6 +50,11 @@ public sealed class EdgeViewModel : ObservableObject
         cost = model.Cost;
         capacity = model.Capacity;
         isBidirectional = model.IsBidirectional;
+        routeType = model.RouteType;
+        accessNotes = model.AccessNotes;
+        seasonalRisk = model.SeasonalRisk;
+        tollNotes = model.TollNotes;
+        securityNotes = model.SecurityNotes;
         UpdateResolvedNodes(sourceNode, targetNode);
     }
 
@@ -163,6 +173,76 @@ public sealed class EdgeViewModel : ObservableObject
             OnPropertyChanged(nameof(ArrowPoints));
             OnPropertyChanged(nameof(FlowSummaryLabel));
             OnPropertyChanged(nameof(EdgeToolTipText));
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public string? RouteType
+    {
+        get => routeType;
+        set
+        {
+            if (!SetProperty(ref routeType, value))
+            {
+                return;
+            }
+
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public string? AccessNotes
+    {
+        get => accessNotes;
+        set
+        {
+            if (!SetProperty(ref accessNotes, value))
+            {
+                return;
+            }
+
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public string? SeasonalRisk
+    {
+        get => seasonalRisk;
+        set
+        {
+            if (!SetProperty(ref seasonalRisk, value))
+            {
+                return;
+            }
+
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public string? TollNotes
+    {
+        get => tollNotes;
+        set
+        {
+            if (!SetProperty(ref tollNotes, value))
+            {
+                return;
+            }
+
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public string? SecurityNotes
+    {
+        get => securityNotes;
+        set
+        {
+            if (!SetProperty(ref securityNotes, value))
+            {
+                return;
+            }
+
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -367,7 +447,12 @@ public sealed class EdgeViewModel : ObservableObject
             Time = Time,
             Cost = Cost,
             Capacity = Capacity,
-            IsBidirectional = IsBidirectional
+            IsBidirectional = IsBidirectional,
+            RouteType = RouteType,
+            AccessNotes = AccessNotes,
+            SeasonalRisk = SeasonalRisk,
+            TollNotes = TollNotes,
+            SecurityNotes = SecurityNotes
         };
     }
 

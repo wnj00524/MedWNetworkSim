@@ -38,6 +38,31 @@ public sealed class NodeModel
     public double? TranshipmentCapacity { get; set; }
 
     /// <summary>
+    /// Gets or sets the optional worldbuilder place category for this node.
+    /// </summary>
+    public string? PlaceType { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional lore text for this place.
+    /// </summary>
+    public string? LoreDescription { get; set; }
+
+    /// <summary>
+    /// Gets or sets the optional actor currently controlling this place.
+    /// </summary>
+    public string? ControllingActor { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional worldbuilder tags for this place.
+    /// </summary>
+    public List<string> Tags { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets the optional source template identifier for this place.
+    /// </summary>
+    public string? TemplateId { get; set; }
+
+    /// <summary>
     /// Gets or sets the per-traffic roles and quantities for this node.
     /// </summary>
     public List<NodeTrafficProfile> TrafficProfiles { get; set; } = [];

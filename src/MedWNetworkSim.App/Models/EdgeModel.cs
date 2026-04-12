@@ -39,4 +39,29 @@ public sealed class EdgeModel
     /// Gets or sets a value indicating whether traffic can travel in both directions on this edge.
     /// </summary>
     public bool IsBidirectional { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the optional worldbuilder route category for this edge.
+    /// </summary>
+    public string? RouteType { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional notes about who can use this route.
+    /// </summary>
+    public string? AccessNotes { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional notes about seasonal hazards on this route.
+    /// </summary>
+    public string? SeasonalRisk { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional toll or fee notes for this route.
+    /// </summary>
+    public string? TollNotes { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional security notes for this route.
+    /// </summary>
+    public string? SecurityNotes { get; set; }
 }

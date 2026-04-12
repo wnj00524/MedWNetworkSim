@@ -88,6 +88,8 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public TimelineToolbarViewModel TimelineToolbar { get; } = new();
 
+    public UiTerminologyViewModel Terminology { get; } = new();
+
     public string WindowTitle => HasNetwork ? $"MedW Network Simulator - {NetworkName}" : "MedW Network Simulator";
 
     public Array RoutingPreferences { get; } = Enum.GetValues(typeof(RoutingPreference));
@@ -109,7 +111,18 @@ public sealed class MainWindowViewModel : ObservableObject
     public bool IsWorldbuilderMode
     {
         get => isWorldbuilderMode;
-        set => SetProperty(ref isWorldbuilderMode, value);
+        set
+        {
+            if (!SetProperty(ref isWorldbuilderMode, value))
+            {
+                return;
+            }
+
+            Terminology.IsWorldbuilderMode = value;
+            OnPropertyChanged(nameof(SelectedNodeRoleOptions));
+            OnPropertyChanged(nameof(SelectedNodeRoleName));
+            OnPropertyChanged(nameof(SelectedNodeTrafficRoleHeadline));
+        }
     }
 
     public string ActiveFileLabel
@@ -464,10 +477,12 @@ public sealed class MainWindowViewModel : ObservableObject
     }
 
     public string SelectedNodeTrafficRoleHeadline => SelectedNode is null
-        ? "Traffic Roles"
-        : $"Traffic Roles For {SelectedNode.Name}";
+        ? $"{Terminology.TrafficType} Roles"
+        : $"{Terminology.TrafficType} Roles For {SelectedNode.Name}";
 
-    public IReadOnlyList<string> SelectedNodeRoleOptions => SelectedNodeTrafficProfile?.RoleOptions ?? [];
+    public IReadOnlyList<string> SelectedNodeRoleOptions => SelectedNodeTrafficProfile?.RoleOptions
+        .Select(Terminology.ToDisplayRoleName)
+        .ToList() ?? [];
 
     public string? SelectedNodeTrafficType
     {
@@ -490,7 +505,9 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public string? SelectedNodeRoleName
     {
-        get => SelectedNodeTrafficProfile?.SelectedRoleName;
+        get => SelectedNodeTrafficProfile is null
+            ? null
+            : Terminology.ToDisplayRoleName(SelectedNodeTrafficProfile.SelectedRoleName);
         set
         {
             if (SelectedNodeTrafficProfile is null || string.IsNullOrWhiteSpace(value))
@@ -498,12 +515,13 @@ public sealed class MainWindowViewModel : ObservableObject
                 return;
             }
 
-            if (string.Equals(SelectedNodeTrafficProfile.SelectedRoleName, value, StringComparison.Ordinal))
+            var internalRoleName = Terminology.ToInternalRoleName(value);
+            if (string.Equals(SelectedNodeTrafficProfile.SelectedRoleName, internalRoleName, StringComparison.Ordinal))
             {
                 return;
             }
 
-            SelectedNodeTrafficProfile.SelectedRoleName = value;
+            SelectedNodeTrafficProfile.SelectedRoleName = internalRoleName;
         }
     }
 

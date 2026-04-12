@@ -114,6 +114,11 @@ public sealed class NetworkFileService
                 X = node.X,
                 Y = node.Y,
                 TranshipmentCapacity = transhipmentCapacity,
+                PlaceType = NormalizeOptionalText(node.PlaceType),
+                LoreDescription = NormalizeOptionalText(node.LoreDescription),
+                ControllingActor = NormalizeOptionalText(node.ControllingActor),
+                Tags = NormalizeTags(node.Tags),
+                TemplateId = NormalizeOptionalText(node.TemplateId),
                 TrafficProfiles = NormalizeProfiles(node.TrafficProfiles, nodeId)
             });
         }
@@ -174,7 +179,12 @@ public sealed class NetworkFileService
                 Time = edge.Time,
                 Cost = edge.Cost,
                 Capacity = capacity,
-                IsBidirectional = edge.IsBidirectional
+                IsBidirectional = edge.IsBidirectional,
+                RouteType = NormalizeOptionalText(edge.RouteType),
+                AccessNotes = NormalizeOptionalText(edge.AccessNotes),
+                SeasonalRisk = NormalizeOptionalText(edge.SeasonalRisk),
+                TollNotes = NormalizeOptionalText(edge.TollNotes),
+                SecurityNotes = NormalizeOptionalText(edge.SecurityNotes)
             });
         }
 
@@ -203,6 +213,22 @@ public sealed class NetworkFileService
             Edges = normalizedEdges,
             TrafficTypes = trafficDefinitions
         };
+    }
+
+    private static string? NormalizeOptionalText(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static List<string> NormalizeTags(IEnumerable<string>? tags)
+    {
+        return (tags ?? [])
+            .Select(NormalizeOptionalText)
+            .Where(tag => tag is not null)
+            .Cast<string>()
+            .Distinct(Comparer)
+            .OrderBy(tag => tag, Comparer)
+            .ToList();
     }
 
     private static List<NodeTrafficProfile> NormalizeProfiles(IEnumerable<NodeTrafficProfile>? profiles, string nodeId)

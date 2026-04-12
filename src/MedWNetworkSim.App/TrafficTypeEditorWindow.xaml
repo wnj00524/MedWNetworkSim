@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="Traffic Type Editor"
+        Title="{Binding Terminology.TrafficTypeEditorTitle}"
         Width="980"
         Height="700"
         MinWidth="860"
@@ -30,11 +30,11 @@
             <StackPanel>
                 <TextBlock FontSize="18"
                            FontWeight="SemiBold"
-                           Text="Traffic Type Editor" />
+                           Text="{Binding Terminology.TrafficTypeEditorTitle}" />
                 <TextBlock Margin="0,8,0,0"
                            FontSize="12"
                            Foreground="{DynamicResource MutedForegroundBrush}"
-                           Text="Add, rename, and edit traffic types in a full-size editor. Changes update the shared network immediately, including routing preference, allocation mode, and capacity bidding defaults."
+                           Text="{Binding Terminology.TrafficTypeEditorIntro}"
                            TextWrapping="Wrap" />
             </StackPanel>
         </Border>
@@ -62,10 +62,10 @@
 
                     <TextBlock FontSize="16"
                                FontWeight="SemiBold"
-                               Text="Traffic Types" />
+                               Text="{Binding Terminology.TrafficTypes}" />
 
                     <WrapPanel Grid.Row="2">
-                        <Button Content="Add Traffic Type" Click="AddTrafficType_Click" />
+                        <Button Content="{Binding Terminology.AddTrafficTypeButton}" Click="AddTrafficType_Click" />
                         <Button Content="Remove Selected" Click="RemoveTrafficType_Click" />
                     </WrapPanel>
 
@@ -173,7 +173,7 @@
 
                     <TextBlock FontSize="16"
                                FontWeight="SemiBold"
-                               Text="Selected Traffic Type" />
+                               Text="{Binding Terminology.SelectedTrafficTypeHeader}" />
 
                     <Grid Grid.Row="2">
                         <Grid.ColumnDefinitions>
@@ -213,7 +213,7 @@
                         <TextBlock VerticalAlignment="Center"
                                    FontSize="11"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Traffic Type" />
+                                   Text="{Binding Terminology.TrafficType}" />
                         <TextBox Grid.Column="1"
                                  Text="{Binding SelectedTrafficDefinition.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
@@ -365,7 +365,7 @@
             <TextBlock VerticalAlignment="Center"
                        FontSize="12"
                        Foreground="{DynamicResource MutedForegroundBrush}"
-                       Text="Tip: the main bottom editor remains available for quick review, but this window is the recommended place to edit multiple traffic types." />
+                       Text="{Binding Terminology.TrafficTypeEditorTip}" />
             <Button DockPanel.Dock="Right"
                     Margin="12,0,0,0"
                     Content="Close"

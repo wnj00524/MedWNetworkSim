@@ -115,8 +115,8 @@
                                        Foreground="{DynamicResource AccentStrongBrush}"
                                        Text="Editors" />
                             <WrapPanel Margin="0,8,0,0">
-                                <Button Content="Traffic Types..." Click="EditTrafficTypes_Click" />
-                                <Button Content="Edges..." Click="EditEdges_Click" />
+                                <Button Content="{Binding Terminology.TrafficTypes, StringFormat={}{0}...}" Click="EditTrafficTypes_Click" />
+                                <Button Content="{Binding Terminology.Edges, StringFormat={}{0}...}" Click="EditEdges_Click" />
                                 <Button Content="Properties..."
                                         Click="NetworkProperties_Click"
                                         IsEnabled="{Binding HasNetwork}" />
@@ -259,7 +259,7 @@
                               PreviewMouseRightButtonDown="NetworkCanvasGrid_OnPreviewMouseRightButtonDown">
                             <Grid.ContextMenu>
                                 <ContextMenu>
-                                    <MenuItem Header="Add Node"
+                                    <MenuItem Header="{Binding PlacementTarget.DataContext.Terminology.AddNodeButton, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                               Click="CanvasAddNode_Click" />
                                 </ContextMenu>
                             </Grid.ContextMenu>

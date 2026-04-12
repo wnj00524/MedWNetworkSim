@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:MedWNetworkSim.App.ViewModels"
         mc:Ignorable="d"
-        Title="Node Editor"
+        Title="{Binding Terminology.NodeEditorTitle}"
         Width="1040"
         Height="860"
         MinWidth="920"
@@ -28,11 +28,11 @@
             <StackPanel>
                 <TextBlock FontSize="18"
                            FontWeight="SemiBold"
-                           Text="Node Editor" />
+                           Text="{Binding Terminology.NodeEditorTitle}" />
                 <TextBlock Margin="0,8,0,0"
                            FontSize="12"
                            Foreground="{DynamicResource MutedForegroundBrush}"
-                           Text="Choose a node, set any shared transhipment capacity, then choose one of its traffic-role entries and set the traffic type and role from dropdown lists. You can also bulk-apply one traffic role to every node from this window."
+                           Text="{Binding Terminology.NodeEditorIntro}"
                            TextWrapping="Wrap" />
             </StackPanel>
         </Border>
@@ -65,10 +65,36 @@
 
                     <TextBlock FontSize="16"
                                FontWeight="SemiBold"
-                               Text="Node Details" />
+                               Text="{Binding Terminology.NodeDetailsHeader}" />
 
-                    <WrapPanel Grid.Row="2">
-                        <Button Content="Add Node" Click="AddNode_Click" />
+                    <WrapPanel Grid.Row="2"
+                               VerticalAlignment="Center">
+                        <TextBlock VerticalAlignment="Center"
+                                   Margin="0,0,8,0"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Template" />
+                        <ComboBox Width="170"
+                                  Margin="0,0,10,0"
+                                  DisplayMemberPath="DisplayName"
+                                  ItemsSource="{Binding PlaceTemplateOptions}"
+                                  SelectedItem="{Binding SelectedPlaceTemplate, Mode=TwoWay}" />
+                        <Button Content="{Binding Terminology.AddNodeButton}" Click="AddNode_Click" />
+                        <Button Content="{Binding Terminology.AddNodeFromTemplateButton}" Click="AddNodeFromTemplate_Click" />
+                        <TextBlock VerticalAlignment="Center"
+                                   Margin="10,0,8,0"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Demand Preset" />
+                        <ComboBox Width="170"
+                                  Margin="0,0,10,0"
+                                  DisplayMemberPath="DisplayName"
+                                  ItemsSource="{Binding DemographicDemandPresetOptions}"
+                                  SelectedItem="{Binding SelectedDemographicDemandPreset, Mode=TwoWay}"
+                                  ToolTip="{Binding SelectedDemographicDemandPresetMappingSummary}" />
+                        <Button Content="Apply Preset"
+                                Click="ApplyDemographicDemandPreset_Click"
+                                ToolTip="{Binding SelectedDemographicDemandPresetDescription}" />
                         <Button Content="Remove Selected" Click="RemoveNode_Click" />
                     </WrapPanel>
 
@@ -100,7 +126,7 @@
                         <TextBlock VerticalAlignment="Center"
                                    FontSize="11"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Node" />
+                                   Text="{Binding Terminology.Node}" />
                         <ComboBox Grid.Column="1"
                                   MinWidth="220"
                                   ItemsSource="{Binding Nodes}"
@@ -178,6 +204,78 @@
                             <TextBox Grid.Column="4"
                                      Text="{Binding SelectedNode.Y, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         </Grid>
+
+                        <Expander Grid.Row="12"
+                                  Grid.ColumnSpan="2"
+                                  Header="Worldbuilder"
+                                  IsExpanded="False">
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Place Type" />
+                                <TextBox Grid.Column="1"
+                                         Text="{Binding SelectedNode.PlaceType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="2"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Controlling Actor" />
+                                <TextBox Grid.Row="2"
+                                         Grid.Column="1"
+                                         Text="{Binding SelectedNode.ControllingActor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="4"
+                                           VerticalAlignment="Top"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Lore" />
+                                <TextBox Grid.Row="4"
+                                         Grid.Column="1"
+                                         MinHeight="76"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Text="{Binding SelectedNode.LoreDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="6"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Tags" />
+                                <TextBox Grid.Row="6"
+                                         Grid.Column="1"
+                                         ToolTip="Comma-separated tags"
+                                         Text="{Binding SelectedNode.TagsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+
+                                <TextBlock Grid.Row="8"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Template Id" />
+                                <TextBox Grid.Row="8"
+                                         Grid.Column="1"
+                                         IsReadOnly="True"
+                                         Text="{Binding SelectedNode.TemplateId, Mode=OneWay}" />
+                            </Grid>
+                        </Expander>
                     </Grid>
 
                     <Border Grid.Row="6"
@@ -188,7 +286,7 @@
                             CornerRadius="12">
                         <TextBlock FontSize="12"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Tip: select a node on the canvas or in the main node table, then use this window to manage its traffic-role entries with dropdowns."
+                                   Text="{Binding Terminology.NodeEditorTip}"
                                    TextWrapping="Wrap" />
                     </Border>
                 </Grid>
@@ -213,11 +311,11 @@
 
                     <TextBlock FontSize="16"
                                FontWeight="SemiBold"
-                               Text="Traffic Role Entry" />
+                               Text="{Binding Terminology.TrafficRoleEntryHeader}" />
 
                     <WrapPanel Grid.Row="2">
-                        <Button Content="Add Traffic Role" Click="AddTrafficRole_Click" />
-                        <Button Content="Apply To All Nodes..." Click="ApplyTrafficRoleToAllNodes_Click" />
+                        <Button Content="{Binding Terminology.AddTrafficRoleButton}" Click="AddTrafficRole_Click" />
+                        <Button Content="{Binding Terminology.ApplyTrafficRoleToAllNodesButton}" Click="ApplyTrafficRoleToAllNodes_Click" />
                         <Button Content="Remove Selected" Click="RemoveTrafficRole_Click" />
                     </WrapPanel>
 
@@ -269,7 +367,7 @@
                                        VerticalAlignment="Center"
                                        FontSize="11"
                                        Foreground="{DynamicResource MutedForegroundBrush}"
-                                       Text="Traffic Type" />
+                                       Text="{Binding Terminology.TrafficType}" />
                             <ComboBox Grid.Row="2"
                                       Grid.Column="1"
                                       ItemsSource="{Binding TrafficTypeNameOptions}"
@@ -289,7 +387,7 @@
                                        VerticalAlignment="Center"
                                        FontSize="11"
                                        Foreground="{DynamicResource MutedForegroundBrush}"
-                                       Text="Production" />
+                                       Text="{Binding Terminology.Producer}" />
                             <TextBox Grid.Row="6"
                                      Grid.Column="1"
                                      IsEnabled="{Binding IsSelectedNodeProducer}"
@@ -299,7 +397,7 @@
                                        VerticalAlignment="Center"
                                        FontSize="11"
                                        Foreground="{DynamicResource MutedForegroundBrush}"
-                                       Text="Consumption" />
+                                       Text="{Binding Terminology.Consumer}" />
                             <TextBox Grid.Row="8"
                                      Grid.Column="1"
                                      IsEnabled="{Binding IsSelectedNodeConsumer}"
@@ -309,7 +407,7 @@
                                        VerticalAlignment="Center"
                                        FontSize="11"
                                        Foreground="{DynamicResource MutedForegroundBrush}"
-                                       Text="Consumer Premium / Unit" />
+                                       Text="{Binding Terminology.Consumer, StringFormat={}{0} Premium / Unit}" />
                             <TextBox Grid.Row="10"
                                      Grid.Column="1"
                                      IsEnabled="{Binding IsSelectedNodeConsumer}"
@@ -322,7 +420,7 @@
                                 </Grid.ColumnDefinitions>
 
                                 <CheckBox VerticalAlignment="Center"
-                                          Content="Store"
+                                          Content="{Binding Terminology.Store}"
                                           IsChecked="{Binding IsSelectedNodeStore, Mode=TwoWay}" />
                                 <TextBox Grid.Column="1"
                                          Margin="12,0,0,0"

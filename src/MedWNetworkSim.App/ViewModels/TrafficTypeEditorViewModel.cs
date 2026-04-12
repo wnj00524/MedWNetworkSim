@@ -17,6 +17,8 @@ public sealed class TrafficTypeEditorViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<TrafficTypeDefinitionEditorViewModel> TrafficDefinitions => mainWindowViewModel.TrafficDefinitions;
 
+    public UiTerminologyViewModel Terminology => mainWindowViewModel.Terminology;
+
     public Array RoutingPreferences => mainWindowViewModel.RoutingPreferences;
 
     public IReadOnlyList<AllocationModeOptionViewModel> AllocationModeOptions => mainWindowViewModel.AllocationModeOptions;

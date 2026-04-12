@@ -11,11 +11,11 @@
 
   <ItemGroup>
     <Resource Include="Assets\AppIcon.ico" />
-    <None Include="Samples\sample-network.json">
+    <None Include="Samples\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <EmbeddedResource Include="Samples\sample-network.json"
-                      LogicalName="MedWNetworkSim.App.Samples.sample-network.json" />
+    <EmbeddedResource Include="Samples\*.json"
+                      LogicalName="MedWNetworkSim.App.Samples.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

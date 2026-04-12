@@ -1,0 +1,163 @@
+{
+  "name": "Market Town and Hinterland",
+  "description": "A small market town pulling food, wool, timber, and iron from surrounding producers while sending tools back out.",
+  "timelineLoopLength": 6,
+  "simulationSeed": 20260414,
+  "trafficTypes": [
+    { "name": "Grain", "description": "Staple grain for town households and onward trade.", "routingPreference": "totalCost", "capacityBidPerUnit": 0.5 },
+    { "name": "Wool", "description": "Raw wool carried from upland folds into the market.", "routingPreference": "cost", "capacityBidPerUnit": 0.7 },
+    { "name": "Timber", "description": "Woodland timber for builders and smiths.", "routingPreference": "cost", "capacityBidPerUnit": 0.6 },
+    { "name": "Iron", "description": "Bloomery iron for smithing.", "routingPreference": "cost", "capacityBidPerUnit": 1.0 },
+    { "name": "Tools", "description": "Finished tools demanded by hinterland farms and camps.", "routingPreference": "totalCost", "capacityBidPerUnit": 1.6 },
+    { "name": "Cloth", "description": "Town cloth output from raw wool.", "routingPreference": "speed", "capacityBidPerUnit": 1.8 }
+  ],
+  "timelineEvents": [
+    {
+      "id": "harvest",
+      "name": "Harvest",
+      "startPeriod": 2,
+      "endPeriod": 2,
+      "effects": [
+        { "effectType": "productionMultiplier", "nodeId": "OAT-FARMS", "trafficType": "Grain", "multiplier": 1.5 }
+      ]
+    },
+    {
+      "id": "fair-day",
+      "name": "Fair Day",
+      "startPeriod": 3,
+      "endPeriod": 3,
+      "effects": [
+        { "effectType": "consumptionMultiplier", "nodeId": "MARKET-TOWN", "trafficType": "Grain", "multiplier": 1.35 },
+        { "effectType": "consumptionMultiplier", "nodeId": "MARKET-TOWN", "trafficType": "Tools", "multiplier": 1.25 }
+      ]
+    },
+    {
+      "id": "flood",
+      "name": "Flood",
+      "startPeriod": 5,
+      "endPeriod": 5,
+      "effects": [
+        { "effectType": "routeCostMultiplier", "edgeId": "COPPICE-TOWN", "multiplier": 2.2 }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "OAT-FARMS",
+      "name": "Lowfen Oat Farms",
+      "shape": "circle",
+      "x": 150,
+      "y": 220,
+      "placeType": "Farm",
+      "loreDescription": "Open farms feeding the weekly market.",
+      "tags": [ "rural", "food" ],
+      "templateId": "farm",
+      "trafficProfiles": [
+        { "trafficType": "Grain", "production": 34 },
+        { "trafficType": "Tools", "consumption": 5 }
+      ]
+    },
+    {
+      "id": "SHEEP-DOWNS",
+      "name": "Grey Down Sheepfolds",
+      "shape": "circle",
+      "x": 170,
+      "y": 470,
+      "placeType": "Pasture",
+      "loreDescription": "Windy sheep country with steady wool clips and thin roads.",
+      "tags": [ "rural", "wool", "upland" ],
+      "trafficProfiles": [
+        { "trafficType": "Wool", "production": 22 },
+        { "trafficType": "Tools", "consumption": 2 }
+      ]
+    },
+    {
+      "id": "COPPICE",
+      "name": "Briar Coppice",
+      "shape": "circle",
+      "x": 165,
+      "y": 720,
+      "placeType": "Woodland Camp",
+      "loreDescription": "Managed woodland supplying carts of poles and charcoal wood.",
+      "tags": [ "woodland", "raw-material" ],
+      "trafficProfiles": [
+        { "trafficType": "Timber", "production": 24 },
+        { "trafficType": "Tools", "consumption": 3 }
+      ]
+    },
+    {
+      "id": "MARKET-TOWN",
+      "name": "Redcross Market Town",
+      "shape": "square",
+      "x": 520,
+      "y": 430,
+      "placeType": "Market Town",
+      "loreDescription": "A chartered market where pack roads meet under guild supervision.",
+      "controllingActor": "Redcross Guild Council",
+      "tags": [ "settlement", "trade", "hub" ],
+      "templateId": "market-town",
+      "transhipmentCapacity": 60,
+      "trafficProfiles": [
+        { "trafficType": "Grain", "consumption": 20, "canTransship": true, "isStore": true, "storeCapacity": 60 },
+        { "trafficType": "Wool", "consumption": 16, "canTransship": true, "isStore": true, "storeCapacity": 40 },
+        { "trafficType": "Timber", "consumption": 8, "canTransship": true },
+        { "trafficType": "Iron", "canTransship": true, "isStore": true, "storeCapacity": 22 },
+        { "trafficType": "Tools", "consumption": 10, "canTransship": true, "isStore": true, "storeCapacity": 28 },
+        { "trafficType": "Cloth", "production": 12, "canTransship": true }
+      ]
+    },
+    {
+      "id": "IRON-PIT",
+      "name": "Blackbarrow Iron Pit",
+      "shape": "building",
+      "x": 850,
+      "y": 690,
+      "placeType": "Mine",
+      "loreDescription": "A shallow iron working tied to the town by a rough upland road.",
+      "tags": [ "mine", "raw-material" ],
+      "trafficProfiles": [
+        { "trafficType": "Iron", "production": 16 },
+        { "trafficType": "Timber", "consumption": 5 }
+      ]
+    },
+    {
+      "id": "TOWN-SMITHY",
+      "name": "Redcross Smithy Row",
+      "shape": "building",
+      "x": 850,
+      "y": 430,
+      "placeType": "Smithy",
+      "loreDescription": "A row of forge sheds selling workaday tools back to the hinterland.",
+      "tags": [ "craft", "production", "tools" ],
+      "templateId": "smithy",
+      "trafficProfiles": [
+        { "trafficType": "Iron", "consumption": 12, "isStore": true, "storeCapacity": 24 },
+        { "trafficType": "Timber", "consumption": 8 },
+        { "trafficType": "Tools", "production": 15, "isStore": true, "storeCapacity": 30 }
+      ]
+    },
+    {
+      "id": "WEAVERS-LANE",
+      "name": "Weavers' Lane",
+      "shape": "building",
+      "x": 850,
+      "y": 210,
+      "placeType": "Workshop Quarter",
+      "loreDescription": "Loom houses turning raw wool into bolts of cloth for fairs.",
+      "tags": [ "craft", "cloth", "town" ],
+      "trafficProfiles": [
+        { "trafficType": "Wool", "consumption": 14, "isStore": true, "storeCapacity": 28 },
+        { "trafficType": "Cloth", "production": 10, "isStore": true, "storeCapacity": 18 }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "FARMS-TOWN", "fromNodeId": "OAT-FARMS", "toNodeId": "MARKET-TOWN", "time": 1.8, "cost": 1.2, "capacity": 24, "isBidirectional": true, "routeType": "farm road" },
+    { "id": "SHEEP-TOWN", "fromNodeId": "SHEEP-DOWNS", "toNodeId": "MARKET-TOWN", "time": 2.4, "cost": 1.8, "capacity": 18, "isBidirectional": true, "routeType": "pack road", "seasonalRisk": "Slow in winter fog." },
+    { "id": "COPPICE-TOWN", "fromNodeId": "COPPICE", "toNodeId": "MARKET-TOWN", "time": 2.1, "cost": 1.1, "capacity": 20, "isBidirectional": true, "routeType": "wood road" },
+    { "id": "TOWN-SMITHY", "fromNodeId": "MARKET-TOWN", "toNodeId": "TOWN-SMITHY", "time": 0.5, "cost": 0.4, "capacity": 18, "isBidirectional": true, "routeType": "town street" },
+    { "id": "TOWN-WEAVERS", "fromNodeId": "MARKET-TOWN", "toNodeId": "WEAVERS-LANE", "time": 0.5, "cost": 0.4, "capacity": 18, "isBidirectional": true, "routeType": "town street" },
+    { "id": "IRON-SMITHY", "fromNodeId": "IRON-PIT", "toNodeId": "TOWN-SMITHY", "time": 1.7, "cost": 1.5, "capacity": 12, "isBidirectional": false, "routeType": "ore road", "securityNotes": "Bandit-prone beyond the ridge." },
+    { "id": "IRON-TOWN", "fromNodeId": "IRON-PIT", "toNodeId": "MARKET-TOWN", "time": 2.2, "cost": 1.9, "capacity": 10, "isBidirectional": true, "routeType": "ridge road" }
+  ]
+}

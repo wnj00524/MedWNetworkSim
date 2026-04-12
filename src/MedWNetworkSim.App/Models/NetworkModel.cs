@@ -38,6 +38,11 @@ public sealed class NetworkModel
     public List<TrafficTypeDefinition> TrafficTypes { get; set; } = [];
 
     /// <summary>
+    /// Gets or sets optional timeline events that temporarily adjust simulation inputs.
+    /// </summary>
+    public List<TimelineEventModel> TimelineEvents { get; set; } = [];
+
+    /// <summary>
     /// Gets or sets the nodes that can produce, consume, or transship traffic.
     /// </summary>
     public List<NodeModel> Nodes { get; set; } = [];

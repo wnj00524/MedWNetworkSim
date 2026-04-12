@@ -21,6 +21,16 @@ public partial class NodeEditorWindow : Window
         ExecuteWithErrorHandling(ViewModel.AddNode);
     }
 
+    private void AddNodeFromTemplate_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.AddNodeFromSelectedTemplate);
+    }
+
+    private void ApplyDemographicDemandPreset_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.ApplySelectedDemographicDemandPresetToSelectedNode);
+    }
+
     private void RemoveNode_Click(object sender, RoutedEventArgs e)
     {
         ExecuteWithErrorHandling(ViewModel.RemoveSelectedNode);

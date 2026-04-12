@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:MedWNetworkSim.App.ViewModels"
         mc:Ignorable="d"
-        Title="Edge Editor"
+        Title="{Binding Terminology.EdgeEditorTitle}"
         Width="1100"
         Height="760"
         MinWidth="940"
@@ -28,11 +28,11 @@
             <StackPanel>
                 <TextBlock FontSize="18"
                            FontWeight="SemiBold"
-                           Text="Edge Editor" />
+                           Text="{Binding Terminology.EdgeEditorTitle}" />
                 <TextBlock Margin="0,8,0,0"
                            FontSize="12"
                            Foreground="{DynamicResource MutedForegroundBrush}"
-                           Text="Edit multiple network edges in a full-size workspace. Choose endpoints from the current node list and adjust time, cost, capacity, and direction without relying on the compact bottom panel."
+                           Text="{Binding Terminology.EdgeEditorIntro}"
                            TextWrapping="Wrap" />
             </StackPanel>
         </Border>
@@ -63,10 +63,10 @@
 
                     <TextBlock FontSize="16"
                                FontWeight="SemiBold"
-                               Text="Edges" />
+                               Text="{Binding Terminology.Edges}" />
 
                     <WrapPanel Grid.Row="2">
-                        <Button Content="Add Edge" Click="AddEdge_Click" />
+                        <Button Content="{Binding Terminology.AddEdgeButton}" Click="AddEdge_Click" />
                         <Button Content="Remove Selected" Click="RemoveEdge_Click" />
                     </WrapPanel>
 
@@ -138,7 +138,7 @@
 
                     <TextBlock FontSize="16"
                                FontWeight="SemiBold"
-                               Text="Selected Edge" />
+                               Text="{Binding Terminology.SelectedEdgeHeader}" />
 
                     <Grid Grid.Row="2">
                         <Grid.ColumnDefinitions>
@@ -159,12 +159,14 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="10" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <TextBlock VerticalAlignment="Center"
                                    FontSize="11"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Edge" />
+                                   Text="{Binding Terminology.Edge}" />
                         <ComboBox Grid.Column="1"
                                   MinWidth="230"
                                   ItemsSource="{Binding Edges}"
@@ -250,6 +252,80 @@
                                       Content="Bidirectional"
                                       IsChecked="{Binding SelectedEdge.IsBidirectional, Mode=TwoWay}" />
                         </Grid>
+
+                        <Expander Grid.Row="14"
+                                  Grid.ColumnSpan="2"
+                                  Header="Worldbuilder"
+                                  IsExpanded="False">
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Route Type" />
+                                <TextBox Grid.Column="1"
+                                         Text="{Binding SelectedEdge.RouteType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="2"
+                                           VerticalAlignment="Top"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Access Notes" />
+                                <TextBox Grid.Row="2"
+                                         Grid.Column="1"
+                                         MinHeight="56"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Text="{Binding SelectedEdge.AccessNotes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="4"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Seasonal Risk" />
+                                <TextBox Grid.Row="4"
+                                         Grid.Column="1"
+                                         Text="{Binding SelectedEdge.SeasonalRisk, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="6"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Toll Notes" />
+                                <TextBox Grid.Row="6"
+                                         Grid.Column="1"
+                                         Text="{Binding SelectedEdge.TollNotes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="8"
+                                           VerticalAlignment="Top"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Security Notes" />
+                                <TextBox Grid.Row="8"
+                                         Grid.Column="1"
+                                         MinHeight="56"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Text="{Binding SelectedEdge.SecurityNotes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+                        </Expander>
                     </Grid>
 
                     <Border Grid.Row="4"
@@ -260,7 +336,7 @@
                             CornerRadius="12">
                         <TextBlock FontSize="12"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Tip: edge capacity is optional. Leave it blank for unlimited capacity, or set a value to let traffic types compete using their bid per unit."
+                                   Text="{Binding Terminology.EdgeCapacityTip}"
                                    TextWrapping="Wrap" />
                     </Border>
 
@@ -284,7 +360,7 @@
             <TextBlock VerticalAlignment="Center"
                        FontSize="12"
                        Foreground="{DynamicResource MutedForegroundBrush}"
-                       Text="Tip: the bottom edge table is still useful for quick review, but this window is the recommended place to edit multiple edges." />
+                       Text="{Binding Terminology.EdgeEditorTip}" />
             <Button DockPanel.Dock="Right"
                     Margin="12,0,0,0"
                     Content="Close"

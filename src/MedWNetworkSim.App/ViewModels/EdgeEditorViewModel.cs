@@ -18,6 +18,8 @@ public sealed class EdgeEditorViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<string> NodeIdOptions => mainWindowViewModel.NodeIdOptions;
 
+    public UiTerminologyViewModel Terminology => mainWindowViewModel.Terminology;
+
     public EdgeViewModel? SelectedEdge
     {
         get => mainWindowViewModel.SelectedEdge;

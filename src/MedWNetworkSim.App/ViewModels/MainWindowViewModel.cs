@@ -28,6 +28,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private string networkDescription = "Load a JSON network file, or create a new one and edit it directly in the app.";
     private AllocationMode defaultAllocationMode = AllocationMode.GreedyBestRoute;
     private int? timelineLoopLength;
+    private int simulationSeed = 12345;
     private string statusMessage = "Load a network file or create a new one, then edit nodes and edges directly in the application.";
     private AppTheme selectedTheme = AppTheme.Classic;
     private TrafficSummaryViewModel? selectedTraffic;
@@ -1331,6 +1332,7 @@ public sealed class MainWindowViewModel : ObservableObject
             ? string.Empty
             : network.Description;
         DefaultAllocationMode = network.DefaultAllocationMode;
+        simulationSeed = network.SimulationSeed;
         timelineLoopLength = network.TimelineLoopLength is > 0 ? network.TimelineLoopLength : null;
         OnPropertyChanged(nameof(TimelineLoopLength));
         OnPropertyChanged(nameof(IsTimelineLoopEnabled));
@@ -1393,6 +1395,7 @@ public sealed class MainWindowViewModel : ObservableObject
             Description = NetworkDescription,
             TimelineLoopLength = TimelineLoopLength,
             DefaultAllocationMode = DefaultAllocationMode,
+            SimulationSeed = simulationSeed,
             TrafficTypes = TrafficDefinitions.Select(definition => definition.ToModel()).ToList(),
             Nodes = Nodes.Select(node => node.ToModel()).ToList(),
             Edges = Edges.Select(edge => edge.ToModel()).ToList()

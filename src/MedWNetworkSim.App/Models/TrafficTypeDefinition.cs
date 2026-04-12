@@ -26,6 +26,21 @@ public sealed class TrafficTypeDefinition
     public AllocationMode AllocationMode { get; set; } = AllocationMode.GreedyBestRoute;
 
     /// <summary>
+    /// Gets or sets the active route-choice regime for this traffic type.
+    /// </summary>
+    public RouteChoiceModel RouteChoiceModel { get; set; } = RouteChoiceModel.StochasticUserResponsive;
+
+    /// <summary>
+    /// Gets or sets whether this traffic type concentrates flow on one path or splits across alternatives.
+    /// </summary>
+    public FlowSplitPolicy FlowSplitPolicy { get; set; } = FlowSplitPolicy.MultiPath;
+
+    /// <summary>
+    /// Gets or sets route-choice, congestion, and priority tuning for this traffic type.
+    /// </summary>
+    public RouteChoiceSettings RouteChoiceSettings { get; set; } = new();
+
+    /// <summary>
     /// Gets or sets the optional per-unit bid used when competing for constrained edge or node transhipment capacity.
     /// </summary>
     public double? CapacityBidPerUnit { get; set; }

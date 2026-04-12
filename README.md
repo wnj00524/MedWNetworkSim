@@ -30,6 +30,8 @@ MedWNetworkSim can:
 - export reports in HTML or CSV
 - work from the command line as well as the desktop interface
 
+The bundled sample loaded first is the **Medieval City Loop, Recipes, And Storehouses Demo**. It is the recommended feature-complete example: farms, woods, mine, gates, bridge, wharf, market, mill, kiln, granary, bakers, brewers, smithy, apothecary, castle, inn, and monastery all share route and transhipment capacity while official Crown Messengers and civilian Traders compete under different route-choice regimes.
+
 ## How the model works
 
 The simulator uses a few core ideas.
@@ -75,6 +77,12 @@ Each traffic type can have its own routing preference:
 - **speed**: prefer the fastest route
 - **cost**: prefer the cheapest route
 - **totalCost**: prefer the lowest combined time and cost
+
+Traffic types can also use mixed route-choice models in the same run:
+- **systemOptimal**: a central planner chooses deterministic congestion-aware routes.
+- **stochasticUserResponsive**: decentralized traffic chooses probabilistically with congestion sensitivity, route diversity, information accuracy, stickiness, and rerouting thresholds.
+
+The newer **flow split policy** controls whether a traffic type uses a single path or splits across multiple candidate routes. Legacy `allocationMode` values are still supported for old JSON files.
 
 ### Local production inputs
 Production can depend on other traffic types already being present at the same node.
@@ -193,7 +201,7 @@ Run the desktop app:
 dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj
 ```
 
-The project includes a bundled sample network for exploration.
+The project includes a bundled medieval city sample network for exploration. Use it first when you want to see mixed routing, priority pressure, recipes, stores, bottlenecks, and timeline behaviour together.
 
 ## Documentation
 

@@ -62,8 +62,43 @@
       "description": "Brewery output made from grain and herbs for inns and market days.",
       "routingPreference": "totalCost",
       "capacityBidPerUnit": 1.1
+    },
+    {
+      "name": "Crown Messengers",
+      "description": "Official royal dispatch riders moving between the castle, gates, market, and monastery with high priority over bottleneck corridors.",
+      "routingPreference": "speed",
+      "allocationMode": "greedyBestRoute",
+      "routeChoiceModel": "systemOptimal",
+      "flowSplitPolicy": "singlePath",
+      "routeChoiceSettings": {
+        "maxCandidateRoutes": 3,
+        "priority": 5.0,
+        "congestionSensitivity": 1.8,
+        "internalizeCongestion": true
+      },
+      "capacityBidPerUnit": 3.5
+    },
+    {
+      "name": "Traders",
+      "description": "Civilian merchants moving market traffic through gates, bridge, ferry, and wharf while adapting imperfectly to congestion.",
+      "routingPreference": "totalCost",
+      "allocationMode": "proportionalBranchDemand",
+      "routeChoiceModel": "stochasticUserResponsive",
+      "flowSplitPolicy": "multiPath",
+      "routeChoiceSettings": {
+        "maxCandidateRoutes": 4,
+        "priority": 0.8,
+        "informationAccuracy": 0.65,
+        "routeDiversity": 0.45,
+        "congestionSensitivity": 1.6,
+        "rerouteThreshold": 0.2,
+        "stickiness": 0.35,
+        "iterationCount": 5
+      },
+      "capacityBidPerUnit": 0.4
     }
   ],
+  "simulationSeed": 20260412,
   "nodes": [
     {
       "id": "NORTH-FIELDS",
@@ -275,7 +310,9 @@
         { "trafficType": "Tools", "canTransship": true },
         { "trafficType": "Herbs", "canTransship": true },
         { "trafficType": "Remedies", "canTransship": true },
-        { "trafficType": "Ale", "canTransship": true }
+        { "trafficType": "Ale", "canTransship": true },
+        { "trafficType": "Crown Messengers", "canTransship": true },
+        { "trafficType": "Traders", "canTransship": true }
       ]
     },
     {
@@ -328,7 +365,24 @@
         { "trafficType": "Charcoal", "canTransship": true },
         { "trafficType": "Iron Ore", "canTransship": true },
         { "trafficType": "Remedies", "canTransship": true },
-        { "trafficType": "Ale", "canTransship": true }
+        { "trafficType": "Ale", "canTransship": true },
+        {
+          "trafficType": "Crown Messengers",
+          "consumption": 4,
+          "consumptionWindows": [
+            { "startPeriod": 1, "endPeriod": 12 }
+          ],
+          "canTransship": true,
+          "consumerPremiumPerUnit": 1.0
+        },
+        {
+          "trafficType": "Traders",
+          "consumption": 10,
+          "consumptionWindows": [
+            { "startPeriod": 1, "endPeriod": 12 }
+          ],
+          "canTransship": true
+        }
       ]
     },
     {
@@ -627,6 +681,103 @@
           "consumerPremiumPerUnit": 0.4
         }
       ]
+    },
+    {
+      "id": "WEST-GATEHOUSE",
+      "name": "West Gatehouse",
+      "shape": "square",
+      "x": 610,
+      "y": 470,
+      "transhipmentCapacity": 24,
+      "trafficProfiles": [
+        {
+          "trafficType": "Crown Messengers",
+          "production": 10,
+          "consumption": 3,
+          "consumptionWindows": [
+            { "startPeriod": 1, "endPeriod": 12 }
+          ],
+          "canTransship": true
+        },
+        {
+          "trafficType": "Traders",
+          "production": 18,
+          "consumption": 8,
+          "consumptionWindows": [
+            { "startPeriod": 1, "endPeriod": 12 }
+          ],
+          "canTransship": true
+        },
+        { "trafficType": "Grain", "canTransship": true },
+        { "trafficType": "Bread", "canTransship": true },
+        { "trafficType": "Tools", "canTransship": true }
+      ]
+    },
+    {
+      "id": "OLD-BRIDGE",
+      "name": "Old Stone Bridge",
+      "shape": "square",
+      "x": 910,
+      "y": 610,
+      "transhipmentCapacity": 18,
+      "trafficProfiles": [
+        { "trafficType": "Crown Messengers", "canTransship": true },
+        {
+          "trafficType": "Traders",
+          "production": 12,
+          "consumption": 12,
+          "consumptionWindows": [
+            { "startPeriod": 1, "endPeriod": 12 }
+          ],
+          "canTransship": true
+        },
+        { "trafficType": "Grain", "canTransship": true },
+        { "trafficType": "Flour", "canTransship": true },
+        { "trafficType": "Bread", "canTransship": true },
+        { "trafficType": "Ale", "canTransship": true },
+        { "trafficType": "Tools", "canTransship": true }
+      ]
+    },
+    {
+      "id": "MONASTERY-HOSPITAL",
+      "name": "Monastery Hospital",
+      "shape": "building",
+      "x": 1570,
+      "y": 230,
+      "trafficProfiles": [
+        {
+          "trafficType": "Remedies",
+          "consumption": 7,
+          "consumptionWindows": [
+            { "startPeriod": 5, "endPeriod": 7 },
+            { "startPeriod": 11, "endPeriod": 12 }
+          ],
+          "consumerPremiumPerUnit": 0.8
+        },
+        {
+          "trafficType": "Bread",
+          "consumption": 8,
+          "consumptionWindows": [
+            { "startPeriod": 3, "endPeriod": 7 },
+            { "startPeriod": 10, "endPeriod": 12 }
+          ]
+        },
+        {
+          "trafficType": "Crown Messengers",
+          "consumption": 6,
+          "consumptionWindows": [
+            { "startPeriod": 1, "endPeriod": 12 }
+          ],
+          "consumerPremiumPerUnit": 1.4
+        },
+        {
+          "trafficType": "Traders",
+          "consumption": 7,
+          "consumptionWindows": [
+            { "startPeriod": 1, "endPeriod": 12 }
+          ]
+        }
+      ]
     }
   ],
   "edges": [
@@ -645,6 +796,11 @@
     { "id": "KILN-WHARF", "fromNodeId": "CHARCOAL-KILN", "toNodeId": "RIVER-WHARF", "time": 1.4, "cost": 0.9, "capacity": 18, "isBidirectional": true },
     { "id": "KILN-SMITHY", "fromNodeId": "CHARCOAL-KILN", "toNodeId": "TOWN-SMITHY", "time": 1.8, "cost": 1.2, "capacity": 14, "isBidirectional": false },
     { "id": "WHARF-MARKET", "fromNodeId": "RIVER-WHARF", "toNodeId": "MARKET-SQUARE", "time": 1.2, "cost": 0.7, "capacity": 30, "isBidirectional": true },
+    { "id": "WESTGATE-MARKET", "fromNodeId": "WEST-GATEHOUSE", "toNodeId": "MARKET-SQUARE", "time": 0.9, "cost": 0.7, "capacity": 14, "isBidirectional": true },
+    { "id": "WESTGATE-WHARF", "fromNodeId": "WEST-GATEHOUSE", "toNodeId": "RIVER-WHARF", "time": 1.3, "cost": 0.9, "capacity": 16, "isBidirectional": true },
+    { "id": "WHARF-BRIDGE", "fromNodeId": "RIVER-WHARF", "toNodeId": "OLD-BRIDGE", "time": 0.8, "cost": 0.6, "capacity": 12, "isBidirectional": true },
+    { "id": "BRIDGE-MARKET", "fromNodeId": "OLD-BRIDGE", "toNodeId": "MARKET-SQUARE", "time": 0.7, "cost": 0.5, "capacity": 10, "isBidirectional": true },
+    { "id": "BRIDGE-SMITHY", "fromNodeId": "OLD-BRIDGE", "toNodeId": "TOWN-SMITHY", "time": 0.9, "cost": 0.7, "capacity": 10, "isBidirectional": true },
     { "id": "WHARF-SMITHY", "fromNodeId": "RIVER-WHARF", "toNodeId": "TOWN-SMITHY", "time": 1.7, "cost": 1.0, "capacity": 24, "isBidirectional": true },
     { "id": "MARKET-BAKERS", "fromNodeId": "MARKET-SQUARE", "toNodeId": "BAKERS-ROW", "time": 0.7, "cost": 0.6, "capacity": 20, "isBidirectional": true },
     { "id": "GRANARY-BAKERS", "fromNodeId": "GUILD-GRANARY", "toNodeId": "BAKERS-ROW", "time": 0.8, "cost": 0.5, "capacity": 18, "isBidirectional": true },
@@ -659,6 +815,9 @@
     { "id": "ARMORY-BARRACKS", "fromNodeId": "CASTLE-ARMORY", "toNodeId": "CASTLE-BARRACKS", "time": 0.7, "cost": 0.5, "capacity": 10, "isBidirectional": true },
     { "id": "APOTHECARY-INN", "fromNodeId": "APOTHECARY", "toNodeId": "PILGRIMS-INN", "time": 0.8, "cost": 0.6, "capacity": 8, "isBidirectional": true },
     { "id": "APOTHECARY-BARRACKS", "fromNodeId": "APOTHECARY", "toNodeId": "CASTLE-BARRACKS", "time": 1.4, "cost": 1.1, "capacity": 8, "isBidirectional": true },
+    { "id": "APOTHECARY-HOSPITAL", "fromNodeId": "APOTHECARY", "toNodeId": "MONASTERY-HOSPITAL", "time": 0.9, "cost": 0.7, "capacity": 8, "isBidirectional": true },
+    { "id": "INN-HOSPITAL", "fromNodeId": "PILGRIMS-INN", "toNodeId": "MONASTERY-HOSPITAL", "time": 1.1, "cost": 0.8, "capacity": 9, "isBidirectional": true },
+    { "id": "BARRACKS-HOSPITAL", "fromNodeId": "CASTLE-BARRACKS", "toNodeId": "MONASTERY-HOSPITAL", "time": 1.8, "cost": 1.5, "capacity": 7, "isBidirectional": true },
     { "id": "MARKET-INN", "fromNodeId": "MARKET-SQUARE", "toNodeId": "PILGRIMS-INN", "time": 1.0, "cost": 0.9, "capacity": 12, "isBidirectional": true }
   ]
 }

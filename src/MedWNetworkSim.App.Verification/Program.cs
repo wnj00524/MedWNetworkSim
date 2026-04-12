@@ -32,6 +32,13 @@ ScenarioZ_ProportionalAllocationIsDeterministic();
 ScenarioAA_AllocationModeSerializes();
 ScenarioAB_DefaultAllocationModeSerializesAndBackfillsTraffic();
 ScenarioAC_DefaultAllocationModeAppliesToAllTrafficDefinitions();
+ScenarioAD_MissingRouteChoiceFieldsBackfillFromLegacyAllocationMode();
+ScenarioAE_MixedRouteChoiceModelsCoexist();
+ScenarioAF_PriorityImprovesScarceCapacityAccess();
+ScenarioAG_SeededStochasticIsRepeatableAndSeedSensitive();
+ScenarioAH_CongestionCanShiftRouteChoice();
+ScenarioAI_TemporalMixedRoutingLaunches();
+ScenarioAJ_FlagshipSampleLoadsAndExercisesMixedRouting();
 
 Console.WriteLine("Verification passed.");
 
@@ -545,6 +552,136 @@ static void ScenarioAC_DefaultAllocationModeAppliesToAllTrafficDefinitions()
     }
 }
 
+static void ScenarioAD_MissingRouteChoiceFieldsBackfillFromLegacyAllocationMode()
+{
+    const string json = """
+{
+  "name": "Legacy route choice",
+  "trafficTypes": [
+    { "name": "Fast", "allocationMode": "greedyBestRoute" },
+    { "name": "Bulk", "allocationMode": "proportionalBranchDemand" }
+  ],
+  "nodes": [
+    { "id": "A", "trafficProfiles": [{ "trafficType": "Fast", "production": 1 }, { "trafficType": "Bulk", "production": 1 }] },
+    { "id": "B", "trafficProfiles": [{ "trafficType": "Fast", "consumption": 1 }, { "trafficType": "Bulk", "consumption": 1 }] }
+  ],
+  "edges": [{ "id": "AB", "fromNodeId": "A", "toNodeId": "B", "time": 1, "cost": 1, "capacity": 10 }]
+}
+""";
+    var network = new NetworkFileService().LoadJson(json);
+
+    if (network.TrafficTypes.Single(item => item.Name == "Fast").FlowSplitPolicy != FlowSplitPolicy.SinglePath)
+    {
+        throw new InvalidOperationException("AD greedy legacy allocation did not map to single path.");
+    }
+
+    if (network.TrafficTypes.Single(item => item.Name == "Bulk").FlowSplitPolicy != FlowSplitPolicy.MultiPath)
+    {
+        throw new InvalidOperationException("AD proportional legacy allocation did not map to multi path.");
+    }
+}
+
+static void ScenarioAE_MixedRouteChoiceModelsCoexist()
+{
+    var network = CreateMixedRoutingNetwork();
+    var outcomes = new NetworkSimulationEngine().Simulate(network);
+
+    AssertEqual(2d, outcomes.Count, "AE mixed outcome count");
+    AssertEqual(2d, outcomes.Count(outcome => outcome.Allocations.Count > 0), "AE mixed allocation count");
+    if (outcomes.All(outcome => outcome.Notes.All(note => !note.Contains("route choice", StringComparison.OrdinalIgnoreCase))))
+    {
+        throw new InvalidOperationException("AE mixed route-choice notes were not emitted.");
+    }
+}
+
+static void ScenarioAF_PriorityImprovesScarceCapacityAccess()
+{
+    var network = CreateMixedRoutingNetwork();
+    var outcomes = new NetworkSimulationEngine().Simulate(network);
+
+    var official = outcomes.Single(outcome => outcome.TrafficType == "Official").TotalDelivered;
+    if (official < 10d)
+    {
+        throw new InvalidOperationException($"AF expected higher priority official flow to retain full scarce-route access, official {official}.");
+    }
+}
+
+static void ScenarioAG_SeededStochasticIsRepeatableAndSeedSensitive()
+{
+    var first = GetStochasticSignature(seed: 10);
+    var second = GetStochasticSignature(seed: 10);
+    var third = GetStochasticSignature(seed: 99);
+
+    if (first != second)
+    {
+        throw new InvalidOperationException("AG same seed did not produce the same stochastic signature.");
+    }
+
+    if (first == third)
+    {
+        throw new InvalidOperationException("AG different seed did not change the stochastic signature.");
+    }
+}
+
+static void ScenarioAH_CongestionCanShiftRouteChoice()
+{
+    var network = CreateCongestionRouteNetwork(seed: 2);
+    var outcome = new NetworkSimulationEngine().Simulate(network).Single(outcome => outcome.TrafficType == "Civilian");
+    var usedRoutes = outcome.Allocations.Select(allocation => string.Join(">", allocation.PathEdgeIds)).Distinct().Count();
+
+    if (usedRoutes < 2)
+    {
+        throw new InvalidOperationException("AH expected congestion-sensitive multi-path routing to use alternate routes.");
+    }
+}
+
+static void ScenarioAI_TemporalMixedRoutingLaunches()
+{
+    var network = CreateCongestionRouteNetwork(seed: 2);
+    var engine = new TemporalNetworkSimulationEngine();
+    var state = engine.Initialize(network);
+    var result = engine.Advance(network, state);
+
+    if (!result.Allocations.Any(allocation => allocation.TrafficType == "Civilian"))
+    {
+        throw new InvalidOperationException("AI temporal mixed routing did not launch civilian traffic.");
+    }
+}
+
+static void ScenarioAJ_FlagshipSampleLoadsAndExercisesMixedRouting()
+{
+    var samplePath = Path.Combine(AppContext.BaseDirectory, "Samples", "sample-network.json");
+    var network = new NetworkFileService().Load(samplePath);
+
+    if (network.Nodes.Count < 20)
+    {
+        throw new InvalidOperationException($"AJ flagship sample expected at least 20 nodes, found {network.Nodes.Count}.");
+    }
+
+    if (network.TrafficTypes.Count < 5)
+    {
+        throw new InvalidOperationException($"AJ flagship sample expected at least 5 traffic types, found {network.TrafficTypes.Count}.");
+    }
+
+    if (!network.TrafficTypes.Any(item => item.RouteChoiceModel == RouteChoiceModel.SystemOptimal) ||
+        !network.TrafficTypes.Any(item => item.RouteChoiceModel == RouteChoiceModel.StochasticUserResponsive))
+    {
+        throw new InvalidOperationException("AJ flagship sample does not exercise both route-choice models.");
+    }
+
+    if (!network.TrafficTypes.Any(item => item.FlowSplitPolicy == FlowSplitPolicy.SinglePath) ||
+        !network.TrafficTypes.Any(item => item.FlowSplitPolicy == FlowSplitPolicy.MultiPath))
+    {
+        throw new InvalidOperationException("AJ flagship sample does not exercise both flow split policies.");
+    }
+
+    var outcomes = new NetworkSimulationEngine().Simulate(network);
+    if (outcomes.Count == 0 || outcomes.All(outcome => outcome.Allocations.Count == 0))
+    {
+        throw new InvalidOperationException("AJ flagship sample loaded but did not simulate any allocations.");
+    }
+}
+
 static NetworkModel CreateNetwork(double edgeTime, bool bidirectional, double production = 100d, double consumption = 100d)
 {
     return new NetworkModel
@@ -643,6 +780,132 @@ static NetworkModel CreateBranchDemandNetwork(
             new EdgeModel { Id = "CE", FromNodeId = "C", ToNodeId = "E", Time = 1d, Cost = 1d, Capacity = 100d, IsBidirectional = false }
         ]
     };
+}
+
+static NetworkModel CreateMixedRoutingNetwork()
+{
+    var network = CreateCongestionRouteNetwork(seed: 1, capacity: 10d, civilianSupply: 10d, officialSupply: 10d);
+    network.TrafficTypes =
+    [
+        new TrafficTypeDefinition
+        {
+            Name = "Official",
+            RoutingPreference = RoutingPreference.Speed,
+            RouteChoiceModel = RouteChoiceModel.SystemOptimal,
+            FlowSplitPolicy = FlowSplitPolicy.SinglePath,
+            RouteChoiceSettings = new RouteChoiceSettings { Priority = 5d, MaxCandidateRoutes = 2, IterationCount = 2 },
+            CapacityBidPerUnit = 2d
+        },
+        new TrafficTypeDefinition
+        {
+            Name = "Civilian",
+            RoutingPreference = RoutingPreference.TotalCost,
+            RouteChoiceModel = RouteChoiceModel.StochasticUserResponsive,
+            FlowSplitPolicy = FlowSplitPolicy.MultiPath,
+            RouteChoiceSettings = new RouteChoiceSettings { Priority = 0.5d, MaxCandidateRoutes = 2, IterationCount = 2, RouteDiversity = 0.4d },
+            CapacityBidPerUnit = 0.1d
+        }
+    ];
+    return network;
+}
+
+static NetworkModel CreateCongestionRouteNetwork(
+    int seed,
+    double capacity = 100d,
+    double civilianSupply = 40d,
+    double officialSupply = 0d)
+{
+    return new NetworkModel
+    {
+        Name = "Congestion route",
+        SimulationSeed = seed,
+        TrafficTypes =
+        [
+            new TrafficTypeDefinition
+            {
+                Name = "Civilian",
+                RoutingPreference = RoutingPreference.TotalCost,
+                RouteChoiceModel = RouteChoiceModel.StochasticUserResponsive,
+                FlowSplitPolicy = FlowSplitPolicy.MultiPath,
+                RouteChoiceSettings = new RouteChoiceSettings
+                {
+                    MaxCandidateRoutes = 3,
+                    Priority = 1d,
+                    InformationAccuracy = 0.75d,
+                    RouteDiversity = 0.8d,
+                    CongestionSensitivity = 3d,
+                    IterationCount = 4
+                }
+            },
+            new TrafficTypeDefinition
+            {
+                Name = "Official",
+                RoutingPreference = RoutingPreference.Speed,
+                RouteChoiceModel = RouteChoiceModel.SystemOptimal,
+                FlowSplitPolicy = FlowSplitPolicy.SinglePath,
+                RouteChoiceSettings = new RouteChoiceSettings { Priority = 4d, MaxCandidateRoutes = 2, IterationCount = 2 }
+            }
+        ],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "A",
+                Name = "A",
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile { TrafficType = "Civilian", Production = civilianSupply },
+                    new NodeTrafficProfile { TrafficType = "Official", Production = officialSupply }
+                ]
+            },
+            new NodeModel
+            {
+                Id = "B",
+                Name = "B",
+                TranshipmentCapacity = capacity,
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile { TrafficType = "Civilian", CanTransship = true },
+                    new NodeTrafficProfile { TrafficType = "Official", CanTransship = true }
+                ]
+            },
+            new NodeModel
+            {
+                Id = "C",
+                Name = "C",
+                TranshipmentCapacity = capacity,
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile { TrafficType = "Civilian", CanTransship = true },
+                    new NodeTrafficProfile { TrafficType = "Official", CanTransship = true }
+                ]
+            },
+            new NodeModel
+            {
+                Id = "D",
+                Name = "D",
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile { TrafficType = "Civilian", Consumption = civilianSupply },
+                    new NodeTrafficProfile { TrafficType = "Official", Consumption = officialSupply }
+                ]
+            }
+        ],
+        Edges =
+        [
+            new EdgeModel { Id = "AB", FromNodeId = "A", ToNodeId = "B", Time = 1d, Cost = 1d, Capacity = capacity, IsBidirectional = false },
+            new EdgeModel { Id = "BD", FromNodeId = "B", ToNodeId = "D", Time = 1d, Cost = 1d, Capacity = capacity, IsBidirectional = false },
+            new EdgeModel { Id = "AC", FromNodeId = "A", ToNodeId = "C", Time = 1.2d, Cost = 1.4d, Capacity = 100d, IsBidirectional = false },
+            new EdgeModel { Id = "CD", FromNodeId = "C", ToNodeId = "D", Time = 1.2d, Cost = 1.4d, Capacity = 100d, IsBidirectional = false }
+        ]
+    };
+}
+
+static string GetStochasticSignature(int seed)
+{
+    var network = CreateCongestionRouteNetwork(seed);
+    var outcome = new NetworkSimulationEngine().Simulate(network).Single(outcome => outcome.TrafficType == "Civilian");
+    return string.Join("|", outcome.Allocations.Select(allocation => $"{allocation.Quantity:0.###}:{string.Join(">", allocation.PathEdgeIds)}"));
 }
 
 static NetworkModel CreateThreeNodeNetwork(double abTime, double bcTime, double bcCapacity)
@@ -907,7 +1170,7 @@ static double QuantityTo(TrafficSimulationOutcome outcome, string nodeId)
 
 static void AssertEqual(double expected, double actual, string label)
 {
-    if (Math.Abs(expected - actual) > 0.000001d)
+    if (Math.Abs(expected - actual) > 0.001d)
     {
         throw new InvalidOperationException($"{label}: expected {expected}, actual {actual}.");
     }

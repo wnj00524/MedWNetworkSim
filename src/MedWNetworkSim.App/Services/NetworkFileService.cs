@@ -36,10 +36,11 @@ public sealed class NetworkFileService
     /// <returns>The normalized network model.</returns>
     public NetworkModel LoadJson(string json)
     {
+        var trafficTypesWithExplicitFlowSplitPolicy = ReadTrafficTypesWithExplicitFlowSplitPolicy(json);
         var model = JsonSerializer.Deserialize<NetworkModel>(json, serializerOptions)
             ?? throw new InvalidOperationException("The selected JSON could not be deserialized into a network.");
 
-        return NormalizeAndValidate(model);
+        return NormalizeAndValidate(model, forceLayoutAllNodes: false, trafficTypesWithExplicitFlowSplitPolicy);
     }
 
     /// <summary>
@@ -74,7 +75,10 @@ public sealed class NetworkFileService
         return NormalizeAndValidate(model, forceLayoutAllNodes: false);
     }
 
-    private NetworkModel NormalizeAndValidate(NetworkModel model, bool forceLayoutAllNodes)
+    private NetworkModel NormalizeAndValidate(
+        NetworkModel model,
+        bool forceLayoutAllNodes,
+        ISet<string>? trafficTypesWithExplicitFlowSplitPolicy = null)
     {
         ArgumentNullException.ThrowIfNull(model);
 
@@ -181,7 +185,11 @@ public sealed class NetworkFileService
         }
 
         var defaultAllocationMode = model.DefaultAllocationMode;
-        var trafficDefinitions = NormalizeTrafficDefinitions(model.TrafficTypes, normalizedNodes, defaultAllocationMode);
+        var trafficDefinitions = NormalizeTrafficDefinitions(
+            model.TrafficTypes,
+            normalizedNodes,
+            defaultAllocationMode,
+            trafficTypesWithExplicitFlowSplitPolicy);
         ApplyAutomaticLayout(normalizedNodes, normalizedEdges, forceLayoutAllNodes);
 
         return new NetworkModel
@@ -190,6 +198,7 @@ public sealed class NetworkFileService
             Description = model.Description?.Trim() ?? string.Empty,
             TimelineLoopLength = timelineLoopLength,
             DefaultAllocationMode = defaultAllocationMode,
+            SimulationSeed = model.SimulationSeed,
             Nodes = normalizedNodes,
             Edges = normalizedEdges,
             TrafficTypes = trafficDefinitions
@@ -423,7 +432,8 @@ public sealed class NetworkFileService
     private static List<TrafficTypeDefinition> NormalizeTrafficDefinitions(
         IEnumerable<TrafficTypeDefinition>? definitions,
         IEnumerable<NodeModel> nodes,
-        AllocationMode defaultAllocationMode)
+        AllocationMode defaultAllocationMode,
+        ISet<string>? trafficTypesWithExplicitFlowSplitPolicy)
     {
         var result = new Dictionary<string, TrafficTypeDefinition>(Comparer);
 
@@ -448,6 +458,12 @@ public sealed class NetworkFileService
                 Description = definition.Description?.Trim() ?? string.Empty,
                 RoutingPreference = definition.RoutingPreference,
                 AllocationMode = definition.AllocationMode,
+                RouteChoiceModel = definition.RouteChoiceModel,
+                FlowSplitPolicy = NormalizeFlowSplitPolicy(
+                    definition.FlowSplitPolicy,
+                    definition.AllocationMode,
+                    trafficTypesWithExplicitFlowSplitPolicy is null || trafficTypesWithExplicitFlowSplitPolicy.Contains(name)),
+                RouteChoiceSettings = NormalizeRouteChoiceSettings(definition.RouteChoiceSettings, name),
                 CapacityBidPerUnit = capacityBidPerUnit
             };
         }
@@ -466,7 +482,8 @@ public sealed class NetworkFileService
                 {
                     Name = trafficName,
                     RoutingPreference = RoutingPreference.TotalCost,
-                    AllocationMode = defaultAllocationMode
+                    AllocationMode = defaultAllocationMode,
+                    FlowSplitPolicy = MapLegacyAllocationMode(defaultAllocationMode)
                 };
             }
         }
@@ -474,6 +491,95 @@ public sealed class NetworkFileService
         return result.Values
             .OrderBy(definition => definition.Name, Comparer)
             .ToList();
+    }
+
+    private static ISet<string> ReadTrafficTypesWithExplicitFlowSplitPolicy(string json)
+    {
+        var result = new HashSet<string>(Comparer);
+        using var document = JsonDocument.Parse(json);
+        if (!document.RootElement.TryGetProperty("trafficTypes", out var trafficTypes) ||
+            trafficTypes.ValueKind != JsonValueKind.Array)
+        {
+            return result;
+        }
+
+        foreach (var item in trafficTypes.EnumerateArray())
+        {
+            if (!item.TryGetProperty("name", out var nameElement) ||
+                nameElement.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(nameElement.GetString()) ||
+                !item.TryGetProperty("flowSplitPolicy", out _))
+            {
+                continue;
+            }
+
+            result.Add(nameElement.GetString()!.Trim());
+        }
+
+        return result;
+    }
+
+    private static FlowSplitPolicy NormalizeFlowSplitPolicy(
+        FlowSplitPolicy flowSplitPolicy,
+        AllocationMode allocationMode,
+        bool hasExplicitFlowSplitPolicy)
+    {
+        if (!hasExplicitFlowSplitPolicy)
+        {
+            return MapLegacyAllocationMode(allocationMode);
+        }
+
+        return flowSplitPolicy;
+    }
+
+    private static FlowSplitPolicy MapLegacyAllocationMode(AllocationMode allocationMode)
+    {
+        return allocationMode == AllocationMode.ProportionalBranchDemand
+            ? FlowSplitPolicy.MultiPath
+            : FlowSplitPolicy.SinglePath;
+    }
+
+    private static RouteChoiceSettings NormalizeRouteChoiceSettings(RouteChoiceSettings? settings, string trafficType)
+    {
+        settings ??= new RouteChoiceSettings();
+
+        if (settings.MaxCandidateRoutes < 1)
+        {
+            throw new InvalidOperationException($"Traffic type '{trafficType}' has an invalid maxCandidateRoutes. Use an integer >= 1.");
+        }
+
+        if (settings.IterationCount < 1)
+        {
+            throw new InvalidOperationException($"Traffic type '{trafficType}' has an invalid iterationCount. Use an integer >= 1.");
+        }
+
+        ValidateFiniteNonNegative(settings.Priority, trafficType, "priority");
+        ValidateFiniteNonNegative(settings.InformationAccuracy, trafficType, "informationAccuracy");
+        ValidateFiniteNonNegative(settings.RouteDiversity, trafficType, "routeDiversity");
+        ValidateFiniteNonNegative(settings.CongestionSensitivity, trafficType, "congestionSensitivity");
+        ValidateFiniteNonNegative(settings.RerouteThreshold, trafficType, "rerouteThreshold");
+        ValidateFiniteNonNegative(settings.Stickiness, trafficType, "stickiness");
+
+        return new RouteChoiceSettings
+        {
+            MaxCandidateRoutes = settings.MaxCandidateRoutes,
+            Priority = settings.Priority,
+            InformationAccuracy = Math.Min(1d, settings.InformationAccuracy),
+            RouteDiversity = settings.RouteDiversity,
+            CongestionSensitivity = settings.CongestionSensitivity,
+            RerouteThreshold = settings.RerouteThreshold,
+            Stickiness = Math.Min(1d, settings.Stickiness),
+            IterationCount = settings.IterationCount,
+            InternalizeCongestion = settings.InternalizeCongestion
+        };
+    }
+
+    private static void ValidateFiniteNonNegative(double value, string trafficType, string propertyName)
+    {
+        if (double.IsNaN(value) || double.IsInfinity(value) || value < 0d)
+        {
+            throw new InvalidOperationException($"Traffic type '{trafficType}' has an invalid {propertyName}. Use a finite number >= 0.");
+        }
     }
 
     private static void ApplyAutomaticLayout(

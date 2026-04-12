@@ -159,6 +159,8 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="10" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <TextBlock VerticalAlignment="Center"
@@ -250,6 +252,80 @@
                                       Content="Bidirectional"
                                       IsChecked="{Binding SelectedEdge.IsBidirectional, Mode=TwoWay}" />
                         </Grid>
+
+                        <Expander Grid.Row="14"
+                                  Grid.ColumnSpan="2"
+                                  Header="Worldbuilder"
+                                  IsExpanded="False">
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Route Type" />
+                                <TextBox Grid.Column="1"
+                                         Text="{Binding SelectedEdge.RouteType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="2"
+                                           VerticalAlignment="Top"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Access Notes" />
+                                <TextBox Grid.Row="2"
+                                         Grid.Column="1"
+                                         MinHeight="56"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Text="{Binding SelectedEdge.AccessNotes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="4"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Seasonal Risk" />
+                                <TextBox Grid.Row="4"
+                                         Grid.Column="1"
+                                         Text="{Binding SelectedEdge.SeasonalRisk, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="6"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Toll Notes" />
+                                <TextBox Grid.Row="6"
+                                         Grid.Column="1"
+                                         Text="{Binding SelectedEdge.TollNotes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="8"
+                                           VerticalAlignment="Top"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Security Notes" />
+                                <TextBox Grid.Row="8"
+                                         Grid.Column="1"
+                                         MinHeight="56"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Text="{Binding SelectedEdge.SecurityNotes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+                        </Expander>
                     </Grid>
 
                     <Border Grid.Row="4"

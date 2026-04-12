@@ -67,8 +67,34 @@
                                FontWeight="SemiBold"
                                Text="{Binding Terminology.NodeDetailsHeader}" />
 
-                    <WrapPanel Grid.Row="2">
+                    <WrapPanel Grid.Row="2"
+                               VerticalAlignment="Center">
+                        <TextBlock VerticalAlignment="Center"
+                                   Margin="0,0,8,0"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Template" />
+                        <ComboBox Width="170"
+                                  Margin="0,0,10,0"
+                                  DisplayMemberPath="DisplayName"
+                                  ItemsSource="{Binding PlaceTemplateOptions}"
+                                  SelectedItem="{Binding SelectedPlaceTemplate, Mode=TwoWay}" />
                         <Button Content="{Binding Terminology.AddNodeButton}" Click="AddNode_Click" />
+                        <Button Content="{Binding Terminology.AddNodeFromTemplateButton}" Click="AddNodeFromTemplate_Click" />
+                        <TextBlock VerticalAlignment="Center"
+                                   Margin="10,0,8,0"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Demand Preset" />
+                        <ComboBox Width="170"
+                                  Margin="0,0,10,0"
+                                  DisplayMemberPath="DisplayName"
+                                  ItemsSource="{Binding DemographicDemandPresetOptions}"
+                                  SelectedItem="{Binding SelectedDemographicDemandPreset, Mode=TwoWay}"
+                                  ToolTip="{Binding SelectedDemographicDemandPresetMappingSummary}" />
+                        <Button Content="Apply Preset"
+                                Click="ApplyDemographicDemandPreset_Click"
+                                ToolTip="{Binding SelectedDemographicDemandPresetDescription}" />
                         <Button Content="Remove Selected" Click="RemoveNode_Click" />
                     </WrapPanel>
 
@@ -178,6 +204,78 @@
                             <TextBox Grid.Column="4"
                                      Text="{Binding SelectedNode.Y, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         </Grid>
+
+                        <Expander Grid.Row="12"
+                                  Grid.ColumnSpan="2"
+                                  Header="Worldbuilder"
+                                  IsExpanded="False">
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Place Type" />
+                                <TextBox Grid.Column="1"
+                                         Text="{Binding SelectedNode.PlaceType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="2"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Controlling Actor" />
+                                <TextBox Grid.Row="2"
+                                         Grid.Column="1"
+                                         Text="{Binding SelectedNode.ControllingActor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="4"
+                                           VerticalAlignment="Top"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Lore" />
+                                <TextBox Grid.Row="4"
+                                         Grid.Column="1"
+                                         MinHeight="76"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Text="{Binding SelectedNode.LoreDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="6"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Tags" />
+                                <TextBox Grid.Row="6"
+                                         Grid.Column="1"
+                                         ToolTip="Comma-separated tags"
+                                         Text="{Binding SelectedNode.TagsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+
+                                <TextBlock Grid.Row="8"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Template Id" />
+                                <TextBox Grid.Row="8"
+                                         Grid.Column="1"
+                                         IsReadOnly="True"
+                                         Text="{Binding SelectedNode.TemplateId, Mode=OneWay}" />
+                            </Grid>
+                        </Expander>
                     </Grid>
 
                     <Border Grid.Row="6"

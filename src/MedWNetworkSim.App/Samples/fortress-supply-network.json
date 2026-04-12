@@ -1,0 +1,126 @@
+{
+  "name": "Fortress Supply Network",
+  "description": "A frontier castle supplied by farms, quarry, smithy, monastery infirmary, and a market depot through constrained roads.",
+  "timelineLoopLength": 5,
+  "simulationSeed": 20260416,
+  "trafficTypes": [
+    { "name": "Grain", "description": "Food supply for garrison and workers.", "routingPreference": "totalCost", "capacityBidPerUnit": 0.6 },
+    { "name": "Stone", "description": "Building stone for wall repairs.", "routingPreference": "cost", "capacityBidPerUnit": 0.7 },
+    { "name": "Arms", "description": "Weapons and armor for the fortress.", "routingPreference": "speed", "capacityBidPerUnit": 2.0 },
+    { "name": "Remedies", "description": "Medical supplies for infirmary and garrison.", "routingPreference": "speed", "capacityBidPerUnit": 2.4 },
+    { "name": "Dispatches", "description": "Urgent messages moving through military routes.", "routingPreference": "speed", "capacityBidPerUnit": 3.0 }
+  ],
+  "nodes": [
+    {
+      "id": "LOWLAND-FARMS",
+      "name": "Harrowfield Farms",
+      "shape": "circle",
+      "x": 130,
+      "y": 250,
+      "placeType": "Farm",
+      "loreDescription": "Lowland farms feeding a hungry frontier garrison.",
+      "tags": [ "rural", "food", "supply" ],
+      "templateId": "farm",
+      "trafficProfiles": [
+        { "trafficType": "Grain", "production": 36 },
+        { "trafficType": "Dispatches", "consumption": 2 }
+      ]
+    },
+    {
+      "id": "QUARRY",
+      "name": "Red Scar Quarry",
+      "shape": "building",
+      "x": 140,
+      "y": 560,
+      "placeType": "Quarry",
+      "loreDescription": "A hard stone quarry worked for curtain-wall repairs.",
+      "tags": [ "stone", "raw-material", "frontier" ],
+      "trafficProfiles": [
+        { "trafficType": "Stone", "production": 28 },
+        { "trafficType": "Grain", "consumption": 5 }
+      ]
+    },
+    {
+      "id": "MARKET-DEPOT",
+      "name": "Crossroads Market Depot",
+      "shape": "square",
+      "x": 430,
+      "y": 380,
+      "placeType": "Market Town",
+      "loreDescription": "A fortified depot where civilian carts hand off to military supply wagons.",
+      "controllingActor": "Quartermaster Eda",
+      "tags": [ "trade", "hub", "supply" ],
+      "templateId": "market-town",
+      "transhipmentCapacity": 48,
+      "trafficProfiles": [
+        { "trafficType": "Grain", "consumption": 8, "canTransship": true, "isStore": true, "storeCapacity": 70 },
+        { "trafficType": "Stone", "canTransship": true, "isStore": true, "storeCapacity": 50 },
+        { "trafficType": "Arms", "canTransship": true, "isStore": true, "storeCapacity": 25 },
+        { "trafficType": "Remedies", "canTransship": true, "isStore": true, "storeCapacity": 15 },
+        { "trafficType": "Dispatches", "production": 6, "canTransship": true }
+      ]
+    },
+    {
+      "id": "IRON-SMITHY",
+      "name": "Gateward Smithy",
+      "shape": "building",
+      "x": 690,
+      "y": 570,
+      "placeType": "Smithy",
+      "loreDescription": "A military smithy repairing arms before the final climb.",
+      "controllingActor": "Castle armorers",
+      "tags": [ "craft", "military", "tools" ],
+      "templateId": "smithy",
+      "trafficProfiles": [
+        { "trafficType": "Arms", "production": 12, "isStore": true, "storeCapacity": 24 },
+        { "trafficType": "Grain", "consumption": 4 }
+      ]
+    },
+    {
+      "id": "MONASTERY-INFIRMARY",
+      "name": "Saint Rowan Infirmary",
+      "shape": "building",
+      "x": 690,
+      "y": 170,
+      "placeType": "Monastery",
+      "loreDescription": "A hill monastery supplying poultices and care to soldiers.",
+      "controllingActor": "Sister Maud",
+      "tags": [ "religious", "medical", "frontier" ],
+      "templateId": "monastery",
+      "trafficProfiles": [
+        { "trafficType": "Remedies", "production": 10, "isStore": true, "storeCapacity": 18 },
+        { "trafficType": "Grain", "consumption": 6 },
+        { "trafficType": "Dispatches", "consumption": 3 }
+      ]
+    },
+    {
+      "id": "BORDER-CASTLE",
+      "name": "Ravenwatch Castle",
+      "shape": "building",
+      "x": 970,
+      "y": 380,
+      "placeType": "Castle",
+      "loreDescription": "A border fortress whose roads decide whether the garrison holds through the season.",
+      "controllingActor": "Captain Ysabel",
+      "tags": [ "fortified", "military", "need" ],
+      "templateId": "castle",
+      "transhipmentCapacity": 20,
+      "trafficProfiles": [
+        { "trafficType": "Grain", "consumption": 24, "canTransship": true, "isStore": true, "storeCapacity": 80 },
+        { "trafficType": "Stone", "consumption": 16, "isStore": true, "storeCapacity": 45 },
+        { "trafficType": "Arms", "consumption": 14, "isStore": true, "storeCapacity": 30 },
+        { "trafficType": "Remedies", "consumption": 8, "isStore": true, "storeCapacity": 16 },
+        { "trafficType": "Dispatches", "consumption": 10, "canTransship": true }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "FARMS-DEPOT", "fromNodeId": "LOWLAND-FARMS", "toNodeId": "MARKET-DEPOT", "time": 1.5, "cost": 1.0, "capacity": 24, "isBidirectional": true, "routeType": "supply road" },
+    { "id": "QUARRY-DEPOT", "fromNodeId": "QUARRY", "toNodeId": "MARKET-DEPOT", "time": 1.7, "cost": 1.4, "capacity": 18, "isBidirectional": true, "routeType": "stone road", "seasonalRisk": "Road ruts badly under rain." },
+    { "id": "DEPOT-SMITHY", "fromNodeId": "MARKET-DEPOT", "toNodeId": "IRON-SMITHY", "time": 1.0, "cost": 0.8, "capacity": 16, "isBidirectional": true, "routeType": "military road", "accessNotes": "Priority for quartermaster wagons." },
+    { "id": "DEPOT-INFIRMARY", "fromNodeId": "MARKET-DEPOT", "toNodeId": "MONASTERY-INFIRMARY", "time": 1.2, "cost": 1.0, "capacity": 12, "isBidirectional": true, "routeType": "ridge path", "securityNotes": "Watched by monastery lay brothers." },
+    { "id": "SMITHY-CASTLE", "fromNodeId": "IRON-SMITHY", "toNodeId": "BORDER-CASTLE", "time": 1.1, "cost": 1.3, "capacity": 10, "isBidirectional": true, "routeType": "steep cart road", "seasonalRisk": "Snow closes the last ascent." },
+    { "id": "INFIRMARY-CASTLE", "fromNodeId": "MONASTERY-INFIRMARY", "toNodeId": "BORDER-CASTLE", "time": 1.3, "cost": 1.1, "capacity": 8, "isBidirectional": true, "routeType": "goat path", "accessNotes": "Passable by pack animals only." },
+    { "id": "DEPOT-CASTLE", "fromNodeId": "MARKET-DEPOT", "toNodeId": "BORDER-CASTLE", "time": 1.8, "cost": 1.8, "capacity": 12, "isBidirectional": true, "routeType": "main fortress road", "tollNotes": "Military levy gates control passage." }
+  ]
+}

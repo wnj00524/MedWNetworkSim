@@ -1,0 +1,127 @@
+{
+  "name": "River Port Chain",
+  "description": "A river corridor where wharves and ports move grain, timber, salt, fish, and toll traffic between inland and coast.",
+  "timelineLoopLength": 4,
+  "simulationSeed": 20260415,
+  "trafficTypes": [
+    { "name": "Grain", "description": "Inland grain moving downstream.", "routingPreference": "totalCost", "capacityBidPerUnit": 0.5 },
+    { "name": "Timber", "description": "Rafted timber from upstream woodland.", "routingPreference": "cost", "capacityBidPerUnit": 0.6 },
+    { "name": "Salt", "description": "Coastal salt moving inland.", "routingPreference": "totalCost", "capacityBidPerUnit": 1.0 },
+    { "name": "Fish", "description": "Fresh and salted fish from the coast.", "routingPreference": "speed", "capacityBidPerUnit": 1.2 },
+    { "name": "Toll Receipts", "description": "Administrative toll traffic between ports.", "routingPreference": "speed", "capacityBidPerUnit": 1.8 }
+  ],
+  "nodes": [
+    {
+      "id": "UPRIVER-FARM",
+      "name": "Alderbend Farms",
+      "shape": "circle",
+      "x": 150,
+      "y": 220,
+      "placeType": "Farm",
+      "loreDescription": "Grain farms just above the navigable river bend.",
+      "tags": [ "rural", "food", "river" ],
+      "templateId": "farm",
+      "trafficProfiles": [
+        { "trafficType": "Grain", "production": 28 },
+        { "trafficType": "Salt", "consumption": 4 }
+      ]
+    },
+    {
+      "id": "TIMBER-CAMP",
+      "name": "Greenreach Timber Camp",
+      "shape": "circle",
+      "x": 150,
+      "y": 500,
+      "placeType": "Woodland Camp",
+      "loreDescription": "A riverbank camp where logs are prepared for rafting.",
+      "tags": [ "woodland", "raw-material", "river" ],
+      "trafficProfiles": [
+        { "trafficType": "Timber", "production": 26 },
+        { "trafficType": "Fish", "consumption": 3 }
+      ]
+    },
+    {
+      "id": "UPPER-WHARF",
+      "name": "Upper Ford Wharf",
+      "shape": "square",
+      "x": 410,
+      "y": 360,
+      "placeType": "Wharf",
+      "loreDescription": "A small river wharf collecting farm carts and timber rafts.",
+      "controllingActor": "Fordwardens",
+      "tags": [ "waterway", "trade", "hub" ],
+      "templateId": "wharf",
+      "transhipmentCapacity": 45,
+      "trafficProfiles": [
+        { "trafficType": "Grain", "canTransship": true, "isStore": true, "storeCapacity": 45 },
+        { "trafficType": "Timber", "canTransship": true, "isStore": true, "storeCapacity": 55 },
+        { "trafficType": "Salt", "canTransship": true },
+        { "trafficType": "Fish", "canTransship": true },
+        { "trafficType": "Toll Receipts", "production": 4, "canTransship": true }
+      ]
+    },
+    {
+      "id": "MIDPORT",
+      "name": "Willowgate Midport",
+      "shape": "square",
+      "x": 690,
+      "y": 360,
+      "placeType": "River Port",
+      "loreDescription": "A toll port where barges change crews and cargo is sorted.",
+      "controllingActor": "Willowgate Portreeve",
+      "tags": [ "port", "toll", "hub" ],
+      "transhipmentCapacity": 70,
+      "trafficProfiles": [
+        { "trafficType": "Grain", "consumption": 10, "canTransship": true, "isStore": true, "storeCapacity": 60 },
+        { "trafficType": "Timber", "consumption": 8, "canTransship": true },
+        { "trafficType": "Salt", "canTransship": true, "isStore": true, "storeCapacity": 36 },
+        { "trafficType": "Fish", "canTransship": true, "isStore": true, "storeCapacity": 24 },
+        { "trafficType": "Toll Receipts", "production": 8, "consumption": 4, "canTransship": true }
+      ]
+    },
+    {
+      "id": "COASTAL-HAVEN",
+      "name": "Seabell Haven",
+      "shape": "square",
+      "x": 970,
+      "y": 360,
+      "placeType": "Harbor",
+      "loreDescription": "A tidal haven sending fish and salt inland while receiving grain and timber.",
+      "controllingActor": "Harbor guild",
+      "tags": [ "coastal", "trade", "salt" ],
+      "transhipmentCapacity": 55,
+      "trafficProfiles": [
+        { "trafficType": "Fish", "production": 24, "canTransship": true, "isStore": true, "storeCapacity": 40 },
+        { "trafficType": "Salt", "production": 22, "canTransship": true, "isStore": true, "storeCapacity": 42 },
+        { "trafficType": "Grain", "consumption": 18, "canTransship": true },
+        { "trafficType": "Timber", "consumption": 16, "canTransship": true },
+        { "trafficType": "Toll Receipts", "consumption": 10, "canTransship": true }
+      ]
+    },
+    {
+      "id": "INLAND-MARKET",
+      "name": "Stonebridge Inland Market",
+      "shape": "square",
+      "x": 690,
+      "y": 105,
+      "placeType": "Market Town",
+      "loreDescription": "An inland market fed by pack roads from the midport.",
+      "tags": [ "settlement", "trade", "inland" ],
+      "templateId": "market-town",
+      "transhipmentCapacity": 35,
+      "trafficProfiles": [
+        { "trafficType": "Salt", "consumption": 12, "canTransship": true },
+        { "trafficType": "Fish", "consumption": 10, "canTransship": true },
+        { "trafficType": "Grain", "canTransship": true }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "FARM-WHARF", "fromNodeId": "UPRIVER-FARM", "toNodeId": "UPPER-WHARF", "time": 1.0, "cost": 0.8, "capacity": 18, "isBidirectional": true, "routeType": "cart road" },
+    { "id": "TIMBER-WHARF", "fromNodeId": "TIMBER-CAMP", "toNodeId": "UPPER-WHARF", "time": 0.9, "cost": 0.5, "capacity": 22, "isBidirectional": true, "routeType": "forest track" },
+    { "id": "UPPER-MID-RIVER", "fromNodeId": "UPPER-WHARF", "toNodeId": "MIDPORT", "time": 1.2, "cost": 0.6, "capacity": 30, "isBidirectional": true, "routeType": "river reach", "seasonalRisk": "Spring floods raise delays." },
+    { "id": "MID-HAVEN-RIVER", "fromNodeId": "MIDPORT", "toNodeId": "COASTAL-HAVEN", "time": 1.5, "cost": 0.8, "capacity": 28, "isBidirectional": true, "routeType": "tidal river", "tollNotes": "Port dues collected at Willowgate." },
+    { "id": "MID-MARKET-ROAD", "fromNodeId": "MIDPORT", "toNodeId": "INLAND-MARKET", "time": 1.4, "cost": 1.2, "capacity": 16, "isBidirectional": true, "routeType": "pack road" },
+    { "id": "HAVEN-MARKET-ROAD", "fromNodeId": "COASTAL-HAVEN", "toNodeId": "INLAND-MARKET", "time": 2.4, "cost": 2.0, "capacity": 10, "isBidirectional": true, "routeType": "coast road", "securityNotes": "Exposed to raiders in winter." }
+  ]
+}

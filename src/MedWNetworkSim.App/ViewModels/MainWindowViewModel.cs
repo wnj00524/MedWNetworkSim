@@ -4,7 +4,9 @@ using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows;
 using MedWNetworkSim.App.Models;
+using MedWNetworkSim.App.Presets;
 using MedWNetworkSim.App.Services;
+using MedWNetworkSim.App.Templates;
 
 namespace MedWNetworkSim.App.ViewModels;
 
@@ -12,7 +14,30 @@ public sealed class MainWindowViewModel : ObservableObject
 {
     private const double Epsilon = 0.000001d;
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
-    private const string BundledSampleResourceName = "MedWNetworkSim.App.Samples.sample-network.json";
+    private static readonly BundledScenarioOption BundledSampleScenario = new(
+        "Bundled Sample",
+        "sample-network.json",
+        "MedWNetworkSim.App.Samples.sample-network.json");
+
+    private static readonly IReadOnlyList<BundledScenarioOption> WorldbuilderScenarioCatalog =
+    [
+        new(
+            "Village and Manor",
+            "village-and-manor.json",
+            "MedWNetworkSim.App.Samples.village-and-manor.json"),
+        new(
+            "Market Town and Hinterland",
+            "market-town-and-hinterland.json",
+            "MedWNetworkSim.App.Samples.market-town-and-hinterland.json"),
+        new(
+            "River Port Chain",
+            "river-port-chain.json",
+            "MedWNetworkSim.App.Samples.river-port-chain.json"),
+        new(
+            "Fortress Supply Network",
+            "fortress-supply-network.json",
+            "MedWNetworkSim.App.Samples.fortress-supply-network.json")
+    ];
 
     private readonly NetworkFileService fileService = new();
     private readonly GraphMlFileService graphMlFileService = new();
@@ -36,6 +61,9 @@ public sealed class MainWindowViewModel : ObservableObject
     private NodeTrafficProfileViewModel? selectedNodeTrafficProfile;
     private EdgeViewModel? selectedEdge;
     private TrafficTypeDefinitionEditorViewModel? selectedTrafficDefinition;
+    private PlaceTemplate? selectedPlaceTemplate = PlaceTemplateCatalog.Templates.FirstOrDefault();
+    private DemographicDemandPreset? selectedDemographicDemandPreset = DemographicDemandPresetCatalog.Presets.FirstOrDefault();
+    private BundledScenarioOption? selectedWorldbuilderScenario = WorldbuilderScenarioCatalog.FirstOrDefault();
     private bool isNormalizingNodeTrafficProfiles;
     private bool isAdjustingTrafficDefinitionNames;
     private bool isBulkUpdatingTrafficProfiles;
@@ -107,6 +135,48 @@ public sealed class MainWindowViewModel : ObservableObject
     ];
 
     public Array ThemeOptions { get; } = Enum.GetValues(typeof(AppTheme));
+
+    public IReadOnlyList<PlaceTemplate> PlaceTemplateOptions { get; } =
+        PlaceTemplateCatalog.Templates;
+
+    public IReadOnlyList<DemographicDemandPreset> DemographicDemandPresetOptions { get; } =
+        DemographicDemandPresetCatalog.Presets;
+
+    public IReadOnlyList<BundledScenarioOption> WorldbuilderScenarioOptions { get; } =
+        WorldbuilderScenarioCatalog;
+
+    public PlaceTemplate? SelectedPlaceTemplate
+    {
+        get => selectedPlaceTemplate;
+        set => SetProperty(ref selectedPlaceTemplate, value);
+    }
+
+    public DemographicDemandPreset? SelectedDemographicDemandPreset
+    {
+        get => selectedDemographicDemandPreset;
+        set
+        {
+            if (!SetProperty(ref selectedDemographicDemandPreset, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(SelectedDemographicDemandPresetDescription));
+            OnPropertyChanged(nameof(SelectedDemographicDemandPresetMappingSummary));
+        }
+    }
+
+    public string SelectedDemographicDemandPresetDescription =>
+        SelectedDemographicDemandPreset?.Description ?? "Choose a preset to add baseline demand rows.";
+
+    public string SelectedDemographicDemandPresetMappingSummary =>
+        SelectedDemographicDemandPreset?.MappingSummary ?? string.Empty;
+
+    public BundledScenarioOption? SelectedWorldbuilderScenario
+    {
+        get => selectedWorldbuilderScenario;
+        set => SetProperty(ref selectedWorldbuilderScenario, value);
+    }
 
     public bool IsWorldbuilderMode
     {
@@ -857,23 +927,39 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public void LoadBundledSample()
     {
-        var samplePath = Path.Combine(AppContext.BaseDirectory, "Samples", "sample-network.json");
+        LoadBundledScenario(BundledSampleScenario, "Loaded the bundled sample network.");
+    }
+
+    public void LoadSelectedWorldbuilderScenario()
+    {
+        var scenario = SelectedWorldbuilderScenario ?? WorldbuilderScenarioCatalog.FirstOrDefault();
+        if (scenario is null)
+        {
+            throw new InvalidOperationException("No worldbuilder scenarios are available.");
+        }
+
+        LoadBundledScenario(scenario, $"Loaded the {scenario.DisplayName} worldbuilder scenario.");
+    }
+
+    private void LoadBundledScenario(BundledScenarioOption scenario, string successMessage)
+    {
+        var samplePath = Path.Combine(AppContext.BaseDirectory, "Samples", scenario.FileName);
         if (File.Exists(samplePath))
         {
             var fileNetwork = fileService.Load(samplePath);
-            LoadNetwork(fileNetwork, samplePath, "Loaded the bundled sample network.");
+            LoadNetwork(fileNetwork, samplePath, successMessage);
             return;
         }
 
-        using var stream = typeof(MainWindowViewModel).Assembly.GetManifestResourceStream(BundledSampleResourceName);
+        using var stream = typeof(MainWindowViewModel).Assembly.GetManifestResourceStream(scenario.ResourceName);
         if (stream is null)
         {
-            throw new FileNotFoundException("The bundled sample network was not found.", samplePath);
+            throw new FileNotFoundException($"The bundled scenario '{scenario.DisplayName}' was not found.", samplePath);
         }
 
         using var reader = new StreamReader(stream);
         var resourceNetwork = fileService.LoadJson(reader.ReadToEnd());
-        LoadNetwork(resourceNetwork, "Bundled sample", "Loaded the bundled sample network.");
+        LoadNetwork(resourceNetwork, scenario.DisplayName, successMessage);
     }
 
     public void RunSimulation()
@@ -1049,29 +1135,101 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public void AddNodeAt(double? x, double? y)
     {
+        AddNodeAt(null, x, y);
+    }
+
+    public void AddNodeFromSelectedTemplate()
+    {
+        AddNodeFromSelectedTemplateAt(null, null);
+    }
+
+    public void AddNodeFromSelectedTemplateAt(double? x, double? y)
+    {
+        var template = SelectedPlaceTemplate ?? PlaceTemplateCatalog.Templates.FirstOrDefault();
+        AddNodeAt(template, x, y);
+    }
+
+    public void ApplySelectedDemographicDemandPresetToSelectedNode()
+    {
+        if (SelectedNode is null)
+        {
+            throw new InvalidOperationException("Select a node before applying a demographic demand preset.");
+        }
+
+        var preset = SelectedDemographicDemandPreset ?? DemographicDemandPresetCatalog.Presets.FirstOrDefault();
+        if (preset is null)
+        {
+            throw new InvalidOperationException("No demographic demand presets are available.");
+        }
+
+        ApplyDemographicDemandPreset(SelectedNode, preset);
+    }
+
+    private void AddNodeAt(PlaceTemplate? template, double? x, double? y)
+    {
         EnsureNetworkExists();
 
-        var primaryTrafficDefinition = EnsurePrimaryTrafficDefinition();
-
         var nodeIndex = Nodes.Count + 1;
-        var node = new NodeViewModel(new NodeModel
-        {
-            Id = GetNextUniqueName("N", Nodes.Select(item => item.Id)),
-            Name = $"Node {nodeIndex}",
-            X = x ?? 220d + ((nodeIndex - 1) % 4 * 220d),
-            Y = y ?? 180d + ((nodeIndex - 1) / 4 * 170d)
-        });
-        var initialProfile = new NodeTrafficProfileViewModel(new NodeTrafficProfile
-        {
-            TrafficType = primaryTrafficDefinition.Name
-        });
-
-        node.AddTrafficProfile(initialProfile);
+        var nodeModel = template is null
+            ? CreateDefaultNodeModel(nodeIndex, x, y)
+            : CreateTemplatedNodeModel(template, nodeIndex, x, y);
+        var node = new NodeViewModel(nodeModel);
+        var initialProfile = node.TrafficProfiles.FirstOrDefault();
 
         RegisterNode(node);
         SelectedNode = node;
         SelectedNodeTrafficProfile = initialProfile;
-        RefreshDerivedStateAfterStructureChange("Added a new node.");
+        RefreshDerivedStateAfterStructureChange(
+            template is null
+                ? "Added a new node."
+                : $"Added a new {template.DisplayName.ToLowerInvariant()} place from template.");
+    }
+
+    private void ApplyDemographicDemandPreset(NodeViewModel node, DemographicDemandPreset preset)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(preset);
+
+        isBulkUpdatingTrafficProfiles = true;
+
+        try
+        {
+            foreach (var row in preset.TrafficRows)
+            {
+                EnsureTrafficDefinition(row.TrafficType);
+
+                var profile = node.TrafficProfiles
+                    .FirstOrDefault(item => Comparer.Equals(item.TrafficType, row.TrafficType));
+                if (profile is null)
+                {
+                    profile = new NodeTrafficProfileViewModel(new NodeTrafficProfile
+                    {
+                        TrafficType = row.TrafficType
+                    });
+                    node.AddTrafficProfile(profile);
+                }
+
+                profile.Consumption = Math.Max(profile.Consumption, row.Consumption);
+                profile.ConsumerPremiumPerUnit = Math.Max(profile.ConsumerPremiumPerUnit, row.ConsumerPremiumPerUnit);
+                profile.CanTransship |= row.CanTransship;
+                if (row.StoreCapacity.HasValue)
+                {
+                    profile.IsStore = true;
+                    profile.StoreCapacity = profile.StoreCapacity.HasValue
+                        ? Math.Max(profile.StoreCapacity.Value, row.StoreCapacity.Value)
+                        : row.StoreCapacity;
+                }
+            }
+
+            NormalizeNodeTrafficProfiles(node);
+        }
+        finally
+        {
+            isBulkUpdatingTrafficProfiles = false;
+        }
+
+        SelectedNodeTrafficProfile = node.TrafficProfiles.FirstOrDefault();
+        RefreshDerivedStateAfterStructureChange($"Applied the {preset.DisplayName} demographic demand preset to '{node.Name}'.");
     }
 
     public void RemoveSelectedNode()
@@ -1413,6 +1571,49 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         return CreateTrafficDefinition();
+    }
+
+    private NodeModel CreateDefaultNodeModel(int nodeIndex, double? x, double? y)
+    {
+        var primaryTrafficDefinition = EnsurePrimaryTrafficDefinition();
+        return new NodeModel
+        {
+            Id = GetNextUniqueName("N", Nodes.Select(item => item.Id)),
+            Name = $"Node {nodeIndex}",
+            X = x ?? 220d + ((nodeIndex - 1) % 4 * 220d),
+            Y = y ?? 180d + ((nodeIndex - 1) / 4 * 170d),
+            TrafficProfiles =
+            [
+                new NodeTrafficProfile
+                {
+                    TrafficType = primaryTrafficDefinition.Name
+                }
+            ]
+        };
+    }
+
+    private NodeModel CreateTemplatedNodeModel(PlaceTemplate template, int nodeIndex, double? x, double? y)
+    {
+        foreach (var profile in template.TrafficProfiles)
+        {
+            EnsureTrafficDefinition(profile.TrafficType);
+        }
+
+        return new NodeModel
+        {
+            Id = GetNextUniqueName("N", Nodes.Select(item => item.Id)),
+            Name = GetNextUniqueName($"{template.NamePrefix} ", Nodes.Select(item => item.Name)),
+            X = x ?? 220d + ((nodeIndex - 1) % 4 * 220d),
+            Y = y ?? 180d + ((nodeIndex - 1) / 4 * 170d),
+            TranshipmentCapacity = template.TranshipmentCapacity,
+            PlaceType = template.PlaceType,
+            LoreDescription = template.LoreDescription,
+            Tags = template.Tags.ToList(),
+            TemplateId = template.Id,
+            TrafficProfiles = template.TrafficProfiles
+                .Select(profile => profile.ToNodeTrafficProfile())
+                .ToList()
+        };
     }
 
     private TrafficTypeDefinitionEditorViewModel EnsureTrafficDefinition(string trafficTypeName)
@@ -2433,3 +2634,5 @@ public sealed class MainWindowViewModel : ObservableObject
         public static NodeFlowVisualSummary Empty => new(0d, 0d, 0d, 0d);
     }
 }
+
+public sealed record BundledScenarioOption(string DisplayName, string FileName, string ResourceName);

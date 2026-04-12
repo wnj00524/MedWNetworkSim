@@ -100,6 +100,37 @@
                                         Click="Reports_Click"
                                         IsEnabled="{Binding HasNetwork}" />
                             </WrapPanel>
+                            <WrapPanel Margin="0,8,0,0"
+                                       VerticalAlignment="Center">
+                                <TextBlock VerticalAlignment="Center"
+                                           Margin="0,0,8,0"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Scenario" />
+                                <ComboBox Width="210"
+                                          Margin="0,0,10,0"
+                                          DisplayMemberPath="DisplayName"
+                                          ItemsSource="{Binding WorldbuilderScenarioOptions}"
+                                          SelectedItem="{Binding SelectedWorldbuilderScenario, Mode=TwoWay}" />
+                                <Button Content="Load Scenario"
+                                        Click="LoadWorldbuilderScenario_Click" />
+                            </WrapPanel>
+                            <WrapPanel Margin="0,8,0,0"
+                                       VerticalAlignment="Center">
+                                <TextBlock VerticalAlignment="Center"
+                                           Margin="0,0,8,0"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Template" />
+                                <ComboBox Width="150"
+                                          Margin="0,0,10,0"
+                                          DisplayMemberPath="DisplayName"
+                                          ItemsSource="{Binding PlaceTemplateOptions}"
+                                          SelectedItem="{Binding SelectedPlaceTemplate, Mode=TwoWay}" />
+                                <Button Content="{Binding Terminology.AddNodeFromTemplateButton}"
+                                        Click="AddNodeFromTemplate_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                            </WrapPanel>
                         </StackPanel>
                     </Border>
 

@@ -200,6 +200,7 @@ public sealed class NetworkFileService
             normalizedNodes,
             defaultAllocationMode,
             trafficTypesWithExplicitFlowSplitPolicy);
+        var timelineEvents = NormalizeTimelineEvents(model.TimelineEvents, normalizedNodes, edgeIds);
         ApplyAutomaticLayout(normalizedNodes, normalizedEdges, forceLayoutAllNodes);
 
         return new NetworkModel
@@ -211,7 +212,8 @@ public sealed class NetworkFileService
             SimulationSeed = model.SimulationSeed,
             Nodes = normalizedNodes,
             Edges = normalizedEdges,
-            TrafficTypes = trafficDefinitions
+            TrafficTypes = trafficDefinitions,
+            TimelineEvents = timelineEvents
         };
     }
 
@@ -517,6 +519,135 @@ public sealed class NetworkFileService
         return result.Values
             .OrderBy(definition => definition.Name, Comparer)
             .ToList();
+    }
+
+    private static List<TimelineEventModel> NormalizeTimelineEvents(
+        IEnumerable<TimelineEventModel>? events,
+        IReadOnlyList<NodeModel> nodes,
+        IReadOnlySet<string> edgeIds)
+    {
+        var normalized = new List<TimelineEventModel>();
+        var seenIds = new HashSet<string>(Comparer);
+        var nodeProfilesById = nodes.ToDictionary(
+            node => node.Id,
+            node => node.TrafficProfiles.Select(profile => profile.TrafficType).ToHashSet(Comparer),
+            Comparer);
+
+        foreach (var timelineEvent in events ?? [])
+        {
+            var eventId = string.IsNullOrWhiteSpace(timelineEvent.Id)
+                ? $"event-{normalized.Count + 1}"
+                : timelineEvent.Id.Trim();
+
+            if (!seenIds.Add(eventId))
+            {
+                throw new InvalidOperationException($"Duplicate timeline event id '{eventId}' was found.");
+            }
+
+            ValidateEventWindow(timelineEvent, eventId);
+
+            var normalizedEffects = NormalizeTimelineEventEffects(timelineEvent.Effects, eventId, nodeProfilesById, edgeIds);
+            normalized.Add(new TimelineEventModel
+            {
+                Id = eventId,
+                Name = string.IsNullOrWhiteSpace(timelineEvent.Name) ? eventId : timelineEvent.Name.Trim(),
+                StartPeriod = timelineEvent.StartPeriod,
+                EndPeriod = timelineEvent.EndPeriod,
+                Effects = normalizedEffects
+            });
+        }
+
+        return normalized;
+    }
+
+    private static void ValidateEventWindow(TimelineEventModel timelineEvent, string eventId)
+    {
+        if (timelineEvent.StartPeriod.HasValue && timelineEvent.StartPeriod.Value < 0)
+        {
+            throw new InvalidOperationException($"Timeline event '{eventId}' has an invalid startPeriod. Use an integer >= 0.");
+        }
+
+        if (timelineEvent.EndPeriod.HasValue && timelineEvent.EndPeriod.Value < 0)
+        {
+            throw new InvalidOperationException($"Timeline event '{eventId}' has an invalid endPeriod. Use an integer >= 0.");
+        }
+
+        if (timelineEvent.StartPeriod.HasValue &&
+            timelineEvent.EndPeriod.HasValue &&
+            timelineEvent.StartPeriod.Value > timelineEvent.EndPeriod.Value)
+        {
+            throw new InvalidOperationException($"Timeline event '{eventId}' has a startPeriod after its endPeriod.");
+        }
+    }
+
+    private static List<TimelineEventEffectModel> NormalizeTimelineEventEffects(
+        IEnumerable<TimelineEventEffectModel>? effects,
+        string eventId,
+        IReadOnlyDictionary<string, HashSet<string>> nodeProfilesById,
+        IReadOnlySet<string> edgeIds)
+    {
+        var normalized = new List<TimelineEventEffectModel>();
+
+        foreach (var effect in effects ?? [])
+        {
+            if (double.IsNaN(effect.Multiplier) || double.IsInfinity(effect.Multiplier) || effect.Multiplier < 0d)
+            {
+                throw new InvalidOperationException($"Timeline event '{eventId}' has an invalid multiplier. Use a finite number >= 0.");
+            }
+
+            var nodeId = NormalizeOptionalText(effect.NodeId);
+            var edgeId = NormalizeOptionalText(effect.EdgeId);
+            var trafficType = NormalizeOptionalText(effect.TrafficType);
+
+            switch (effect.EffectType)
+            {
+                case TimelineEventEffectType.ProductionMultiplier:
+                case TimelineEventEffectType.ConsumptionMultiplier:
+                    if (nodeId is null || trafficType is null)
+                    {
+                        throw new InvalidOperationException($"Timeline event '{eventId}' must specify nodeId and trafficType for {effect.EffectType}.");
+                    }
+
+                    if (!nodeProfilesById.TryGetValue(nodeId, out var trafficTypes))
+                    {
+                        throw new InvalidOperationException($"Timeline event '{eventId}' references missing node '{nodeId}'.");
+                    }
+
+                    if (!trafficTypes.Contains(trafficType))
+                    {
+                        throw new InvalidOperationException($"Timeline event '{eventId}' references missing traffic profile '{trafficType}' on node '{nodeId}'.");
+                    }
+
+                    break;
+
+                case TimelineEventEffectType.RouteCostMultiplier:
+                    if (edgeId is null)
+                    {
+                        throw new InvalidOperationException($"Timeline event '{eventId}' must specify edgeId for {effect.EffectType}.");
+                    }
+
+                    if (!edgeIds.Contains(edgeId))
+                    {
+                        throw new InvalidOperationException($"Timeline event '{eventId}' references missing edge '{edgeId}'.");
+                    }
+
+                    break;
+
+                default:
+                    throw new InvalidOperationException($"Timeline event '{eventId}' has an unsupported effect type '{effect.EffectType}'.");
+            }
+
+            normalized.Add(new TimelineEventEffectModel
+            {
+                EffectType = effect.EffectType,
+                NodeId = nodeId,
+                EdgeId = edgeId,
+                TrafficType = trafficType,
+                Multiplier = effect.Multiplier
+            });
+        }
+
+        return normalized;
     }
 
     private static ISet<string> ReadTrafficTypesWithExplicitFlowSplitPolicy(string json)

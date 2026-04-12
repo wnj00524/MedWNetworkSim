@@ -74,6 +74,8 @@ public sealed class ReportExportService
                 ["Total Delivered", FormatNumber(outcomes.Sum(outcome => outcome.TotalDelivered))]
             ]);
 
+        AppendWorldbuilderHtmlReport(builder, network, allocations, outcomes);
+
         builder.AppendLine("<h2>Traffic Types</h2>");
         AppendHtmlTable(
             builder,
@@ -397,6 +399,49 @@ public sealed class ReportExportService
         return builder.ToString();
     }
 
+    private void AppendWorldbuilderHtmlReport(
+        StringBuilder builder,
+        NetworkModel network,
+        IReadOnlyList<RouteAllocation> allocations,
+        IReadOnlyList<TrafficSimulationOutcome> outcomes)
+    {
+        builder.AppendLine("<h2>Worldbuilder Summary</h2>");
+        builder.AppendLine("<p class=\"meta\">These notes are generated from node metadata, configured roles, and the current simulation result.</p>");
+
+        builder.AppendLine("<h3>Settlement Summary</h3>");
+        AppendHtmlTable(
+            builder,
+            ["Place", "Type / Tags", "Model Role", "Why It Matters In-World"],
+            network.Nodes.Select(node => new[]
+            {
+                $"{node.Name} ({node.Id})",
+                FormatPlaceIdentity(node),
+                FormatModelRoleSummary(node),
+                FormatPlaceImportance(node, allocations)
+            }));
+
+        builder.AppendLine("<h3>Dependency Summary</h3>");
+        AppendHtmlTable(
+            builder,
+            ["Place", "Critical Inbound Dependencies", "Important Outbound Functions", "Storage Pressure"],
+            network.Nodes.Select(node => new[]
+            {
+                $"{node.Name} ({node.Id})",
+                FormatInboundDependencies(node, allocations, outcomes),
+                FormatOutboundFunctions(node, allocations),
+                FormatStoragePressure(node)
+            }));
+
+        builder.AppendLine("<h3>Bottleneck Summary</h3>");
+        AppendHtmlTable(
+            builder,
+            ["Route", "Observed Use", "Capacity", "Worldbuilder Reading"],
+            network.Edges
+                .Select(edge => FormatBottleneckRow(edge, network, allocations))
+                .Where(row => row is not null)
+                .Select(row => row!));
+    }
+
     private string BuildTimelineCsvReport(
         NetworkModel network,
         IReadOnlyList<TemporalNetworkSimulationEngine.TemporalSimulationStepResult> results)
@@ -510,6 +555,267 @@ public sealed class ReportExportService
         }
 
         return builder.ToString();
+    }
+
+    private static string FormatPlaceIdentity(NodeModel node)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(node.PlaceType))
+        {
+            parts.Add(node.PlaceType.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(node.ControllingActor))
+        {
+            parts.Add($"controlled by {node.ControllingActor.Trim()}");
+        }
+
+        if (node.Tags.Count > 0)
+        {
+            parts.Add("tags: " + string.Join(", ", node.Tags));
+        }
+
+        return parts.Count == 0 ? "No worldbuilder metadata" : string.Join("; ", parts);
+    }
+
+    private static string FormatModelRoleSummary(NodeModel node)
+    {
+        var parts = new List<string>();
+        var producers = FormatProfileTrafficList(node.TrafficProfiles.Where(profile => profile.Production > 0), profile => profile.Production);
+        var consumers = FormatProfileTrafficList(node.TrafficProfiles.Where(profile => profile.Consumption > 0), profile => profile.Consumption);
+        var stores = FormatProfileTrafficList(node.TrafficProfiles.Where(profile => profile.IsStore), profile => profile.StoreCapacity);
+
+        if (!string.IsNullOrWhiteSpace(producers))
+        {
+            parts.Add($"produces {producers}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(consumers))
+        {
+            parts.Add($"needs {consumers}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(stores))
+        {
+            parts.Add($"stores {stores}");
+        }
+
+        if (node.TrafficProfiles.Any(profile => profile.CanTransship))
+        {
+            parts.Add(node.TranshipmentCapacity.HasValue
+                ? $"transships up to {FormatNumber(node.TranshipmentCapacity)}"
+                : "can transship");
+        }
+
+        return parts.Count == 0 ? "No configured production, demand, storage, or transhipment role." : SentenceJoin(parts) + ".";
+    }
+
+    private static string FormatPlaceImportance(NodeModel node, IReadOnlyList<RouteAllocation> allocations)
+    {
+        var parts = new List<string>();
+        var outbound = SummarizeTrafficQuantities(allocations
+            .Where(allocation => !allocation.IsLocalSupply && Comparer.Equals(allocation.ProducerNodeId, node.Id))
+            .GroupBy(allocation => allocation.TrafficType, Comparer)
+            .Select(group => new TrafficQuantity(group.Key, group.Sum(allocation => allocation.Quantity))));
+        var inbound = SummarizeTrafficQuantities(allocations
+            .Where(allocation => !allocation.IsLocalSupply && Comparer.Equals(allocation.ConsumerNodeId, node.Id))
+            .GroupBy(allocation => allocation.TrafficType, Comparer)
+            .Select(group => new TrafficQuantity(group.Key, group.Sum(allocation => allocation.Quantity))));
+        var transitQuantity = allocations
+            .Where(allocation => allocation.PathNodeIds.Count > 2 &&
+                allocation.PathNodeIds.Skip(1).Take(allocation.PathNodeIds.Count - 2).Any(nodeId => Comparer.Equals(nodeId, node.Id)))
+            .Sum(allocation => allocation.Quantity);
+
+        if (!string.IsNullOrWhiteSpace(outbound))
+        {
+            parts.Add($"sends {outbound} to other places");
+        }
+
+        if (!string.IsNullOrWhiteSpace(inbound))
+        {
+            parts.Add($"receives {inbound}");
+        }
+
+        if (transitQuantity > 0)
+        {
+            parts.Add($"carries {FormatNumber(transitQuantity)} units as an intermediate stop");
+        }
+
+        if (!string.IsNullOrWhiteSpace(node.LoreDescription))
+        {
+            parts.Add($"metadata note: {node.LoreDescription.Trim()}");
+        }
+
+        return parts.Count == 0
+            ? "This place matters because of its configured roles, but the current simulation did not route external flow through it."
+            : SentenceJoin(parts) + ".";
+    }
+
+    private static string FormatInboundDependencies(
+        NodeModel node,
+        IReadOnlyList<RouteAllocation> allocations,
+        IReadOnlyList<TrafficSimulationOutcome> outcomes)
+    {
+        var parts = new List<string>();
+        var imported = SummarizeTrafficQuantities(allocations
+            .Where(allocation => !allocation.IsLocalSupply && Comparer.Equals(allocation.ConsumerNodeId, node.Id))
+            .GroupBy(allocation => allocation.TrafficType, Comparer)
+            .Select(group => new TrafficQuantity(group.Key, group.Sum(allocation => allocation.Quantity))));
+        if (!string.IsNullOrWhiteSpace(imported))
+        {
+            parts.Add($"imports {imported}");
+        }
+
+        var unmet = node.TrafficProfiles
+            .Where(profile => profile.Consumption > 0)
+            .Select(profile =>
+            {
+                var delivered = allocations
+                    .Where(allocation => Comparer.Equals(allocation.ConsumerNodeId, node.Id) &&
+                        Comparer.Equals(allocation.TrafficType, profile.TrafficType))
+                    .Sum(allocation => allocation.Quantity);
+                return new TrafficQuantity(profile.TrafficType, Math.Max(0d, profile.Consumption - delivered));
+            })
+            .Where(item => item.Quantity > 0)
+            .ToList();
+
+        var outcomeUnmetTypes = outcomes
+            .Where(outcome => outcome.UnmetDemand > 0 && unmet.Any(item => Comparer.Equals(item.TrafficType, outcome.TrafficType)))
+            .Select(outcome => outcome.TrafficType)
+            .Distinct(Comparer)
+            .ToHashSet(Comparer);
+
+        var unmetSummary = SummarizeTrafficQuantities(unmet.Where(item => outcomeUnmetTypes.Contains(item.TrafficType)));
+        if (!string.IsNullOrWhiteSpace(unmetSummary))
+        {
+            parts.Add($"unmet demand remains for {unmetSummary}");
+        }
+
+        return parts.Count == 0 ? "No imported dependency or unmet demand in the current result." : SentenceJoin(parts) + ".";
+    }
+
+    private static string FormatOutboundFunctions(NodeModel node, IReadOnlyList<RouteAllocation> allocations)
+    {
+        var outbound = SummarizeTrafficQuantities(allocations
+            .Where(allocation => !allocation.IsLocalSupply && Comparer.Equals(allocation.ProducerNodeId, node.Id))
+            .GroupBy(allocation => allocation.TrafficType, Comparer)
+            .Select(group => new TrafficQuantity(group.Key, group.Sum(allocation => allocation.Quantity))));
+        if (!string.IsNullOrWhiteSpace(outbound))
+        {
+            return $"Sends {outbound}.";
+        }
+
+        var local = SummarizeTrafficQuantities(allocations
+            .Where(allocation => allocation.IsLocalSupply && Comparer.Equals(allocation.ProducerNodeId, node.Id))
+            .GroupBy(allocation => allocation.TrafficType, Comparer)
+            .Select(group => new TrafficQuantity(group.Key, group.Sum(allocation => allocation.Quantity))));
+        return string.IsNullOrWhiteSpace(local)
+            ? "No outbound deliveries in the current result."
+            : $"Satisfies local demand for {local}.";
+    }
+
+    private static string FormatStoragePressure(NodeModel node)
+    {
+        var stores = node.TrafficProfiles
+            .Where(profile => profile.IsStore)
+            .Select(profile =>
+            {
+                var movement = profile.Production + profile.Consumption;
+                return profile.StoreCapacity.HasValue && profile.StoreCapacity.Value > 0d
+                    ? $"{profile.TrafficType}: configured stockpile {FormatNumber(profile.StoreCapacity)}, modeled role volume {FormatNumber(movement)} ({FormatUtilisation(movement, profile.StoreCapacity)})"
+                    : $"{profile.TrafficType}: stockpile enabled without a finite capacity";
+            })
+            .ToList();
+
+        return stores.Count == 0 ? "No configured stockpile role." : string.Join(" ", stores);
+    }
+
+    private static string[]? FormatBottleneckRow(EdgeModel edge, NetworkModel network, IReadOnlyList<RouteAllocation> allocations)
+    {
+        var routed = allocations
+            .Where(allocation => allocation.PathEdgeIds.Contains(edge.Id, Comparer))
+            .ToList();
+        var flow = routed.Sum(allocation => allocation.Quantity);
+        if (flow <= 0d && !edge.Capacity.HasValue)
+        {
+            return null;
+        }
+
+        var fromName = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, edge.FromNodeId))?.Name ?? edge.FromNodeId;
+        var toName = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, edge.ToNodeId))?.Name ?? edge.ToNodeId;
+        var routeNotes = new List<string>();
+        if (!string.IsNullOrWhiteSpace(edge.RouteType))
+        {
+            routeNotes.Add(edge.RouteType.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(edge.SeasonalRisk))
+        {
+            routeNotes.Add($"seasonal risk: {edge.SeasonalRisk.Trim()}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(edge.SecurityNotes))
+        {
+            routeNotes.Add($"security: {edge.SecurityNotes.Trim()}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(edge.TollNotes))
+        {
+            routeNotes.Add($"toll: {edge.TollNotes.Trim()}");
+        }
+
+        var observedUse = flow > 0d
+            ? $"{FormatNumber(flow)} units across {routed.Count} movement(s)"
+            : "No routed movement in the current result";
+        var reading = edge.Capacity.HasValue && edge.Capacity.Value > 0d
+            ? $"Current result uses {FormatUtilisation(flow, edge.Capacity)} of configured capacity."
+            : "No finite route capacity is configured.";
+
+        if (routeNotes.Count > 0)
+        {
+            reading += " " + string.Join(" ", routeNotes) + ".";
+        }
+
+        return
+        [
+            $"{edge.Id}: {fromName} -> {toName}",
+            observedUse,
+            FormatNumber(edge.Capacity),
+            reading
+        ];
+    }
+
+    private static string FormatProfileTrafficList(IEnumerable<NodeTrafficProfile> profiles, Func<NodeTrafficProfile, double?> quantitySelector)
+    {
+        return SummarizeTrafficQuantities(profiles.Select(profile => new TrafficQuantity(profile.TrafficType, quantitySelector(profile) ?? 0d)));
+    }
+
+    private static string SummarizeTrafficQuantities(IEnumerable<TrafficQuantity> quantities)
+    {
+        var materialized = quantities
+            .Where(item => item.Quantity > 0d)
+            .OrderByDescending(item => item.Quantity)
+            .ThenBy(item => item.TrafficType, Comparer)
+            .Take(3)
+            .Select(item => $"{FormatNumber(item.Quantity)} {item.TrafficType}")
+            .ToList();
+
+        return materialized.Count == 0 ? string.Empty : string.Join(", ", materialized);
+    }
+
+    private static string SentenceJoin(IReadOnlyList<string> parts)
+    {
+        if (parts.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        if (parts.Count == 1)
+        {
+            return char.ToUpperInvariant(parts[0][0]) + parts[0][1..];
+        }
+
+        return char.ToUpperInvariant(parts[0][0]) + parts[0][1..] + "; " + string.Join("; ", parts.Skip(1));
     }
 
     private static StringBuilder CreateHtmlReportHeader(string title, NetworkModel network)
@@ -754,4 +1060,6 @@ public sealed class ReportExportService
             ? $"\"{safe}\""
             : safe;
     }
+
+    private sealed record TrafficQuantity(string TrafficType, double Quantity);
 }

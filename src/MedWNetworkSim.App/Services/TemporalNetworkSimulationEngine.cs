@@ -30,25 +30,26 @@ public sealed class TemporalNetworkSimulationEngine
         var state = currentState ?? Initialize(network);
         var nextPeriod = state.CurrentPeriod + 1;
         var effectivePeriod = GetEffectivePeriod(nextPeriod, network.TimelineLoopLength);
+        var effectiveNetwork = ApplyTimelineEventOverlay(network, effectivePeriod);
         var nodeStates = state.NodeStates.ToDictionary(
             pair => pair.Key,
             pair => pair.Value.Clone(),
             TemporalNodeTrafficKey.Comparer);
         var movements = state.InFlightMovements.Select(movement => movement.Clone()).ToList();
-        var nodeLookup = network.Nodes.ToDictionary(node => node.Id, node => node, Comparer);
-        var edgeLookup = network.Edges.ToDictionary(edge => edge.Id, edge => edge, Comparer);
-        var definitionsByTraffic = network.TrafficTypes.ToDictionary(definition => definition.Name, definition => definition, Comparer);
+        var nodeLookup = effectiveNetwork.Nodes.ToDictionary(node => node.Id, node => node, Comparer);
+        var edgeLookup = effectiveNetwork.Edges.ToDictionary(edge => edge.Id, edge => edge, Comparer);
+        var definitionsByTraffic = effectiveNetwork.TrafficTypes.ToDictionary(definition => definition.Name, definition => definition, Comparer);
         var occupiedEdgeCapacity = state.OccupiedEdgeCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
         var occupiedTranshipmentCapacity = state.OccupiedTranshipmentCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
 
         ValidateResourceOccupancy(edgeLookup, nodeLookup, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         ValidateMovementResourceClaims(movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
 
-        AddScheduledNodeChanges(network, nodeStates, effectivePeriod);
+        AddScheduledNodeChanges(effectiveNetwork, nodeStates, effectivePeriod);
 
-        var availableResources = BuildAvailableResourceCapacity(network, movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+        var availableResources = BuildAvailableResourceCapacity(effectiveNetwork, movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         var plannedAllocations = PlanNewAllocations(
-            network,
+            effectiveNetwork,
             definitionsByTraffic,
             nodeStates,
             nextPeriod,
@@ -216,6 +217,187 @@ public sealed class TemporalNetworkSimulationEngine
                 }
             }
         }
+    }
+
+    private static NetworkModel ApplyTimelineEventOverlay(NetworkModel network, int effectivePeriod)
+    {
+        var activeEvents = network.TimelineEvents
+            .Where(timelineEvent => IsTimelineEventActive(timelineEvent, effectivePeriod))
+            .ToList();
+
+        if (activeEvents.Count == 0)
+        {
+            return network;
+        }
+
+        var overlay = CloneNetworkForTimelineEvents(network);
+        foreach (var timelineEvent in activeEvents)
+        {
+            foreach (var effect in timelineEvent.Effects)
+            {
+                ApplyTimelineEventEffect(overlay, effect);
+            }
+        }
+
+        return overlay;
+    }
+
+    private static bool IsTimelineEventActive(TimelineEventModel timelineEvent, int effectivePeriod)
+    {
+        if (timelineEvent.StartPeriod.HasValue && effectivePeriod < timelineEvent.StartPeriod.Value)
+        {
+            return false;
+        }
+
+        if (timelineEvent.EndPeriod.HasValue && effectivePeriod > timelineEvent.EndPeriod.Value)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static void ApplyTimelineEventEffect(NetworkModel network, TimelineEventEffectModel effect)
+    {
+        switch (effect.EffectType)
+        {
+            case TimelineEventEffectType.ProductionMultiplier:
+                ApplyNodeTrafficMultiplier(network, effect, profile => profile.Production *= effect.Multiplier);
+                break;
+
+            case TimelineEventEffectType.ConsumptionMultiplier:
+                ApplyNodeTrafficMultiplier(network, effect, profile => profile.Consumption *= effect.Multiplier);
+                break;
+
+            case TimelineEventEffectType.RouteCostMultiplier:
+                ApplyEdgeMultiplier(network, effect);
+                break;
+        }
+    }
+
+    private static void ApplyNodeTrafficMultiplier(
+        NetworkModel network,
+        TimelineEventEffectModel effect,
+        Action<NodeTrafficProfile> apply)
+    {
+        if (effect.NodeId is null || effect.TrafficType is null)
+        {
+            return;
+        }
+
+        var node = network.Nodes.FirstOrDefault(candidate => Comparer.Equals(candidate.Id, effect.NodeId));
+        var profile = node?.TrafficProfiles.FirstOrDefault(candidate => Comparer.Equals(candidate.TrafficType, effect.TrafficType));
+        if (profile is not null)
+        {
+            apply(profile);
+        }
+    }
+
+    private static void ApplyEdgeMultiplier(NetworkModel network, TimelineEventEffectModel effect)
+    {
+        if (effect.EdgeId is null)
+        {
+            return;
+        }
+
+        var edge = network.Edges.FirstOrDefault(candidate => Comparer.Equals(candidate.Id, effect.EdgeId));
+        if (edge is not null)
+        {
+            edge.Cost *= effect.Multiplier;
+        }
+    }
+
+    private static NetworkModel CloneNetworkForTimelineEvents(NetworkModel network)
+    {
+        return new NetworkModel
+        {
+            Name = network.Name,
+            Description = network.Description,
+            TimelineLoopLength = network.TimelineLoopLength,
+            DefaultAllocationMode = network.DefaultAllocationMode,
+            SimulationSeed = network.SimulationSeed,
+            TrafficTypes = network.TrafficTypes.ToList(),
+            TimelineEvents = network.TimelineEvents,
+            Nodes = network.Nodes.Select(CloneNode).ToList(),
+            Edges = network.Edges.Select(CloneEdge).ToList()
+        };
+    }
+
+    private static NodeModel CloneNode(NodeModel node)
+    {
+        return new NodeModel
+        {
+            Id = node.Id,
+            Name = node.Name,
+            Shape = node.Shape,
+            X = node.X,
+            Y = node.Y,
+            TranshipmentCapacity = node.TranshipmentCapacity,
+            PlaceType = node.PlaceType,
+            LoreDescription = node.LoreDescription,
+            ControllingActor = node.ControllingActor,
+            Tags = node.Tags.ToList(),
+            TemplateId = node.TemplateId,
+            TrafficProfiles = node.TrafficProfiles.Select(CloneProfile).ToList()
+        };
+    }
+
+    private static NodeTrafficProfile CloneProfile(NodeTrafficProfile profile)
+    {
+        return new NodeTrafficProfile
+        {
+            TrafficType = profile.TrafficType,
+            Production = profile.Production,
+            Consumption = profile.Consumption,
+            ConsumerPremiumPerUnit = profile.ConsumerPremiumPerUnit,
+            CanTransship = profile.CanTransship,
+            ProductionStartPeriod = profile.ProductionStartPeriod,
+            ProductionEndPeriod = profile.ProductionEndPeriod,
+            ConsumptionStartPeriod = profile.ConsumptionStartPeriod,
+            ConsumptionEndPeriod = profile.ConsumptionEndPeriod,
+            ProductionWindows = profile.ProductionWindows.Select(CloneWindow).ToList(),
+            ConsumptionWindows = profile.ConsumptionWindows.Select(CloneWindow).ToList(),
+            InputRequirements = profile.InputRequirements.Select(CloneInputRequirement).ToList(),
+            IsStore = profile.IsStore,
+            StoreCapacity = profile.StoreCapacity
+        };
+    }
+
+    private static PeriodWindow CloneWindow(PeriodWindow window)
+    {
+        return new PeriodWindow
+        {
+            StartPeriod = window.StartPeriod,
+            EndPeriod = window.EndPeriod
+        };
+    }
+
+    private static ProductionInputRequirement CloneInputRequirement(ProductionInputRequirement requirement)
+    {
+        return new ProductionInputRequirement
+        {
+            TrafficType = requirement.TrafficType,
+            QuantityPerOutputUnit = requirement.QuantityPerOutputUnit
+        };
+    }
+
+    private static EdgeModel CloneEdge(EdgeModel edge)
+    {
+        return new EdgeModel
+        {
+            Id = edge.Id,
+            FromNodeId = edge.FromNodeId,
+            ToNodeId = edge.ToNodeId,
+            Time = edge.Time,
+            Cost = edge.Cost,
+            Capacity = edge.Capacity,
+            IsBidirectional = edge.IsBidirectional,
+            RouteType = edge.RouteType,
+            AccessNotes = edge.AccessNotes,
+            SeasonalRisk = edge.SeasonalRisk,
+            TollNotes = edge.TollNotes,
+            SecurityNotes = edge.SecurityNotes
+        };
     }
 
     private static List<RouteAllocation> PlanNewAllocations(

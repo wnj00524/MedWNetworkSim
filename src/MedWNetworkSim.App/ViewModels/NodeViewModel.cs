@@ -100,6 +100,7 @@ public sealed class NodeViewModel : ObservableObject
                 return;
             }
 
+            RaiseWorldbuilderSummaryPropertiesChanged();
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -209,6 +210,7 @@ public sealed class NodeViewModel : ObservableObject
 
             OnPropertyChanged(nameof(TranshipmentCapacityLabel));
             OnPropertyChanged(nameof(FullTrafficSummary));
+            RaiseWorldbuilderSummaryPropertiesChanged();
             RefreshSimulationDerivedState();
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -226,6 +228,7 @@ public sealed class NodeViewModel : ObservableObject
                 return;
             }
 
+            RaiseWorldbuilderSummaryPropertiesChanged();
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -240,6 +243,7 @@ public sealed class NodeViewModel : ObservableObject
                 return;
             }
 
+            RaiseWorldbuilderSummaryPropertiesChanged();
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -254,11 +258,31 @@ public sealed class NodeViewModel : ObservableObject
                 return;
             }
 
+            RaiseWorldbuilderSummaryPropertiesChanged();
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
     public ObservableCollection<string> Tags { get; }
+
+    public string TagsText
+    {
+        get => string.Join(", ", Tags);
+        set
+        {
+            var nextTags = SplitTags(value);
+            if (Tags.SequenceEqual(nextTags, StringComparer.Ordinal))
+            {
+                return;
+            }
+
+            Tags.Clear();
+            foreach (var tag in nextTags)
+            {
+                Tags.Add(tag);
+            }
+        }
+    }
 
     public string? TemplateId
     {
@@ -270,6 +294,7 @@ public sealed class NodeViewModel : ObservableObject
                 return;
             }
 
+            RaiseWorldbuilderSummaryPropertiesChanged();
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -418,6 +443,99 @@ public sealed class NodeViewModel : ObservableObject
         }
     }
 
+    public string WorldbuilderSummary
+    {
+        get
+        {
+            var identity = GetPlaceIdentity();
+            var parts = new List<string>();
+            var producedGoods = GetProducedGoods();
+            var consumedGoods = GetConsumedGoods();
+            var storedGoods = GetStoredGoods();
+
+            if (producedGoods.Count > 0)
+            {
+                parts.Add($"supplies {FormatList(producedGoods)}");
+            }
+
+            if (consumedGoods.Count > 0)
+            {
+                parts.Add($"needs {FormatList(consumedGoods)}");
+            }
+
+            if (storedGoods.Count > 0)
+            {
+                parts.Add($"stockpiles {FormatList(storedGoods)}");
+            }
+
+            if (CanTransship)
+            {
+                parts.Add(TranshipmentCapacity.HasValue
+                    ? $"moves goods onward through a transhipment capacity of {TranshipmentCapacity.Value:0.##}"
+                    : "moves goods onward without a fixed transhipment limit");
+            }
+
+            var activity = parts.Count == 0
+                ? "has no configured production, need, stockpile, or transhipment role yet"
+                : string.Join("; ", parts);
+            var owner = string.IsNullOrWhiteSpace(ControllingActor)
+                ? string.Empty
+                : $" Controlled by {ControllingActor.Trim()}.";
+            var lore = string.IsNullOrWhiteSpace(LoreDescription)
+                ? string.Empty
+                : $" {LoreDescription.Trim()}";
+
+            return $"{identity} {activity}.{owner}{lore}".Trim();
+        }
+    }
+
+    public string WorldbuilderImportanceSummary
+    {
+        get
+        {
+            var reasons = new List<string>();
+
+            if (GetProducedGoods().Count > 0)
+            {
+                reasons.Add("a source of supply");
+            }
+
+            if (GetConsumedGoods().Count > 0)
+            {
+                reasons.Add("a demand center");
+            }
+
+            if (GetStoredGoods().Count > 0)
+            {
+                reasons.Add("a stockpile");
+            }
+
+            if (CanTransship)
+            {
+                reasons.Add("a routing hub");
+            }
+
+            if (!string.IsNullOrWhiteSpace(ControllingActor))
+            {
+                reasons.Add($"controlled by {ControllingActor.Trim()}");
+            }
+
+            var tags = Tags
+                .Where(tag => !string.IsNullOrWhiteSpace(tag))
+                .Select(tag => tag.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (tags.Count > 0)
+            {
+                reasons.Add($"tagged {FormatList(tags)}");
+            }
+
+            return reasons.Count == 0
+                ? "Importance is not established yet; add roles or worldbuilder metadata to explain its place in the world."
+                : $"Important because it is {FormatList(reasons)}.";
+        }
+    }
+
     public void AddTrafficProfile(NodeTrafficProfileViewModel profile)
     {
         TrafficProfiles.Add(profile);
@@ -526,6 +644,8 @@ public sealed class NodeViewModel : ObservableObject
 
     private void HandleTagsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        OnPropertyChanged(nameof(TagsText));
+        RaiseWorldbuilderSummaryPropertiesChanged();
         DefinitionChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -543,12 +663,14 @@ public sealed class NodeViewModel : ObservableObject
 
         OnPropertyChanged(nameof(TrafficProfileCountLabel));
         OnPropertyChanged(nameof(FullTrafficSummary));
+        RaiseWorldbuilderSummaryPropertiesChanged();
         DefinitionChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void HandleTrafficProfilePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         OnPropertyChanged(nameof(FullTrafficSummary));
+        RaiseWorldbuilderSummaryPropertiesChanged();
         DefinitionChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -576,6 +698,68 @@ public sealed class NodeViewModel : ObservableObject
         OnPropertyChanged(nameof(HasSimulationDetails));
         OnPropertyChanged(nameof(TimelineSummaryLabel));
         OnPropertyChanged(nameof(FullTrafficSummary));
+    }
+
+    private void RaiseWorldbuilderSummaryPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(WorldbuilderSummary));
+        OnPropertyChanged(nameof(WorldbuilderImportanceSummary));
+    }
+
+    private string GetPlaceIdentity()
+    {
+        return string.IsNullOrWhiteSpace(PlaceType)
+            ? Name
+            : $"{Name} is a {PlaceType.Trim()} that";
+    }
+
+    private IReadOnlyList<string> GetProducedGoods()
+    {
+        return GetTrafficTypes(profile => profile.Production > Epsilon);
+    }
+
+    private IReadOnlyList<string> GetConsumedGoods()
+    {
+        return GetTrafficTypes(profile => profile.Consumption > Epsilon);
+    }
+
+    private IReadOnlyList<string> GetStoredGoods()
+    {
+        return GetTrafficTypes(profile => profile.IsStore);
+    }
+
+    private bool CanTransship => TrafficProfiles.Any(profile => profile.CanTransship);
+
+    private IReadOnlyList<string> GetTrafficTypes(Func<NodeTrafficProfileViewModel, bool> predicate)
+    {
+        return TrafficProfiles
+            .Where(predicate)
+            .Select(profile => profile.TrafficType)
+            .Where(trafficType => !string.IsNullOrWhiteSpace(trafficType))
+            .Select(trafficType => trafficType.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(trafficType => trafficType, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string FormatList(IReadOnlyList<string> items)
+    {
+        return items.Count switch
+        {
+            0 => string.Empty,
+            1 => items[0],
+            2 => $"{items[0]} and {items[1]}",
+            _ => $"{string.Join(", ", items.Take(items.Count - 1))}, and {items[^1]}"
+        };
+    }
+
+    private static IReadOnlyList<string> SplitTags(string? value)
+    {
+        return (value ?? string.Empty)
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static Brush PickUsageBrush(double ratio, bool hasFlow)

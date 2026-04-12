@@ -98,6 +98,11 @@ public partial class MainWindow : Window
         ExecuteWithErrorHandling(ViewModel.LoadBundledSample);
     }
 
+    private void LoadWorldbuilderScenario_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(ViewModel.LoadSelectedWorldbuilderScenario);
+    }
+
     private void RunSimulation_Click(object sender, RoutedEventArgs e)
     {
         ExecuteWithErrorHandling(ViewModel.RunSimulation);
@@ -161,6 +166,15 @@ public partial class MainWindow : Window
     private void AddNode_Click(object sender, RoutedEventArgs e)
     {
         ExecuteWithErrorHandling(ViewModel.AddNode);
+    }
+
+    private void AddNodeFromTemplate_Click(object sender, RoutedEventArgs e)
+    {
+        ExecuteWithErrorHandling(() =>
+        {
+            ViewModel.AddNodeFromSelectedTemplate();
+            OpenNodeEditorWindow();
+        });
     }
 
     private void CanvasAddNode_Click(object sender, RoutedEventArgs e)

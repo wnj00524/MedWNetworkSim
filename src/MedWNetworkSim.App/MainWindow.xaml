@@ -355,7 +355,11 @@
                                   Grid.Row="2"
                                   HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Auto"
-                                  CanContentScroll="False">
+                                  CanContentScroll="False"
+                                  PreviewMouseDown="NetworkCanvasScrollViewer_OnPreviewMouseDown"
+                                  PreviewMouseMove="NetworkCanvasScrollViewer_OnPreviewMouseMove"
+                                  PreviewMouseUp="NetworkCanvasScrollViewer_OnPreviewMouseUp"
+                                  LostMouseCapture="NetworkCanvasScrollViewer_OnLostMouseCapture">
                         <Grid x:Name="NetworkCanvasGrid"
                               Width="{Binding WorkspaceWidth}"
                               Height="{Binding WorkspaceHeight}"

@@ -19,7 +19,8 @@ public sealed class NetworkSimulationEngine
     {
         ArgumentNullException.ThrowIfNull(network);
 
-        var contexts = MixedRoutingAllocator.BuildStaticContexts(network).ToList();
+        var hasRecipeDependencies = HasStaticRecipeDependencies(network);
+        var contexts = MixedRoutingAllocator.BuildStaticContexts(network, applyLocalAllocations: !hasRecipeDependencies).ToList();
         var remainingCapacityByEdgeId = network.Edges.ToDictionary(
             edge => edge.Id,
             edge => edge.Capacity ?? double.PositiveInfinity,
@@ -31,7 +32,36 @@ public sealed class NetworkSimulationEngine
         var hasFiniteCapacities = network.Edges.Any(edge => edge.Capacity.HasValue) ||
             network.Nodes.Any(node => node.TranshipmentCapacity.HasValue);
 
-        MixedRoutingAllocator.Allocate(network, contexts, remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId);
+        if (hasRecipeDependencies)
+        {
+            var contextsByTraffic = contexts.ToDictionary(context => context.TrafficType, context => context, Comparer);
+            var allocationOrder = BuildStaticRecipeCostOrder(network, contexts.Select(context => context.TrafficType).ToList());
+            var sourceUnitCosts = contexts.ToDictionary(
+                context => context.TrafficType,
+                _ => new Dictionary<string, double>(Comparer),
+                Comparer);
+            var landedUnitCosts = contexts.ToDictionary(
+                context => context.TrafficType,
+                _ => new Dictionary<string, double>(Comparer),
+                Comparer);
+
+            foreach (var trafficType in allocationOrder)
+            {
+                if (!contextsByTraffic.TryGetValue(trafficType, out var context))
+                {
+                    continue;
+                }
+
+                SetStaticSourceUnitCosts(context, sourceUnitCosts, landedUnitCosts);
+                MixedRoutingAllocator.ApplyLocalAllocations(context, period: 0);
+                MixedRoutingAllocator.Allocate(network, [context], remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId);
+                landedUnitCosts[context.TrafficType] = SummarizeLandedUnitCosts(context.Allocations);
+            }
+        }
+        else
+        {
+            MixedRoutingAllocator.Allocate(network, contexts, remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId);
+        }
 
         foreach (var context in contexts)
         {
@@ -128,6 +158,151 @@ public sealed class NetworkSimulationEngine
         }
 
         return allocations.Sum(allocation => allocation.TotalMovementCost) / quantity;
+    }
+
+    private static bool HasStaticRecipeDependencies(NetworkModel network)
+    {
+        return network.Nodes
+            .SelectMany(node => node.TrafficProfiles)
+            .Where(profile => profile.Production > Epsilon)
+            .SelectMany(profile => profile.InputRequirements)
+            .Any(requirement => requirement.QuantityPerOutputUnit > Epsilon);
+    }
+
+    private static List<string> BuildStaticRecipeCostOrder(NetworkModel network, IReadOnlyList<string> trafficTypes)
+    {
+        var originalIndex = trafficTypes
+            .Select((trafficType, index) => new { trafficType, index })
+            .ToDictionary(item => item.trafficType, item => item.index, Comparer);
+        var graph = trafficTypes.ToDictionary(trafficType => trafficType, _ => new HashSet<string>(Comparer), Comparer);
+        var indegree = trafficTypes.ToDictionary(trafficType => trafficType, _ => 0, Comparer);
+
+        foreach (var profile in network.Nodes.SelectMany(node => node.TrafficProfiles).Where(profile => profile.Production > Epsilon))
+        {
+            if (!graph.ContainsKey(profile.TrafficType))
+            {
+                graph[profile.TrafficType] = [];
+                indegree[profile.TrafficType] = 0;
+                originalIndex[profile.TrafficType] = originalIndex.Count;
+            }
+
+            foreach (var requirement in profile.InputRequirements.Where(requirement => requirement.QuantityPerOutputUnit > Epsilon))
+            {
+                if (!graph.ContainsKey(requirement.TrafficType))
+                {
+                    graph[requirement.TrafficType] = [];
+                    indegree[requirement.TrafficType] = 0;
+                    originalIndex[requirement.TrafficType] = originalIndex.Count;
+                }
+
+                if (graph[requirement.TrafficType].Add(profile.TrafficType))
+                {
+                    indegree[profile.TrafficType]++;
+                }
+            }
+        }
+
+        var ready = indegree
+            .Where(pair => pair.Value == 0)
+            .Select(pair => pair.Key)
+            .OrderBy(trafficType => originalIndex.GetValueOrDefault(trafficType, int.MaxValue))
+            .ThenBy(trafficType => trafficType, Comparer)
+            .ToList();
+        var result = new List<string>(graph.Count);
+        while (ready.Count > 0)
+        {
+            var trafficType = ready[0];
+            ready.RemoveAt(0);
+            result.Add(trafficType);
+
+            foreach (var dependent in graph[trafficType]
+                .OrderBy(item => originalIndex.GetValueOrDefault(item, int.MaxValue))
+                .ThenBy(item => item, Comparer))
+            {
+                indegree[dependent]--;
+                if (indegree[dependent] == 0)
+                {
+                    ready.Add(dependent);
+                    ready = ready
+                        .OrderBy(item => originalIndex.GetValueOrDefault(item, int.MaxValue))
+                        .ThenBy(item => item, Comparer)
+                        .ToList();
+                }
+            }
+        }
+
+        if (result.Count != graph.Count)
+        {
+            var cyclicTraffic = indegree
+                .Where(pair => pair.Value > 0)
+                .Select(pair => pair.Key)
+                .OrderBy(item => item, Comparer);
+            throw new InvalidOperationException($"Static inherited recipe cost propagation does not support cyclic recipe dependencies. Cycle includes: {string.Join(", ", cyclicTraffic)}.");
+        }
+
+        return result;
+    }
+
+    private static void SetStaticSourceUnitCosts(
+        RoutingTrafficContext context,
+        IReadOnlyDictionary<string, Dictionary<string, double>> sourceUnitCosts,
+        IReadOnlyDictionary<string, Dictionary<string, double>> landedUnitCosts)
+    {
+        context.SupplyUnitCosts.Clear();
+        foreach (var pair in context.Supply)
+        {
+            var nodeId = pair.Key;
+            if (!context.ProfilesByNodeId.TryGetValue(nodeId, out var profile) || profile is null)
+            {
+                context.SupplyUnitCosts[nodeId] = 0d;
+                continue;
+            }
+
+            var sourceUnitCost = CalculateStaticSourceUnitCost(profile, nodeId, landedUnitCosts);
+            context.SupplyUnitCosts[nodeId] = sourceUnitCost;
+            sourceUnitCosts[context.TrafficType][nodeId] = sourceUnitCost;
+        }
+    }
+
+    private static double CalculateStaticSourceUnitCost(
+        NodeTrafficProfile profile,
+        string nodeId,
+        IReadOnlyDictionary<string, Dictionary<string, double>> landedUnitCosts)
+    {
+        var requirements = profile.InputRequirements
+            .Where(requirement => requirement.QuantityPerOutputUnit > Epsilon)
+            .ToList();
+        if (requirements.Count == 0)
+        {
+            return 0d;
+        }
+
+        var sourceUnitCost = 0d;
+        foreach (var requirement in requirements)
+        {
+            var precursorUnitCost = landedUnitCosts.TryGetValue(requirement.TrafficType, out var costsByNode)
+                ? costsByNode.GetValueOrDefault(nodeId)
+                : 0d;
+            sourceUnitCost += precursorUnitCost * requirement.QuantityPerOutputUnit;
+        }
+
+        return sourceUnitCost;
+    }
+
+    private static Dictionary<string, double> SummarizeLandedUnitCosts(IEnumerable<RouteAllocation> allocations)
+    {
+        return allocations
+            .GroupBy(allocation => allocation.ConsumerNodeId, Comparer)
+            .ToDictionary(
+                group => group.Key,
+                group =>
+                {
+                    var quantity = group.Sum(allocation => allocation.Quantity);
+                    return quantity > Epsilon
+                        ? group.Sum(allocation => allocation.DeliveredCostPerUnit * allocation.Quantity) / quantity
+                        : 0d;
+                },
+                Comparer);
     }
 
     private static TrafficContext BuildContext(NetworkModel network, TrafficTypeDefinition definition)

@@ -22,6 +22,8 @@ ScenarioP_RetryAfterCapacityFrees();
 ScenarioQ_BlockedByTranshipmentCapacity();
 ScenarioR_NoOrphanedOrDoubleCountedWaitingOccupancy();
 ScenarioS_StaticRecipeProcurementWithoutInputConsumerProfile();
+ScenarioSA_StaticRecipeOutputInheritsLandedInputCost();
+ScenarioSB_StaticRecipeCycleIsRejected();
 ScenarioT_TemporalRecipeProcurementWithoutInputConsumerProfile();
 ScenarioU_TemporalRecipeProcurementUsesLocalStockFirst();
 ScenarioUV_TemporalRecipeOutputInheritsLandedInputCost();
@@ -387,6 +389,44 @@ static void ScenarioS_StaticRecipeProcurementWithoutInputConsumerProfile()
 
     AssertEqual(10d, wheatAllocation.Quantity, "S static recipe wheat allocation");
     AssertEqual(10d, wheatOutcome.TotalConsumption, "S static implicit wheat demand");
+}
+
+static void ScenarioSA_StaticRecipeOutputInheritsLandedInputCost()
+{
+    var network = CreateStaticRecipeCostNetwork();
+    var outcomes = new NetworkSimulationEngine().Simulate(network);
+    var wheat = outcomes.Single(outcome => outcome.TrafficType == "Wheat");
+    var flour = outcomes.Single(outcome => outcome.TrafficType == "Flour");
+    var bread = outcomes.Single(outcome => outcome.TrafficType == "Bread");
+
+    var importedWheat = wheat.Allocations.Single(allocation => allocation.ProducerNodeId == "Farm" && allocation.ConsumerNodeId == "Mill");
+    var localWheat = wheat.Allocations.Single(allocation => allocation.ProducerNodeId == "Mill" && allocation.ConsumerNodeId == "Mill");
+    var importedFlour = flour.Allocations.Single(allocation => allocation.ProducerNodeId == "Mill" && allocation.ConsumerNodeId == "Bakery");
+    var downstreamBread = bread.Allocations.Single(allocation => allocation.ProducerNodeId == "Bakery" && allocation.ConsumerNodeId == "Market");
+    var localBread = bread.Allocations.Single(allocation => allocation.ProducerNodeId == "Bakery" && allocation.ConsumerNodeId == "Bakery");
+
+    AssertEqual(2d, importedWheat.DeliveredCostPerUnit, "SA imported wheat landed cost");
+    AssertEqual(0d, localWheat.DeliveredCostPerUnit, "SA local primitive wheat cost");
+    AssertEqual(1d, importedFlour.SourceUnitCostPerUnit, "SA flour inherited weighted wheat source cost");
+    AssertEqual(4d, importedFlour.DeliveredCostPerUnit, "SA flour delivered cost");
+    AssertEqual(4d, downstreamBread.SourceUnitCostPerUnit, "SA bread inherited flour source cost");
+    AssertEqual(9d, downstreamBread.DeliveredCostPerUnit, "SA downstream bread delivered cost");
+    AssertEqual(4d, localBread.DeliveredCostPerUnit, "SA local bread inherited source cost");
+}
+
+static void ScenarioSB_StaticRecipeCycleIsRejected()
+{
+    var network = CreateStaticRecipeCycleNetwork();
+    try
+    {
+        new NetworkSimulationEngine().Simulate(network);
+    }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("cyclic recipe dependencies", StringComparison.OrdinalIgnoreCase))
+    {
+        return;
+    }
+
+    throw new InvalidOperationException("SB static recipe cycle was not rejected.");
 }
 
 static void ScenarioT_TemporalRecipeProcurementWithoutInputConsumerProfile()
@@ -1310,6 +1350,107 @@ static NetworkModel CreateRecipeProcurementNetwork(double edgeTime, double wheat
         Edges =
         [
             new EdgeModel { Id = "FarmBakery", FromNodeId = "Farm", ToNodeId = "Bakery", Time = edgeTime, Cost = 1d, Capacity = 100d, IsBidirectional = false }
+        ]
+    };
+}
+
+static NetworkModel CreateStaticRecipeCostNetwork()
+{
+    return new NetworkModel
+    {
+        Name = "Static recipe cost",
+        TrafficTypes =
+        [
+            new TrafficTypeDefinition { Name = "Wheat", RoutingPreference = RoutingPreference.TotalCost },
+            new TrafficTypeDefinition { Name = "Flour", RoutingPreference = RoutingPreference.TotalCost },
+            new TrafficTypeDefinition { Name = "Bread", RoutingPreference = RoutingPreference.TotalCost }
+        ],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "Farm",
+                Name = "Farm",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Wheat", Production = 5d }]
+            },
+            new NodeModel
+            {
+                Id = "Mill",
+                Name = "Mill",
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile { TrafficType = "Wheat", Production = 5d },
+                    new NodeTrafficProfile
+                    {
+                        TrafficType = "Flour",
+                        Production = 10d,
+                        InputRequirements = [new ProductionInputRequirement { TrafficType = "Wheat", QuantityPerOutputUnit = 1d }]
+                    }
+                ]
+            },
+            new NodeModel
+            {
+                Id = "Bakery",
+                Name = "Bakery",
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile
+                    {
+                        TrafficType = "Bread",
+                        Production = 10d,
+                        Consumption = 5d,
+                        InputRequirements = [new ProductionInputRequirement { TrafficType = "Flour", QuantityPerOutputUnit = 1d }]
+                    }
+                ]
+            },
+            new NodeModel
+            {
+                Id = "Market",
+                Name = "Market",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Bread", Consumption = 5d }]
+            }
+        ],
+        Edges =
+        [
+            new EdgeModel { Id = "FarmMill", FromNodeId = "Farm", ToNodeId = "Mill", Time = 1d, Cost = 2d, Capacity = 100d, IsBidirectional = false },
+            new EdgeModel { Id = "MillBakery", FromNodeId = "Mill", ToNodeId = "Bakery", Time = 1d, Cost = 3d, Capacity = 100d, IsBidirectional = false },
+            new EdgeModel { Id = "BakeryMarket", FromNodeId = "Bakery", ToNodeId = "Market", Time = 1d, Cost = 5d, Capacity = 100d, IsBidirectional = false }
+        ]
+    };
+}
+
+static NetworkModel CreateStaticRecipeCycleNetwork()
+{
+    return new NetworkModel
+    {
+        Name = "Static recipe cycle",
+        TrafficTypes =
+        [
+            new TrafficTypeDefinition { Name = "A", RoutingPreference = RoutingPreference.TotalCost },
+            new TrafficTypeDefinition { Name = "B", RoutingPreference = RoutingPreference.TotalCost }
+        ],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "Node",
+                Name = "Node",
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile
+                    {
+                        TrafficType = "A",
+                        Production = 1d,
+                        InputRequirements = [new ProductionInputRequirement { TrafficType = "B", QuantityPerOutputUnit = 1d }]
+                    },
+                    new NodeTrafficProfile
+                    {
+                        TrafficType = "B",
+                        Production = 1d,
+                        InputRequirements = [new ProductionInputRequirement { TrafficType = "A", QuantityPerOutputUnit = 1d }]
+                    }
+                ]
+            }
         ]
     };
 }

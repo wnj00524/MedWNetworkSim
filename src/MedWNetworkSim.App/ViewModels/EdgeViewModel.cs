@@ -8,9 +8,9 @@ namespace MedWNetworkSim.App.ViewModels;
 
 public sealed class EdgeViewModel : ObservableObject
 {
-    private const double DefaultLabelWidth = 196d;
-    private const double DefaultLabelHeight = 58d;
-    private const double SimulatedLabelHeight = 84d;
+    private const double DefaultLabelWidth = 132d;
+    private const double DefaultLabelHeight = 30d;
+    private const double SimulatedLabelHeight = 62d;
     private const double UtilizationTrackWidth = 76d;
     private const double Epsilon = 0.000001d;
 
@@ -117,6 +117,7 @@ public sealed class EdgeViewModel : ObservableObject
 
             OnPropertyChanged(nameof(TotalCost));
             OnPropertyChanged(nameof(SummaryLabel));
+            OnPropertyChanged(nameof(RouteDetailLabel));
             OnPropertyChanged(nameof(EdgeToolTipText));
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -134,6 +135,7 @@ public sealed class EdgeViewModel : ObservableObject
 
             OnPropertyChanged(nameof(TotalCost));
             OnPropertyChanged(nameof(SummaryLabel));
+            OnPropertyChanged(nameof(RouteDetailLabel));
             OnPropertyChanged(nameof(EdgeToolTipText));
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -168,6 +170,8 @@ public sealed class EdgeViewModel : ObservableObject
             }
 
             OnPropertyChanged(nameof(DirectionLabel));
+            OnPropertyChanged(nameof(RouteSummaryLabel));
+            OnPropertyChanged(nameof(RouteDetailLabel));
             OnPropertyChanged(nameof(ArrowVisibility));
             OnPropertyChanged(nameof(FlowArrowVisibility));
             OnPropertyChanged(nameof(ArrowPoints));
@@ -187,6 +191,7 @@ public sealed class EdgeViewModel : ObservableObject
                 return;
             }
 
+            OnPropertyChanged(nameof(RouteSummaryLabel));
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -250,6 +255,12 @@ public sealed class EdgeViewModel : ObservableObject
     public double TotalCost => Time + Cost;
 
     public string DirectionLabel => IsBidirectional ? "2-way" : "1-way";
+
+    public string RouteSummaryLabel => string.IsNullOrWhiteSpace(RouteType)
+        ? DirectionLabel
+        : RouteType.Trim();
+
+    public string RouteDetailLabel => $"{DirectionLabel} | time {Time:0.##} | cost {Cost:0.##}";
 
     public string SummaryLabel => $"t {Time:0.##} | c {Cost:0.##} | tc {TotalCost:0.##}";
 
@@ -317,6 +328,10 @@ public sealed class EdgeViewModel : ObservableObject
     public double LabelHeight => HasSimulationDetails ? SimulatedLabelHeight : DefaultLabelHeight;
 
     public Visibility FlowSummaryVisibility => HasSimulationDetails ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility TechnicalLabelVisibility => HasSimulationDetails || isRouteHighlighted
+        ? Visibility.Visible
+        : Visibility.Collapsed;
 
     public Visibility UtilizationBarVisibility => HasSimulationDetails && Capacity.HasValue ? Visibility.Visible : Visibility.Collapsed;
 
@@ -435,6 +450,7 @@ public sealed class EdgeViewModel : ObservableObject
         this.isRouteHighlighted = isHighlighted;
         OnPropertyChanged(nameof(RouteHighlightVisibility));
         OnPropertyChanged(nameof(RouteHighlightStrokeThickness));
+        OnPropertyChanged(nameof(TechnicalLabelVisibility));
     }
 
     public EdgeModel ToModel()
@@ -572,6 +588,7 @@ public sealed class EdgeViewModel : ObservableObject
         OnPropertyChanged(nameof(LabelHeight));
         OnPropertyChanged(nameof(LabelTop));
         OnPropertyChanged(nameof(FlowSummaryVisibility));
+        OnPropertyChanged(nameof(TechnicalLabelVisibility));
         OnPropertyChanged(nameof(UtilizationBarVisibility));
         OnPropertyChanged(nameof(UtilizationBarWidth));
         OnPropertyChanged(nameof(FlowStrokeBrush));

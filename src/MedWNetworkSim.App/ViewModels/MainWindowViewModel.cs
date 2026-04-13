@@ -15,28 +15,38 @@ public sealed class MainWindowViewModel : ObservableObject
     private const double Epsilon = 0.000001d;
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
     private static readonly BundledScenarioOption BundledSampleScenario = new(
-        "Bundled Sample",
+        "Technical Sample",
         "sample-network.json",
-        "MedWNetworkSim.App.Samples.sample-network.json");
+        "MedWNetworkSim.App.Samples.sample-network.json",
+        "Technical",
+        "A neutral baseline network for checking simulation mechanics.");
 
     private static readonly IReadOnlyList<BundledScenarioOption> WorldbuilderScenarioCatalog =
     [
         new(
             "Village and Manor",
             "village-and-manor.json",
-            "MedWNetworkSim.App.Samples.village-and-manor.json"),
+            "MedWNetworkSim.App.Samples.village-and-manor.json",
+            "Medieval",
+            "A small estate supply pattern."),
         new(
             "Market Town and Hinterland",
             "market-town-and-hinterland.json",
-            "MedWNetworkSim.App.Samples.market-town-and-hinterland.json"),
+            "MedWNetworkSim.App.Samples.market-town-and-hinterland.json",
+            "Medieval",
+            "A regional hub drawing on surrounding producers."),
         new(
             "River Port Chain",
             "river-port-chain.json",
-            "MedWNetworkSim.App.Samples.river-port-chain.json"),
+            "MedWNetworkSim.App.Samples.river-port-chain.json",
+            "Medieval",
+            "A route-chain example with port relay behavior."),
         new(
             "Fortress Supply Network",
             "fortress-supply-network.json",
-            "MedWNetworkSim.App.Samples.fortress-supply-network.json")
+            "MedWNetworkSim.App.Samples.fortress-supply-network.json",
+            "Medieval",
+            "A fortified demand center and supply support pattern.")
     ];
 
     private readonly NetworkFileService fileService = new();
@@ -48,13 +58,13 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly List<RouteAllocationRowViewModel> allAllocations = [];
     private readonly List<ConsumerCostSummaryRowViewModel> allConsumerCostSummaries = [];
 
-    private string activeFileLabel = "Bundled sample";
-    private string networkName = "MedW Network Simulator";
-    private string networkDescription = "Load a JSON network file, or create a new one and edit it directly in the app.";
+    private string activeFileLabel = "Blank world";
+    private string networkName = "Untitled World";
+    private string networkDescription = "Sketch places, routes, and flows first; use advanced controls when you need simulation detail.";
     private AllocationMode defaultAllocationMode = AllocationMode.GreedyBestRoute;
     private int? timelineLoopLength;
     private int simulationSeed = 12345;
-    private string statusMessage = "Load a network file or create a new one, then edit nodes and edges directly in the application.";
+    private string statusMessage = "Start a blank world, open a saved world, or load an example to explore the system.";
     private AppTheme selectedTheme = AppTheme.Classic;
     private TrafficSummaryViewModel? selectedTraffic;
     private NodeViewModel? selectedNode;
@@ -76,7 +86,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private double workspaceWidth = 1600d;
     private double workspaceHeight = 1000d;
     private bool hasNetwork;
-    private bool isWorldbuilderMode;
+    private bool isWorldbuilderMode = true;
     private bool isCanvasOnlyMode;
     private bool isLayersPanelOpen;
     private bool isLegendPanelOpen;
@@ -85,9 +95,10 @@ public sealed class MainWindowViewModel : ObservableObject
     public MainWindowViewModel()
     {
         AppThemeManager.ApplyTheme(selectedTheme);
+        Terminology.IsWorldbuilderMode = isWorldbuilderMode;
         LayersPanel.LayersChanged += HandleLayersChanged;
         ReportsDrawer.RouteSelected += HandleReportRouteSelected;
-        LoadBundledSampleIfAvailable();
+        CreateNewNetwork();
     }
 
     public ObservableCollection<NodeViewModel> Nodes { get; } = [];
@@ -118,7 +129,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public UiTerminologyViewModel Terminology { get; } = new();
 
-    public string WindowTitle => HasNetwork ? $"MedW Network Simulator - {NetworkName}" : "MedW Network Simulator";
+    public string WindowTitle => HasNetwork ? $"World Systems Builder - {NetworkName}" : "World Systems Builder";
 
     public Array RoutingPreferences { get; } = Enum.GetValues(typeof(RoutingPreference));
 
@@ -144,6 +155,10 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public IReadOnlyList<BundledScenarioOption> WorldbuilderScenarioOptions { get; } =
         WorldbuilderScenarioCatalog;
+
+    public string ActiveWorldLabel => HasNetwork
+        ? $"{NetworkName} | {ActiveFileLabel}"
+        : "No world loaded";
 
     public PlaceTemplate? SelectedPlaceTemplate
     {
@@ -198,7 +213,13 @@ public sealed class MainWindowViewModel : ObservableObject
     public string ActiveFileLabel
     {
         get => activeFileLabel;
-        private set => SetProperty(ref activeFileLabel, value);
+        private set
+        {
+            if (SetProperty(ref activeFileLabel, value))
+            {
+                OnPropertyChanged(nameof(ActiveWorldLabel));
+            }
+        }
     }
 
     public AppTheme SelectedTheme
@@ -223,6 +244,7 @@ public sealed class MainWindowViewModel : ObservableObject
             if (SetProperty(ref networkName, value))
             {
                 OnPropertyChanged(nameof(WindowTitle));
+                OnPropertyChanged(nameof(ActiveWorldLabel));
                 OnPropertyChanged(nameof(SuggestedFileName));
                 OnPropertyChanged(nameof(SuggestedGraphMlFileName));
             }
@@ -295,6 +317,7 @@ public sealed class MainWindowViewModel : ObservableObject
             if (SetProperty(ref hasNetwork, value))
             {
                 OnPropertyChanged(nameof(WindowTitle));
+                OnPropertyChanged(nameof(ActiveWorldLabel));
             }
         }
     }
@@ -866,11 +889,11 @@ public sealed class MainWindowViewModel : ObservableObject
         LoadNetwork(
             new NetworkModel
             {
-                Name = "New Network",
-                Description = "Describe the network here."
+                Name = "Untitled World",
+                Description = "Sketch places, routes, and flows first; add simulation detail when the world needs it."
             },
             null,
-            "Created a new network. Add traffic types, nodes, and edges in the editor.");
+            "Created a blank world. Add places, connect routes, then define flows.");
     }
 
     public void LoadFromFile(string path)
@@ -1712,7 +1735,7 @@ public sealed class MainWindowViewModel : ObservableObject
         timelineLoopLength = network.TimelineLoopLength is > 0 ? network.TimelineLoopLength : null;
         OnPropertyChanged(nameof(TimelineLoopLength));
         OnPropertyChanged(nameof(IsTimelineLoopEnabled));
-        ActiveFileLabel = activeFilePath ?? "Unsaved network";
+        ActiveFileLabel = activeFilePath ?? "Unsaved world";
         HasNetwork = true;
         temporalSimulationState = null;
         lastTimelineStepResult = null;
@@ -2635,4 +2658,12 @@ public sealed class MainWindowViewModel : ObservableObject
     }
 }
 
-public sealed record BundledScenarioOption(string DisplayName, string FileName, string ResourceName);
+public sealed record BundledScenarioOption(
+    string DisplayName,
+    string FileName,
+    string ResourceName,
+    string Category = "Custom",
+    string Description = "")
+{
+    public string DisplayLabel => $"{Category}: {DisplayName}";
+}

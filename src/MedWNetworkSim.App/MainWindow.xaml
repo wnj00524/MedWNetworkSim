@@ -20,11 +20,11 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border Padding="14"
+        <Border Padding="18"
                 Background="{DynamicResource PanelBrush}"
                 BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
-                CornerRadius="12">
+                CornerRadius="14">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -32,43 +32,32 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Margin="0,0,24,0">
-                    <TextBlock FontSize="14"
+                    <TextBlock FontSize="20"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource AccentStrongBrush}"
-                               Text="MedW Network Simulator" />
-                    <Border Margin="0,8,0,0"
+                               Text="World Systems Builder" />
+                    <TextBlock Margin="0,4,0,0"
+                               FontSize="12"
+                               Foreground="{DynamicResource MutedForegroundBrush}"
+                               Text="{Binding ActiveWorldLabel}" />
+                    <Border Margin="0,10,0,0"
                             Padding="10,8"
                             Background="{DynamicResource SectionBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="10">
-                        <StackPanel>
-                            <CheckBox Content="Loop timeline periods"
+                            CornerRadius="8">
+                        <WrapPanel>
+                            <CheckBox Content="Worldbuilding language"
                                       FontSize="12"
                                       FontWeight="SemiBold"
                                       Foreground="{DynamicResource AccentStrongBrush}"
-                                      IsChecked="{Binding IsTimelineLoopEnabled, Mode=TwoWay}" />
-                            <WrapPanel Margin="0,8,0,0"
-                                       VerticalAlignment="Center">
-                                <TextBlock VerticalAlignment="Center"
-                                           FontSize="11"
-                                           Foreground="{DynamicResource MutedForegroundBrush}"
-                                           Text="Loop after period" />
-                                <TextBox Width="80"
-                                         Margin="10,0,0,0"
-                                         HorizontalAlignment="Left"
-                                         IsEnabled="{Binding IsTimelineLoopEnabled}"
-                                         Background="{DynamicResource InputBrush}"
-                                         BorderBrush="{DynamicResource BorderBrush}"
-                                         BorderThickness="1"
-                                         Text="{Binding TimelineLoopLength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock VerticalAlignment="Center"
-                                           Margin="8,0,0,0"
-                                           FontSize="11"
-                                           Foreground="{DynamicResource MutedForegroundBrush}"
-                                           Text="then restart at period 1" />
-                            </WrapPanel>
-                        </StackPanel>
+                                      IsChecked="{Binding IsWorldbuilderMode, Mode=TwoWay}" />
+                            <TextBlock Margin="12,0,0,0"
+                                       VerticalAlignment="Center"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource MutedForegroundBrush}"
+                                       Text="Build places, routes, and flows first. Use advanced controls when the model needs detail." />
+                        </WrapPanel>
                     </Border>
                 </StackPanel>
 
@@ -87,18 +76,10 @@
                             <TextBlock FontSize="11"
                                        FontWeight="SemiBold"
                                        Foreground="{DynamicResource AccentStrongBrush}"
-                                       Text="Network" />
+                                       Text="START" />
                             <WrapPanel Margin="0,8,0,0">
-                                <Button Content="New Network" Click="NewNetwork_Click" />
-                                <Button Content="Load Sample" Click="LoadSample_Click" />
-                                <Button Content="Open JSON..." Click="OpenFile_Click" />
-                                <Button Content="Save JSON..."
-                                        Click="SaveFile_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="GraphML..." Click="GraphMl_Click" />
-                                <Button Content="Export..."
-                                        Click="Reports_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="New World" Click="NewNetwork_Click" />
+                                <Button Content="Open World..." Click="OpenFile_Click" />
                             </WrapPanel>
                             <WrapPanel Margin="0,8,0,0"
                                        VerticalAlignment="Center">
@@ -106,13 +87,13 @@
                                            Margin="0,0,8,0"
                                            FontSize="11"
                                            Foreground="{DynamicResource MutedForegroundBrush}"
-                                           Text="Scenario" />
-                                <ComboBox Width="210"
+                                           Text="Example" />
+                                <ComboBox Width="260"
                                           Margin="0,0,10,0"
-                                          DisplayMemberPath="DisplayName"
+                                          DisplayMemberPath="DisplayLabel"
                                           ItemsSource="{Binding WorldbuilderScenarioOptions}"
                                           SelectedItem="{Binding SelectedWorldbuilderScenario, Mode=TwoWay}" />
-                                <Button Content="Load Scenario"
+                                <Button Content="Start From Example"
                                         Click="LoadWorldbuilderScenario_Click" />
                             </WrapPanel>
                             <WrapPanel Margin="0,8,0,0"
@@ -122,14 +103,13 @@
                                            FontSize="11"
                                            Foreground="{DynamicResource MutedForegroundBrush}"
                                            Text="Template" />
-                                <ComboBox Width="150"
+                                <ComboBox Width="190"
                                           Margin="0,0,10,0"
                                           DisplayMemberPath="DisplayName"
                                           ItemsSource="{Binding PlaceTemplateOptions}"
                                           SelectedItem="{Binding SelectedPlaceTemplate, Mode=TwoWay}" />
-                                <Button Content="{Binding Terminology.AddNodeFromTemplateButton}"
-                                        Click="AddNodeFromTemplate_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="Start From Template"
+                                        Click="AddNodeFromTemplate_Click" />
                             </WrapPanel>
                         </StackPanel>
                     </Border>
@@ -144,13 +124,46 @@
                             <TextBlock FontSize="11"
                                        FontWeight="SemiBold"
                                        Foreground="{DynamicResource AccentStrongBrush}"
-                                       Text="Editors" />
+                                       Text="ADVANCED" />
                             <WrapPanel Margin="0,8,0,0">
-                                <Button Content="{Binding Terminology.TrafficTypes, StringFormat={}{0}...}" Click="EditTrafficTypes_Click" />
-                                <Button Content="{Binding Terminology.Edges, StringFormat={}{0}...}" Click="EditEdges_Click" />
                                 <Button Content="Properties..."
                                         Click="NetworkProperties_Click"
                                         IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="Save JSON..."
+                                        Click="SaveFile_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="GraphML..."
+                                        Click="GraphMl_Click" />
+                                <Button Content="Export..."
+                                        Click="Reports_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="Fit Map"
+                                        Click="AutoArrange_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                            </WrapPanel>
+                            <WrapPanel Margin="0,8,0,0"
+                                       VerticalAlignment="Center">
+                                <TextBlock VerticalAlignment="Center"
+                                           Margin="0,0,8,0"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Theme" />
+                                <ComboBox Width="140"
+                                          ItemsSource="{Binding ThemeOptions}"
+                                          SelectedItem="{Binding SelectedTheme, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox Margin="12,0,0,0"
+                                          VerticalAlignment="Center"
+                                          Content="Loop"
+                                          FontSize="11"
+                                          Foreground="{DynamicResource MutedForegroundBrush}"
+                                          IsChecked="{Binding IsTimelineLoopEnabled, Mode=TwoWay}" />
+                                <TextBox Width="56"
+                                         Margin="8,0,0,0"
+                                         IsEnabled="{Binding IsTimelineLoopEnabled}"
+                                         Background="{DynamicResource InputBrush}"
+                                         BorderBrush="{DynamicResource BorderBrush}"
+                                         BorderThickness="1"
+                                         Text="{Binding TimelineLoopLength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </WrapPanel>
                         </StackPanel>
                     </Border>
@@ -160,7 +173,8 @@
                             Background="{DynamicResource SectionBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="14">
+                            CornerRadius="14"
+                            Visibility="Collapsed">
                         <StackPanel>
                             <TextBlock FontSize="11"
                                        FontWeight="SemiBold"
@@ -199,7 +213,8 @@
                             Background="{DynamicResource SectionBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="14">
+                            CornerRadius="14"
+                            Visibility="Collapsed">
                         <StackPanel>
                             <TextBlock FontSize="11"
                                        FontWeight="SemiBold"
@@ -225,7 +240,8 @@
                             Background="{DynamicResource SectionBrush}"
                             BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="14">
+                            CornerRadius="14"
+                            Visibility="Collapsed">
                         <StackPanel>
                             <TextBlock FontSize="11"
                                        FontWeight="SemiBold"
@@ -277,7 +293,60 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <local:NetworkCanvasControl />
+                    <Border Padding="12"
+                            Background="{DynamicResource SectionBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock FontSize="16"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource AccentStrongBrush}"
+                                           Text="Build / Simulate / Analyze" />
+                                <TextBlock Margin="0,3,0,0"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="{Binding StatusMessage}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <WrapPanel Grid.Column="1"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Center">
+                                <Button Content="{Binding Terminology.AddNodeButton}"
+                                        Click="AddNode_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="{Binding Terminology.Edges, StringFormat=Connect {0}...}"
+                                        Click="EditEdges_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="{Binding Terminology.TrafficTypes, StringFormat=Define {0}...}"
+                                        Click="EditTrafficTypes_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="Run"
+                                        Click="RunSimulation_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="Next Period"
+                                        Click="NextTimelinePeriod_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
+                                <ToggleButton Content="Layers"
+                                              Click="ToggleLayers_Click"
+                                              IsChecked="{Binding IsLayersPanelOpen, Mode=OneWay}"
+                                              IsEnabled="{Binding HasNetwork}" />
+                                <ToggleButton Content="Inspector"
+                                              Click="ToggleInspector_Click"
+                                              IsChecked="{Binding InspectorPanel.IsOpen, Mode=OneWay}"
+                                              IsEnabled="{Binding HasNetwork}" />
+                                <ToggleButton Content="Reports"
+                                              Click="ToggleReportsDrawer_Click"
+                                              IsChecked="{Binding ReportsDrawer.IsOpen, Mode=OneWay}"
+                                              IsEnabled="{Binding HasNetwork}" />
+                            </WrapPanel>
+                        </Grid>
+                    </Border>
 
                     <ScrollViewer Grid.Row="2"
                                   HorizontalScrollBarVisibility="Auto"
@@ -324,9 +393,10 @@
                                                   X2="{Binding X2}"
                                                   Y2="{Binding Y2}"
                                                   Stroke="{DynamicResource EdgeBrush}"
-                                                  StrokeThickness="3"
+                                                  StrokeThickness="2.2"
                                                   StrokeStartLineCap="Round"
                                                   StrokeEndLineCap="Round"
+                                                  Opacity="0.72"
                                                   MouseLeftButtonDown="EdgeVisual_OnMouseLeftButtonDown"
                                                   ToolTip="{Binding EdgeToolTipText}"
                                                   Visibility="{Binding EdgeVisibility}" />
@@ -380,11 +450,12 @@
                                                     Canvas.Top="{Binding LabelTop}"
                                                     Width="{Binding LabelWidth}"
                                                     Height="{Binding LabelHeight}"
-                                                    Padding="10,6"
+                                                    Padding="8,4"
                                                     Background="{DynamicResource EdgeLabelBrush}"
                                                     BorderBrush="{DynamicResource BorderBrush}"
                                                     BorderThickness="1"
-                                                    CornerRadius="14"
+                                                    CornerRadius="8"
+                                                    Opacity="0.9"
                                                     MouseLeftButtonDown="EdgeVisual_OnMouseLeftButtonDown"
                                                     ToolTip="{Binding EdgeToolTipText}"
                                                     Visibility="{Binding EdgeVisibility}">
@@ -392,29 +463,19 @@
                                                     <TextBlock FontSize="11"
                                                                FontWeight="SemiBold"
                                                                Foreground="{DynamicResource AccentStrongBrush}"
-                                                               Text="{Binding DirectionLabel}" />
-                                                    <TextBlock FontSize="11"
-                                                               Foreground="{DynamicResource StrongForegroundBrush}"
-                                                               Text="{Binding SummaryLabel}" />
-                                                    <TextBlock FontSize="11"
+                                                               Text="{Binding RouteSummaryLabel}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock FontSize="10"
+                                                               Foreground="{DynamicResource MutedForegroundBrush}"
+                                                               Text="{Binding RouteDetailLabel}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Visibility="{Binding TechnicalLabelVisibility}" />
+                                                    <TextBlock FontSize="10"
                                                                FontWeight="SemiBold"
                                                                Foreground="{Binding FlowStrokeBrush}"
                                                                Text="{Binding FlowSummaryLabel}"
+                                                               TextTrimming="CharacterEllipsis"
                                                                Visibility="{Binding FlowSummaryVisibility}" />
-                                                    <TextBlock FontSize="11"
-                                                               Foreground="{DynamicResource MutedForegroundBrush}"
-                                                               Text="{Binding CapacityDisplayLabel}" />
-                                                    <Grid Margin="0,4,0,0"
-                                                          Visibility="{Binding UtilizationBarVisibility}">
-                                                        <Border Height="6"
-                                                                Background="{DynamicResource TrackBrush}"
-                                                                CornerRadius="3" />
-                                                        <Border Width="{Binding UtilizationBarWidth}"
-                                                                Height="6"
-                                                                HorizontalAlignment="Left"
-                                                                Background="{Binding FlowStrokeBrush}"
-                                                                CornerRadius="3" />
-                                                    </Grid>
                                                 </StackPanel>
                                             </Border>
                                         </Canvas>
@@ -464,129 +525,66 @@
                                                                   StrokeThickness="1.4"
                                                                   Stretch="Uniform" />
                                                         </Viewbox>
-                                                        <Viewbox Width="56"
-                                                                 Height="56"
-                                                                 Margin="0,10,10,0"
-                                                                 HorizontalAlignment="Right"
-                                                                 VerticalAlignment="Top"
-                                                                 Opacity="0.22"
-                                                                 IsHitTestVisible="False"
-                                                                 Visibility="{Binding ShapeWatermarkVisibility}">
-                                                            <Path Data="{Binding ShapeIconGeometry}"
-                                                                  Fill="{DynamicResource NodeWatermarkBrush}"
-                                                                  Stretch="Uniform" />
-                                                        </Viewbox>
-                                                        <Grid Margin="12">
+                                                        <Grid Margin="12,10">
                                                             <Grid.RowDefinitions>
                                                                 <RowDefinition Height="Auto" />
                                                                 <RowDefinition Height="Auto" />
-                                                                <RowDefinition Height="Auto" />
                                                                 <RowDefinition Height="*" />
+                                                                <RowDefinition Height="Auto" />
                                                             </Grid.RowDefinitions>
 
-                                                            <StackPanel>
-                                                                <DockPanel LastChildFill="False">
-                                                                    <StackPanel DockPanel.Dock="Left">
-                                                                        <TextBlock FontSize="15"
-                                                                                   FontWeight="SemiBold"
-                                                                                   Text="{Binding Name}" />
-                                                                        <TextBlock FontSize="11"
-                                                                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                                                                   Text="{Binding Id}" />
-                                                                    </StackPanel>
-                                                                </DockPanel>
-                                                            </StackPanel>
+                                                            <TextBlock FontSize="14"
+                                                                       FontWeight="SemiBold"
+                                                                       Text="{Binding Name}"
+                                                                       TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock Grid.Row="1"
+                                                                       Margin="0,2,0,0"
+                                                                       FontSize="11"
+                                                                       Foreground="{DynamicResource MutedForegroundBrush}"
+                                                                       Text="{Binding PlaceTypeLabel}"
+                                                                       TextTrimming="CharacterEllipsis" />
 
-                                                            <DockPanel Grid.Row="1"
-                                                                       Margin="0,8,0,8">
-                                                                <Border Padding="10,3"
-                                                                        HorizontalAlignment="Left"
-                                                                        Background="{DynamicResource CardAltBrush}"
-                                                                        CornerRadius="12">
-                                                                    <TextBlock FontSize="11"
-                                                                               FontWeight="SemiBold"
-                                                                               Text="{Binding TrafficProfileCountLabel}" />
-                                                                </Border>
+                                                            <ItemsControl Grid.Row="2"
+                                                                          Margin="0,8,0,0"
+                                                                          ItemsSource="{Binding RoleBadges}">
+                                                                <ItemsControl.ItemsPanel>
+                                                                    <ItemsPanelTemplate>
+                                                                        <WrapPanel />
+                                                                    </ItemsPanelTemplate>
+                                                                </ItemsControl.ItemsPanel>
+                                                                <ItemsControl.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <Border Margin="0,0,5,5"
+                                                                                Padding="7,2"
+                                                                                Background="{DynamicResource CardAltBrush}"
+                                                                                CornerRadius="8">
+                                                                            <TextBlock FontSize="10"
+                                                                                       FontWeight="SemiBold"
+                                                                                       Text="{Binding}" />
+                                                                        </Border>
+                                                                    </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                            </ItemsControl>
 
-                                                                <TextBlock DockPanel.Dock="Right"
-                                                                           VerticalAlignment="Center"
-                                                                           FontSize="11"
+                                                            <StackPanel Grid.Row="3">
+                                                                <TextBlock FontSize="10"
                                                                            Foreground="{DynamicResource MutedForegroundBrush}"
-                                                                           Text="{Binding TranshipmentCapacityLabel}" />
-                                                            </DockPanel>
-
-                                                            <Border Grid.Row="2"
-                                                                    Margin="0,0,0,8"
-                                                                    Padding="8"
-                                                                    Background="{DynamicResource CardBrush}"
-                                                                    BorderBrush="{Binding SimulationBrush}"
-                                                                    BorderThickness="1"
-                                                                    CornerRadius="12"
-                                                                    Visibility="{Binding SimulationPanelVisibility}">
-                                                                <StackPanel>
-                                                                    <TextBlock FontSize="11"
-                                                                               FontWeight="SemiBold"
-                                                                               Foreground="{Binding SimulationBrush}"
-                                                                               Text="{Binding FlowSummaryLabel}"
-                                                                               TextWrapping="Wrap" />
-                                                                    <TextBlock Margin="0,6,0,0"
-                                                                               FontSize="11"
-                                                                               Foreground="{DynamicResource MutedForegroundBrush}"
-                                                                               Text="{Binding TranshipmentUsageLabel}"
-                                                                               TextWrapping="Wrap"
-                                                                               Visibility="{Binding TranshipmentUsageVisibility}" />
-                                                                    <Grid Margin="0,4,0,0"
-                                                                          Visibility="{Binding TranshipmentUsageBarVisibility}">
-                                                                        <Border Height="6"
-                                                                                Background="{DynamicResource TrackBrush}"
-                                                                                CornerRadius="3" />
-                                                                        <Border Width="{Binding TranshipmentUtilizationBarWidth}"
-                                                                                Height="6"
-                                                                                HorizontalAlignment="Left"
-                                                                                Background="{Binding SimulationBrush}"
-                                                                                CornerRadius="3" />
-                                                                    </Grid>
-                                                                </StackPanel>
-                                                            </Border>
-
-                                                            <Border Grid.Row="2"
-                                                                    Margin="0,0,0,8"
-                                                                    Padding="8"
-                                                                    Background="{DynamicResource CardAltBrush}"
-                                                                    BorderBrush="{DynamicResource BorderBrush}"
-                                                                    BorderThickness="1"
-                                                                    CornerRadius="12"
-                                                                    VerticalAlignment="Bottom"
-                                                                    Visibility="{Binding TimelinePanelVisibility}">
-                                                                <TextBlock FontSize="11"
+                                                                           Text="{Binding CompactFlowSummary}"
+                                                                           TextTrimming="CharacterEllipsis" />
+                                                                <TextBlock Margin="0,4,0,0"
+                                                                           FontSize="10"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="{Binding SimulationBrush}"
+                                                                           Text="{Binding FlowSummaryLabel}"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Visibility="{Binding SimulationPanelVisibility}" />
+                                                                <TextBlock Margin="0,4,0,0"
+                                                                           FontSize="10"
                                                                            Foreground="{DynamicResource AccentStrongBrush}"
                                                                            Text="{Binding TimelineSummaryLabel}"
-                                                                           TextWrapping="Wrap" />
-                                                            </Border>
-
-                                                            <ScrollViewer Grid.Row="3"
-                                                                          VerticalScrollBarVisibility="Auto"
-                                                                          HorizontalScrollBarVisibility="Disabled">
-                                                                <ItemsControl ItemsSource="{Binding TrafficProfiles}">
-                                                                    <ItemsControl.ItemTemplate>
-                                                                        <DataTemplate DataType="{x:Type vm:NodeTrafficProfileViewModel}">
-                                                                            <Grid Margin="0,0,0,4">
-                                                                                <Grid.ColumnDefinitions>
-                                                                                    <ColumnDefinition Width="*" />
-                                                                                    <ColumnDefinition Width="Auto" />
-                                                                                </Grid.ColumnDefinitions>
-                                                                                <TextBlock FontSize="11"
-                                                                                           FontWeight="SemiBold"
-                                                                                           Text="{Binding TrafficType}" />
-                                                                                <TextBlock Grid.Column="1"
-                                                                                           FontSize="11"
-                                                                                           Foreground="{DynamicResource MutedForegroundBrush}"
-                                                                                           Text="{Binding RoleSummary}" />
-                                                                            </Grid>
-                                                                        </DataTemplate>
-                                                                    </ItemsControl.ItemTemplate>
-                                                                </ItemsControl>
-                                                            </ScrollViewer>
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Visibility="{Binding TimelinePanelVisibility}" />
+                                                            </StackPanel>
                                                         </Grid>
                                                     </Grid>
                                                 </ControlTemplate>

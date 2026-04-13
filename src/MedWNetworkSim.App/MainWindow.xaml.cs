@@ -20,6 +20,11 @@ public partial class MainWindow : Window
     private NodeViewModel? edgeCreationSourceNode;
     private bool edgeCreationIsBidirectional = true;
     private double canvasZoom = 1d;
+    private bool isPanningCanvas;
+    private Point panStartViewerPosition;
+    private double panStartHorizontalOffset;
+    private double panStartVerticalOffset;
+    private Cursor? previousCanvasCursor;
 
     public MainWindow()
     {
@@ -295,7 +300,7 @@ public partial class MainWindow : Window
 
     private void NodeThumb_OnPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (edgeCreationSourceNode is null)
+        if (isPanningCanvas || edgeCreationSourceNode is null)
         {
             return;
         }
@@ -406,6 +411,41 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    private void NetworkCanvasScrollViewer_OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (TryBeginCanvasPan(e))
+        {
+            e.Handled = true;
+        }
+    }
+
+    private void NetworkCanvasScrollViewer_OnPreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (UpdateCanvasPan(e))
+        {
+            e.Handled = true;
+        }
+    }
+
+    private void NetworkCanvasScrollViewer_OnPreviewMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!isPanningCanvas)
+        {
+            return;
+        }
+
+        if (e.ChangedButton is MouseButton.Left or MouseButton.Middle)
+        {
+            EndCanvasPan();
+            e.Handled = true;
+        }
+    }
+
+    private void NetworkCanvasScrollViewer_OnLostMouseCapture(object sender, MouseEventArgs e)
+    {
+        EndCanvasPan();
+    }
+
     protected override void OnClosing(CancelEventArgs e)
     {
         if (!TryConfirmDiscardOrSaveChanges("close the app"))
@@ -436,7 +476,7 @@ public partial class MainWindow : Window
     {
         base.OnPreviewMouseMove(e);
 
-        if (edgeCreationSourceNode is null)
+        if (isPanningCanvas || edgeCreationSourceNode is null)
         {
             return;
         }
@@ -450,7 +490,7 @@ public partial class MainWindow : Window
     {
         base.OnPreviewMouseLeftButtonUp(e);
 
-        if (edgeCreationSourceNode is null)
+        if (isPanningCanvas || edgeCreationSourceNode is null)
         {
             return;
         }
@@ -468,6 +508,7 @@ public partial class MainWindow : Window
 
     private void BeginEdgeCreation(NodeViewModel sourceNode, bool isBidirectional)
     {
+        EndCanvasPan();
         edgeCreationSourceNode = sourceNode;
         edgeCreationIsBidirectional = isBidirectional;
         EdgeCreationPreviewLine.X1 = sourceNode.CenterX;
@@ -492,6 +533,69 @@ public partial class MainWindow : Window
         EdgeCreationPreviewLine.Visibility = Visibility.Collapsed;
 
         if (Mouse.Captured == NetworkCanvasGrid)
+        {
+            Mouse.Capture(null);
+        }
+    }
+
+    private bool TryBeginCanvasPan(MouseButtonEventArgs e)
+    {
+        if (isPanningCanvas || edgeCreationSourceNode is not null)
+        {
+            return false;
+        }
+
+        var isMiddlePan = e.ChangedButton == MouseButton.Middle;
+        var isSpaceLeftPan = e.ChangedButton == MouseButton.Left && Keyboard.IsKeyDown(Key.Space);
+        if (!isMiddlePan && !isSpaceLeftPan)
+        {
+            return false;
+        }
+
+        if (e.OriginalSource is not DependencyObject hitTarget ||
+            !IsDescendantOf(hitTarget, NetworkCanvasGrid) ||
+            FindDataContext<NodeViewModel>(hitTarget) is not null ||
+            FindDataContext<EdgeViewModel>(hitTarget) is not null)
+        {
+            return false;
+        }
+
+        isPanningCanvas = true;
+        panStartViewerPosition = e.GetPosition(NetworkCanvasScrollViewer);
+        panStartHorizontalOffset = NetworkCanvasScrollViewer.HorizontalOffset;
+        panStartVerticalOffset = NetworkCanvasScrollViewer.VerticalOffset;
+        previousCanvasCursor = NetworkCanvasScrollViewer.Cursor;
+        NetworkCanvasScrollViewer.Cursor = Cursors.ScrollAll;
+        Mouse.Capture(NetworkCanvasScrollViewer);
+        return true;
+    }
+
+    private bool UpdateCanvasPan(MouseEventArgs e)
+    {
+        if (!isPanningCanvas)
+        {
+            return false;
+        }
+
+        var position = e.GetPosition(NetworkCanvasScrollViewer);
+        var delta = position - panStartViewerPosition;
+        NetworkCanvasScrollViewer.ScrollToHorizontalOffset(panStartHorizontalOffset - delta.X);
+        NetworkCanvasScrollViewer.ScrollToVerticalOffset(panStartVerticalOffset - delta.Y);
+        return true;
+    }
+
+    private void EndCanvasPan()
+    {
+        if (!isPanningCanvas)
+        {
+            return;
+        }
+
+        isPanningCanvas = false;
+        NetworkCanvasScrollViewer.Cursor = previousCanvasCursor;
+        previousCanvasCursor = null;
+
+        if (Mouse.Captured == NetworkCanvasScrollViewer)
         {
             Mouse.Capture(null);
         }
@@ -529,6 +633,21 @@ public partial class MainWindow : Window
         }
 
         return null;
+    }
+
+    private static bool IsDescendantOf(DependencyObject? current, DependencyObject ancestor)
+    {
+        while (current is not null)
+        {
+            if (ReferenceEquals(current, ancestor))
+            {
+                return true;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
     }
 
     private void OpenNodeEditorWindow()

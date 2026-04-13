@@ -24,6 +24,7 @@ ScenarioR_NoOrphanedOrDoubleCountedWaitingOccupancy();
 ScenarioS_StaticRecipeProcurementWithoutInputConsumerProfile();
 ScenarioT_TemporalRecipeProcurementWithoutInputConsumerProfile();
 ScenarioU_TemporalRecipeProcurementUsesLocalStockFirst();
+ScenarioUV_TemporalRecipeOutputInheritsLandedInputCost();
 ScenarioUA_TemporalStoreConsumersReplenishAfterRecurringConsumption();
 ScenarioUB_NonStoreTemporalDemandBacklogStillAccumulates();
 ScenarioUC_RecipeInputStoresStillFeedProduction();
@@ -415,6 +416,33 @@ static void ScenarioU_TemporalRecipeProcurementUsesLocalStockFirst()
     AssertEqual(6d, period1.Allocations.Where(allocation => allocation.TrafficType == "Wheat").Sum(allocation => allocation.Quantity), "U temporal unmet wheat procurement");
     AssertEqual(4d, GetAvailableSupply(state, "Bakery", "Bread"), "U temporal local-stock bread output");
     AssertEqual(6d, GetAvailableSupply(state, "Bakery", "Wheat"), "U temporal routed wheat retained for later production");
+}
+
+static void ScenarioUV_TemporalRecipeOutputInheritsLandedInputCost()
+{
+    var network = CreateRecipeProcurementNetwork(edgeTime: 1d, wheatProduction: 10d, breadProduction: 10d);
+    network.Edges[0].Cost = 2d;
+    network.Nodes.Add(new NodeModel
+    {
+        Id = "Bakery2",
+        Name = "Bakery 2",
+        TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Bread", Consumption = 5d, ConsumptionStartPeriod = 2 }]
+    });
+    network.Edges.Add(new EdgeModel { Id = "BakeryBakery2", FromNodeId = "Bakery", ToNodeId = "Bakery2", Time = 1d, Cost = 5d, Capacity = 100d, IsBidirectional = false });
+
+    var engine = new TemporalNetworkSimulationEngine();
+    var state = engine.Initialize(network);
+
+    var period1 = engine.Advance(network, state);
+    var period2 = engine.Advance(network, state);
+
+    var wheatDelivery = period1.Allocations.Single(allocation => allocation.TrafficType == "Wheat" && allocation.ConsumerNodeId == "Bakery");
+    var breadDelivery = period2.Allocations.Single(allocation => allocation.TrafficType == "Bread" && allocation.ConsumerNodeId == "Bakery2");
+
+    AssertEqual(2d, wheatDelivery.DeliveredCostPerUnit, "UV wheat landed unit cost");
+    AssertEqual(2d, GetAvailableSupplyUnitCost(state, "Bakery", "Bread"), "UV bakery bread source unit cost");
+    AssertEqual(2d, breadDelivery.SourceUnitCostPerUnit, "UV bread source unit cost");
+    AssertEqual(7d, breadDelivery.DeliveredCostPerUnit, "UV downstream bread delivered unit cost");
 }
 
 static void ScenarioUA_TemporalStoreConsumersReplenishAfterRecurringConsumption()
@@ -1500,6 +1528,16 @@ static double GetAvailableSupply(
 {
     return state.NodeStates.TryGetValue(new TemporalNetworkSimulationEngine.TemporalNodeTrafficKey(nodeId, trafficType), out var nodeState)
         ? nodeState.AvailableSupply
+        : 0d;
+}
+
+static double GetAvailableSupplyUnitCost(
+    TemporalNetworkSimulationEngine.TemporalSimulationState state,
+    string nodeId,
+    string trafficType)
+{
+    return state.NodeStates.TryGetValue(new TemporalNetworkSimulationEngine.TemporalNodeTrafficKey(nodeId, trafficType), out var nodeState)
+        ? nodeState.AvailableSupplyUnitCostPerUnit
         : 0d;
 }
 

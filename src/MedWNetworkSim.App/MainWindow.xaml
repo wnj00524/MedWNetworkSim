@@ -132,6 +132,9 @@
                                 <Button Content="Save JSON..."
                                         Click="SaveFile_Click"
                                         IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="Quick Save"
+                                        Click="QuickSave_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
                                 <Button Content="GraphML..."
                                         Click="GraphMl_Click" />
                                 <Button Content="Export..."
@@ -348,7 +351,8 @@
                         </Grid>
                     </Border>
 
-                    <ScrollViewer Grid.Row="2"
+                    <ScrollViewer x:Name="NetworkCanvasScrollViewer"
+                                  Grid.Row="2"
                                   HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Auto"
                                   CanContentScroll="False">
@@ -356,7 +360,13 @@
                               Width="{Binding WorkspaceWidth}"
                               Height="{Binding WorkspaceHeight}"
                               PreviewMouseLeftButtonDown="NetworkCanvasGrid_OnPreviewMouseLeftButtonDown"
-                              PreviewMouseRightButtonDown="NetworkCanvasGrid_OnPreviewMouseRightButtonDown">
+                              PreviewMouseRightButtonDown="NetworkCanvasGrid_OnPreviewMouseRightButtonDown"
+                              PreviewMouseWheel="NetworkCanvasGrid_OnPreviewMouseWheel">
+                            <Grid.LayoutTransform>
+                                <ScaleTransform x:Name="NetworkCanvasScaleTransform"
+                                                ScaleX="1"
+                                                ScaleY="1" />
+                            </Grid.LayoutTransform>
                             <Grid.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="{Binding PlacementTarget.DataContext.Terminology.AddNodeButton, RelativeSource={RelativeSource AncestorType=ContextMenu}}"

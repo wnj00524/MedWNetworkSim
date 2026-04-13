@@ -59,6 +59,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly List<ConsumerCostSummaryRowViewModel> allConsumerCostSummaries = [];
 
     private string activeFileLabel = "Blank world";
+    private string? currentFilePath;
     private string networkName = "Untitled World";
     private string networkDescription = "Sketch places, routes, and flows first; use advanced controls when you need simulation detail.";
     private AllocationMode defaultAllocationMode = AllocationMode.GreedyBestRoute;
@@ -86,6 +87,8 @@ public sealed class MainWindowViewModel : ObservableObject
     private double workspaceWidth = 1600d;
     private double workspaceHeight = 1000d;
     private bool hasNetwork;
+    private bool hasUnsavedChanges;
+    private bool isReplacingNetwork;
     private bool isWorldbuilderMode = true;
     private bool isCanvasOnlyMode;
     private bool isLayersPanelOpen;
@@ -129,7 +132,9 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public UiTerminologyViewModel Terminology { get; } = new();
 
-    public string WindowTitle => HasNetwork ? $"World Systems Builder - {NetworkName}" : "World Systems Builder";
+    public string WindowTitle => HasNetwork
+        ? $"World Systems Builder - {NetworkName}{(HasUnsavedChanges ? " *" : string.Empty)}"
+        : "World Systems Builder";
 
     public Array RoutingPreferences { get; } = Enum.GetValues(typeof(RoutingPreference));
 
@@ -159,6 +164,33 @@ public sealed class MainWindowViewModel : ObservableObject
     public string ActiveWorldLabel => HasNetwork
         ? $"{NetworkName} | {ActiveFileLabel}"
         : "No world loaded";
+
+    public string? CurrentFilePath
+    {
+        get => currentFilePath;
+        private set
+        {
+            if (SetProperty(ref currentFilePath, value))
+            {
+                OnPropertyChanged(nameof(HasActiveFilePath));
+            }
+        }
+    }
+
+    public bool HasActiveFilePath => !string.IsNullOrWhiteSpace(CurrentFilePath);
+
+    public bool HasUnsavedChanges
+    {
+        get => hasUnsavedChanges;
+        private set
+        {
+            if (SetProperty(ref hasUnsavedChanges, value))
+            {
+                OnPropertyChanged(nameof(WindowTitle));
+                OnPropertyChanged(nameof(ActiveWorldLabel));
+            }
+        }
+    }
 
     public PlaceTemplate? SelectedPlaceTemplate
     {
@@ -247,6 +279,7 @@ public sealed class MainWindowViewModel : ObservableObject
                 OnPropertyChanged(nameof(ActiveWorldLabel));
                 OnPropertyChanged(nameof(SuggestedFileName));
                 OnPropertyChanged(nameof(SuggestedGraphMlFileName));
+                MarkDirty("Updated the world name.");
             }
         }
     }
@@ -254,7 +287,13 @@ public sealed class MainWindowViewModel : ObservableObject
     public string NetworkDescription
     {
         get => networkDescription;
-        set => SetProperty(ref networkDescription, value);
+        set
+        {
+            if (SetProperty(ref networkDescription, value))
+            {
+                MarkDirty("Updated the world description.");
+            }
+        }
     }
 
     public AllocationMode DefaultAllocationMode
@@ -266,6 +305,7 @@ public sealed class MainWindowViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(DefaultAllocationModeLabel));
                 OnPropertyChanged(nameof(DefaultAllocationModeHelpText));
+                MarkDirty("Updated the default allocation mode.");
             }
         }
     }
@@ -285,6 +325,7 @@ public sealed class MainWindowViewModel : ObservableObject
                 OnPropertyChanged(nameof(IsTimelineLoopEnabled));
                 OnPropertyChanged(nameof(TimelineHeadline));
                 InvalidateSimulationResults("Updated timeline loop settings.");
+                MarkDirty("Updated timeline loop settings.");
             }
         }
     }
@@ -905,14 +946,15 @@ public sealed class MainWindowViewModel : ObservableObject
     public void LoadFromGraphMl(string path, GraphMlTransferOptions options)
     {
         var network = graphMlFileService.Load(path, options);
-        LoadNetwork(network, path, $"Imported GraphML file '{Path.GetFileName(path)}'.");
+        LoadNetwork(network, null, $"Imported GraphML file '{Path.GetFileName(path)}'.");
+        ActiveFileLabel = Path.GetFileName(path);
     }
 
     public void SaveToFile(string path)
     {
         var network = BuildValidatedNetwork();
         fileService.Save(network, path);
-        ActiveFileLabel = path;
+        MarkClean(path);
         StatusMessage = $"Saved the current network to '{Path.GetFileName(path)}'.";
     }
 
@@ -922,6 +964,28 @@ public sealed class MainWindowViewModel : ObservableObject
         graphMlFileService.Save(network, path, options);
         ActiveFileLabel = path;
         StatusMessage = $"Exported the current network to GraphML file '{Path.GetFileName(path)}'.";
+    }
+
+    public void MarkDirty(string statusMessage)
+    {
+        if (isReplacingNetwork)
+        {
+            return;
+        }
+
+        if (HasNetwork)
+        {
+            HasUnsavedChanges = true;
+        }
+
+        StatusMessage = statusMessage;
+    }
+
+    private void MarkClean(string? savedPath)
+    {
+        CurrentFilePath = string.IsNullOrWhiteSpace(savedPath) ? null : savedPath;
+        ActiveFileLabel = CurrentFilePath ?? "Unsaved world";
+        HasUnsavedChanges = false;
     }
 
     public void ExportCurrentReport(string path, ReportExportFormat format)
@@ -970,7 +1034,8 @@ public sealed class MainWindowViewModel : ObservableObject
         if (File.Exists(samplePath))
         {
             var fileNetwork = fileService.Load(samplePath);
-            LoadNetwork(fileNetwork, samplePath, successMessage);
+            LoadNetwork(fileNetwork, null, successMessage);
+            ActiveFileLabel = scenario.DisplayName;
             return;
         }
 
@@ -982,7 +1047,8 @@ public sealed class MainWindowViewModel : ObservableObject
 
         using var reader = new StreamReader(stream);
         var resourceNetwork = fileService.LoadJson(reader.ReadToEnd());
-        LoadNetwork(resourceNetwork, scenario.DisplayName, successMessage);
+        LoadNetwork(resourceNetwork, null, successMessage);
+        ActiveFileLabel = scenario.DisplayName;
     }
 
     public void RunSimulation()
@@ -1100,6 +1166,7 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         RecalculateWorkspace();
+        MarkDirty("Auto-arranged all node positions.");
         StatusMessage = "Auto-arranged all node positions.";
     }
 
@@ -1475,6 +1542,7 @@ public sealed class MainWindowViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(node);
         node.MoveBy(deltaX, deltaY);
         RecalculateWorkspace();
+        MarkDirty("Moved a node.");
     }
 
     public IReadOnlyList<string> GetAvailableTrafficTypeNames()
@@ -1673,85 +1741,94 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void LoadNetwork(NetworkModel network, string? activeFilePath, string successMessage)
     {
-        foreach (var node in Nodes.ToList())
+        isReplacingNetwork = true;
+
+        try
         {
-            UnregisterNode(node);
-        }
+            foreach (var node in Nodes.ToList())
+            {
+                UnregisterNode(node);
+            }
 
-        foreach (var edge in Edges.ToList())
+            foreach (var edge in Edges.ToList())
+            {
+                UnregisterEdge(edge);
+            }
+
+            foreach (var definition in TrafficDefinitions.ToList())
+            {
+                UnregisterTrafficDefinition(definition);
+            }
+
+            Nodes.Clear();
+            Edges.Clear();
+            TrafficDefinitions.Clear();
+            TrafficTypes.Clear();
+            NodeIdOptions.Clear();
+            TrafficTypeNameOptions.Clear();
+            VisibleAllocations.Clear();
+            VisibleConsumerCostSummaries.Clear();
+            allAllocationModels.Clear();
+            allAllocations.Clear();
+            allConsumerCostSummaries.Clear();
+            hasSimulationSnapshot = false;
+            SelectedTraffic = null;
+            SelectedNode = null;
+            SelectedNodeTrafficProfile = null;
+            SelectedEdge = null;
+            SelectedTrafficDefinition = null;
+
+            foreach (var definition in BuildDefinitionEditors(network))
+            {
+                RegisterTrafficDefinition(definition);
+            }
+
+            foreach (var nodeModel in network.Nodes)
+            {
+                RegisterNode(new NodeViewModel(nodeModel));
+            }
+
+            RefreshNodeIdOptions();
+
+            var nodeMap = CreateNodeMap();
+            foreach (var edgeModel in network.Edges)
+            {
+                nodeMap.TryGetValue(edgeModel.FromNodeId, out var sourceNode);
+                nodeMap.TryGetValue(edgeModel.ToNodeId, out var targetNode);
+                RegisterEdge(new EdgeViewModel(edgeModel, sourceNode, targetNode));
+            }
+
+            NetworkName = network.Name;
+            NetworkDescription = string.IsNullOrWhiteSpace(network.Description)
+                ? string.Empty
+                : network.Description;
+            DefaultAllocationMode = network.DefaultAllocationMode;
+            simulationSeed = network.SimulationSeed;
+            timelineLoopLength = network.TimelineLoopLength is > 0 ? network.TimelineLoopLength : null;
+            OnPropertyChanged(nameof(TimelineLoopLength));
+            OnPropertyChanged(nameof(IsTimelineLoopEnabled));
+            HasNetwork = true;
+            temporalSimulationState = null;
+            lastTimelineStepResult = null;
+            currentPeriod = 0;
+            hasTimelineSnapshot = false;
+            RefreshNodeIdOptions();
+            RefreshTrafficTypeNameOptions();
+            RefreshTrafficSummariesFromCurrentState();
+            LayersPanel.SyncTrafficTypes(TrafficTypes.Select(traffic => traffic.Name));
+            RecalculateWorkspace();
+            ClearFlowVisuals();
+            ClearTimelineVisuals();
+            RefreshCounts();
+            OnPropertyChanged(nameof(CurrentPeriod));
+            OnPropertyChanged(nameof(TimelineHeadline));
+            MarkClean(activeFilePath);
+            StatusMessage = successMessage;
+        }
+        finally
         {
-            UnregisterEdge(edge);
+            isReplacingNetwork = false;
         }
-
-        foreach (var definition in TrafficDefinitions.ToList())
-        {
-            UnregisterTrafficDefinition(definition);
-        }
-
-        Nodes.Clear();
-        Edges.Clear();
-        TrafficDefinitions.Clear();
-        TrafficTypes.Clear();
-        NodeIdOptions.Clear();
-        TrafficTypeNameOptions.Clear();
-        VisibleAllocations.Clear();
-        VisibleConsumerCostSummaries.Clear();
-        allAllocationModels.Clear();
-        allAllocations.Clear();
-        allConsumerCostSummaries.Clear();
-        hasSimulationSnapshot = false;
-        SelectedTraffic = null;
-        SelectedNode = null;
-        SelectedNodeTrafficProfile = null;
-        SelectedEdge = null;
-        SelectedTrafficDefinition = null;
-
-        foreach (var definition in BuildDefinitionEditors(network))
-        {
-            RegisterTrafficDefinition(definition);
-        }
-
-        foreach (var nodeModel in network.Nodes)
-        {
-            RegisterNode(new NodeViewModel(nodeModel));
-        }
-
-        RefreshNodeIdOptions();
-
-        var nodeMap = CreateNodeMap();
-        foreach (var edgeModel in network.Edges)
-        {
-            nodeMap.TryGetValue(edgeModel.FromNodeId, out var sourceNode);
-            nodeMap.TryGetValue(edgeModel.ToNodeId, out var targetNode);
-            RegisterEdge(new EdgeViewModel(edgeModel, sourceNode, targetNode));
-        }
-
-        NetworkName = network.Name;
-        NetworkDescription = string.IsNullOrWhiteSpace(network.Description)
-            ? string.Empty
-            : network.Description;
-        DefaultAllocationMode = network.DefaultAllocationMode;
-        simulationSeed = network.SimulationSeed;
-        timelineLoopLength = network.TimelineLoopLength is > 0 ? network.TimelineLoopLength : null;
-        OnPropertyChanged(nameof(TimelineLoopLength));
-        OnPropertyChanged(nameof(IsTimelineLoopEnabled));
-        ActiveFileLabel = activeFilePath ?? "Unsaved world";
-        HasNetwork = true;
-        temporalSimulationState = null;
-        lastTimelineStepResult = null;
-        currentPeriod = 0;
-        hasTimelineSnapshot = false;
-        RefreshNodeIdOptions();
-        RefreshTrafficTypeNameOptions();
-        RefreshTrafficSummariesFromCurrentState();
-        LayersPanel.SyncTrafficTypes(TrafficTypes.Select(traffic => traffic.Name));
-        RecalculateWorkspace();
-        ClearFlowVisuals();
-        ClearTimelineVisuals();
-        RefreshCounts();
-        OnPropertyChanged(nameof(CurrentPeriod));
-        OnPropertyChanged(nameof(TimelineHeadline));
-        StatusMessage = successMessage;
     }
 
     private IReadOnlyList<TrafficTypeDefinitionEditorViewModel> BuildDefinitionEditors(NetworkModel network)
@@ -1981,6 +2058,7 @@ public sealed class MainWindowViewModel : ObservableObject
         RecalculateWorkspace();
         RefreshCounts();
         InvalidateSimulationResults(message);
+        MarkDirty(message);
     }
 
     private void RefreshDerivedStateAfterEdgeChange(string message)
@@ -1989,6 +2067,7 @@ public sealed class MainWindowViewModel : ObservableObject
         RefreshEdgeBindings();
         RecalculateWorkspace();
         InvalidateSimulationResults(message);
+        MarkDirty(message);
     }
 
     private void RefreshCounts()

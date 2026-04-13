@@ -1,5 +1,8 @@
 using Microsoft.Win32;
+using System.ComponentModel;
+using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -9,9 +12,14 @@ namespace MedWNetworkSim.App;
 
 public partial class MainWindow : Window
 {
+    private const double MinimumCanvasZoom = 0.2d;
+    private const double MaximumCanvasZoom = 3.0d;
+    private const double CanvasZoomStep = 1.1d;
+
     private Point? pendingCanvasContextMenuPosition;
     private NodeViewModel? edgeCreationSourceNode;
     private bool edgeCreationIsBidirectional = true;
+    private double canvasZoom = 1d;
 
     public MainWindow()
     {
@@ -24,11 +32,21 @@ public partial class MainWindow : Window
 
     private void NewNetwork_Click(object sender, RoutedEventArgs e)
     {
+        if (!TryConfirmDiscardOrSaveChanges("create a new world"))
+        {
+            return;
+        }
+
         ExecuteWithErrorHandling(ViewModel.CreateNewNetwork);
     }
 
     private void OpenFile_Click(object sender, RoutedEventArgs e)
     {
+        if (!TryConfirmDiscardOrSaveChanges("open another world"))
+        {
+            return;
+        }
+
         var dialog = new OpenFileDialog
         {
             Title = "Open network file",
@@ -77,29 +95,31 @@ public partial class MainWindow : Window
 
     private void SaveFile_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new SaveFileDialog
-        {
-            Title = "Save network file",
-            Filter = "JSON network (*.json)|*.json|All files (*.*)|*.*",
-            FileName = ViewModel.SuggestedFileName,
-            OverwritePrompt = true
-        };
+        TrySaveAs();
+    }
 
-        if (dialog.ShowDialog(this) != true)
-        {
-            return;
-        }
-
-        ExecuteWithErrorHandling(() => ViewModel.SaveToFile(dialog.FileName));
+    private void QuickSave_Click(object sender, RoutedEventArgs e)
+    {
+        TryQuickSave();
     }
 
     private void LoadSample_Click(object sender, RoutedEventArgs e)
     {
+        if (!TryConfirmDiscardOrSaveChanges("load the bundled sample"))
+        {
+            return;
+        }
+
         ExecuteWithErrorHandling(ViewModel.LoadBundledSample);
     }
 
     private void LoadWorldbuilderScenario_Click(object sender, RoutedEventArgs e)
     {
+        if (!TryConfirmDiscardOrSaveChanges("load another scenario"))
+        {
+            return;
+        }
+
         ExecuteWithErrorHandling(ViewModel.LoadSelectedWorldbuilderScenario);
     }
 
@@ -209,7 +229,7 @@ public partial class MainWindow : Window
 
     private void RemoveNode_Click(object sender, RoutedEventArgs e)
     {
-        ExecuteWithErrorHandling(ViewModel.RemoveSelectedNode);
+        ConfirmAndDeleteSelectedItem();
     }
 
     private void AddTrafficProfile_Click(object sender, RoutedEventArgs e)
@@ -229,7 +249,7 @@ public partial class MainWindow : Window
 
     private void RemoveEdge_Click(object sender, RoutedEventArgs e)
     {
-        ExecuteWithErrorHandling(ViewModel.RemoveSelectedEdge);
+        ConfirmAndDeleteSelectedItem();
     }
 
     private void NodeThumb_OnDragDelta(object sender, DragDeltaEventArgs e)
@@ -332,6 +352,84 @@ public partial class MainWindow : Window
         pendingCanvasContextMenuPosition = new Point(
             Math.Max(0d, position.X),
             Math.Max(0d, position.Y));
+
+        if (e.OriginalSource is not DependencyObject hitTarget)
+        {
+            return;
+        }
+
+        var node = FindDataContext<NodeViewModel>(hitTarget);
+        if (node is not null)
+        {
+            ViewModel.SelectedNode = node;
+            ViewModel.SelectedEdge = null;
+            OpenNodeContextMenu(node);
+            e.Handled = true;
+            return;
+        }
+
+        var edge = FindDataContext<EdgeViewModel>(hitTarget);
+        if (edge is not null)
+        {
+            ViewModel.SelectedEdge = edge;
+            ViewModel.SelectedNode = null;
+            OpenEdgeContextMenu(edge);
+            e.Handled = true;
+            return;
+        }
+
+        ViewModel.SelectedNode = null;
+        ViewModel.SelectedEdge = null;
+        OpenBlankCanvasContextMenu();
+        e.Handled = true;
+    }
+
+    private void NetworkCanvasGrid_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        var previousZoom = canvasZoom;
+        var zoomFactor = e.Delta > 0 ? CanvasZoomStep : 1d / CanvasZoomStep;
+        var nextZoom = Math.Clamp(previousZoom * zoomFactor, MinimumCanvasZoom, MaximumCanvasZoom);
+        if (Math.Abs(nextZoom - previousZoom) < 0.0001d)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        var contentPosition = e.GetPosition(NetworkCanvasGrid);
+        var viewportPosition = e.GetPosition(NetworkCanvasScrollViewer);
+        canvasZoom = nextZoom;
+        NetworkCanvasScaleTransform.ScaleX = nextZoom;
+        NetworkCanvasScaleTransform.ScaleY = nextZoom;
+
+        NetworkCanvasScrollViewer.ScrollToHorizontalOffset((contentPosition.X * nextZoom) - viewportPosition.X);
+        NetworkCanvasScrollViewer.ScrollToVerticalOffset((contentPosition.Y * nextZoom) - viewportPosition.Y);
+        e.Handled = true;
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (!TryConfirmDiscardOrSaveChanges("close the app"))
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        base.OnClosing(e);
+    }
+
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        base.OnPreviewKeyDown(e);
+
+        if (e.Key != Key.Delete || IsTextInputElement(e.OriginalSource))
+        {
+            return;
+        }
+
+        if (ConfirmAndDeleteSelectedItem())
+        {
+            e.Handled = true;
+        }
     }
 
     protected override void OnPreviewMouseMove(MouseEventArgs e)
@@ -378,6 +476,13 @@ public partial class MainWindow : Window
         EdgeCreationPreviewLine.Y2 = sourceNode.CenterY;
         EdgeCreationPreviewLine.Visibility = Visibility.Visible;
         Mouse.Capture(NetworkCanvasGrid);
+    }
+
+    private void BeginEdgeCreationFromContext(NodeViewModel node)
+    {
+        ViewModel.SelectedNode = node;
+        ViewModel.SelectedEdge = null;
+        Dispatcher.BeginInvoke(new Action(() => BeginEdgeCreation(node, isBidirectional: true)));
     }
 
     private void EndEdgeCreation()
@@ -455,6 +560,216 @@ public partial class MainWindow : Window
         };
 
         window.ShowDialog();
+    }
+
+    private void OpenBlankCanvasContextMenu()
+    {
+        OpenCanvasContextMenu(
+            CreateMenuItem("Add node here", (_, _) => CanvasAddNode_Click(this, new RoutedEventArgs())));
+    }
+
+    private void OpenNodeContextMenu(NodeViewModel node)
+    {
+        OpenCanvasContextMenu(
+            CreateMenuItem("Edit node", (_, _) => OpenNodeEditorWindow()),
+            CreateMenuItem("Add edge from this node", (_, _) => BeginEdgeCreationFromContext(node)),
+            CreateMenuItem("Delete node", (_, _) => ConfirmAndDeleteSelectedItem()));
+    }
+
+    private void OpenEdgeContextMenu(EdgeViewModel edge)
+    {
+        OpenCanvasContextMenu(
+            CreateMenuItem("Edit edge", (_, _) => OpenEdgeEditorWindow()),
+            CreateMenuItem("Delete edge", (_, _) => ConfirmAndDeleteSelectedItem()));
+    }
+
+    private void OpenCanvasContextMenu(params MenuItem[] items)
+    {
+        var menu = new ContextMenu
+        {
+            PlacementTarget = NetworkCanvasGrid
+        };
+
+        foreach (var item in items)
+        {
+            menu.Items.Add(item);
+        }
+
+        menu.IsOpen = true;
+    }
+
+    private static MenuItem CreateMenuItem(string header, RoutedEventHandler clickHandler)
+    {
+        var item = new MenuItem
+        {
+            Header = header
+        };
+
+        item.Click += clickHandler;
+        return item;
+    }
+
+    private bool ConfirmAndDeleteSelectedItem()
+    {
+        if (ViewModel.SelectedEdge is not null)
+        {
+            var edgeDescription = DescribeEdge(ViewModel.SelectedEdge);
+            if (ConfirmDeletion($"Delete edge {edgeDescription}?"))
+            {
+                ExecuteWithErrorHandling(ViewModel.RemoveSelectedEdge);
+                return true;
+            }
+
+            return false;
+        }
+
+        if (ViewModel.SelectedNode is not null)
+        {
+            var nodeName = string.IsNullOrWhiteSpace(ViewModel.SelectedNode.Name)
+                ? ViewModel.SelectedNode.Id
+                : ViewModel.SelectedNode.Name;
+            if (ConfirmDeletion($"Delete node '{nodeName}' and any connected edges?"))
+            {
+                ExecuteWithErrorHandling(ViewModel.RemoveSelectedNode);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool ConfirmDeletion(string message)
+    {
+        return MessageBox.Show(
+            this,
+            message,
+            "Confirm deletion",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning) == MessageBoxResult.Yes;
+    }
+
+    private static string DescribeEdge(EdgeViewModel edge)
+    {
+        if (!string.IsNullOrWhiteSpace(edge.RouteType))
+        {
+            return $"'{edge.RouteType.Trim()}' ({edge.FromNodeId} to {edge.ToNodeId})";
+        }
+
+        return $"from '{edge.FromNodeId}' to '{edge.ToNodeId}'";
+    }
+
+    private bool TryConfirmDiscardOrSaveChanges(string actionDescription)
+    {
+        if (!ViewModel.HasUnsavedChanges)
+        {
+            return true;
+        }
+
+        var result = MessageBox.Show(
+            this,
+            $"Save changes before you {actionDescription}?",
+            "Unsaved changes",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning);
+
+        return result switch
+        {
+            MessageBoxResult.Yes => TryQuickSave(),
+            MessageBoxResult.No => true,
+            _ => false
+        };
+    }
+
+    private bool TrySaveAs()
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Save network file",
+            Filter = "JSON network (*.json)|*.json|All files (*.*)|*.*",
+            FileName = ViewModel.SuggestedFileName,
+            OverwritePrompt = true
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return false;
+        }
+
+        return TrySaveToFile(dialog.FileName);
+    }
+
+    private bool TryQuickSave()
+    {
+        var path = ViewModel.CurrentFilePath;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            path = PromptForQuickSavePath();
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+        }
+
+        if (File.Exists(path) &&
+            MessageBox.Show(
+                this,
+                $"Overwrite '{Path.GetFileName(path)}'?",
+                "Confirm overwrite",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return false;
+        }
+
+        return TrySaveToFile(path);
+    }
+
+    private string? PromptForQuickSavePath()
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Quick save network file",
+            Filter = "JSON network (*.json)|*.json|All files (*.*)|*.*",
+            FileName = ViewModel.SuggestedFileName,
+            OverwritePrompt = false
+        };
+
+        return dialog.ShowDialog(this) == true ? dialog.FileName : null;
+    }
+
+    private bool TrySaveToFile(string path)
+    {
+        try
+        {
+            ViewModel.SaveToFile(path);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                ex.Message,
+                "MedW Network Simulator",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            return false;
+        }
+    }
+
+    private static bool IsTextInputElement(object source)
+    {
+        var current = source as DependencyObject;
+        while (current is not null)
+        {
+            if (current is TextBoxBase or PasswordBox or ComboBox)
+            {
+                return true;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
     }
 
     private void ExecuteWithErrorHandling(Action action)

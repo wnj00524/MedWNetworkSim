@@ -80,6 +80,16 @@ public sealed class NetworkFileService
         bool forceLayoutAllNodes,
         ISet<string>? trafficTypesWithExplicitFlowSplitPolicy = null)
     {
+        return NormalizeAndValidate(model, forceLayoutAllNodes, trafficTypesWithExplicitFlowSplitPolicy, depth: 0, ancestry: new HashSet<string>(Comparer));
+    }
+
+    private NetworkModel NormalizeAndValidate(
+        NetworkModel model,
+        bool forceLayoutAllNodes,
+        ISet<string>? trafficTypesWithExplicitFlowSplitPolicy,
+        int depth,
+        IReadOnlySet<string> ancestry)
+    {
         ArgumentNullException.ThrowIfNull(model);
 
         // Rebuild the model into a predictable, validated shape before either rendering or saving it.
@@ -111,6 +121,10 @@ public sealed class NetworkFileService
                 Id = nodeId,
                 Name = string.IsNullOrWhiteSpace(node.Name) ? nodeId : node.Name.Trim(),
                 Shape = node.Shape,
+                NodeKind = node.NodeKind,
+                ReferencedSubnetworkId = NormalizeOptionalText(node.ReferencedSubnetworkId),
+                IsExternalInterface = node.IsExternalInterface,
+                InterfaceName = NormalizeOptionalText(node.InterfaceName),
                 X = node.X,
                 Y = node.Y,
                 TranshipmentCapacity = transhipmentCapacity,
@@ -175,7 +189,9 @@ public sealed class NetworkFileService
             {
                 Id = edgeId,
                 FromNodeId = fromNodeId,
+                FromInterfaceNodeId = NormalizeOptionalText(edge.FromInterfaceNodeId),
                 ToNodeId = toNodeId,
+                ToInterfaceNodeId = NormalizeOptionalText(edge.ToInterfaceNodeId),
                 Time = edge.Time,
                 Cost = edge.Cost,
                 Capacity = capacity,
@@ -213,8 +229,210 @@ public sealed class NetworkFileService
             Nodes = normalizedNodes,
             Edges = normalizedEdges,
             TrafficTypes = trafficDefinitions,
-            TimelineEvents = timelineEvents
+            TimelineEvents = timelineEvents,
+            Subnetworks = NormalizeSubnetworks(model.Subnetworks, normalizedNodes, normalizedEdges, forceLayoutAllNodes, depth, ancestry)
         };
+    }
+
+    private List<SubnetworkDefinition>? NormalizeSubnetworks(
+        IEnumerable<SubnetworkDefinition>? subnetworks,
+        IReadOnlyList<NodeModel> parentNodes,
+        IReadOnlyList<EdgeModel> parentEdges,
+        bool forceLayoutAllNodes,
+        int depth,
+        IReadOnlySet<string> ancestry)
+    {
+        var normalizedSubnetworks = new List<SubnetworkDefinition>();
+        var subnetworkIds = new HashSet<string>(Comparer);
+
+        foreach (var subnetwork in subnetworks ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(subnetwork.Id))
+            {
+                throw new InvalidOperationException("Each subnetwork must have a non-empty id.");
+            }
+
+            var subnetworkId = subnetwork.Id.Trim();
+            if (!subnetworkIds.Add(subnetworkId))
+            {
+                throw new InvalidOperationException($"Duplicate subnetwork id '{subnetworkId}' was found.");
+            }
+
+            if (ancestry.Contains(subnetworkId))
+            {
+                throw new InvalidOperationException($"Recursive subnetwork nesting involving '{subnetworkId}' is not supported.");
+            }
+
+            if (depth >= 1)
+            {
+                throw new InvalidOperationException("Nested subnetworks are limited to one level in this version.");
+            }
+
+            var nextAncestry = ancestry.Concat([subnetworkId]).ToHashSet(Comparer);
+            var childNetwork = NormalizeAndValidate(subnetwork.Network, forceLayoutAllNodes, trafficTypesWithExplicitFlowSplitPolicy: null, depth + 1, nextAncestry);
+            if (childNetwork.Subnetworks is { Count: > 0 })
+            {
+                throw new InvalidOperationException($"Subnetwork '{subnetworkId}' contains nested subnetworks. One-level nesting is supported in this version.");
+            }
+
+            normalizedSubnetworks.Add(new SubnetworkDefinition
+            {
+                Id = subnetworkId,
+                DisplayName = string.IsNullOrWhiteSpace(subnetwork.DisplayName) ? childNetwork.Name : subnetwork.DisplayName.Trim(),
+                Network = childNetwork,
+                InterfaceBindings = NormalizeInterfaceBindings(subnetwork.InterfaceBindings, subnetworkId, parentNodes, childNetwork)
+            });
+        }
+
+        ValidateCompositeSubnetworkNodes(parentNodes, parentEdges, normalizedSubnetworks);
+        return normalizedSubnetworks.Count == 0 ? null : normalizedSubnetworks;
+    }
+
+    private static List<SubnetworkInterfaceBinding>? NormalizeInterfaceBindings(
+        IEnumerable<SubnetworkInterfaceBinding>? bindings,
+        string subnetworkId,
+        IReadOnlyList<NodeModel> parentNodes,
+        NetworkModel childNetwork)
+    {
+        var childInterfaceIds = childNetwork.Nodes
+            .Where(node => node.IsExternalInterface)
+            .Select(node => node.Id)
+            .ToHashSet(Comparer);
+        var parentCompositeNodeIds = parentNodes
+            .Where(node => node.NodeKind == NodeKind.CompositeSubnetwork && Comparer.Equals(node.ReferencedSubnetworkId, subnetworkId))
+            .Select(node => node.Id)
+            .ToHashSet(Comparer);
+        var normalized = new List<SubnetworkInterfaceBinding>();
+
+        foreach (var binding in bindings ?? [])
+        {
+            var parentCompositeNodeId = NormalizeOptionalText(binding.ParentCompositeNodeId);
+            var childSubnetworkId = NormalizeOptionalText(binding.ChildSubnetworkId) ?? subnetworkId;
+            var childInterfaceNodeId = NormalizeOptionalText(binding.ChildInterfaceNodeId);
+
+            if (parentCompositeNodeId is null)
+            {
+                throw new InvalidOperationException($"Subnetwork '{subnetworkId}' has an interface binding without a parent composite node id.");
+            }
+
+            if (!Comparer.Equals(childSubnetworkId, subnetworkId))
+            {
+                throw new InvalidOperationException($"Subnetwork '{subnetworkId}' has an interface binding that references child subnetwork '{childSubnetworkId}'.");
+            }
+
+            if (!parentCompositeNodeIds.Contains(parentCompositeNodeId))
+            {
+                throw new InvalidOperationException($"Subnetwork '{subnetworkId}' has an interface binding for missing composite node '{parentCompositeNodeId}'.");
+            }
+
+            if (childInterfaceNodeId is null || !childInterfaceIds.Contains(childInterfaceNodeId))
+            {
+                throw new InvalidOperationException($"Subnetwork '{subnetworkId}' has an interface binding for missing or non-exposed child node '{childInterfaceNodeId}'.");
+            }
+
+            normalized.Add(new SubnetworkInterfaceBinding
+            {
+                ParentCompositeNodeId = parentCompositeNodeId,
+                ChildSubnetworkId = subnetworkId,
+                ChildInterfaceNodeId = childInterfaceNodeId,
+                DisplayName = NormalizeOptionalText(binding.DisplayName),
+                AllowedTrafficTypes = NormalizeTrafficTypeRestriction(binding.AllowedTrafficTypes, subnetworkId, childNetwork),
+                DirectionHint = NormalizeOptionalText(binding.DirectionHint)
+            });
+        }
+
+        return normalized.Count == 0 ? null : normalized;
+    }
+
+    private static List<string>? NormalizeTrafficTypeRestriction(
+        IEnumerable<string>? allowedTrafficTypes,
+        string subnetworkId,
+        NetworkModel childNetwork)
+    {
+        var childTrafficTypes = childNetwork.TrafficTypes.Select(definition => definition.Name).ToHashSet(Comparer);
+        var normalized = (allowedTrafficTypes ?? [])
+            .Select(NormalizeOptionalText)
+            .Where(item => item is not null)
+            .Cast<string>()
+            .Distinct(Comparer)
+            .OrderBy(item => item, Comparer)
+            .ToList();
+
+        foreach (var trafficType in normalized)
+        {
+            if (!childTrafficTypes.Contains(trafficType))
+            {
+                throw new InvalidOperationException($"Subnetwork '{subnetworkId}' has an interface traffic restriction for missing traffic type '{trafficType}'.");
+            }
+        }
+
+        return normalized.Count == 0 ? null : normalized;
+    }
+
+    private static void ValidateCompositeSubnetworkNodes(
+        IReadOnlyList<NodeModel> parentNodes,
+        IReadOnlyList<EdgeModel> parentEdges,
+        IReadOnlyList<SubnetworkDefinition> subnetworks)
+    {
+        var subnetworksById = subnetworks.ToDictionary(subnetwork => subnetwork.Id, subnetwork => subnetwork, Comparer);
+        var nodesById = parentNodes.ToDictionary(node => node.Id, node => node, Comparer);
+
+        foreach (var node in parentNodes.Where(node => node.NodeKind == NodeKind.CompositeSubnetwork))
+        {
+            if (string.IsNullOrWhiteSpace(node.ReferencedSubnetworkId))
+            {
+                throw new InvalidOperationException($"Composite node '{node.Id}' must reference a subnetwork id.");
+            }
+
+            if (!subnetworksById.ContainsKey(node.ReferencedSubnetworkId))
+            {
+                throw new InvalidOperationException($"Composite node '{node.Id}' references missing subnetwork '{node.ReferencedSubnetworkId}'.");
+            }
+        }
+
+        foreach (var edge in parentEdges)
+        {
+            var fromNode = nodesById[edge.FromNodeId];
+            var toNode = nodesById[edge.ToNodeId];
+            ValidateEdgeEndpointInterface(edge.Id, "source", fromNode, edge.FromInterfaceNodeId, subnetworksById);
+            ValidateEdgeEndpointInterface(edge.Id, "target", toNode, edge.ToInterfaceNodeId, subnetworksById);
+        }
+    }
+
+    private static void ValidateEdgeEndpointInterface(
+        string edgeId,
+        string endpointName,
+        NodeModel endpointNode,
+        string? interfaceNodeId,
+        IReadOnlyDictionary<string, SubnetworkDefinition> subnetworksById)
+    {
+        var isComposite = endpointNode.NodeKind == NodeKind.CompositeSubnetwork;
+        if (!isComposite)
+        {
+            if (!string.IsNullOrWhiteSpace(interfaceNodeId))
+            {
+                throw new InvalidOperationException($"Edge '{edgeId}' has {endpointName} interface metadata but its {endpointName} node '{endpointNode.Id}' is not a composite subnetwork node.");
+            }
+
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(interfaceNodeId))
+        {
+            throw new InvalidOperationException($"Edge '{edgeId}' connects to composite node '{endpointNode.Id}' and must choose an exposed child interface for the {endpointName} endpoint.");
+        }
+
+        if (endpointNode.ReferencedSubnetworkId is null ||
+            !subnetworksById.TryGetValue(endpointNode.ReferencedSubnetworkId, out var subnetwork))
+        {
+            throw new InvalidOperationException($"Edge '{edgeId}' connects to composite node '{endpointNode.Id}' whose subnetwork is missing.");
+        }
+
+        var childInterface = subnetwork.Network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, interfaceNodeId));
+        if (childInterface is null || !childInterface.IsExternalInterface)
+        {
+            throw new InvalidOperationException($"Edge '{edgeId}' references child node '{interfaceNodeId}' on composite '{endpointNode.Id}', but that node is not an exposed interface.");
+        }
     }
 
     private static string? NormalizeOptionalText(string? value)

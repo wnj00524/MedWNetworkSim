@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace MedWNetworkSim.App.Models;
 
@@ -41,6 +42,12 @@ public sealed class NetworkModel
     /// Gets or sets optional timeline events that temporarily adjust simulation inputs.
     /// </summary>
     public List<TimelineEventModel> TimelineEvents { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets embedded child networks that can be placed as composite nodes in this network.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<SubnetworkDefinition>? Subnetworks { get; set; }
 
     /// <summary>
     /// Gets or sets the nodes that can produce, consume, or transship traffic.

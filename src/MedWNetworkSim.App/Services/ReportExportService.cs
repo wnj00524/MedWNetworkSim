@@ -585,6 +585,16 @@ public sealed class ReportExportService
         var consumers = FormatProfileTrafficList(node.TrafficProfiles.Where(profile => profile.Consumption > 0), profile => profile.Consumption);
         var stores = FormatProfileTrafficList(node.TrafficProfiles.Where(profile => profile.IsStore), profile => profile.StoreCapacity);
 
+        if (node.NodeKind == NodeKind.CompositeSubnetwork)
+        {
+            parts.Add($"composite subnetwork {node.ReferencedSubnetworkId ?? "(unassigned)"}");
+        }
+
+        if (node.IsExternalInterface)
+        {
+            parts.Add($"external interface {node.InterfaceName ?? node.Id}");
+        }
+
         if (!string.IsNullOrWhiteSpace(producers))
         {
             parts.Add($"produces {producers}");
@@ -644,6 +654,16 @@ public sealed class ReportExportService
         if (!string.IsNullOrWhiteSpace(node.LoreDescription))
         {
             parts.Add($"metadata note: {node.LoreDescription.Trim()}");
+        }
+
+        if (node.NodeKind == NodeKind.CompositeSubnetwork)
+        {
+            parts.Add($"it represents child network {node.ReferencedSubnetworkId ?? "(unassigned)"}");
+        }
+
+        if (node.IsExternalInterface)
+        {
+            parts.Add($"it is exposed to a parent network as {node.InterfaceName ?? node.Id}");
         }
 
         return parts.Count == 0

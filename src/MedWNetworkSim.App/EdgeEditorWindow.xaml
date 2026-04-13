@@ -113,6 +113,8 @@
                             <DataGridTextColumn Binding="{Binding Time, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.##}}" Header="Time" Width="80" />
                             <DataGridTextColumn Binding="{Binding Cost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.##}}" Header="Cost" Width="80" />
                             <DataGridTextColumn Binding="{Binding Capacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.##}}" Header="Capacity" Width="90" />
+                            <DataGridTextColumn Binding="{Binding FromInterfaceNodeId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Header="From Interface" Width="120" />
+                            <DataGridTextColumn Binding="{Binding ToInterfaceNodeId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Header="To Interface" Width="120" />
                             <DataGridCheckBoxColumn Binding="{Binding IsBidirectional, Mode=TwoWay}" Header="2-way" Width="70" />
                         </DataGrid.Columns>
                     </DataGrid>
@@ -253,9 +255,41 @@
                                       IsChecked="{Binding SelectedEdge.IsBidirectional, Mode=TwoWay}" />
                         </Grid>
 
-                        <Expander Grid.Row="14"
-                                  Grid.ColumnSpan="2"
-                                  Header="Worldbuilder"
+                        <StackPanel Grid.Row="14"
+                                    Grid.ColumnSpan="2">
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="From Interface" />
+                                <ComboBox Grid.Column="1"
+                                          IsEditable="True"
+                                          ItemsSource="{Binding FromInterfaceNodeOptions}"
+                                          SelectedItem="{Binding SelectedEdge.FromInterfaceNodeId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="2"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="To Interface" />
+                                <ComboBox Grid.Row="2"
+                                          Grid.Column="1"
+                                          IsEditable="True"
+                                          ItemsSource="{Binding ToInterfaceNodeOptions}"
+                                          SelectedItem="{Binding SelectedEdge.ToInterfaceNodeId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+
+                        <Expander Header="Worldbuilder"
                                   IsExpanded="False">
                             <Grid Margin="0,10,0,0">
                                 <Grid.ColumnDefinitions>
@@ -326,6 +360,7 @@
                                          Text="{Binding SelectedEdge.SecurityNotes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </Grid>
                         </Expander>
+                        </StackPanel>
                     </Grid>
 
                     <Border Grid.Row="4"

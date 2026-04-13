@@ -181,29 +181,73 @@
                                  Grid.Column="1"
                                  Text="{Binding SelectedNode.TranshipmentCapacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
-                        <Grid Grid.Row="10" Grid.ColumnSpan="2">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="16" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="120" />
-                            </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Row="10" Grid.ColumnSpan="2">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="120" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="120" />
+                                </Grid.ColumnDefinitions>
 
-                            <TextBlock VerticalAlignment="Center"
-                                       FontSize="11"
-                                       Foreground="{DynamicResource MutedForegroundBrush}"
-                                       Text="X" />
-                            <TextBox Grid.Column="1"
-                                     Text="{Binding SelectedNode.X, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBlock Grid.Column="3"
-                                       VerticalAlignment="Center"
-                                       FontSize="11"
-                                       Foreground="{DynamicResource MutedForegroundBrush}"
-                                       Text="Y" />
-                            <TextBox Grid.Column="4"
-                                     Text="{Binding SelectedNode.Y, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        </Grid>
+                                <TextBlock VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="X" />
+                                <TextBox Grid.Column="1"
+                                         Text="{Binding SelectedNode.X, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Grid.Column="3"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Y" />
+                                <TextBox Grid.Column="4"
+                                         Text="{Binding SelectedNode.Y, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Node Kind" />
+                                <ComboBox Grid.Column="1"
+                                          ItemsSource="{Binding SelectedNodeKindOptions}"
+                                          SelectedItem="{Binding SelectedNodeKind, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <TextBlock Grid.Row="2"
+                                           VerticalAlignment="Center"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="Child Network" />
+                                <ComboBox Grid.Row="2"
+                                          Grid.Column="1"
+                                          IsEditable="True"
+                                          ItemsSource="{Binding SubnetworkIdOptions}"
+                                          SelectedItem="{Binding SelectedNode.ReferencedSubnetworkId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                                <StackPanel Grid.Row="4"
+                                            Grid.ColumnSpan="2">
+                                    <CheckBox Content="External-facing interface"
+                                              IsChecked="{Binding SelectedNode.IsExternalInterface, Mode=TwoWay}" />
+                                    <TextBox Margin="0,8,0,0"
+                                             ToolTip="Optional interface display name"
+                                             Text="{Binding SelectedNode.InterfaceName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
 
                         <Expander Grid.Row="12"
                                   Grid.ColumnSpan="2"

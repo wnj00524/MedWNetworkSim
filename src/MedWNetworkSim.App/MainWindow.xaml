@@ -137,6 +137,9 @@
                                         IsEnabled="{Binding HasNetwork}" />
                                 <Button Content="GraphML..."
                                         Click="GraphMl_Click" />
+                                <Button Content="Embed Network..."
+                                        Click="EmbedSubnetwork_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
                                 <Button Content="Export..."
                                         Click="Reports_Click"
                                         IsEnabled="{Binding HasNetwork}" />

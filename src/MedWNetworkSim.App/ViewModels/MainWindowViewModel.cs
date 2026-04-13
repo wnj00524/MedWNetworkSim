@@ -112,7 +112,11 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public ObservableCollection<TrafficSummaryViewModel> TrafficTypes { get; } = [];
 
+    public ObservableCollection<SubnetworkDefinition> Subnetworks { get; } = [];
+
     public ObservableCollection<string> NodeIdOptions { get; } = [];
+
+    public ObservableCollection<string> SubnetworkIdOptions { get; } = [];
 
     public ObservableCollection<string> TrafficTypeNameOptions { get; } = [];
 
@@ -826,6 +830,8 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public IReadOnlyList<NodeVisualShape> SelectedNodeShapeOptions => SelectedNode?.ShapeOptions ?? [];
 
+    public IReadOnlyList<NodeKind> SelectedNodeKindOptions => SelectedNode?.NodeKindOptions ?? [];
+
     public NodeVisualShape SelectedNodeShape
     {
         get => SelectedNode?.Shape ?? NodeVisualShape.Square;
@@ -837,6 +843,20 @@ public sealed class MainWindowViewModel : ObservableObject
             }
 
             SelectedNode.Shape = value;
+        }
+    }
+
+    public NodeKind SelectedNodeKind
+    {
+        get => SelectedNode?.NodeKind ?? NodeKind.Ordinary;
+        set
+        {
+            if (SelectedNode is null || SelectedNode.NodeKind == value)
+            {
+                return;
+            }
+
+            SelectedNode.NodeKind = value;
         }
     }
 
@@ -1223,6 +1243,29 @@ public sealed class MainWindowViewModel : ObservableObject
         AddNodeAt(null, null);
     }
 
+    public void AddSubnetworkFromFile(string path)
+    {
+        EnsureNetworkExists();
+        var child = fileService.Load(path);
+        var baseId = Regex.Replace(Path.GetFileNameWithoutExtension(path), @"[^\w\-]+", "-").Trim('-');
+        if (string.IsNullOrWhiteSpace(baseId))
+        {
+            baseId = "subnetwork";
+        }
+
+        var subnetworkId = GetNextUniqueName(baseId, Subnetworks.Select(subnetwork => subnetwork.Id));
+        Subnetworks.Add(new SubnetworkDefinition
+        {
+            Id = subnetworkId,
+            DisplayName = child.Name,
+            Network = child
+        });
+
+        RefreshSubnetworkIdOptions();
+        MarkDirty($"Embedded subnetwork '{child.Name}'.");
+        StatusMessage = $"Embedded subnetwork '{child.Name}' as '{subnetworkId}'.";
+    }
+
     public void AddNodeAt(double? x, double? y)
     {
         AddNodeAt(null, x, y);
@@ -1537,6 +1580,32 @@ public sealed class MainWindowViewModel : ObservableObject
         RefreshDerivedStateAfterStructureChange("Removed the selected edge.");
     }
 
+    public IReadOnlyList<string> GetInterfaceNodeOptionsForEdgeEndpoint(string? nodeId)
+    {
+        if (string.IsNullOrWhiteSpace(nodeId))
+        {
+            return [];
+        }
+
+        var node = Nodes.FirstOrDefault(item => Comparer.Equals(item.Id, nodeId));
+        if (node is null || node.NodeKind != NodeKind.CompositeSubnetwork || string.IsNullOrWhiteSpace(node.ReferencedSubnetworkId))
+        {
+            return [];
+        }
+
+        var subnetwork = Subnetworks.FirstOrDefault(item => Comparer.Equals(item.Id, node.ReferencedSubnetworkId));
+        if (subnetwork is null)
+        {
+            return [];
+        }
+
+        return subnetwork.Network.Nodes
+            .Where(childNode => childNode.IsExternalInterface)
+            .Select(childNode => childNode.Id)
+            .OrderBy(id => id, Comparer)
+            .ToList();
+    }
+
     public void MoveNode(NodeViewModel node, double deltaX, double deltaY)
     {
         ArgumentNullException.ThrowIfNull(node);
@@ -1764,7 +1833,9 @@ public sealed class MainWindowViewModel : ObservableObject
             Edges.Clear();
             TrafficDefinitions.Clear();
             TrafficTypes.Clear();
+            Subnetworks.Clear();
             NodeIdOptions.Clear();
+            SubnetworkIdOptions.Clear();
             TrafficTypeNameOptions.Clear();
             VisibleAllocations.Clear();
             VisibleConsumerCostSummaries.Clear();
@@ -1783,12 +1854,18 @@ public sealed class MainWindowViewModel : ObservableObject
                 RegisterTrafficDefinition(definition);
             }
 
+            foreach (var subnetwork in network.Subnetworks ?? [])
+            {
+                Subnetworks.Add(subnetwork);
+            }
+
             foreach (var nodeModel in network.Nodes)
             {
                 RegisterNode(new NodeViewModel(nodeModel));
             }
 
             RefreshNodeIdOptions();
+            RefreshSubnetworkIdOptions();
 
             var nodeMap = CreateNodeMap();
             foreach (var edgeModel in network.Edges)
@@ -1874,6 +1951,7 @@ public sealed class MainWindowViewModel : ObservableObject
             DefaultAllocationMode = DefaultAllocationMode,
             SimulationSeed = simulationSeed,
             TrafficTypes = TrafficDefinitions.Select(definition => definition.ToModel()).ToList(),
+            Subnetworks = Subnetworks.Count == 0 ? null : Subnetworks.ToList(),
             Nodes = Nodes.Select(node => node.ToModel()).ToList(),
             Edges = Edges.Select(edge => edge.ToModel()).ToList()
         };
@@ -2080,6 +2158,11 @@ public sealed class MainWindowViewModel : ObservableObject
     private void RefreshNodeIdOptions()
     {
         SynchronizeCollection(NodeIdOptions, Nodes.Select(node => node.Id).OrderBy(id => id, Comparer));
+    }
+
+    private void RefreshSubnetworkIdOptions()
+    {
+        SynchronizeCollection(SubnetworkIdOptions, Subnetworks.Select(subnetwork => subnetwork.Id).OrderBy(id => id, Comparer));
     }
 
     private void RefreshTrafficTypeNameOptions()

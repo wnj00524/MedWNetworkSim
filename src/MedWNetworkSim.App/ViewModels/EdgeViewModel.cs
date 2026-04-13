@@ -21,7 +21,9 @@ public sealed class EdgeViewModel : ObservableObject
 
     private string id;
     private string fromNodeId;
+    private string? fromInterfaceNodeId;
     private string toNodeId;
+    private string? toInterfaceNodeId;
     private double time;
     private double cost;
     private double? capacity;
@@ -45,7 +47,9 @@ public sealed class EdgeViewModel : ObservableObject
     {
         id = model.Id;
         fromNodeId = model.FromNodeId;
+        fromInterfaceNodeId = model.FromInterfaceNodeId;
         toNodeId = model.ToNodeId;
+        toInterfaceNodeId = model.ToInterfaceNodeId;
         time = model.Time;
         cost = model.Cost;
         capacity = model.Capacity;
@@ -90,6 +94,22 @@ public sealed class EdgeViewModel : ObservableObject
         }
     }
 
+    public string? FromInterfaceNodeId
+    {
+        get => fromInterfaceNodeId;
+        set
+        {
+            if (!SetProperty(ref fromInterfaceNodeId, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(EndpointInterfaceLabel));
+            OnPropertyChanged(nameof(EdgeToolTipText));
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     public string ToNodeId
     {
         get => toNodeId;
@@ -100,6 +120,22 @@ public sealed class EdgeViewModel : ObservableObject
                 return;
             }
 
+            OnPropertyChanged(nameof(EdgeToolTipText));
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public string? ToInterfaceNodeId
+    {
+        get => toInterfaceNodeId;
+        set
+        {
+            if (!SetProperty(ref toInterfaceNodeId, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(EndpointInterfaceLabel));
             OnPropertyChanged(nameof(EdgeToolTipText));
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -262,6 +298,25 @@ public sealed class EdgeViewModel : ObservableObject
 
     public string RouteDetailLabel => $"{DirectionLabel} | time {Time:0.##} | cost {Cost:0.##}";
 
+    public string EndpointInterfaceLabel
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(FromInterfaceNodeId))
+            {
+                parts.Add($"from {FromInterfaceNodeId}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(ToInterfaceNodeId))
+            {
+                parts.Add($"to {ToInterfaceNodeId}");
+            }
+
+            return parts.Count == 0 ? string.Empty : $"interfaces {string.Join(" | ", parts)}";
+        }
+    }
+
     public string SummaryLabel => $"t {Time:0.##} | c {Cost:0.##} | tc {TotalCost:0.##}";
 
     public string CapacityLabel => Capacity.HasValue
@@ -281,6 +336,7 @@ public sealed class EdgeViewModel : ObservableObject
     public string EdgeToolTipText =>
         $"{Id}{Environment.NewLine}" +
         $"{FromNodeId} -> {ToNodeId} ({DirectionLabel}){Environment.NewLine}" +
+        $"{EndpointInterfaceLabel}{Environment.NewLine}" +
         $"Time {Time:0.##} | Cost {Cost:0.##} | Total {TotalCost:0.##}{Environment.NewLine}" +
         $"{CapacityDisplayLabel}{Environment.NewLine}" +
         $"Flow: {(HasSimulationDetails ? FlowSummaryLabel : "none visible")}{Environment.NewLine}" +
@@ -459,7 +515,9 @@ public sealed class EdgeViewModel : ObservableObject
         {
             Id = Id,
             FromNodeId = FromNodeId,
+            FromInterfaceNodeId = FromInterfaceNodeId,
             ToNodeId = ToNodeId,
+            ToInterfaceNodeId = ToInterfaceNodeId,
             Time = Time,
             Cost = Cost,
             Capacity = Capacity,

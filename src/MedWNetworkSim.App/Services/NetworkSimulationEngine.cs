@@ -18,6 +18,7 @@ public sealed class NetworkSimulationEngine
     public IReadOnlyList<TrafficSimulationOutcome> Simulate(NetworkModel network)
     {
         ArgumentNullException.ThrowIfNull(network);
+        network = HierarchicalNetworkProjection.ProjectForSimulation(network);
 
         var hasRecipeDependencies = HasStaticRecipeDependencies(network);
         var contexts = MixedRoutingAllocator.BuildStaticContexts(network, applyLocalAllocations: !hasRecipeDependencies).ToList();

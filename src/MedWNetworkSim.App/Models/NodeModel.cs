@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace MedWNetworkSim.App.Models;
 
@@ -21,6 +22,30 @@ public sealed class NodeModel
     /// Gets or sets the visual shape used to represent this node on the canvas.
     /// </summary>
     public NodeVisualShape Shape { get; set; } = NodeVisualShape.Square;
+
+    /// <summary>
+    /// Gets or sets whether this node is an ordinary graph node or a parent-side composite subnetwork instance.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public NodeKind NodeKind { get; set; }
+
+    /// <summary>
+    /// Gets or sets the embedded subnetwork id represented by this composite node.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ReferencedSubnetworkId { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether this child-network node can be used as a parent-facing interface.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool IsExternalInterface { get; set; }
+
+    /// <summary>
+    /// Gets or sets an optional display name for an exposed child-network interface.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? InterfaceName { get; set; }
 
     /// <summary>
     /// Gets or sets the optional horizontal canvas position of the node center.
@@ -66,4 +91,7 @@ public sealed class NodeModel
     /// Gets or sets the per-traffic roles and quantities for this node.
     /// </summary>
     public List<NodeTrafficProfile> TrafficProfiles { get; set; } = [];
+
+    [JsonIgnore]
+    public bool IsCompositeSubnetwork => NodeKind == NodeKind.CompositeSubnetwork;
 }

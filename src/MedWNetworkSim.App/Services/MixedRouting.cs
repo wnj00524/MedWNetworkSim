@@ -204,7 +204,7 @@ public static partial class MixedRoutingAllocator
     private static readonly ICapacityResolutionPolicy CapacityResolutionPolicy = new PriorityWeightedCapacityResolutionPolicy();
     private static IReadOnlyDictionary<string, List<GraphArc>> adjacency = new Dictionary<string, List<GraphArc>>(Comparer);
 
-    public static IReadOnlyList<RoutingTrafficContext> BuildStaticContexts(NetworkModel network)
+    public static IReadOnlyList<RoutingTrafficContext> BuildStaticContexts(NetworkModel network, bool applyLocalAllocations = true)
     {
         var definitionsByTraffic = network.TrafficTypes.ToDictionary(definition => definition.Name, definition => definition, Comparer);
         return GetOrderedTrafficNames(network)
@@ -212,7 +212,7 @@ public static partial class MixedRoutingAllocator
             {
                 var definition = definitionsByTraffic.GetValueOrDefault(trafficType)
                     ?? new TrafficTypeDefinition { Name = trafficType };
-                return BuildStaticContext(network, definition, network.SimulationSeed + (index * 997));
+                return BuildStaticContext(network, definition, network.SimulationSeed + (index * 997), applyLocalAllocations);
             })
             .ToList();
     }
@@ -282,7 +282,20 @@ public static partial class MixedRoutingAllocator
             }
         }
 
+        CopyRemainingCapacity(state.RemainingEdgeCapacity, remainingCapacityByEdgeId);
+        CopyRemainingCapacity(state.RemainingNodeCapacity, remainingTranshipmentCapacityByNodeId);
+
         return contexts.SelectMany(context => context.Allocations).ToList();
+    }
+
+    private static void CopyRemainingCapacity(
+        IReadOnlyDictionary<string, double> source,
+        IDictionary<string, double> target)
+    {
+        foreach (var pair in source)
+        {
+            target[pair.Key] = pair.Value;
+        }
     }
 
     public static List<FlowProposal> ProposeByScore(RoutingTrafficContext context, NetworkState state, bool deterministicBest, int round)
@@ -423,7 +436,7 @@ public static partial class MixedRoutingAllocator
         return result;
     }
 
-    private static RoutingTrafficContext BuildStaticContext(NetworkModel network, TrafficTypeDefinition definition, int seed)
+    private static RoutingTrafficContext BuildStaticContext(NetworkModel network, TrafficTypeDefinition definition, int seed, bool applyLocalAllocations)
     {
         var profilesByNodeId = network.Nodes.ToDictionary(
             node => node.Id,
@@ -456,7 +469,11 @@ public static partial class MixedRoutingAllocator
             TotalConsumption = demand.Values.Sum()
         };
 
-        ApplyLocalAllocations(context, period: 0);
+        if (applyLocalAllocations)
+        {
+            ApplyLocalAllocations(context, period: 0);
+        }
+
         return context;
     }
 

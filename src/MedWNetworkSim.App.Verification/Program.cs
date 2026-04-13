@@ -52,6 +52,8 @@ ScenarioAN_ReportRouteSelectionHighlightsCanvas();
 ScenarioAO_TimelineAndCanvasOnlyUpdateSurfaces();
 ScenarioAP_InspectorTabsAndManualCloseBehave();
 ScenarioAQ_EdgeToolTipAndReportEmptyStatesArePopulated();
+ScenarioAR_HierarchicalSubnetworkInterfacesRouteThroughChild();
+ScenarioAS_HierarchicalSubnetworkValidationRejectsInvalidInterfaces();
 
 Console.WriteLine("Verification passed.");
 
@@ -998,6 +1000,187 @@ static void ScenarioAQ_EdgeToolTipAndReportEmptyStatesArePopulated()
     }
 }
 
+static void ScenarioAR_HierarchicalSubnetworkInterfacesRouteThroughChild()
+{
+    var network = CreateRegionalNetworkWithCity("NorthGate", northCapacity: 2d, southCapacity: 5d);
+    var normalized = new NetworkFileService().NormalizeAndValidate(network);
+    var outcome = new NetworkSimulationEngine().Simulate(normalized).Single(item => item.TrafficType == "Wool");
+
+    AssertEqual(2d, outcome.TotalDelivered, "AR north-gate bottleneck delivery");
+    var allocation = outcome.Allocations.Single();
+    if (!allocation.PathNodeIds.Contains("sub:city:NorthGate") ||
+        !allocation.PathEdgeIds.Contains("sub:city:NorthWorkshop"))
+    {
+        throw new InvalidOperationException("AR import did not route through the selected city interface and internal city road.");
+    }
+
+    network = CreateRegionalNetworkWithCity("SouthGate", northCapacity: 2d, southCapacity: 5d);
+    normalized = new NetworkFileService().NormalizeAndValidate(network);
+    outcome = new NetworkSimulationEngine().Simulate(normalized).Single(item => item.TrafficType == "Wool");
+    AssertEqual(5d, outcome.TotalDelivered, "AR south-gate bottleneck delivery");
+
+    var twoCityNetwork = CreateRegionalNetworkWithCity("SouthGate", northCapacity: 2d, southCapacity: 5d);
+    twoCityNetwork.Subnetworks!.Add(new SubnetworkDefinition
+    {
+        Id = "city2",
+        DisplayName = "Second City",
+        Network = CreateCityNetwork("Second City", northCapacity: 3d, southCapacity: 4d)
+    });
+    twoCityNetwork.Nodes.Add(new NodeModel
+    {
+        Id = "CityTwo",
+        Name = "City Two",
+        NodeKind = NodeKind.CompositeSubnetwork,
+        ReferencedSubnetworkId = "city2"
+    });
+    twoCityNetwork.Nodes.Add(new NodeModel
+    {
+        Id = "DepotTwo",
+        Name = "Depot Two",
+        TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Wool", Production = 4d }]
+    });
+    twoCityNetwork.Edges.Add(new EdgeModel
+    {
+        Id = "DepotTwoCityTwo",
+        FromNodeId = "DepotTwo",
+        ToNodeId = "CityTwo",
+        ToInterfaceNodeId = "NorthGate",
+        Time = 1d,
+        Cost = 1d,
+        Capacity = 4d,
+        IsBidirectional = false
+    });
+
+    normalized = new NetworkFileService().NormalizeAndValidate(twoCityNetwork);
+    var projected = HierarchicalNetworkProjection.ProjectForSimulation(normalized);
+    if (!projected.Nodes.Any(node => node.Id == "sub:city:Workshop") ||
+        !projected.Nodes.Any(node => node.Id == "sub:city2:Workshop"))
+    {
+        throw new InvalidOperationException("AR two subnetworks did not project with independently scoped child node ids.");
+    }
+}
+
+static void ScenarioAS_HierarchicalSubnetworkValidationRejectsInvalidInterfaces()
+{
+    var network = CreateRegionalNetworkWithCity("Workshop", northCapacity: 2d, southCapacity: 5d);
+    AssertThrows(() => new NetworkFileService().NormalizeAndValidate(network), "AS non-interface endpoint");
+
+    var recursive = CreateRegionalNetworkWithCity("NorthGate", northCapacity: 2d, southCapacity: 5d);
+    recursive.Subnetworks![0].Network.Subnetworks =
+    [
+        new SubnetworkDefinition
+        {
+            Id = "nested",
+            DisplayName = "Nested",
+            Network = CreateCityNetwork("Nested", northCapacity: 1d, southCapacity: 1d)
+        }
+    ];
+    AssertThrows(() => new NetworkFileService().NormalizeAndValidate(recursive), "AS nested subnetwork");
+}
+
+static NetworkModel CreateRegionalNetworkWithCity(string interfaceNodeId, double northCapacity, double southCapacity)
+{
+    return new NetworkModel
+    {
+        Name = "Region",
+        TrafficTypes =
+        [
+            new TrafficTypeDefinition
+            {
+                Name = "Wool",
+                RoutingPreference = RoutingPreference.TotalCost,
+                AllocationMode = AllocationMode.GreedyBestRoute
+            }
+        ],
+        Subnetworks =
+        [
+            new SubnetworkDefinition
+            {
+                Id = "city",
+                DisplayName = "City",
+                Network = CreateCityNetwork("City", northCapacity, southCapacity)
+            }
+        ],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "Depot",
+                Name = "Depot",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Wool", Production = 5d }]
+            },
+            new NodeModel
+            {
+                Id = "City",
+                Name = "City",
+                NodeKind = NodeKind.CompositeSubnetwork,
+                ReferencedSubnetworkId = "city"
+            }
+        ],
+        Edges =
+        [
+            new EdgeModel
+            {
+                Id = "DepotCity",
+                FromNodeId = "Depot",
+                ToNodeId = "City",
+                ToInterfaceNodeId = interfaceNodeId,
+                Time = 1d,
+                Cost = 1d,
+                Capacity = 5d,
+                IsBidirectional = false
+            }
+        ]
+    };
+}
+
+static NetworkModel CreateCityNetwork(string name, double northCapacity, double southCapacity)
+{
+    return new NetworkModel
+    {
+        Name = name,
+        TrafficTypes =
+        [
+            new TrafficTypeDefinition
+            {
+                Name = "Wool",
+                RoutingPreference = RoutingPreference.TotalCost,
+                AllocationMode = AllocationMode.GreedyBestRoute
+            }
+        ],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "NorthGate",
+                Name = "North Gate",
+                IsExternalInterface = true,
+                InterfaceName = "Gate North",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Wool", CanTransship = true }]
+            },
+            new NodeModel
+            {
+                Id = "SouthGate",
+                Name = "South Gate",
+                IsExternalInterface = true,
+                InterfaceName = "Gate South",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Wool", CanTransship = true }]
+            },
+            new NodeModel
+            {
+                Id = "Workshop",
+                Name = "Workshop",
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Wool", Consumption = 5d }]
+            }
+        ],
+        Edges =
+        [
+            new EdgeModel { Id = "NorthWorkshop", FromNodeId = "NorthGate", ToNodeId = "Workshop", Time = 1d, Cost = 1d, Capacity = northCapacity, IsBidirectional = false },
+            new EdgeModel { Id = "SouthWorkshop", FromNodeId = "SouthGate", ToNodeId = "Workshop", Time = 1d, Cost = 1d, Capacity = southCapacity, IsBidirectional = false }
+        ]
+    };
+}
+
 static MainWindowViewModel CreateSampleViewModel()
 {
     var viewModel = new MainWindowViewModel();
@@ -1730,6 +1913,20 @@ static void AssertAtMost(double expectedMax, double actual, string label)
     {
         throw new InvalidOperationException($"{label}: expected at most {expectedMax}, actual {actual}.");
     }
+}
+
+static void AssertThrows(Action action, string label)
+{
+    try
+    {
+        action();
+    }
+    catch (InvalidOperationException)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException($"{label}: expected an InvalidOperationException.");
 }
 
 static void AssertResultAtMostConfiguredCapacity(NetworkModel network, TemporalNetworkSimulationEngine.TemporalSimulationStepResult result, string label)

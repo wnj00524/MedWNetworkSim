@@ -23,6 +23,10 @@ public sealed class NodeViewModel : ObservableObject
     private string id;
     private string name;
     private NodeVisualShape shape;
+    private NodeKind nodeKind;
+    private string? referencedSubnetworkId;
+    private bool isExternalInterface;
+    private string? interfaceName;
     private double x;
     private double y;
     private double? transhipmentCapacity;
@@ -48,6 +52,10 @@ public sealed class NodeViewModel : ObservableObject
         id = model.Id;
         name = model.Name;
         shape = model.Shape;
+        nodeKind = model.NodeKind;
+        referencedSubnetworkId = model.ReferencedSubnetworkId;
+        isExternalInterface = model.IsExternalInterface;
+        interfaceName = model.InterfaceName;
         x = model.X ?? 0d;
         y = model.Y ?? 0d;
         transhipmentCapacity = model.TranshipmentCapacity;
@@ -130,6 +138,8 @@ public sealed class NodeViewModel : ObservableObject
     public double Height => DefaultHeight;
 
     public IReadOnlyList<NodeVisualShape> ShapeOptions { get; } = Enum.GetValues<NodeVisualShape>();
+
+    public IReadOnlyList<NodeKind> NodeKindOptions { get; } = Enum.GetValues<NodeKind>();
 
     public double X
     {
@@ -215,6 +225,80 @@ public sealed class NodeViewModel : ObservableObject
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    public NodeKind NodeKind
+    {
+        get => nodeKind;
+        set
+        {
+            if (!SetProperty(ref nodeKind, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(IsCompositeSubnetwork));
+            OnPropertyChanged(nameof(CompositeSummaryLabel));
+            RaiseWorldbuilderSummaryPropertiesChanged();
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public bool IsCompositeSubnetwork => NodeKind == NodeKind.CompositeSubnetwork;
+
+    public string? ReferencedSubnetworkId
+    {
+        get => referencedSubnetworkId;
+        set
+        {
+            if (!SetProperty(ref referencedSubnetworkId, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(CompositeSummaryLabel));
+            RaiseWorldbuilderSummaryPropertiesChanged();
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public bool IsExternalInterface
+    {
+        get => isExternalInterface;
+        set
+        {
+            if (!SetProperty(ref isExternalInterface, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(InterfaceSummaryLabel));
+            RaiseWorldbuilderSummaryPropertiesChanged();
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public string? InterfaceName
+    {
+        get => interfaceName;
+        set
+        {
+            if (!SetProperty(ref interfaceName, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(InterfaceSummaryLabel));
+            DefinitionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public string CompositeSummaryLabel => IsCompositeSubnetwork
+        ? $"Composite: {(string.IsNullOrWhiteSpace(ReferencedSubnetworkId) ? "choose a subnetwork" : ReferencedSubnetworkId)}"
+        : string.Empty;
+
+    public string InterfaceSummaryLabel => IsExternalInterface
+        ? $"Interface: {(string.IsNullOrWhiteSpace(InterfaceName) ? Id : InterfaceName)}"
+        : string.Empty;
 
     public ObservableCollection<NodeTrafficProfileViewModel> TrafficProfiles { get; }
 
@@ -335,6 +419,16 @@ public sealed class NodeViewModel : ObservableObject
                 badges.Add("Relay");
             }
 
+            if (IsExternalInterface)
+            {
+                badges.Add("Interface");
+            }
+
+            if (IsCompositeSubnetwork)
+            {
+                badges.Add("Composite");
+            }
+
             return badges.Count == 0 ? ["Draft"] : badges;
         }
     }
@@ -366,6 +460,16 @@ public sealed class NodeViewModel : ObservableObject
             if (parts.Count == 0 && CanTransship)
             {
                 parts.Add("moves flows onward");
+            }
+
+            if (IsCompositeSubnetwork)
+            {
+                parts.Add("hosts a child network");
+            }
+
+            if (IsExternalInterface)
+            {
+                parts.Add("opens to a parent network");
             }
 
             return parts.Count == 0 ? "Add flows to define its role" : string.Join(" | ", parts);
@@ -490,6 +594,16 @@ public sealed class NodeViewModel : ObservableObject
                 $"Transhipment Capacity: {(TranshipmentCapacity.HasValue ? TranshipmentCapacity.Value.ToString("0.##") : "Unlimited")}"
             };
 
+            if (IsCompositeSubnetwork)
+            {
+                lines.Add(CompositeSummaryLabel);
+            }
+
+            if (IsExternalInterface)
+            {
+                lines.Add(InterfaceSummaryLabel);
+            }
+
             if (HasSimulationDetails)
             {
                 lines.Add($"Flow: {FlowSummaryLabel}");
@@ -542,6 +656,16 @@ public sealed class NodeViewModel : ObservableObject
                     : "moves goods onward without a fixed transhipment limit");
             }
 
+            if (IsCompositeSubnetwork)
+            {
+                parts.Add($"represents the child network {ReferencedSubnetworkId ?? "(unassigned)"}");
+            }
+
+            if (IsExternalInterface)
+            {
+                parts.Add($"is exposed as interface {InterfaceName ?? Id}");
+            }
+
             var activity = parts.Count == 0
                 ? "has no configured production, need, stockpile, or transhipment role yet"
                 : string.Join("; ", parts);
@@ -580,6 +704,16 @@ public sealed class NodeViewModel : ObservableObject
             if (CanTransship)
             {
                 reasons.Add("a routing hub");
+            }
+
+            if (IsCompositeSubnetwork)
+            {
+                reasons.Add("a composite child network");
+            }
+
+            if (IsExternalInterface)
+            {
+                reasons.Add("a parent-facing interface");
             }
 
             if (!string.IsNullOrWhiteSpace(ControllingActor))
@@ -677,6 +811,10 @@ public sealed class NodeViewModel : ObservableObject
             Id = Id,
             Name = Name,
             Shape = Shape,
+            NodeKind = NodeKind,
+            ReferencedSubnetworkId = ReferencedSubnetworkId,
+            IsExternalInterface = IsExternalInterface,
+            InterfaceName = InterfaceName,
             X = X,
             Y = Y,
             TranshipmentCapacity = TranshipmentCapacity,

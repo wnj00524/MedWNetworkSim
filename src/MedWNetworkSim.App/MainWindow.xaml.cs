@@ -78,6 +78,24 @@ public partial class MainWindow : Window
         window.ShowDialog();
     }
 
+    private void EmbedSubnetwork_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Embed subnetwork JSON",
+            Filter = "JSON network (*.json)|*.json|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        ExecuteWithErrorHandling(() => ViewModel.AddSubnetworkFromFile(dialog.FileName));
+    }
+
     private void NetworkProperties_Click(object sender, RoutedEventArgs e)
     {
         var window = new NetworkPropertiesWindow(ViewModel)

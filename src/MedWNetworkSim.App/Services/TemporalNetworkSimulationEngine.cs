@@ -10,6 +10,7 @@ public sealed class TemporalNetworkSimulationEngine
     public TemporalSimulationState Initialize(NetworkModel network)
     {
         ArgumentNullException.ThrowIfNull(network);
+        network = HierarchicalNetworkProjection.ProjectForSimulation(network);
 
         var state = new TemporalSimulationState();
         foreach (var node in network.Nodes)
@@ -26,6 +27,7 @@ public sealed class TemporalNetworkSimulationEngine
     public TemporalSimulationStepResult Advance(NetworkModel network, TemporalSimulationState? currentState)
     {
         ArgumentNullException.ThrowIfNull(network);
+        network = HierarchicalNetworkProjection.ProjectForSimulation(network);
 
         var state = currentState ?? Initialize(network);
         var nextPeriod = state.CurrentPeriod + 1;

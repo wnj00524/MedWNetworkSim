@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace MedWNetworkSim.App.Models;
 
 /// <summary>
@@ -16,9 +18,21 @@ public sealed class EdgeModel
     public string FromNodeId { get; set; } = string.Empty;
 
     /// <summary>
+    /// Gets or sets the exposed child interface used when the source endpoint is a composite subnetwork node.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? FromInterfaceNodeId { get; set; }
+
+    /// <summary>
     /// Gets or sets the destination node identifier.
     /// </summary>
     public string ToNodeId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the exposed child interface used when the target endpoint is a composite subnetwork node.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ToInterfaceNodeId { get; set; }
 
     /// <summary>
     /// Gets or sets the time cost used when traffic prioritizes speed or total cost.

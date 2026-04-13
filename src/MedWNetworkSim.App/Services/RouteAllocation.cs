@@ -74,6 +74,11 @@ public sealed class RouteAllocation
     public double BidCostPerUnit { get; init; }
 
     /// <summary>
+    /// Gets the producer-side unit cost before this route's transit and bid costs are applied.
+    /// </summary>
+    public double SourceUnitCostPerUnit { get; init; }
+
+    /// <summary>
     /// Gets the full per-unit delivered movement cost, including any bid premium.
     /// </summary>
     public double DeliveredCostPerUnit { get; init; }

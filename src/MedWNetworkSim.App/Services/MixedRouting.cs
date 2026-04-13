@@ -79,6 +79,7 @@ public sealed class RoutingTrafficContext
     public IReadOnlyDictionary<string, NodeModel> NodesById { get; init; } = new Dictionary<string, NodeModel>(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyDictionary<string, NodeTrafficProfile?> ProfilesByNodeId { get; init; } = new Dictionary<string, NodeTrafficProfile?>(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, double> Supply { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, double> SupplyUnitCosts { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, double> Demand { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public double TotalProduction { get; init; }
     public double TotalConsumption { get; init; }
@@ -353,7 +354,8 @@ public static partial class MixedRoutingAllocator
             context.CapacityBidPerUnit,
             quantity,
             flow.Priority);
-        var deliveredCostPerUnit = flow.EffectiveCost + bidCostPerUnit;
+        var sourceUnitCostPerUnit = context.SupplyUnitCosts.GetValueOrDefault(flow.ProducerNodeId);
+        var deliveredCostPerUnit = sourceUnitCostPerUnit + flow.EffectiveCost + bidCostPerUnit;
         context.Allocations.Add(new RouteAllocation
         {
             Period = period,
@@ -369,6 +371,7 @@ public static partial class MixedRoutingAllocator
             TotalTime = flow.EffectiveTime,
             TotalCost = flow.EffectiveCost,
             BidCostPerUnit = bidCostPerUnit,
+            SourceUnitCostPerUnit = sourceUnitCostPerUnit,
             DeliveredCostPerUnit = deliveredCostPerUnit,
             TotalMovementCost = deliveredCostPerUnit * quantity,
             TotalScore = flow.Score,
@@ -468,6 +471,7 @@ public static partial class MixedRoutingAllocator
             }
 
             var node = context.NodesById[nodeId];
+            var sourceUnitCostPerUnit = context.SupplyUnitCosts.GetValueOrDefault(nodeId);
             context.Allocations.Add(new RouteAllocation
             {
                 Period = period,
@@ -480,6 +484,9 @@ public static partial class MixedRoutingAllocator
                 ConsumerName = node.Name,
                 Quantity = quantity,
                 IsLocalSupply = true,
+                SourceUnitCostPerUnit = sourceUnitCostPerUnit,
+                DeliveredCostPerUnit = sourceUnitCostPerUnit,
+                TotalMovementCost = sourceUnitCostPerUnit * quantity,
                 PathNodeNames = [node.Name],
                 PathNodeIds = [nodeId],
                 PathEdgeIds = []

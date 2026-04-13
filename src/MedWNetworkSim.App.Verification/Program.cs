@@ -54,6 +54,7 @@ ScenarioAP_InspectorTabsAndManualCloseBehave();
 ScenarioAQ_EdgeToolTipAndReportEmptyStatesArePopulated();
 ScenarioAR_HierarchicalSubnetworkInterfacesRouteThroughChild();
 ScenarioAS_HierarchicalSubnetworkValidationRejectsInvalidInterfaces();
+ScenarioAT_EmbedSubnetworkPlacesCompositeNode();
 
 Console.WriteLine("Verification passed.");
 
@@ -1076,6 +1077,59 @@ static void ScenarioAS_HierarchicalSubnetworkValidationRejectsInvalidInterfaces(
         }
     ];
     AssertThrows(() => new NetworkFileService().NormalizeAndValidate(recursive), "AS nested subnetwork");
+}
+
+static void ScenarioAT_EmbedSubnetworkPlacesCompositeNode()
+{
+    var tempDirectory = Path.Combine(Path.GetTempPath(), "MedWNetworkSimVerification", Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(tempDirectory);
+    var childPath = Path.Combine(tempDirectory, "child-city.json");
+    var parentPath = Path.Combine(tempDirectory, "parent-region.json");
+    var fileService = new NetworkFileService();
+
+    try
+    {
+        fileService.Save(new NetworkModel
+        {
+            Name = "Child City",
+            Nodes =
+            [
+                new NodeModel { Id = "Plaza", Name = "Plaza" }
+            ]
+        }, childPath);
+
+        var viewModel = new MainWindowViewModel();
+        viewModel.CreateNewNetwork();
+        viewModel.AddSubnetworkFromFile(childPath);
+
+        var subnetwork = viewModel.Subnetworks.Single(item => item.DisplayName == "Child City");
+        var compositeNode = viewModel.Nodes.Single(node => node.NodeKind == NodeKind.CompositeSubnetwork);
+        if (!ReferenceEquals(viewModel.SelectedNode, compositeNode) ||
+            !StringComparer.OrdinalIgnoreCase.Equals(compositeNode.ReferencedSubnetworkId, subnetwork.Id))
+        {
+            throw new InvalidOperationException("AT embed workflow did not select a composite node referencing the new subnetwork.");
+        }
+
+        if (!viewModel.StatusMessage.Contains("exposes no external interface nodes", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("AT embed workflow did not warn when the child network had no external interfaces.");
+        }
+
+        viewModel.SaveToFile(parentPath);
+        var reloaded = fileService.Load(parentPath);
+        if (reloaded.Subnetworks?.SingleOrDefault()?.Id != subnetwork.Id ||
+            reloaded.Nodes.SingleOrDefault(node => node.NodeKind == NodeKind.CompositeSubnetwork)?.ReferencedSubnetworkId != subnetwork.Id)
+        {
+            throw new InvalidOperationException("AT saved parent network did not preserve the composite node and subnetwork reference.");
+        }
+    }
+    finally
+    {
+        if (Directory.Exists(tempDirectory))
+        {
+            Directory.Delete(tempDirectory, recursive: true);
+        }
+    }
 }
 
 static NetworkModel CreateRegionalNetworkWithCity(string interfaceNodeId, double northCapacity, double southCapacity)

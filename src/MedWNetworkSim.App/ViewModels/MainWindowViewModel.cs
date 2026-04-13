@@ -1254,16 +1254,23 @@ public sealed class MainWindowViewModel : ObservableObject
         }
 
         var subnetworkId = GetNextUniqueName(baseId, Subnetworks.Select(subnetwork => subnetwork.Id));
-        Subnetworks.Add(new SubnetworkDefinition
+        var subnetwork = new SubnetworkDefinition
         {
             Id = subnetworkId,
             DisplayName = child.Name,
             Network = child
-        });
+        };
+        Subnetworks.Add(subnetwork);
 
-        RefreshSubnetworkIdOptions();
-        MarkDirty($"Embedded subnetwork '{child.Name}'.");
-        StatusMessage = $"Embedded subnetwork '{child.Name}' as '{subnetworkId}'.";
+        var node = AddCompositeSubnetworkNode(subnetwork);
+        var interfaceCount = child.Nodes.Count(childNode => childNode.IsExternalInterface);
+        var statusMessage = $"Embedded subnetwork '{child.Name}' as '{subnetworkId}' and placed composite node '{node.Name}'.";
+        if (interfaceCount == 0)
+        {
+            statusMessage += " The child network currently exposes no external interface nodes.";
+        }
+
+        RefreshDerivedStateAfterStructureChange(statusMessage);
     }
 
     public void AddNodeAt(double? x, double? y)
@@ -1316,6 +1323,17 @@ public sealed class MainWindowViewModel : ObservableObject
             template is null
                 ? "Added a new node."
                 : $"Added a new {template.DisplayName.ToLowerInvariant()} place from template.");
+    }
+
+    private NodeViewModel AddCompositeSubnetworkNode(SubnetworkDefinition subnetwork)
+    {
+        var nodeModel = CreateCompositeSubnetworkNodeModel(subnetwork, Nodes.Count + 1);
+        var node = new NodeViewModel(nodeModel);
+
+        RegisterNode(node);
+        SelectedNode = node;
+        SelectedNodeTrafficProfile = node.TrafficProfiles.FirstOrDefault();
+        return node;
     }
 
     private void ApplyDemographicDemandPreset(NodeViewModel node, DemographicDemandPreset preset)
@@ -1776,6 +1794,29 @@ public sealed class MainWindowViewModel : ObservableObject
         };
     }
 
+    private NodeModel CreateCompositeSubnetworkNodeModel(SubnetworkDefinition subnetwork, int nodeIndex)
+    {
+        var baseName = string.IsNullOrWhiteSpace(subnetwork.DisplayName)
+            ? subnetwork.Id
+            : subnetwork.DisplayName.Trim();
+        if (string.IsNullOrWhiteSpace(baseName))
+        {
+            baseName = "Subnetwork";
+        }
+
+        return new NodeModel
+        {
+            Id = GetNextUniqueName("N", Nodes.Select(item => item.Id)),
+            Name = GetNextUniqueName(baseName, Nodes.Select(item => item.Name)),
+            Shape = NodeVisualShape.Building,
+            NodeKind = NodeKind.CompositeSubnetwork,
+            ReferencedSubnetworkId = subnetwork.Id,
+            X = 220d + ((nodeIndex - 1) % 4 * 220d),
+            Y = 180d + ((nodeIndex - 1) / 4 * 170d),
+            TrafficProfiles = []
+        };
+    }
+
     private TrafficTypeDefinitionEditorViewModel EnsureTrafficDefinition(string trafficTypeName)
     {
         var normalizedName = trafficTypeName.Trim();
@@ -2130,6 +2171,7 @@ public sealed class MainWindowViewModel : ObservableObject
     {
         // Centralize all the "network shape changed" refresh work so the UI stays consistent after edits.
         RefreshNodeIdOptions();
+        RefreshSubnetworkIdOptions();
         RefreshTrafficTypeNameOptions();
         RefreshEdgeBindings();
         RefreshTrafficSummariesFromCurrentState();

@@ -207,6 +207,7 @@ The project includes a bundled medieval city sample network for exploration. Use
 
 - [CLI Reference](docs/CLI_REFERENCE.md)
 - [Network Authoring Guide](docs/NETWORK_AUTHORING.md)
+- [Network JSON Reference](docs/NETWORK_JSON_REFERENCE.md)
 
 ## Command-line highlights
 

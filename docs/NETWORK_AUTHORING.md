@@ -304,6 +304,8 @@ A node can store traffic, but that is separate from whether it produces, consume
 - version control
 - manual review of the data structure
 
+For exact JSON property names, enum values, validation rules, and a compact hand-authored example, see [Network JSON Reference](NETWORK_JSON_REFERENCE.md).
+
 ### Use the CLI when you want:
 - repeatable loop-length changes
 - repeatable windows and recipe inputs

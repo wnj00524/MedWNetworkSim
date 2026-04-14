@@ -99,11 +99,15 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public MainWindowViewModel()
     {
-        AppThemeManager.ApplyTheme(selectedTheme);
-        Terminology.IsWorldbuilderMode = isWorldbuilderMode;
-        LayersPanel.LayersChanged += HandleLayersChanged;
-        ReportsDrawer.RouteSelected += HandleReportRouteSelected;
-        CreateNewNetwork();
+         InspectorPanel = new InspectorPanelViewModel(
+        GetCompositeInterfaceSummaries,
+        GetCompositeInterfaceSummary);
+
+    AppThemeManager.ApplyTheme(selectedTheme);
+    Terminology.IsWorldbuilderMode = isWorldbuilderMode;
+    LayersPanel.LayersChanged += HandleLayersChanged;
+    ReportsDrawer.RouteSelected += HandleReportRouteSelected;
+    CreateNewNetwork();
     }
 
     public ObservableCollection<NodeViewModel> Nodes { get; } = [];
@@ -130,7 +134,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public LayersPanelViewModel LayersPanel { get; } = new();
 
-    public InspectorPanelViewModel InspectorPanel { get; } = new();
+    public InspectorPanelViewModel InspectorPanel { get; }
 
     public ReportsDrawerViewModel ReportsDrawer { get; } = new();
 
@@ -1646,6 +1650,131 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
         SelectedEdge = null;
         RefreshDerivedStateAfterStructureChange("Removed the selected edge.");
     }
+
+    public IReadOnlyList<string> GetCompositeInterfaceSummaries(string? parentCompositeNodeId)
+{
+    if (string.IsNullOrWhiteSpace(parentCompositeNodeId))
+    {
+        return [];
+    }
+
+    var parentNode = Nodes.FirstOrDefault(item => Comparer.Equals(item.Id, parentCompositeNodeId));
+    if (parentNode is null || !parentNode.IsCompositeSubnetwork || string.IsNullOrWhiteSpace(parentNode.ReferencedSubnetworkId))
+    {
+        return [];
+    }
+
+    var subnetwork = Subnetworks.FirstOrDefault(item => Comparer.Equals(item.Id, parentNode.ReferencedSubnetworkId));
+    if (subnetwork?.Network?.Nodes is null)
+    {
+        return [];
+    }
+
+    return subnetwork.Network.Nodes
+        .Where(childNode => childNode.IsExternalInterface)
+        .OrderBy(childNode => GetInterfaceDisplayName(childNode), Comparer)
+        .Select(BuildCompositeInterfaceSummaryLine)
+        .ToList();
+}
+
+public string? GetCompositeInterfaceSummary(string? parentCompositeNodeId, string? childInterfaceNodeId)
+{
+    if (string.IsNullOrWhiteSpace(parentCompositeNodeId) || string.IsNullOrWhiteSpace(childInterfaceNodeId))
+    {
+        return null;
+    }
+
+    var parentNode = Nodes.FirstOrDefault(item => Comparer.Equals(item.Id, parentCompositeNodeId));
+    if (parentNode is null || !parentNode.IsCompositeSubnetwork || string.IsNullOrWhiteSpace(parentNode.ReferencedSubnetworkId))
+    {
+        return null;
+    }
+
+    var subnetwork = Subnetworks.FirstOrDefault(item => Comparer.Equals(item.Id, parentNode.ReferencedSubnetworkId));
+    var childNode = subnetwork?.Network?.Nodes?.FirstOrDefault(node =>
+        Comparer.Equals(node.Id, childInterfaceNodeId) && node.IsExternalInterface);
+
+    return childNode is null
+        ? null
+        : BuildCompositeInterfaceSummaryLine(childNode);
+}
+
+private string BuildCompositeInterfaceSummaryLine(NodeModel childNode)
+{
+    var displayName = GetInterfaceDisplayName(childNode);
+    var parts = new List<string>();
+
+    var produced = childNode.TrafficProfiles
+        .Where(profile => profile.Production > Epsilon)
+        .Select(profile => profile.TrafficType)
+        .Where(name => !string.IsNullOrWhiteSpace(name))
+        .Distinct(Comparer)
+        .OrderBy(name => name, Comparer)
+        .ToList();
+
+    var consumed = childNode.TrafficProfiles
+        .Where(profile => profile.Consumption > Epsilon)
+        .Select(profile => profile.TrafficType)
+        .Where(name => !string.IsNullOrWhiteSpace(name))
+        .Distinct(Comparer)
+        .OrderBy(name => name, Comparer)
+        .ToList();
+
+    var stored = childNode.TrafficProfiles
+        .Where(profile => profile.IsStore)
+        .Select(profile => profile.TrafficType)
+        .Where(name => !string.IsNullOrWhiteSpace(name))
+        .Distinct(Comparer)
+        .OrderBy(name => name, Comparer)
+        .ToList();
+
+    var relays = childNode.TrafficProfiles.Any(profile => profile.CanTransship);
+
+    if (produced.Count > 0)
+    {
+        parts.Add($"produces {FormatInterfaceTrafficList(produced)}");
+    }
+
+    if (consumed.Count > 0)
+    {
+        parts.Add($"needs {FormatInterfaceTrafficList(consumed)}");
+    }
+
+    if (stored.Count > 0)
+    {
+        parts.Add($"stores {FormatInterfaceTrafficList(stored)}");
+    }
+
+    if (relays)
+    {
+        parts.Add("relays");
+    }
+
+    if (parts.Count == 0)
+    {
+        parts.Add("no production, need, storage, or relay role configured");
+    }
+
+    return $"{childNode.Id} ({displayName}): {string.Join("; ", parts)}";
+}
+
+private static string GetInterfaceDisplayName(NodeModel childNode)
+{
+    return string.IsNullOrWhiteSpace(childNode.InterfaceName)
+        ? childNode.Id
+        : childNode.InterfaceName.Trim();
+}
+
+private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
+{
+    return items.Count switch
+    {
+        0 => string.Empty,
+        1 => items[0],
+        2 => $"{items[0]} and {items[1]}",
+        _ => $"{string.Join(", ", items.Take(items.Count - 1))}, and {items[^1]}"
+    };
+}
 
     public IReadOnlyList<string> GetInterfaceNodeOptionsForEdgeEndpoint(string? nodeId)
     {

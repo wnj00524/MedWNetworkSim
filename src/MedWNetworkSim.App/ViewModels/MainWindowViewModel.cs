@@ -58,6 +58,8 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly List<RouteAllocationRowViewModel> allAllocations = [];
     private readonly List<ConsumerCostSummaryRowViewModel> allConsumerCostSummaries = [];
 
+    private bool isNormalizingEdgeInterfaces;
+
     private string activeFileLabel = "Blank world";
     private string? currentFilePath;
     private string networkName = "Untitled World";
@@ -228,6 +230,49 @@ public sealed class MainWindowViewModel : ObservableObject
         get => selectedWorldbuilderScenario;
         set => SetProperty(ref selectedWorldbuilderScenario, value);
     }
+
+    private void NormalizeEdgeInterfaceBindings(EdgeViewModel edge)
+{
+    if (edge is null)
+    {
+        return;
+    }
+
+    isNormalizingEdgeInterfaces = true;
+
+    try
+    {
+        edge.FromInterfaceNodeId = NormalizeEdgeEndpointInterface(edge.FromNodeId, edge.FromInterfaceNodeId);
+        edge.ToInterfaceNodeId = NormalizeEdgeEndpointInterface(edge.ToNodeId, edge.ToInterfaceNodeId);
+    }
+    finally
+    {
+        isNormalizingEdgeInterfaces = false;
+    }
+}
+
+private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentInterfaceNodeId)
+{
+    var options = GetInterfaceNodeOptionsForEdgeEndpoint(nodeId);
+    if (options.Count == 0)
+    {
+        // Non-composite endpoint, or composite with no exposed interfaces.
+        return null;
+    }
+
+    if (!string.IsNullOrWhiteSpace(currentInterfaceNodeId))
+    {
+        var exactMatch = options.FirstOrDefault(option => Comparer.Equals(option, currentInterfaceNodeId));
+        if (exactMatch is not null)
+        {
+            // Preserve the existing valid choice and normalize its casing/text.
+            return exactMatch;
+        }
+    }
+
+    // Auto-pick only when the composite has exactly one exposed interface.
+    return options.Count == 1 ? options[0] : null;
+}
 
     public bool IsWorldbuilderMode
     {

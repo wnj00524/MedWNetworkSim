@@ -1568,29 +1568,31 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
 
     public void AddEdge()
     {
-        EnsureNetworkExists();
+         EnsureNetworkExists();
 
-        if (Nodes.Count < 2)
+    if (Nodes.Count < 2)
+    {
+        throw new InvalidOperationException("Add at least two nodes before creating an edge.");
+    }
+
+    var edge = new EdgeViewModel(
+        new EdgeModel
         {
-            throw new InvalidOperationException("Add at least two nodes before creating an edge.");
-        }
+            Id = GetNextUniqueName("E", Edges.Select(item => item.Id)),
+            FromNodeId = Nodes[0].Id,
+            ToNodeId = Nodes[1].Id,
+            Time = 1d,
+            Cost = 1d,
+            IsBidirectional = true
+        },
+        Nodes[0],
+        Nodes[1]);
 
-        var edge = new EdgeViewModel(
-            new EdgeModel
-            {
-                Id = GetNextUniqueName("E", Edges.Select(item => item.Id)),
-                FromNodeId = Nodes[0].Id,
-                ToNodeId = Nodes[1].Id,
-                Time = 1d,
-                Cost = 1d,
-                IsBidirectional = true
-            },
-            Nodes[0],
-            Nodes[1]);
+    NormalizeEdgeInterfaceBindings(edge);
 
-        RegisterEdge(edge);
-        SelectedEdge = edge;
-        RefreshDerivedStateAfterStructureChange("Added a new edge.");
+    RegisterEdge(edge);
+    SelectedEdge = edge;
+    RefreshDerivedStateAfterStructureChange("Added a new edge.");
     }
 
     public void AddEdgeBetween(NodeViewModel fromNode, NodeViewModel toNode)
@@ -1601,32 +1603,34 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
     public void AddEdgeBetween(NodeViewModel fromNode, NodeViewModel toNode, bool isBidirectional)
     {
         ArgumentNullException.ThrowIfNull(fromNode);
-        ArgumentNullException.ThrowIfNull(toNode);
+    ArgumentNullException.ThrowIfNull(toNode);
 
-        EnsureNetworkExists();
+    EnsureNetworkExists();
 
-        if (Comparer.Equals(fromNode.Id, toNode.Id))
+    if (Comparer.Equals(fromNode.Id, toNode.Id))
+    {
+        throw new InvalidOperationException("Choose two different nodes to create an edge.");
+    }
+
+    var edge = new EdgeViewModel(
+        new EdgeModel
         {
-            throw new InvalidOperationException("Choose two different nodes to create an edge.");
-        }
+            Id = GetNextUniqueName("E", Edges.Select(item => item.Id)),
+            FromNodeId = fromNode.Id,
+            ToNodeId = toNode.Id,
+            Time = 1d,
+            Cost = 1d,
+            IsBidirectional = isBidirectional
+        },
+        fromNode,
+        toNode);
 
-        var edge = new EdgeViewModel(
-            new EdgeModel
-            {
-                Id = GetNextUniqueName("E", Edges.Select(item => item.Id)),
-                FromNodeId = fromNode.Id,
-                ToNodeId = toNode.Id,
-                Time = 1d,
-                Cost = 1d,
-                IsBidirectional = isBidirectional
-            },
-            fromNode,
-            toNode);
+    NormalizeEdgeInterfaceBindings(edge);
 
-        RegisterEdge(edge);
-        SelectedEdge = edge;
-        var edgeDirectionLabel = isBidirectional ? "bidirectional" : "one-way";
-        RefreshDerivedStateAfterStructureChange($"Added a {edgeDirectionLabel} edge from '{fromNode.Name}' to '{toNode.Name}'.");
+    RegisterEdge(edge);
+    SelectedEdge = edge;
+    var edgeDirectionLabel = isBidirectional ? "bidirectional" : "one-way";
+    RefreshDerivedStateAfterStructureChange($"Added a {edgeDirectionLabel} edge from '{fromNode.Name}' to '{toNode.Name}'.");
     }
 
     public void RemoveSelectedEdge()
@@ -2060,8 +2064,9 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
 
     private void RegisterEdge(EdgeViewModel edge)
     {
-        edge.DefinitionChanged += HandleEdgeDefinitionChanged;
-        Edges.Add(edge);
+          NormalizeEdgeInterfaceBindings(edge);
+    edge.DefinitionChanged += HandleEdgeDefinitionChanged;
+    Edges.Add(edge);
     }
 
     private void UnregisterEdge(EdgeViewModel edge)
@@ -2124,7 +2129,17 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
 
     private void HandleEdgeDefinitionChanged(object? sender, EventArgs e)
     {
-        RefreshDerivedStateAfterEdgeChange("Updated edge data.");
+            if (isNormalizingEdgeInterfaces)
+    {
+        return;
+    }
+
+    if (sender is EdgeViewModel edge)
+    {
+        NormalizeEdgeInterfaceBindings(edge);
+    }
+
+    RefreshDerivedStateAfterEdgeChange("Updated edge data.");
     }
 
     private void HandleSelectedNodeTrafficProfilePropertyChanged(object? sender, PropertyChangedEventArgs e)

@@ -5,6 +5,9 @@ namespace MedWNetworkSim.App.ViewModels;
 
 public sealed class InspectorPanelViewModel : ObservableObject
 {
+    private readonly Func<string?, IReadOnlyList<string>> getCompositeInterfaceSummaries;
+    private readonly Func<string?, string?, string?> getCompositeInterfaceSummary;
+
     private bool isOpen;
     private string title = "Inspector";
     private string summaryText = "Select a node, edge, traffic type, or route to inspect it.";
@@ -14,6 +17,16 @@ public sealed class InspectorPanelViewModel : ObservableObject
     private string timelineText = "No selection yet.";
     private InspectorTab selectedTab = InspectorTab.Summary;
     private object? selectedObject;
+
+    public InspectorPanelViewModel(
+        Func<string?, IReadOnlyList<string>> getCompositeInterfaceSummaries,
+        Func<string?, string?, string?> getCompositeInterfaceSummary)
+    {
+        this.getCompositeInterfaceSummaries = getCompositeInterfaceSummaries
+            ?? throw new ArgumentNullException(nameof(getCompositeInterfaceSummaries));
+        this.getCompositeInterfaceSummary = getCompositeInterfaceSummary
+            ?? throw new ArgumentNullException(nameof(getCompositeInterfaceSummary));
+    }
 
     public bool IsOpen
     {
@@ -99,17 +112,49 @@ public sealed class InspectorPanelViewModel : ObservableObject
     {
         SelectedObject = node;
         Title = $"Node: {node.Name}";
-        SummaryText = $"{node.Name} ({node.Id}){Environment.NewLine}{node.FullTrafficSummary}";
+
+        var summaryLines = new List<string>
+        {
+            $"{node.Name} ({node.Id})",
+            node.FullTrafficSummary
+        };
+
+        var interfaceSummaries = node.IsCompositeSubnetwork
+            ? getCompositeInterfaceSummaries(node.Id)
+            : [];
+
+        if (interfaceSummaries.Count > 0)
+        {
+            summaryLines.Add(string.Empty);
+            summaryLines.Add("Subnetwork interfaces");
+            summaryLines.AddRange(interfaceSummaries.Select(line => $"- {line}"));
+        }
+
+        SummaryText = string.Join(Environment.NewLine, summaryLines);
+
         FlowsText = node.HasSimulationDetails
             ? node.FlowSummaryLabel
             : "No routed flow has been visualized for this node yet.";
+
         CapacityText = $"{node.TranshipmentCapacityLabel}{Environment.NewLine}{node.TranshipmentUsageLabel}";
-        RoutingText = node.TrafficProfiles.Count == 0
-            ? "No traffic roles are configured for this node."
-            : string.Join(Environment.NewLine, node.TrafficProfiles.Select(profile => $"{profile.TrafficType}: {profile.RoleSummary}"));
+
+        var routingLines = node.TrafficProfiles.Count == 0
+            ? new List<string> { "No traffic roles are configured for this node." }
+            : node.TrafficProfiles.Select(profile => $"{profile.TrafficType}: {profile.RoleSummary}").ToList();
+
+        if (interfaceSummaries.Count > 0)
+        {
+            routingLines.Add(string.Empty);
+            routingLines.Add("Interface contracts");
+            routingLines.AddRange(interfaceSummaries.Select(line => $"- {line}"));
+        }
+
+        RoutingText = string.Join(Environment.NewLine, routingLines);
+
         TimelineText = node.HasTimelineDetails
             ? node.TimelineSummaryLabel
             : "No inventory or backlog is visible for the current period.";
+
         SelectedTab = InspectorTab.Summary;
         IsOpen = open;
     }
@@ -118,15 +163,43 @@ public sealed class InspectorPanelViewModel : ObservableObject
     {
         SelectedObject = edge;
         Title = $"Edge: {edge.Id}";
+
         SummaryText = $"{edge.Id}: {edge.FromNodeId} -> {edge.ToNodeId}{Environment.NewLine}{edge.DirectionLabel}{Environment.NewLine}{edge.SummaryLabel}";
+
         FlowsText = edge.HasSimulationDetails
             ? edge.FlowSummaryLabel
             : "No routed movement is currently visible on this edge.";
+
         CapacityText = $"{edge.CapacityDisplayLabel}{Environment.NewLine}Utilization: {edge.UtilizationPercentLabel}";
-        RoutingText = $"Base route segment: {edge.FromNodeId} -> {edge.ToNodeId}{Environment.NewLine}{edge.DirectionLabel}";
+
+        var routingLines = new List<string>
+        {
+            $"Base route segment: {edge.FromNodeId} -> {edge.ToNodeId}",
+            edge.DirectionLabel
+        };
+
+        var sourceInterfaceSummary = getCompositeInterfaceSummary(edge.FromNodeId, edge.FromInterfaceNodeId);
+        if (!string.IsNullOrWhiteSpace(sourceInterfaceSummary))
+        {
+            routingLines.Add(string.Empty);
+            routingLines.Add("Source interface");
+            routingLines.Add($"- {sourceInterfaceSummary}");
+        }
+
+        var targetInterfaceSummary = getCompositeInterfaceSummary(edge.ToNodeId, edge.ToInterfaceNodeId);
+        if (!string.IsNullOrWhiteSpace(targetInterfaceSummary))
+        {
+            routingLines.Add(string.Empty);
+            routingLines.Add("Target interface");
+            routingLines.Add($"- {targetInterfaceSummary}");
+        }
+
+        RoutingText = string.Join(Environment.NewLine, routingLines);
+
         TimelineText = edge.HasSimulationDetails
             ? "Current period uses the visible flow and capacity state shown on the canvas."
             : "No temporal flow is currently visible on this edge.";
+
         SelectedTab = InspectorTab.Summary;
         IsOpen = open;
     }

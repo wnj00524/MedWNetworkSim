@@ -58,6 +58,8 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly List<RouteAllocationRowViewModel> allAllocations = [];
     private readonly List<ConsumerCostSummaryRowViewModel> allConsumerCostSummaries = [];
 
+    private bool isNormalizingEdgeInterfaces;
+
     private string activeFileLabel = "Blank world";
     private string? currentFilePath;
     private string networkName = "Untitled World";
@@ -228,6 +230,49 @@ public sealed class MainWindowViewModel : ObservableObject
         get => selectedWorldbuilderScenario;
         set => SetProperty(ref selectedWorldbuilderScenario, value);
     }
+
+    private void NormalizeEdgeInterfaceBindings(EdgeViewModel edge)
+{
+    if (edge is null)
+    {
+        return;
+    }
+
+    isNormalizingEdgeInterfaces = true;
+
+    try
+    {
+        edge.FromInterfaceNodeId = NormalizeEdgeEndpointInterface(edge.FromNodeId, edge.FromInterfaceNodeId);
+        edge.ToInterfaceNodeId = NormalizeEdgeEndpointInterface(edge.ToNodeId, edge.ToInterfaceNodeId);
+    }
+    finally
+    {
+        isNormalizingEdgeInterfaces = false;
+    }
+}
+
+private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentInterfaceNodeId)
+{
+    var options = GetInterfaceNodeOptionsForEdgeEndpoint(nodeId);
+    if (options.Count == 0)
+    {
+        // Non-composite endpoint, or composite with no exposed interfaces.
+        return null;
+    }
+
+    if (!string.IsNullOrWhiteSpace(currentInterfaceNodeId))
+    {
+        var exactMatch = options.FirstOrDefault(option => Comparer.Equals(option, currentInterfaceNodeId));
+        if (exactMatch is not null)
+        {
+            // Preserve the existing valid choice and normalize its casing/text.
+            return exactMatch;
+        }
+    }
+
+    // Auto-pick only when the composite has exactly one exposed interface.
+    return options.Count == 1 ? options[0] : null;
+}
 
     public bool IsWorldbuilderMode
     {
@@ -1523,29 +1568,31 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public void AddEdge()
     {
-        EnsureNetworkExists();
+         EnsureNetworkExists();
 
-        if (Nodes.Count < 2)
+    if (Nodes.Count < 2)
+    {
+        throw new InvalidOperationException("Add at least two nodes before creating an edge.");
+    }
+
+    var edge = new EdgeViewModel(
+        new EdgeModel
         {
-            throw new InvalidOperationException("Add at least two nodes before creating an edge.");
-        }
+            Id = GetNextUniqueName("E", Edges.Select(item => item.Id)),
+            FromNodeId = Nodes[0].Id,
+            ToNodeId = Nodes[1].Id,
+            Time = 1d,
+            Cost = 1d,
+            IsBidirectional = true
+        },
+        Nodes[0],
+        Nodes[1]);
 
-        var edge = new EdgeViewModel(
-            new EdgeModel
-            {
-                Id = GetNextUniqueName("E", Edges.Select(item => item.Id)),
-                FromNodeId = Nodes[0].Id,
-                ToNodeId = Nodes[1].Id,
-                Time = 1d,
-                Cost = 1d,
-                IsBidirectional = true
-            },
-            Nodes[0],
-            Nodes[1]);
+    NormalizeEdgeInterfaceBindings(edge);
 
-        RegisterEdge(edge);
-        SelectedEdge = edge;
-        RefreshDerivedStateAfterStructureChange("Added a new edge.");
+    RegisterEdge(edge);
+    SelectedEdge = edge;
+    RefreshDerivedStateAfterStructureChange("Added a new edge.");
     }
 
     public void AddEdgeBetween(NodeViewModel fromNode, NodeViewModel toNode)
@@ -1556,32 +1603,34 @@ public sealed class MainWindowViewModel : ObservableObject
     public void AddEdgeBetween(NodeViewModel fromNode, NodeViewModel toNode, bool isBidirectional)
     {
         ArgumentNullException.ThrowIfNull(fromNode);
-        ArgumentNullException.ThrowIfNull(toNode);
+    ArgumentNullException.ThrowIfNull(toNode);
 
-        EnsureNetworkExists();
+    EnsureNetworkExists();
 
-        if (Comparer.Equals(fromNode.Id, toNode.Id))
+    if (Comparer.Equals(fromNode.Id, toNode.Id))
+    {
+        throw new InvalidOperationException("Choose two different nodes to create an edge.");
+    }
+
+    var edge = new EdgeViewModel(
+        new EdgeModel
         {
-            throw new InvalidOperationException("Choose two different nodes to create an edge.");
-        }
+            Id = GetNextUniqueName("E", Edges.Select(item => item.Id)),
+            FromNodeId = fromNode.Id,
+            ToNodeId = toNode.Id,
+            Time = 1d,
+            Cost = 1d,
+            IsBidirectional = isBidirectional
+        },
+        fromNode,
+        toNode);
 
-        var edge = new EdgeViewModel(
-            new EdgeModel
-            {
-                Id = GetNextUniqueName("E", Edges.Select(item => item.Id)),
-                FromNodeId = fromNode.Id,
-                ToNodeId = toNode.Id,
-                Time = 1d,
-                Cost = 1d,
-                IsBidirectional = isBidirectional
-            },
-            fromNode,
-            toNode);
+    NormalizeEdgeInterfaceBindings(edge);
 
-        RegisterEdge(edge);
-        SelectedEdge = edge;
-        var edgeDirectionLabel = isBidirectional ? "bidirectional" : "one-way";
-        RefreshDerivedStateAfterStructureChange($"Added a {edgeDirectionLabel} edge from '{fromNode.Name}' to '{toNode.Name}'.");
+    RegisterEdge(edge);
+    SelectedEdge = edge;
+    var edgeDirectionLabel = isBidirectional ? "bidirectional" : "one-way";
+    RefreshDerivedStateAfterStructureChange($"Added a {edgeDirectionLabel} edge from '{fromNode.Name}' to '{toNode.Name}'.");
     }
 
     public void RemoveSelectedEdge()
@@ -2015,8 +2064,9 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void RegisterEdge(EdgeViewModel edge)
     {
-        edge.DefinitionChanged += HandleEdgeDefinitionChanged;
-        Edges.Add(edge);
+          NormalizeEdgeInterfaceBindings(edge);
+    edge.DefinitionChanged += HandleEdgeDefinitionChanged;
+    Edges.Add(edge);
     }
 
     private void UnregisterEdge(EdgeViewModel edge)
@@ -2079,7 +2129,17 @@ public sealed class MainWindowViewModel : ObservableObject
 
     private void HandleEdgeDefinitionChanged(object? sender, EventArgs e)
     {
-        RefreshDerivedStateAfterEdgeChange("Updated edge data.");
+            if (isNormalizingEdgeInterfaces)
+    {
+        return;
+    }
+
+    if (sender is EdgeViewModel edge)
+    {
+        NormalizeEdgeInterfaceBindings(edge);
+    }
+
+    RefreshDerivedStateAfterEdgeChange("Updated edge data.");
     }
 
     private void HandleSelectedNodeTrafficProfilePropertyChanged(object? sender, PropertyChangedEventArgs e)

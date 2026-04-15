@@ -150,6 +150,31 @@ public sealed class NetworkSimulationEngine
             .ToList();
     }
 
+    private static double GetRequiredInputPerOutputUnit(
+    ProductionInputRequirement requirement,
+    string outputTrafficType)
+    {
+        var inputQuantity = requirement.InputQuantity;
+        var outputQuantity = requirement.OutputQuantity;
+
+        if (inputQuantity <= Epsilon &&
+            requirement.QuantityPerOutputUnit.HasValue &&
+            requirement.QuantityPerOutputUnit.Value > Epsilon)
+        {
+            inputQuantity = requirement.QuantityPerOutputUnit.Value;
+            outputQuantity = 1d;
+        }
+
+        if (double.IsNaN(inputQuantity) || double.IsInfinity(inputQuantity) || inputQuantity <= Epsilon ||
+            double.IsNaN(outputQuantity) || double.IsInfinity(outputQuantity) || outputQuantity <= Epsilon)
+        {
+            throw new InvalidOperationException(
+                $"Traffic '{outputTrafficType}' has an invalid production input ratio for precursor '{requirement.TrafficType}'.");
+        }
+
+        return inputQuantity / outputQuantity;
+    }
+
     private static double CalculateAverageUnitCost(IReadOnlyCollection<RouteAllocation> allocations)
     {
         var quantity = allocations.Sum(allocation => allocation.Quantity);
@@ -167,7 +192,9 @@ public sealed class NetworkSimulationEngine
             .SelectMany(node => node.TrafficProfiles)
             .Where(profile => profile.Production > Epsilon)
             .SelectMany(profile => profile.InputRequirements)
-            .Any(requirement => requirement.QuantityPerOutputUnit > Epsilon);
+            .Any(requirement =>
+                (requirement.InputQuantity > Epsilon && requirement.OutputQuantity > Epsilon) ||
+                requirement.QuantityPerOutputUnit.GetValueOrDefault() > Epsilon);
     }
 
     private static List<string> BuildStaticRecipeCostOrder(NetworkModel network, IReadOnlyList<string> trafficTypes)
@@ -187,7 +214,9 @@ public sealed class NetworkSimulationEngine
                 originalIndex[profile.TrafficType] = originalIndex.Count;
             }
 
-            foreach (var requirement in profile.InputRequirements.Where(requirement => requirement.QuantityPerOutputUnit > Epsilon))
+            foreach (var requirement in profile.InputRequirements.Where(requirement =>
+     (requirement.InputQuantity > Epsilon && requirement.OutputQuantity > Epsilon) ||
+     requirement.QuantityPerOutputUnit.GetValueOrDefault() > Epsilon))
             {
                 if (!graph.ContainsKey(requirement.TrafficType))
                 {
@@ -266,13 +295,16 @@ public sealed class NetworkSimulationEngine
     }
 
     private static double CalculateStaticSourceUnitCost(
-        NodeTrafficProfile profile,
-        string nodeId,
-        IReadOnlyDictionary<string, Dictionary<string, double>> landedUnitCosts)
+    NodeTrafficProfile profile,
+    string nodeId,
+    IReadOnlyDictionary<string, Dictionary<string, double>> landedUnitCosts)
     {
         var requirements = profile.InputRequirements
-            .Where(requirement => requirement.QuantityPerOutputUnit > Epsilon)
+            .Where(requirement =>
+                (requirement.InputQuantity > Epsilon && requirement.OutputQuantity > Epsilon) ||
+                requirement.QuantityPerOutputUnit.GetValueOrDefault() > Epsilon)
             .ToList();
+
         if (requirements.Count == 0)
         {
             return 0d;
@@ -284,7 +316,8 @@ public sealed class NetworkSimulationEngine
             var precursorUnitCost = landedUnitCosts.TryGetValue(requirement.TrafficType, out var costsByNode)
                 ? costsByNode.GetValueOrDefault(nodeId)
                 : 0d;
-            sourceUnitCost += precursorUnitCost * requirement.QuantityPerOutputUnit;
+
+            sourceUnitCost += precursorUnitCost * GetRequiredInputPerOutputUnit(requirement, profile.TrafficType);
         }
 
         return sourceUnitCost;
@@ -338,9 +371,9 @@ public sealed class NetworkSimulationEngine
     }
 
     private static void AddImplicitRecipeDemand(
-        NetworkModel network,
-        string trafficType,
-        IDictionary<string, double> demand)
+     NetworkModel network,
+     string trafficType,
+     IDictionary<string, double> demand)
     {
         foreach (var node in network.Nodes)
         {
@@ -349,7 +382,7 @@ public sealed class NetworkSimulationEngine
             {
                 implicitDemand += profile.InputRequirements
                     .Where(requirement => Comparer.Equals(requirement.TrafficType, trafficType))
-                    .Sum(requirement => profile.Production * requirement.QuantityPerOutputUnit);
+                    .Sum(requirement => profile.Production * GetRequiredInputPerOutputUnit(requirement, profile.TrafficType));
             }
 
             if (implicitDemand <= Epsilon)

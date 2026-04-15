@@ -312,6 +312,32 @@ public sealed class TemporalNetworkSimulationEngine
         }
     }
 
+    private static double GetRequiredInputPerOutputUnit(
+    string nodeId,
+    string outputTrafficType,
+    ProductionInputRequirement requirement)
+    {
+        var inputQuantity = requirement.InputQuantity;
+        var outputQuantity = requirement.OutputQuantity;
+
+        if (inputQuantity <= Epsilon &&
+            requirement.QuantityPerOutputUnit.HasValue &&
+            requirement.QuantityPerOutputUnit.Value > Epsilon)
+        {
+            inputQuantity = requirement.QuantityPerOutputUnit.Value;
+            outputQuantity = 1d;
+        }
+
+        if (double.IsNaN(inputQuantity) || double.IsInfinity(inputQuantity) || inputQuantity <= Epsilon ||
+            double.IsNaN(outputQuantity) || double.IsInfinity(outputQuantity) || outputQuantity <= Epsilon)
+        {
+            throw new InvalidOperationException(
+                $"Node '{nodeId}' has an invalid recipe ratio for output traffic '{outputTrafficType}' and input traffic '{requirement.TrafficType}'.");
+        }
+
+        return inputQuantity / outputQuantity;
+    }
+
     private static NetworkModel CloneNetworkForTimelineEvents(NetworkModel network)
     {
         return new NetworkModel
@@ -382,6 +408,8 @@ public sealed class TemporalNetworkSimulationEngine
         return new ProductionInputRequirement
         {
             TrafficType = requirement.TrafficType,
+            InputQuantity = requirement.InputQuantity,
+            OutputQuantity = requirement.OutputQuantity,
             QuantityPerOutputUnit = requirement.QuantityPerOutputUnit
         };
     }
@@ -707,10 +735,10 @@ public sealed class TemporalNetworkSimulationEngine
     }
 
     private static ProductionResult CalculateAndConsumeProductionInputs(
-        string nodeId,
-        NodeTrafficProfile outputProfile,
-        IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
-        IReadOnlyDictionary<string, NodeTrafficProfile> profilesByTrafficType)
+    string nodeId,
+    NodeTrafficProfile outputProfile,
+    IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
+    IReadOnlyDictionary<string, NodeTrafficProfile> profilesByTrafficType)
     {
         var outputQuantity = outputProfile.Production;
         if (outputProfile.InputRequirements.Count == 0)
@@ -720,8 +748,9 @@ public sealed class TemporalNetworkSimulationEngine
 
         foreach (var requirement in outputProfile.InputRequirements)
         {
+            var inputPerOutputUnit = GetRequiredInputPerOutputUnit(nodeId, outputProfile.TrafficType, requirement);
             var availableInput = GetLocalInputQuantity(nodeId, requirement.TrafficType, nodeStates, profilesByTrafficType);
-            outputQuantity = Math.Min(outputQuantity, availableInput / requirement.QuantityPerOutputUnit);
+            outputQuantity = Math.Min(outputQuantity, availableInput / inputPerOutputUnit);
         }
 
         if (outputQuantity < Epsilon)
@@ -732,23 +761,25 @@ public sealed class TemporalNetworkSimulationEngine
         var inheritedUnitCost = 0d;
         foreach (var requirement in outputProfile.InputRequirements)
         {
+            var inputPerOutputUnit = GetRequiredInputPerOutputUnit(nodeId, outputProfile.TrafficType, requirement);
             var consumedUnitCost = ConsumeLocalInputQuantity(
                 nodeId,
                 requirement.TrafficType,
-                outputQuantity * requirement.QuantityPerOutputUnit,
+                outputQuantity * inputPerOutputUnit,
                 nodeStates,
                 profilesByTrafficType);
-            inheritedUnitCost += consumedUnitCost * requirement.QuantityPerOutputUnit;
+
+            inheritedUnitCost += consumedUnitCost * inputPerOutputUnit;
         }
 
         return new ProductionResult(outputQuantity, inheritedUnitCost);
     }
 
     private static void AddImplicitRecipeDemand(
-        string nodeId,
-        NodeTrafficProfile outputProfile,
-        IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
-        IReadOnlyDictionary<string, NodeTrafficProfile> profilesByTrafficType)
+    string nodeId,
+    NodeTrafficProfile outputProfile,
+    IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
+    IReadOnlyDictionary<string, NodeTrafficProfile> profilesByTrafficType)
     {
         if (outputProfile.InputRequirements.Count == 0)
         {
@@ -757,7 +788,8 @@ public sealed class TemporalNetworkSimulationEngine
 
         foreach (var requirement in outputProfile.InputRequirements)
         {
-            var requiredInput = outputProfile.Production * requirement.QuantityPerOutputUnit;
+            var inputPerOutputUnit = GetRequiredInputPerOutputUnit(nodeId, outputProfile.TrafficType, requirement);
+            var requiredInput = outputProfile.Production * inputPerOutputUnit;
             var availableInput = GetLocalInputQuantity(nodeId, requirement.TrafficType, nodeStates, profilesByTrafficType);
             var unmetInput = Math.Max(0d, requiredInput - availableInput);
             if (unmetInput <= Epsilon)

@@ -12,6 +12,7 @@ public sealed class TrafficTypeDefinitionEditorViewModel : ObservableObject
     private FlowSplitPolicy flowSplitPolicy;
     private RouteChoiceSettings routeChoiceSettings;
     private double? capacityBidPerUnit;
+    private int? perishabilityPeriods;
 
     public TrafficTypeDefinitionEditorViewModel(TrafficTypeDefinition definition)
     {
@@ -23,6 +24,7 @@ public sealed class TrafficTypeDefinitionEditorViewModel : ObservableObject
         flowSplitPolicy = definition.FlowSplitPolicy;
         routeChoiceSettings = definition.RouteChoiceSettings;
         capacityBidPerUnit = definition.CapacityBidPerUnit;
+        perishabilityPeriods = definition.PerishabilityPeriods;
     }
 
     public event EventHandler<ValueChangedEventArgs<string>>? NameChanged;
@@ -75,6 +77,20 @@ public sealed class TrafficTypeDefinitionEditorViewModel : ObservableObject
     {
         get => capacityBidPerUnit;
         set => SetProperty(ref capacityBidPerUnit, value);
+    }
+
+    public int? PerishabilityPeriods
+    {
+        get => perishabilityPeriods;
+        set
+        {
+            if (value.HasValue && value.Value <= 0)
+            {
+                value = null;
+            }
+
+            SetProperty(ref perishabilityPeriods, value);
+        }
     }
 
     public RouteChoiceModel RouteChoiceModel
@@ -257,7 +273,8 @@ public sealed class TrafficTypeDefinitionEditorViewModel : ObservableObject
                 IterationCount = IterationCount,
                 InternalizeCongestion = InternalizeCongestion
             },
-            CapacityBidPerUnit = CapacityBidPerUnit
+            CapacityBidPerUnit = CapacityBidPerUnit,
+            PerishabilityPeriods = PerishabilityPeriods
         };
     }
 

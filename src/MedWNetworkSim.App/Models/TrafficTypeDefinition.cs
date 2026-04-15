@@ -44,4 +44,10 @@ public sealed class TrafficTypeDefinition
     /// Gets or sets the optional per-unit bid used when competing for constrained edge or node transhipment capacity.
     /// </summary>
     public double? CapacityBidPerUnit { get; set; }
+
+    /// <summary>
+    /// Gets or sets how many timeline periods this traffic type can remain in the network
+    /// before it expires. Null means it does not perish.
+    /// </summary>
+    public int? PerishabilityPeriods { get; set; }
 }

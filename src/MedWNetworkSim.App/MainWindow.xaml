@@ -335,6 +335,9 @@
                                 <Button Content="Run"
                                         Click="RunSimulation_Click"
                                         IsEnabled="{Binding HasNetwork}" />
+                                 <Button Content="Reset Timeline"
+                                        Click="ResetTimeline_Click"
+                                         IsEnabled="{Binding HasNetwork}" />       
                                 <Button Content="Next Period"
                                         Click="NextTimelinePeriod_Click"
                                         IsEnabled="{Binding HasNetwork}" />

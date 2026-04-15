@@ -1553,10 +1553,12 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
         var defaultTrafficType = TrafficTypeNameOptions.FirstOrDefault(name => !Comparer.Equals(name, SelectedNodeTrafficProfile.TrafficType))
             ?? TrafficTypeNameOptions.FirstOrDefault()
             ?? string.Empty;
+
         SelectedNodeTrafficProfile.InputRequirements.Add(new ProductionInputRequirementViewModel(new ProductionInputRequirement
         {
             TrafficType = defaultTrafficType,
-            QuantityPerOutputUnit = 1d
+            InputQuantity = 1d,
+            OutputQuantity = 1d
         }));
     }
 

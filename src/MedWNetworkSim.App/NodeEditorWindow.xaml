@@ -552,26 +552,34 @@
                                 <StackPanel Margin="8">
                                     <ItemsControl ItemsSource="{Binding SelectedNodeTrafficProfile.InputRequirements}">
                                         <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <DockPanel Margin="0,0,0,6">
-                                                    <Button DockPanel.Dock="Right"
-                                                            Margin="8,0,0,0"
-                                                            Padding="6,2"
-                                                            Content="Remove"
-                                                            Click="RemoveInputRequirement_Click" />
-                                                    <ComboBox Width="130"
-                                                              ItemsSource="{Binding DataContext.TrafficTypeNameOptions, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                              SelectedItem="{Binding TrafficType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                    <TextBlock Margin="8,0,6,0"
-                                                               VerticalAlignment="Center"
-                                                               FontSize="11"
-                                                               Foreground="{DynamicResource MutedForegroundBrush}"
-                                                               Text="per output" />
-                                                    <TextBox Width="70"
-                                                             Text="{Binding QuantityPerOutputUnit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                </DockPanel>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <DockPanel Margin="0,0,0,6">
+                                                        <Button DockPanel.Dock="Right"
+                Margin="8,0,0,0"
+                Padding="6,2"
+                Content="Remove"
+                Click="RemoveInputRequirement_Click" />
+                                                        <ComboBox Width="130"
+                  ItemsSource="{Binding DataContext.TrafficTypeNameOptions, RelativeSource={RelativeSource AncestorType=Window}}"
+                  SelectedItem="{Binding TrafficType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <TextBox Width="55"
+                 Margin="8,0,4,0"
+                 Text="{Binding InputQuantity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <TextBlock Margin="0,0,4,0"
+                   VerticalAlignment="Center"
+                   FontSize="11"
+                   Foreground="{DynamicResource MutedForegroundBrush}"
+                   Text="->" />
+                                                        <TextBox Width="55"
+                 Margin="0,0,8,0"
+                 Text="{Binding OutputQuantity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <TextBlock VerticalAlignment="Center"
+                   FontSize="11"
+                   Foreground="{DynamicResource MutedForegroundBrush}"
+                   Text="input:output" />
+                                                    </DockPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                     <Button HorizontalAlignment="Left"
                                             Content="Add input"

@@ -4,3 +4,4 @@ obj/
 *.user
 *.suo
 scripts/Convert-RepoTextFilesToPdf.ps1
+artifacts/

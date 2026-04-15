@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace MedWNetworkSim.App.Models;
 
 /// <summary>
@@ -17,7 +19,7 @@ public sealed class PeriodWindow
 }
 
 /// <summary>
-/// Defines one local precursor input required to produce a unit of output traffic.
+/// Defines one local precursor input required to produce output traffic.
 /// </summary>
 public sealed class ProductionInputRequirement
 {
@@ -27,9 +29,26 @@ public sealed class ProductionInputRequirement
     public string TrafficType { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets the precursor quantity required per unit of output traffic.
+    /// Gets or sets the amount of precursor input consumed by this recipe row.
     /// </summary>
-    public double QuantityPerOutputUnit { get; set; }
+    public double InputQuantity { get; set; } = 1d;
+
+    /// <summary>
+    /// Gets or sets the amount of output produced by this recipe row.
+    /// </summary>
+    public double OutputQuantity { get; set; } = 1d;
+
+    /// <summary>
+    /// Legacy compatibility field. When present in older JSON this represents X:1.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? QuantityPerOutputUnit { get; set; }
+
+    /// <summary>
+    /// Gets the normalized input-per-output ratio represented by this requirement.
+    /// </summary>
+    [JsonIgnore]
+    public double InputPerOutputUnit => OutputQuantity > 0d ? InputQuantity / OutputQuantity : 0d;
 }
 
 /// <summary>
@@ -93,7 +112,7 @@ public sealed class NodeTrafficProfile
     public List<PeriodWindow> ConsumptionWindows { get; set; } = [];
 
     /// <summary>
-    /// Gets or sets local precursor traffic required to produce one unit of this profile's output.
+    /// Gets or sets local precursor traffic required to produce this profile's output.
     /// </summary>
     public List<ProductionInputRequirement> InputRequirements { get; set; } = [];
 

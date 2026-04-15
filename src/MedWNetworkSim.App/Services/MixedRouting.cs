@@ -722,7 +722,18 @@ public static partial class MixedRoutingAllocator
                 .Where(profile => profile.Production > Epsilon)
                 .SelectMany(profile => profile.InputRequirements.Select(requirement => new { profile.Production, requirement }))
                 .Where(item => Comparer.Equals(item.requirement.TrafficType, trafficType))
-                .Sum(item => item.Production * item.requirement.QuantityPerOutputUnit);
+                .Sum(item =>
+                {
+                    var requirement = item.requirement;
+
+                    var quantityPerOutputUnit =
+                        requirement.OutputQuantity > Epsilon
+                            ? requirement.InputQuantity / requirement.OutputQuantity
+                            : requirement.QuantityPerOutputUnit.GetValueOrDefault();
+
+                    return item.Production * quantityPerOutputUnit;
+                });
+
             if (implicitDemand > Epsilon)
             {
                 demand[node.Id] = GetOrZero(demand, node.Id) + implicitDemand;

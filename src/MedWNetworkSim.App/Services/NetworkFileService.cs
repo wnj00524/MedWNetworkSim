@@ -594,9 +594,9 @@ public sealed class NetworkFileService
     }
 
     private static List<ProductionInputRequirement> NormalizeInputRequirements(
-        IEnumerable<ProductionInputRequirement>? requirements,
-        string nodeId,
-        string trafficType)
+    IEnumerable<ProductionInputRequirement>? requirements,
+    string nodeId,
+    string trafficType)
     {
         var merged = new Dictionary<string, double>(Comparer);
 
@@ -607,15 +607,27 @@ public sealed class NetworkFileService
                 throw new InvalidOperationException($"Node '{nodeId}' has a blank production input requirement for traffic '{trafficType}'.");
             }
 
-            if (double.IsNaN(requirement.QuantityPerOutputUnit) ||
-                double.IsInfinity(requirement.QuantityPerOutputUnit) ||
-                requirement.QuantityPerOutputUnit <= 0d)
+            var inputQuantity = requirement.InputQuantity;
+            var outputQuantity = requirement.OutputQuantity;
+
+            if ((inputQuantity <= 0d || outputQuantity <= 0d) &&
+                requirement.QuantityPerOutputUnit.HasValue &&
+                requirement.QuantityPerOutputUnit.Value > 0d)
             {
-                throw new InvalidOperationException($"Node '{nodeId}' has an invalid input ratio for traffic '{trafficType}'. Use a finite number > 0.");
+                inputQuantity = requirement.QuantityPerOutputUnit.Value;
+                outputQuantity = 1d;
+            }
+
+            if (double.IsNaN(inputQuantity) || double.IsInfinity(inputQuantity) || inputQuantity <= 0d ||
+                double.IsNaN(outputQuantity) || double.IsInfinity(outputQuantity) || outputQuantity <= 0d)
+            {
+                throw new InvalidOperationException(
+                    $"Node '{nodeId}' has an invalid input ratio for traffic '{trafficType}'. Use finite numbers > 0 for both input and output.");
             }
 
             var inputTrafficType = requirement.TrafficType.Trim();
-            merged[inputTrafficType] = merged.GetValueOrDefault(inputTrafficType) + requirement.QuantityPerOutputUnit;
+            var inputPerOutputUnit = inputQuantity / outputQuantity;
+            merged[inputTrafficType] = merged.GetValueOrDefault(inputTrafficType) + inputPerOutputUnit;
         }
 
         return merged
@@ -623,6 +635,8 @@ public sealed class NetworkFileService
             .Select(pair => new ProductionInputRequirement
             {
                 TrafficType = pair.Key,
+                InputQuantity = pair.Value,
+                OutputQuantity = 1d,
                 QuantityPerOutputUnit = pair.Value
             })
             .ToList();
@@ -649,18 +663,31 @@ public sealed class NetworkFileService
     {
         foreach (var requirement in source)
         {
+            var requirementRatio = requirement.OutputQuantity > 0d
+                ? requirement.InputQuantity / requirement.OutputQuantity
+                : requirement.QuantityPerOutputUnit.GetValueOrDefault();
+
             var existing = target.FirstOrDefault(item => Comparer.Equals(item.TrafficType, requirement.TrafficType));
             if (existing is null)
             {
                 target.Add(new ProductionInputRequirement
                 {
                     TrafficType = requirement.TrafficType,
-                    QuantityPerOutputUnit = requirement.QuantityPerOutputUnit
+                    InputQuantity = requirementRatio,
+                    OutputQuantity = 1d,
+                    QuantityPerOutputUnit = requirementRatio
                 });
                 continue;
             }
 
-            existing.QuantityPerOutputUnit += requirement.QuantityPerOutputUnit;
+            var existingRatio = existing.OutputQuantity > 0d
+                ? existing.InputQuantity / existing.OutputQuantity
+                : existing.QuantityPerOutputUnit.GetValueOrDefault();
+
+            var mergedRatio = existingRatio + requirementRatio;
+            existing.InputQuantity = mergedRatio;
+            existing.OutputQuantity = 1d;
+            existing.QuantityPerOutputUnit = mergedRatio;
         }
     }
 

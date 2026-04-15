@@ -116,6 +116,7 @@
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
                             <DataGridTextColumn Binding="{Binding CapacityBidPerUnit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:0.##}}" Header="Bid / Unit" Width="105" />
+                            <DataGridTextColumn Binding="{Binding PerishabilityPeriods, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Header="Perish (Periods)" Width="120" />
                             <DataGridTemplateColumn Header="Route Model" Width="180">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -208,6 +209,8 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="10" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="10" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
                         <TextBlock VerticalAlignment="Center"
@@ -252,50 +255,59 @@
                                    VerticalAlignment="Center"
                                    FontSize="11"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Route Model" />
-                        <ComboBox Grid.Row="8"
-                                  Grid.Column="1"
-                                  ItemsSource="{Binding RouteChoiceModels}"
-                                  SelectedItem="{Binding SelectedTrafficDefinition.RouteChoiceModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                   Text="Perishability (Periods)" />
+                        <TextBox Grid.Row="8"
+                                 Grid.Column="1"
+                                 Text="{Binding SelectedTrafficDefinition.PerishabilityPeriods, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
                         <TextBlock Grid.Row="10"
                                    VerticalAlignment="Center"
                                    FontSize="11"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Flow Split" />
+                                   Text="Route Model" />
                         <ComboBox Grid.Row="10"
                                   Grid.Column="1"
-                                  ItemsSource="{Binding FlowSplitPolicies}"
-                                  SelectedItem="{Binding SelectedTrafficDefinition.FlowSplitPolicy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  ItemsSource="{Binding RouteChoiceModels}"
+                                  SelectedItem="{Binding SelectedTrafficDefinition.RouteChoiceModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
                         <TextBlock Grid.Row="12"
                                    VerticalAlignment="Center"
                                    FontSize="11"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Candidate Routes" />
-                        <TextBox Grid.Row="12"
-                                 Grid.Column="1"
-                                 Text="{Binding SelectedTrafficDefinition.MaxCandidateRoutes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                   Text="Flow Split" />
+                        <ComboBox Grid.Row="12"
+                                  Grid.Column="1"
+                                  ItemsSource="{Binding FlowSplitPolicies}"
+                                  SelectedItem="{Binding SelectedTrafficDefinition.FlowSplitPolicy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
                         <TextBlock Grid.Row="14"
                                    VerticalAlignment="Center"
                                    FontSize="11"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Priority" />
+                                   Text="Candidate Routes" />
                         <TextBox Grid.Row="14"
                                  Grid.Column="1"
-                                 Text="{Binding SelectedTrafficDefinition.Priority, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                 Text="{Binding SelectedTrafficDefinition.MaxCandidateRoutes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
                         <TextBlock Grid.Row="16"
                                    VerticalAlignment="Center"
                                    FontSize="11"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Congestion Sensitivity" />
+                                   Text="Priority" />
                         <TextBox Grid.Row="16"
+                                 Grid.Column="1"
+                                 Text="{Binding SelectedTrafficDefinition.Priority, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Grid.Row="18"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="Congestion Sensitivity" />
+                        <TextBox Grid.Row="18"
                                  Grid.Column="1"
                                  Text="{Binding SelectedTrafficDefinition.CongestionSensitivity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
-                        <StackPanel Grid.Row="18"
+                        <StackPanel Grid.Row="20"
                                     Grid.ColumnSpan="2"
                                     Visibility="{Binding SelectedTrafficDefinition.IsStochasticUserResponsive, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <TextBlock FontSize="11"
@@ -314,18 +326,18 @@
                             </UniformGrid>
                         </StackPanel>
 
-                        <CheckBox Grid.Row="20"
+                        <CheckBox Grid.Row="22"
                                   Grid.ColumnSpan="2"
                                   Content="Internalize congestion"
                                   IsChecked="{Binding SelectedTrafficDefinition.InternalizeCongestion, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                   Visibility="{Binding SelectedTrafficDefinition.IsSystemOptimal, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
-                        <TextBlock Grid.Row="22"
+                        <TextBlock Grid.Row="24"
                                    VerticalAlignment="Top"
                                    FontSize="11"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
                                    Text="Description" />
-                        <TextBox Grid.Row="22"
+                        <TextBox Grid.Row="24"
                                  Grid.Column="1"
                                  MinHeight="120"
                                  AcceptsReturn="True"

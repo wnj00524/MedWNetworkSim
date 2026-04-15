@@ -5,6 +5,7 @@ namespace MedWNetworkSim.App.Services;
 public sealed class TemporalNetworkSimulationEngine
 {
     private const double Epsilon = 0.000001d;
+    private const double PerishabilityPriorityBidFactor = 100d;
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
 
     public TemporalSimulationState Initialize(NetworkModel network)
@@ -44,10 +45,13 @@ public sealed class TemporalNetworkSimulationEngine
         var occupiedEdgeCapacity = state.OccupiedEdgeCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
         var occupiedTranshipmentCapacity = state.OccupiedTranshipmentCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
 
+        ExpireNodeTraffic(nodeStates);
+        ExpireInFlightMovements(movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+
         ValidateResourceOccupancy(edgeLookup, nodeLookup, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         ValidateMovementResourceClaims(movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
 
-        AddScheduledNodeChanges(effectiveNetwork, nodeStates, effectivePeriod);
+        AddScheduledNodeChanges(effectiveNetwork, definitionsByTraffic, nodeStates, effectivePeriod);
 
         var availableResources = BuildAvailableResourceCapacity(effectiveNetwork, movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         var plannedAllocations = PlanNewAllocations(
@@ -64,6 +68,8 @@ public sealed class TemporalNetworkSimulationEngine
 
         foreach (var allocation in plannedAllocations)
         {
+            var perishabilityPeriods = GetPerishabilityPeriods(definitionsByTraffic, allocation.TrafficType);
+
             var movement = new TemporalInFlightMovement
             {
                 TrafficType = allocation.TrafficType,
@@ -74,7 +80,8 @@ public sealed class TemporalNetworkSimulationEngine
                 SourceUnitCostPerUnit = allocation.SourceUnitCostPerUnit,
                 LandedUnitCostPerUnit = allocation.DeliveredCostPerUnit,
                 CurrentEdgeIndex = 0,
-                RemainingPeriodsOnCurrentEdge = GetEdgePeriods(edgeLookup[allocation.PathEdgeIds[0]])
+                RemainingPeriodsOnCurrentEdge = GetEdgePeriods(edgeLookup[allocation.PathEdgeIds[0]]),
+                RemainingShelfLifePeriods = perishabilityPeriods
             };
 
             ClaimCurrentMovementResources(edgeLookup, nodeLookup, movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
@@ -118,7 +125,7 @@ public sealed class TemporalNetworkSimulationEngine
             if (movement.CurrentEdgeIndex == movement.PathEdgeIds.Count - 1)
             {
                 ReleaseCurrentMovementResources(movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
-                CompleteArrival(nodeStates, nodeLookup, movement);
+                CompleteArrival(nodeStates, nodeLookup, definitionsByTraffic, movement);
                 movements.Remove(movement);
                 continue;
             }
@@ -167,8 +174,45 @@ public sealed class TemporalNetworkSimulationEngine
             movements.Count);
     }
 
+    private static void ExpireNodeTraffic(IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates)
+    {
+        foreach (var state in nodeStates.Values)
+        {
+            state.AdvancePerishability();
+        }
+    }
+
+    private static void ExpireInFlightMovements(
+        IList<TemporalInFlightMovement> movements,
+        IDictionary<string, double> occupiedEdgeCapacity,
+        IDictionary<string, double> occupiedTranshipmentCapacity)
+    {
+        for (var index = movements.Count - 1; index >= 0; index--)
+        {
+            var movement = movements[index];
+            if (!movement.RemainingShelfLifePeriods.HasValue)
+            {
+                continue;
+            }
+
+            movement.RemainingShelfLifePeriods -= 1;
+            if (movement.RemainingShelfLifePeriods.Value > 0)
+            {
+                continue;
+            }
+
+            if (!movement.IsWaitingBetweenEdges)
+            {
+                ReleaseCurrentMovementResources(movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+            }
+
+            movements.RemoveAt(index);
+        }
+    }
+
     private static void AddScheduledNodeChanges(
         NetworkModel network,
+        IReadOnlyDictionary<string, TrafficTypeDefinition> definitionsByTraffic,
         IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
         int period)
     {
@@ -200,7 +244,11 @@ public sealed class TemporalNetworkSimulationEngine
                         profile,
                         nodeStates,
                         profilesByNodeAndTraffic.GetValueOrDefault(node.Id) ?? new Dictionary<string, NodeTrafficProfile>(Comparer));
-                    state.BlendAvailableSupply(production.OutputQuantity, production.InheritedUnitCost);
+
+                    state.BlendAvailableSupply(
+                        production.OutputQuantity,
+                        production.InheritedUnitCost,
+                        GetPerishabilityPeriods(definitionsByTraffic, profile.TrafficType));
                 }
 
                 if (profile.Consumption > Epsilon && IsConsumptionActive(profile, period))
@@ -313,9 +361,9 @@ public sealed class TemporalNetworkSimulationEngine
     }
 
     private static double GetRequiredInputPerOutputUnit(
-    string nodeId,
-    string outputTrafficType,
-    ProductionInputRequirement requirement)
+        string nodeId,
+        string outputTrafficType,
+        ProductionInputRequirement requirement)
     {
         var inputQuantity = requirement.InputQuantity;
         var outputQuantity = requirement.OutputQuantity;
@@ -347,10 +395,37 @@ public sealed class TemporalNetworkSimulationEngine
             TimelineLoopLength = network.TimelineLoopLength,
             DefaultAllocationMode = network.DefaultAllocationMode,
             SimulationSeed = network.SimulationSeed,
-            TrafficTypes = network.TrafficTypes.ToList(),
+            TrafficTypes = network.TrafficTypes.Select(CloneTrafficTypeDefinition).ToList(),
             TimelineEvents = network.TimelineEvents,
             Nodes = network.Nodes.Select(CloneNode).ToList(),
             Edges = network.Edges.Select(CloneEdge).ToList()
+        };
+    }
+
+    private static TrafficTypeDefinition CloneTrafficTypeDefinition(TrafficTypeDefinition definition)
+    {
+        return new TrafficTypeDefinition
+        {
+            Name = definition.Name,
+            Description = definition.Description,
+            RoutingPreference = definition.RoutingPreference,
+            AllocationMode = definition.AllocationMode,
+            RouteChoiceModel = definition.RouteChoiceModel,
+            FlowSplitPolicy = definition.FlowSplitPolicy,
+            RouteChoiceSettings = new RouteChoiceSettings
+            {
+                MaxCandidateRoutes = definition.RouteChoiceSettings.MaxCandidateRoutes,
+                Priority = definition.RouteChoiceSettings.Priority,
+                InformationAccuracy = definition.RouteChoiceSettings.InformationAccuracy,
+                RouteDiversity = definition.RouteChoiceSettings.RouteDiversity,
+                CongestionSensitivity = definition.RouteChoiceSettings.CongestionSensitivity,
+                RerouteThreshold = definition.RouteChoiceSettings.RerouteThreshold,
+                Stickiness = definition.RouteChoiceSettings.Stickiness,
+                IterationCount = definition.RouteChoiceSettings.IterationCount,
+                InternalizeCongestion = definition.RouteChoiceSettings.InternalizeCongestion
+            },
+            CapacityBidPerUnit = definition.CapacityBidPerUnit,
+            PerishabilityPeriods = definition.PerishabilityPeriods
         };
     }
 
@@ -700,6 +775,7 @@ public sealed class TemporalNetworkSimulationEngine
     private static void CompleteArrival(
         IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
         IReadOnlyDictionary<string, NodeModel> nodeLookup,
+        IReadOnlyDictionary<string, TrafficTypeDefinition> definitionsByTraffic,
         TemporalInFlightMovement movement)
     {
         var finalNodeId = movement.PathNodeIds[^1];
@@ -715,14 +791,20 @@ public sealed class TemporalNetworkSimulationEngine
 
         if (profile?.IsStore == true)
         {
-            nodeState.BlendStoreInventory(movement.Quantity, movement.LandedUnitCostPerUnit);
+            nodeState.BlendStoreInventory(
+                movement.Quantity,
+                movement.LandedUnitCostPerUnit,
+                movement.RemainingShelfLifePeriods);
             nodeState.ReservedStoreReceipts = Math.Max(0d, nodeState.ReservedStoreReceipts - movement.Quantity);
             return;
         }
 
         if (IsRecipeInputTraffic(nodeLookup[finalNodeId], movement.TrafficType))
         {
-            nodeState.BlendAvailableSupply(movement.Quantity, movement.LandedUnitCostPerUnit);
+            nodeState.BlendAvailableSupply(
+                movement.Quantity,
+                movement.LandedUnitCostPerUnit,
+                movement.RemainingShelfLifePeriods);
         }
     }
 
@@ -735,10 +817,10 @@ public sealed class TemporalNetworkSimulationEngine
     }
 
     private static ProductionResult CalculateAndConsumeProductionInputs(
-    string nodeId,
-    NodeTrafficProfile outputProfile,
-    IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
-    IReadOnlyDictionary<string, NodeTrafficProfile> profilesByTrafficType)
+        string nodeId,
+        NodeTrafficProfile outputProfile,
+        IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
+        IReadOnlyDictionary<string, NodeTrafficProfile> profilesByTrafficType)
     {
         var outputQuantity = outputProfile.Production;
         if (outputProfile.InputRequirements.Count == 0)
@@ -776,10 +858,10 @@ public sealed class TemporalNetworkSimulationEngine
     }
 
     private static void AddImplicitRecipeDemand(
-    string nodeId,
-    NodeTrafficProfile outputProfile,
-    IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
-    IReadOnlyDictionary<string, NodeTrafficProfile> profilesByTrafficType)
+        string nodeId,
+        NodeTrafficProfile outputProfile,
+        IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
+        IReadOnlyDictionary<string, NodeTrafficProfile> profilesByTrafficType)
     {
         if (outputProfile.InputRequirements.Count == 0)
         {
@@ -1661,16 +1743,19 @@ public sealed class TemporalNetworkSimulationEngine
 
     private static List<string> GetOrderedTrafficNames(NetworkModel network)
     {
-        var orderedTrafficNames = new List<string>();
-        var seen = new HashSet<string>(Comparer);
+        var definitionsWithOrder = network.TrafficTypes
+            .Select((definition, index) => new { Definition = definition, Index = index })
+            .Where(item => !string.IsNullOrWhiteSpace(item.Definition.Name))
+            .GroupBy(item => item.Definition.Name, Comparer)
+            .Select(group => group.First())
+            .OrderBy(item => item.Definition.PerishabilityPeriods.HasValue ? 0 : 1)
+            .ThenBy(item => item.Definition.PerishabilityPeriods ?? int.MaxValue)
+            .ThenByDescending(item => item.Definition.RouteChoiceSettings?.Priority ?? 0d)
+            .ThenBy(item => item.Index)
+            .Select(item => item.Definition.Name)
+            .ToList();
 
-        foreach (var definition in network.TrafficTypes)
-        {
-            if (!string.IsNullOrWhiteSpace(definition.Name) && seen.Add(definition.Name))
-            {
-                orderedTrafficNames.Add(definition.Name);
-            }
-        }
+        var seen = new HashSet<string>(definitionsWithOrder, Comparer);
 
         var undeclaredTrafficNames = network.Nodes
             .SelectMany(node => node.TrafficProfiles)
@@ -1683,18 +1768,40 @@ public sealed class TemporalNetworkSimulationEngine
             .Distinct(Comparer)
             .OrderBy(name => name, Comparer);
 
-        orderedTrafficNames.AddRange(undeclaredTrafficNames);
-        return orderedTrafficNames;
+        definitionsWithOrder.AddRange(undeclaredTrafficNames);
+        return definitionsWithOrder;
+    }
+
+    private static int? GetPerishabilityPeriods(
+        IReadOnlyDictionary<string, TrafficTypeDefinition> definitionsByTraffic,
+        string trafficType)
+    {
+        if (!definitionsByTraffic.TryGetValue(trafficType, out var definition))
+        {
+            return null;
+        }
+
+        if (!definition.PerishabilityPeriods.HasValue || definition.PerishabilityPeriods.Value <= 0)
+        {
+            return null;
+        }
+
+        return definition.PerishabilityPeriods.Value;
     }
 
     private static double GetCapacityBidPerUnit(TrafficTypeDefinition definition)
     {
-        if (definition.CapacityBidPerUnit.HasValue)
-        {
-            return Math.Max(0d, definition.CapacityBidPerUnit.Value);
-        }
+        var baseBid = definition.CapacityBidPerUnit.HasValue
+            ? Math.Max(0d, definition.CapacityBidPerUnit.Value)
+            : definition.RoutingPreference == RoutingPreference.Speed
+                ? 1d
+                : 0d;
 
-        return definition.RoutingPreference == RoutingPreference.Speed ? 1d : 0d;
+        var perishabilityBonus = definition.PerishabilityPeriods.HasValue && definition.PerishabilityPeriods.Value > 0
+            ? PerishabilityPriorityBidFactor / definition.PerishabilityPeriods.Value
+            : 0d;
+
+        return baseBid + perishabilityBonus;
     }
 
     private static double GetCapacityBidPerUnit(TemporalTrafficContext context, string consumerNodeId)
@@ -1777,84 +1884,188 @@ public sealed class TemporalNetworkSimulationEngine
 
     public sealed class TemporalNodeTrafficState
     {
-        public double AvailableSupply { get; set; }
+        private readonly List<TemporalQuantityBatch> availableSupplyBatches = [];
+        private readonly List<TemporalQuantityBatch> storeInventoryBatches = [];
 
-        public double AvailableSupplyUnitCostPerUnit { get; set; }
+        public double AvailableSupply => availableSupplyBatches.Sum(batch => batch.Quantity);
+
+        public double AvailableSupplyUnitCostPerUnit => GetWeightedUnitCost(availableSupplyBatches);
 
         public double DemandBacklog { get; set; }
 
-        public double StoreInventory { get; set; }
+        public double StoreInventory => storeInventoryBatches.Sum(batch => batch.Quantity);
 
-        public double StoreInventoryUnitCostPerUnit { get; set; }
+        public double StoreInventoryUnitCostPerUnit => GetWeightedUnitCost(storeInventoryBatches);
 
         public double ReservedStoreReceipts { get; set; }
 
-        public void BlendAvailableSupply(double quantity, double unitCost)
+        public void BlendAvailableSupply(double quantity, double unitCost, int? remainingLifePeriods = null)
         {
-            (AvailableSupply, AvailableSupplyUnitCostPerUnit) = BlendBucket(AvailableSupply, AvailableSupplyUnitCostPerUnit, quantity, unitCost);
+            AddBatch(availableSupplyBatches, quantity, unitCost, remainingLifePeriods);
         }
 
-        public void BlendStoreInventory(double quantity, double unitCost)
+        public void BlendStoreInventory(double quantity, double unitCost, int? remainingLifePeriods = null)
         {
-            (StoreInventory, StoreInventoryUnitCostPerUnit) = BlendBucket(StoreInventory, StoreInventoryUnitCostPerUnit, quantity, unitCost);
+            AddBatch(storeInventoryBatches, quantity, unitCost, remainingLifePeriods);
         }
 
         public double ConsumeAvailableSupply(double quantity)
         {
-            var unitCost = AvailableSupplyUnitCostPerUnit;
-            AvailableSupply = Math.Max(0d, AvailableSupply - quantity);
-            if (AvailableSupply <= Epsilon)
-            {
-                AvailableSupplyUnitCostPerUnit = 0d;
-            }
-
-            return unitCost;
+            return ConsumeFromBatches(availableSupplyBatches, quantity);
         }
 
         public double ConsumeStoreInventory(double quantity)
         {
-            var unitCost = StoreInventoryUnitCostPerUnit;
-            StoreInventory = Math.Max(0d, StoreInventory - quantity);
-            if (StoreInventory <= Epsilon)
-            {
-                StoreInventoryUnitCostPerUnit = 0d;
-            }
+            return ConsumeFromBatches(storeInventoryBatches, quantity);
+        }
 
-            return unitCost;
+        public void AdvancePerishability()
+        {
+            AdvancePerishability(availableSupplyBatches);
+            AdvancePerishability(storeInventoryBatches);
+            ReservedStoreReceipts = Math.Max(0d, Math.Min(ReservedStoreReceipts, StoreInventory));
         }
 
         public TemporalNodeTrafficState Clone()
         {
-            return new TemporalNodeTrafficState
+            var clone = new TemporalNodeTrafficState
             {
-                AvailableSupply = AvailableSupply,
-                AvailableSupplyUnitCostPerUnit = AvailableSupplyUnitCostPerUnit,
                 DemandBacklog = DemandBacklog,
-                StoreInventory = StoreInventory,
-                StoreInventoryUnitCostPerUnit = StoreInventoryUnitCostPerUnit,
                 ReservedStoreReceipts = ReservedStoreReceipts
             };
+
+            clone.availableSupplyBatches.AddRange(availableSupplyBatches.Select(batch => batch.Clone()));
+            clone.storeInventoryBatches.AddRange(storeInventoryBatches.Select(batch => batch.Clone()));
+            return clone;
         }
 
-        private static (double Quantity, double UnitCost) BlendBucket(
-            double existingQuantity,
-            double existingUnitCost,
-            double incomingQuantity,
-            double incomingUnitCost)
+        private static void AddBatch(
+            ICollection<TemporalQuantityBatch> batches,
+            double quantity,
+            double unitCost,
+            int? remainingLifePeriods)
         {
-            if (incomingQuantity <= Epsilon)
+            if (quantity <= Epsilon)
             {
-                return (existingQuantity, existingQuantity > Epsilon ? existingUnitCost : 0d);
+                return;
             }
 
-            var totalQuantity = existingQuantity + incomingQuantity;
-            if (totalQuantity <= Epsilon)
+            if (remainingLifePeriods.HasValue && remainingLifePeriods.Value <= 0)
             {
-                return (0d, 0d);
+                return;
             }
 
-            var unitCost = ((existingQuantity * existingUnitCost) + (incomingQuantity * incomingUnitCost)) / totalQuantity;
-            return (totalQuantity, unitCost);
+            batches.Add(new TemporalQuantityBatch
+            {
+                Quantity = quantity,
+                UnitCost = unitCost,
+                RemainingLifePeriods = remainingLifePeriods
+            });
+        }
+
+        private static double ConsumeFromBatches(List<TemporalQuantityBatch> batches, double quantity)
+        {
+            if (quantity <= Epsilon)
+            {
+                return GetWeightedUnitCost(batches);
+            }
+
+            var ordered = batches
+                .OrderBy(batch => batch.RemainingLifePeriods ?? int.MaxValue)
+                .ThenBy(batch => batch.Sequence)
+                .ToList();
+
+            var remaining = quantity;
+            var totalCost = 0d;
+
+            foreach (var batch in ordered)
+            {
+                if (remaining <= Epsilon)
+                {
+                    break;
+                }
+
+                var consumed = Math.Min(batch.Quantity, remaining);
+                if (consumed <= Epsilon)
+                {
+                    continue;
+                }
+
+                batch.Quantity -= consumed;
+                remaining -= consumed;
+                totalCost += consumed * batch.UnitCost;
+            }
+
+            batches.RemoveAll(batch => batch.Quantity <= Epsilon);
+
+            if (remaining > Epsilon)
+            {
+                throw new InvalidOperationException("Attempted to consume more traffic than was available.");
+            }
+
+            return quantity > Epsilon ? totalCost / quantity : 0d;
+        }
+
+        private static void AdvancePerishability(List<TemporalQuantityBatch> batches)
+        {
+            foreach (var batch in batches)
+            {
+                if (batch.RemainingLifePeriods.HasValue)
+                {
+                    batch.RemainingLifePeriods -= 1;
+                }
+            }
+
+            batches.RemoveAll(batch =>
+                batch.Quantity <= Epsilon ||
+                (batch.RemainingLifePeriods.HasValue && batch.RemainingLifePeriods.Value <= 0));
+        }
+
+        private static double GetWeightedUnitCost(IEnumerable<TemporalQuantityBatch> batches)
+        {
+            var quantity = 0d;
+            var cost = 0d;
+
+            foreach (var batch in batches)
+            {
+                if (batch.Quantity <= Epsilon)
+                {
+                    continue;
+                }
+
+                quantity += batch.Quantity;
+                cost += batch.Quantity * batch.UnitCost;
+            }
+
+            return quantity <= Epsilon ? 0d : cost / quantity;
+        }
+    }
+
+    private sealed class TemporalQuantityBatch
+    {
+        private static long nextSequence;
+
+        public TemporalQuantityBatch()
+        {
+            Sequence = Interlocked.Increment(ref nextSequence);
+        }
+
+        public long Sequence { get; }
+
+        public double Quantity { get; set; }
+
+        public double UnitCost { get; set; }
+
+        public int? RemainingLifePeriods { get; set; }
+
+        public TemporalQuantityBatch Clone()
+        {
+            return new TemporalQuantityBatch
+            {
+                Quantity = Quantity,
+                UnitCost = UnitCost,
+                RemainingLifePeriods = RemainingLifePeriods
+            };
         }
     }
 
@@ -1880,6 +2091,8 @@ public sealed class TemporalNetworkSimulationEngine
 
         public bool IsWaitingBetweenEdges { get; set; }
 
+        public int? RemainingShelfLifePeriods { get; set; }
+
         public TemporalInFlightMovement Clone()
         {
             return new TemporalInFlightMovement
@@ -1893,7 +2106,8 @@ public sealed class TemporalNetworkSimulationEngine
                 PathEdgeIds = PathEdgeIds.ToList(),
                 CurrentEdgeIndex = CurrentEdgeIndex,
                 RemainingPeriodsOnCurrentEdge = RemainingPeriodsOnCurrentEdge,
-                IsWaitingBetweenEdges = IsWaitingBetweenEdges
+                IsWaitingBetweenEdges = IsWaitingBetweenEdges,
+                RemainingShelfLifePeriods = RemainingShelfLifePeriods
             };
         }
     }

@@ -161,6 +161,8 @@ public partial class MainWindow : Window
         ExecuteWithErrorHandling(ViewModel.AdvanceTimeline);
     }
 
+
+
     private void AutoArrange_Click(object sender, RoutedEventArgs e)
     {
         ExecuteWithErrorHandling(ViewModel.AutoArrangeNodes);

@@ -3054,30 +3054,23 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
     private static void SynchronizeCollection(ObservableCollection<string> target, IEnumerable<string> values)
     {
         var nextValues = values.ToList();
-        if (target.Count == nextValues.Count)
+        var sharedCount = Math.Min(target.Count, nextValues.Count);
+        for (var index = 0; index < sharedCount; index++)
         {
-            var hasDifference = false;
-            for (var index = 0; index < target.Count; index++)
+            if (!string.Equals(target[index], nextValues[index], StringComparison.Ordinal))
             {
-                if (string.Equals(target[index], nextValues[index], StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                hasDifference = true;
-                break;
-            }
-
-            if (!hasDifference)
-            {
-                return;
+                target[index] = nextValues[index];
             }
         }
 
-        target.Clear();
-        foreach (var value in nextValues)
+        while (target.Count > nextValues.Count)
         {
-            target.Add(value);
+            target.RemoveAt(target.Count - 1);
+        }
+
+        for (var index = sharedCount; index < nextValues.Count; index++)
+        {
+            target.Add(nextValues[index]);
         }
     }
 

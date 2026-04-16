@@ -1006,7 +1006,7 @@ public sealed class NodeViewModel : ObservableObject
         foreach (var pair in backlogByTraffic
                      .Where(item => item.Value > Epsilon)
                      .OrderByDescending(item => item.Value)
-                     .ThenBy(item => item.Key, Comparer))
+                     .ThenBy(item => item.Key, TrafficComparer))
         {
             demandBadges.Add(new NodeDemandBadgeViewModel(
                 pair.Key,

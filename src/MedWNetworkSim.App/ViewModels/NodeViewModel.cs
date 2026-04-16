@@ -670,6 +670,12 @@ public sealed class NodeViewModel : ObservableObject
             if (HasTimelineDetails)
             {
                 lines.Add($"Timeline: {TimelineSummaryLabel}");
+
+                if (demandBadges.Count > 0)
+                {
+                    lines.Add("Demand backlog by traffic type:");
+                    lines.AddRange(demandBadges.Select(badge => $"- {badge.TrafficType}: {badge.QuantityLabel} units"));
+                }
             }
 
             if (pressureScore > Epsilon)

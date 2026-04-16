@@ -1578,7 +1578,7 @@ public sealed class TemporalNetworkSimulationEngine
         }
 
         accumulator.Add(cause, quantity, weight);
-        pressureEvents.Add(new PressureEvent(period, nodeId, isEdge: false, trafficType, cause, quantity, quantity * weight, string.Empty));
+        pressureEvents.Add(new PressureEvent(period, nodeId, IsEdge: false, trafficType, cause, quantity, quantity * weight, string.Empty));
     }
 
     private static void AddEdgePressure(
@@ -1603,7 +1603,7 @@ public sealed class TemporalNetworkSimulationEngine
         }
 
         accumulator.Add(cause, quantity, weight);
-        pressureEvents.Add(new PressureEvent(period, edgeId, isEdge: true, trafficType, cause, quantity, quantity * weight, string.Empty));
+        pressureEvents.Add(new PressureEvent(period, edgeId, IsEdge: true, trafficType, cause, quantity, quantity * weight, string.Empty));
     }
 
     public static int GetEffectivePeriod(int absolutePeriod, int? loopLength)
@@ -2413,7 +2413,7 @@ public sealed class TemporalNetworkSimulationEngine
             var topCause = weightedByCause.Count == 0
                 ? string.Empty
                 : weightedByCause.MaxBy(pair => pair.Value).Key.ToString();
-            return new EdgePressureSnapshot(score, blockedQuantity, expiredInTransitQuantity, utilization: 0d, weightedByCause, topCause);
+            return new EdgePressureSnapshot(score, blockedQuantity, expiredInTransitQuantity, Utilization: 0d, weightedByCause, topCause);
         }
     }
 

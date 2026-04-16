@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Globalization;
+using System.Text;
 using System.Windows;
 using System.Windows.Media;
 using MedWNetworkSim.App.Models;
@@ -45,6 +46,7 @@ public sealed class EdgeViewModel : ObservableObject
     private double capacityUtilizationRatio;
     private Brush flowStrokeBrush = IdleBrush;
     private bool isRouteHighlighted;
+    private string trafficDetailsLabel = "none visible";
 
     public EdgeViewModel(EdgeModel model, NodeViewModel? sourceNode, NodeViewModel? targetNode)
     {
@@ -357,8 +359,11 @@ public sealed class EdgeViewModel : ObservableObject
         $"Time {Time:0.##} | Cost {Cost:0.##} | Total {TotalCost:0.##}{Environment.NewLine}" +
         $"{CapacityDisplayLabel}{Environment.NewLine}" +
         $"Flow: {(HasSimulationDetails ? FlowSummaryLabel : "none visible")}{Environment.NewLine}" +
+        $"Traffic: {TrafficDetailsLabel}{Environment.NewLine}" +
         $"Utilization: {UtilizationPercentLabel}{Environment.NewLine}" +
         $"Pressure: {PressureSummaryLabel}";
+
+    public string TrafficDetailsLabel => trafficDetailsLabel;
 
     public string PressureSummaryLabel => pressureScore <= Epsilon
         ? "none"
@@ -571,6 +576,18 @@ public sealed class EdgeViewModel : ObservableObject
 
     private bool HasValidEndpoints => sourceNode is not null && targetNode is not null;
 
+    public void ApplyTrafficDetails(
+        IReadOnlyList<KeyValuePair<string, double>> forwardByTraffic,
+        IReadOnlyList<KeyValuePair<string, double>> reverseByTraffic)
+    {
+        var builder = new StringBuilder();
+        AppendTrafficDetails(builder, "->", forwardByTraffic);
+        AppendTrafficDetails(builder, "<-", reverseByTraffic);
+        trafficDetailsLabel = builder.Length == 0 ? "none visible" : builder.ToString();
+        OnPropertyChanged(nameof(TrafficDetailsLabel));
+        OnPropertyChanged(nameof(EdgeToolTipText));
+    }
+
     private void UpdateResolvedNodes(NodeViewModel? newSourceNode, NodeViewModel? newTargetNode)
     {
         if (ReferenceEquals(sourceNode, newSourceNode) && ReferenceEquals(targetNode, newTargetNode))
@@ -720,5 +737,22 @@ public sealed class EdgeViewModel : ObservableObject
         var brush = (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
         brush.Freeze();
         return brush;
+    }
+
+    private static void AppendTrafficDetails(StringBuilder builder, string direction, IReadOnlyList<KeyValuePair<string, double>> traffic)
+    {
+        if (traffic.Count == 0)
+        {
+            return;
+        }
+
+        if (builder.Length > 0)
+        {
+            builder.Append(" | ");
+        }
+
+        builder.Append(direction);
+        builder.Append(' ');
+        builder.Append(string.Join(", ", traffic.Select(item => $"{item.Key} {item.Value:0.##}")));
     }
 }

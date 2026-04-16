@@ -1224,6 +1224,9 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
         allAllocations.Clear();
         allAllocations.AddRange(stepResult.Allocations.Select(allocation => new RouteAllocationRowViewModel(allocation)));
         allConsumerCostSummaries.Clear();
+        allConsumerCostSummaries.AddRange(
+            simulationEngine.SummarizeConsumerCosts(stepResult.Allocations)
+                .Select(summary => new ConsumerCostSummaryRowViewModel(summary)));
         allPerishingEvents.Clear();
         allPerishingEvents.AddRange(BuildPerishingEventRows(stepResult));
         RefreshVisibleAllocations();
@@ -2685,9 +2688,14 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
             .ToDictionary(group => group.Key, group => group.First(), Comparer);
         var edgeVisualsById = new Dictionary<string, EdgeFlowVisualSummary>(Comparer);
         var nodeVisualsById = new Dictionary<string, NodeFlowVisualSummary>(Comparer);
+        var edgeTrafficById = new Dictionary<string, EdgeTrafficBreakdown>(Comparer);
+        var producedTrafficByNodeId = new Dictionary<string, Dictionary<string, double>>(Comparer);
+        var transhippedTrafficByNodeId = new Dictionary<string, Dictionary<string, double>>(Comparer);
 
         foreach (var allocation in filteredAllocations)
         {
+            AddTrafficQuantityByNode(producedTrafficByNodeId, allocation.ProducerNodeId, allocation.TrafficType, allocation.Quantity);
+
             if (allocation.IsLocalSupply)
             {
                 AddNodeLocalQuantity(allocation.ConsumerNodeId, allocation.Quantity, nodeVisualsById);
@@ -2700,6 +2708,7 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
             foreach (var transhipmentNodeId in allocation.PathNodeIds.Skip(1).Take(Math.Max(0, allocation.PathNodeIds.Count - 2)))
             {
                 AddNodeTranshipmentQuantity(transhipmentNodeId, allocation.Quantity, nodeVisualsById);
+                AddTrafficQuantityByNode(transhippedTrafficByNodeId, transhipmentNodeId, allocation.TrafficType, allocation.Quantity);
             }
 
             for (var index = 0; index < allocation.PathEdgeIds.Count; index++)
@@ -2718,6 +2727,7 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
                     Comparer.Equals(fromNodeId, edge.FromNodeId) &&
                     Comparer.Equals(toNodeId, edge.ToNodeId))
                 {
+                    AddEdgeTrafficQuantity(edgeTrafficById, edgeId, allocation.TrafficType, allocation.Quantity, isForward: true);
                     edgeVisualsById[edgeId] = existingEdgeSummary with
                     {
                         ForwardQuantity = existingEdgeSummary.ForwardQuantity + allocation.Quantity
@@ -2725,6 +2735,7 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
                 }
                 else
                 {
+                    AddEdgeTrafficQuantity(edgeTrafficById, edgeId, allocation.TrafficType, allocation.Quantity, isForward: false);
                     edgeVisualsById[edgeId] = existingEdgeSummary with
                     {
                         ReverseQuantity = existingEdgeSummary.ReverseQuantity + allocation.Quantity
@@ -2743,6 +2754,12 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
                 ? EdgeFlowVisualSummary.Empty
                 : edgeVisualsById.GetValueOrDefault(edge.Id, EdgeFlowVisualSummary.Empty);
             edge.ApplySimulationVisuals(summary.ForwardQuantity, summary.ReverseQuantity, maxEdgeFlowQuantity, hasSimulationSnapshot);
+            var trafficBreakdown = string.IsNullOrWhiteSpace(edge.Id)
+                ? EdgeTrafficBreakdown.Empty
+                : edgeTrafficById.GetValueOrDefault(edge.Id, EdgeTrafficBreakdown.Empty);
+            edge.ApplyTrafficDetails(
+                ToOrderedTrafficPairs(trafficBreakdown.ForwardByTraffic),
+                ToOrderedTrafficPairs(trafficBreakdown.ReverseByTraffic));
         }
 
         ApplyRouteHighlights();
@@ -2758,11 +2775,35 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
                 summary.InboundQuantity,
                 summary.LocalQuantity,
                 hasSimulationSnapshot);
+            node.ApplyTooltipTrafficDetails(
+                ToOrderedTrafficPairs(producedTrafficByNodeId.GetValueOrDefault(node.Id)),
+                [],
+                ToOrderedTrafficPairs(transhippedTrafficByNodeId.GetValueOrDefault(node.Id)));
         }
     }
 
     private void ApplyTimelineVisuals(TemporalNetworkSimulationEngine.TemporalSimulationStepResult stepResult)
     {
+        var edgeTrafficById = new Dictionary<string, EdgeTrafficBreakdown>(Comparer);
+        var producedTrafficByNodeId = new Dictionary<string, Dictionary<string, double>>(Comparer);
+        var transhippedTrafficByNodeId = new Dictionary<string, Dictionary<string, double>>(Comparer);
+        var storedTrafficByNodeId = new Dictionary<string, Dictionary<string, double>>(Comparer);
+        BuildTrafficTooltipBreakdowns(
+            stepResult.Allocations,
+            Edges,
+            edgeTrafficById,
+            producedTrafficByNodeId,
+            transhippedTrafficByNodeId);
+
+        foreach (var state in stepResult.NodeStates)
+        {
+            AddTrafficQuantityByNode(
+                storedTrafficByNodeId,
+                state.Key.NodeId,
+                state.Key.TrafficType,
+                state.Value.StoreInventory);
+        }
+
         var maxEdgeFlowQuantity = stepResult.EdgeFlows.Count == 0
             ? 0d
             : stepResult.EdgeFlows.Values.Max(summary => summary.ForwardQuantity + summary.ReverseQuantity);
@@ -2773,6 +2814,12 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
                 ? TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty
                 : stepResult.EdgeFlows.GetValueOrDefault(edge.Id, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty);
             edge.ApplySimulationVisuals(summary.ForwardQuantity, summary.ReverseQuantity, maxEdgeFlowQuantity, hasSimulationSnapshot: true);
+            var trafficBreakdown = string.IsNullOrWhiteSpace(edge.Id)
+                ? EdgeTrafficBreakdown.Empty
+                : edgeTrafficById.GetValueOrDefault(edge.Id, EdgeTrafficBreakdown.Empty);
+            edge.ApplyTrafficDetails(
+                ToOrderedTrafficPairs(trafficBreakdown.ForwardByTraffic),
+                ToOrderedTrafficPairs(trafficBreakdown.ReverseByTraffic));
             edge.ApplyTimelinePressure(
                 string.IsNullOrWhiteSpace(edge.Id)
                     ? null
@@ -2815,6 +2862,10 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
                 string.IsNullOrWhiteSpace(node.Id)
                     ? null
                     : stepResult.NodePressureById.GetValueOrDefault(node.Id));
+            node.ApplyTooltipTrafficDetails(
+                ToOrderedTrafficPairs(producedTrafficByNodeId.GetValueOrDefault(node.Id)),
+                ToOrderedTrafficPairs(storedTrafficByNodeId.GetValueOrDefault(node.Id)),
+                ToOrderedTrafficPairs(transhippedTrafficByNodeId.GetValueOrDefault(node.Id)));
         }
     }
 
@@ -2823,6 +2874,7 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
         foreach (var edge in Edges)
         {
             edge.ClearSimulationVisuals();
+            edge.ApplyTrafficDetails([], []);
             edge.ApplyRouteHighlight(false);
             edge.ClearTimelinePressure();
         }
@@ -2830,6 +2882,7 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
         foreach (var node in Nodes)
         {
             node.ClearSimulationVisuals();
+            node.ApplyTooltipTrafficDetails([], [], []);
         }
     }
 
@@ -2838,6 +2891,7 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
         foreach (var edge in Edges)
         {
             edge.ClearSimulationVisuals();
+            edge.ApplyTrafficDetails([], []);
             edge.ApplyRouteHighlight(false);
         }
 
@@ -2845,6 +2899,7 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
         {
             node.ClearSimulationVisuals();
             node.ClearTimelineVisuals();
+            node.ApplyTooltipTrafficDetails([], [], []);
         }
     }
 
@@ -3061,6 +3116,120 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
         };
     }
 
+    private static void BuildTrafficTooltipBreakdowns(
+        IEnumerable<RouteAllocation> allocations,
+        IEnumerable<EdgeViewModel> edges,
+        IDictionary<string, EdgeTrafficBreakdown> edgeTrafficById,
+        IDictionary<string, Dictionary<string, double>> producedTrafficByNodeId,
+        IDictionary<string, Dictionary<string, double>> transhippedTrafficByNodeId)
+    {
+        var edgeMap = edges
+            .Where(edge => !string.IsNullOrWhiteSpace(edge.Id))
+            .GroupBy(edge => edge.Id, Comparer)
+            .ToDictionary(group => group.Key, group => group.First(), Comparer);
+
+        foreach (var allocation in allocations.Where(allocation => allocation.Quantity > Epsilon))
+        {
+            AddTrafficQuantityByNode(producedTrafficByNodeId, allocation.ProducerNodeId, allocation.TrafficType, allocation.Quantity);
+
+            if (allocation.IsLocalSupply)
+            {
+                continue;
+            }
+
+            foreach (var transhipmentNodeId in allocation.PathNodeIds.Skip(1).Take(Math.Max(0, allocation.PathNodeIds.Count - 2)))
+            {
+                AddTrafficQuantityByNode(transhippedTrafficByNodeId, transhipmentNodeId, allocation.TrafficType, allocation.Quantity);
+            }
+
+            for (var index = 0; index < allocation.PathEdgeIds.Count; index++)
+            {
+                var edgeId = allocation.PathEdgeIds[index];
+                if (string.IsNullOrWhiteSpace(edgeId))
+                {
+                    continue;
+                }
+
+                var fromNodeId = index < allocation.PathNodeIds.Count ? allocation.PathNodeIds[index] : string.Empty;
+                var toNodeId = index + 1 < allocation.PathNodeIds.Count ? allocation.PathNodeIds[index + 1] : string.Empty;
+                var isForward = edgeMap.TryGetValue(edgeId, out var edge) &&
+                    Comparer.Equals(fromNodeId, edge.FromNodeId) &&
+                    Comparer.Equals(toNodeId, edge.ToNodeId);
+                AddEdgeTrafficQuantity(edgeTrafficById, edgeId, allocation.TrafficType, allocation.Quantity, isForward);
+            }
+        }
+    }
+
+    private static void AddEdgeTrafficQuantity(
+        IDictionary<string, EdgeTrafficBreakdown> edgeTrafficById,
+        string edgeId,
+        string trafficType,
+        double quantity,
+        bool isForward)
+    {
+        if (string.IsNullOrWhiteSpace(edgeId) || string.IsNullOrWhiteSpace(trafficType) || quantity <= Epsilon)
+        {
+            return;
+        }
+
+        var existing = edgeTrafficById.GetValueOrDefault(edgeId, EdgeTrafficBreakdown.Empty);
+        if (isForward)
+        {
+            AddTrafficQuantity(existing.ForwardByTraffic, trafficType, quantity);
+        }
+        else
+        {
+            AddTrafficQuantity(existing.ReverseByTraffic, trafficType, quantity);
+        }
+
+        edgeTrafficById[edgeId] = existing;
+    }
+
+    private static void AddTrafficQuantityByNode(
+        IDictionary<string, Dictionary<string, double>> trafficByNodeId,
+        string nodeId,
+        string trafficType,
+        double quantity)
+    {
+        if (string.IsNullOrWhiteSpace(nodeId) || string.IsNullOrWhiteSpace(trafficType) || quantity <= Epsilon)
+        {
+            return;
+        }
+
+        if (!trafficByNodeId.TryGetValue(nodeId, out var nodeBreakdown))
+        {
+            nodeBreakdown = new Dictionary<string, double>(Comparer);
+            trafficByNodeId[nodeId] = nodeBreakdown;
+        }
+
+        AddTrafficQuantity(nodeBreakdown, trafficType, quantity);
+    }
+
+    private static void AddTrafficQuantity(IDictionary<string, double> breakdown, string trafficType, double quantity)
+    {
+        if (quantity <= Epsilon)
+        {
+            return;
+        }
+
+        breakdown[trafficType] = breakdown.GetValueOrDefault(trafficType) + quantity;
+    }
+
+    private static IReadOnlyList<KeyValuePair<string, double>> ToOrderedTrafficPairs(IReadOnlyDictionary<string, double>? breakdown)
+    {
+        if (breakdown is null || breakdown.Count == 0)
+        {
+            return [];
+        }
+
+        return breakdown
+            .Where(pair => pair.Value > Epsilon)
+            .OrderByDescending(pair => pair.Value)
+            .ThenBy(pair => pair.Key, Comparer)
+            .Select(pair => new KeyValuePair<string, double>(pair.Key, pair.Value))
+            .ToList();
+    }
+
     private static void SynchronizeCollection(ObservableCollection<string> target, IEnumerable<string> values)
     {
         var nextValues = values.ToList();
@@ -3156,6 +3325,13 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
         public static EdgeFlowVisualSummary Empty => new(0d, 0d);
 
         public double TotalQuantity => ForwardQuantity + ReverseQuantity;
+    }
+
+    private readonly record struct EdgeTrafficBreakdown(
+        Dictionary<string, double> ForwardByTraffic,
+        Dictionary<string, double> ReverseByTraffic)
+    {
+        public static EdgeTrafficBreakdown Empty => new(new Dictionary<string, double>(Comparer), new Dictionary<string, double>(Comparer));
     }
 
     private readonly record struct NodeFlowVisualSummary(

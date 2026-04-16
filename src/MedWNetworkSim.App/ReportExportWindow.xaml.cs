@@ -25,11 +25,19 @@ public partial class ReportExportWindow : Window
         var dialog = new SaveFileDialog
         {
             Title = "Export report",
-            Filter = ViewModel.SelectedFormat == ReportExportFormat.Csv
-                ? "CSV report (*.csv)|*.csv|All files (*.*)|*.*"
-                : "HTML report (*.html)|*.html|Web page (*.htm)|*.htm|All files (*.*)|*.*",
+            Filter = ViewModel.SelectedFormat switch
+            {
+                ReportExportFormat.Csv => "CSV report (*.csv)|*.csv|All files (*.*)|*.*",
+                ReportExportFormat.Json => "JSON report (*.json)|*.json|All files (*.*)|*.*",
+                _ => "HTML report (*.html)|*.html|Web page (*.htm)|*.htm|All files (*.*)|*.*"
+            },
             FileName = Path.GetFileName(ViewModel.ReportPath),
-            DefaultExt = ViewModel.SelectedFormat == ReportExportFormat.Csv ? ".csv" : ".html",
+            DefaultExt = ViewModel.SelectedFormat switch
+            {
+                ReportExportFormat.Csv => ".csv",
+                ReportExportFormat.Json => ".json",
+                _ => ".html"
+            },
             OverwritePrompt = true
         };
 

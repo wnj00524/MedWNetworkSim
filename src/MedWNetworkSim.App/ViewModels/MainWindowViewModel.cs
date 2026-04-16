@@ -2791,6 +2791,14 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
                 .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id))
                 .Select(pair => pair.Value)
                 .ToList();
+            var backlogByTraffic = stepResult.NodeStates
+                .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id) && pair.Value.DemandBacklog > 0d)
+                .GroupBy(pair => pair.Key.TrafficType, pair => pair.Value.DemandBacklog, Comparer)
+                .Select(group => new KeyValuePair<string, double>(group.Key, group.Sum()))
+                .ToList();
+            var deliveredDemand = stepResult.Allocations
+                .Where(allocation => Comparer.Equals(allocation.ConsumerNodeId, node.Id))
+                .Sum(allocation => allocation.Quantity);
 
             node.ApplySimulationVisuals(
                 flowSummary.OutboundQuantity,
@@ -2802,6 +2810,8 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
                 trafficStates.Sum(item => item.AvailableSupply),
                 trafficStates.Sum(item => item.DemandBacklog),
                 trafficStates.Sum(item => item.StoreInventory),
+                deliveredDemand,
+                backlogByTraffic,
                 string.IsNullOrWhiteSpace(node.Id)
                     ? null
                     : stepResult.NodePressureById.GetValueOrDefault(node.Id));

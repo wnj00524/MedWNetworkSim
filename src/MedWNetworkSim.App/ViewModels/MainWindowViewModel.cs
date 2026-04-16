@@ -57,6 +57,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly List<RouteAllocation> allAllocationModels = [];
     private readonly List<RouteAllocationRowViewModel> allAllocations = [];
     private readonly List<ConsumerCostSummaryRowViewModel> allConsumerCostSummaries = [];
+    private readonly List<PerishingEventRowViewModel> allPerishingEvents = [];
 
     private bool isNormalizingEdgeInterfaces;
 
@@ -129,6 +130,8 @@ public sealed class MainWindowViewModel : ObservableObject
     public ObservableCollection<RouteAllocationRowViewModel> VisibleAllocations { get; } = [];
 
     public ObservableCollection<ConsumerCostSummaryRowViewModel> VisibleConsumerCostSummaries { get; } = [];
+
+    public ObservableCollection<PerishingEventRowViewModel> VisiblePerishingEvents { get; } = [];
 
     public CanvasViewModel Canvas { get; } = new();
 
@@ -502,6 +505,8 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
 
     public string ConsumerCostsTabHeader => $"Consumer Costs ({VisibleConsumerCostSummaries.Count})";
 
+    public string PerishingTabHeader => $"Perishing ({VisiblePerishingEvents.Count})";
+
     public bool HasReportSnapshot => hasSimulationSnapshot || hasTimelineSnapshot;
 
     public string RoutesEmptyText => !HasReportSnapshot
@@ -511,6 +516,10 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
     public string ConsumerCostsEmptyText => !HasReportSnapshot
         ? "No results yet. Run a simulation to populate consumer costs."
         : "No data for current layer/filter.";
+
+    public string PerishingEmptyText => !hasTimelineSnapshot
+        ? "No timeline results yet. Advance the timeline to detect where traffic perishes."
+        : "No perishing detected for current layer/filter.";
 
     public Visibility RoutesEmptyStateVisibility => VisibleAllocations.Count == 0
         ? Visibility.Visible
@@ -525,6 +534,14 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
         : Visibility.Collapsed;
 
     public Visibility ConsumerCostsGridVisibility => VisibleConsumerCostSummaries.Count == 0
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+
+    public Visibility PerishingEmptyStateVisibility => VisiblePerishingEvents.Count == 0
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility PerishingGridVisibility => VisiblePerishingEvents.Count == 0
         ? Visibility.Collapsed
         : Visibility.Visible;
 
@@ -943,6 +960,10 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
     public string VisibleConsumerCostHeadline =>
         $"{VisibleConsumerCostSummaries.Count} consumer cost row(s) for {LayersPanel.SelectedDisplayMode}";
 
+    public string VisiblePerishingHeadline => hasTimelineSnapshot
+        ? $"{VisiblePerishingEvents.Count} perishing row(s), {VisiblePerishingEvents.Sum(item => item.Quantity):0.##} unit(s) expired in visible layers."
+        : "Advance the timeline to report perishing hotspots.";
+
     public string SuggestedFileName
     {
         get
@@ -1149,8 +1170,11 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
         allConsumerCostSummaries.AddRange(
             simulationEngine.SummarizeConsumerCosts(outcomes)
                 .Select(summary => new ConsumerCostSummaryRowViewModel(summary)));
+        allPerishingEvents.Clear();
+        VisiblePerishingEvents.Clear();
         RefreshVisibleAllocations();
         RefreshVisibleConsumerCostSummaries();
+        RefreshVisiblePerishingEvents();
         RefreshFlowVisuals();
         RaiseReportStatePropertiesChanged();
 
@@ -1164,8 +1188,11 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
         lastTimelineStepResult = null;
         currentPeriod = 0;
         hasTimelineSnapshot = false;
+        allPerishingEvents.Clear();
+        VisiblePerishingEvents.Clear();
         OnPropertyChanged(nameof(CurrentPeriod));
         OnPropertyChanged(nameof(TimelineHeadline));
+        OnPropertyChanged(nameof(VisiblePerishingHeadline));
         TimelineToolbar.CurrentPeriod = CurrentPeriod;
         TimelineToolbar.Headline = TimelineHeadline;
         ClearTimelineVisuals();
@@ -1197,9 +1224,11 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
         allAllocations.Clear();
         allAllocations.AddRange(stepResult.Allocations.Select(allocation => new RouteAllocationRowViewModel(allocation)));
         allConsumerCostSummaries.Clear();
-        VisibleConsumerCostSummaries.Clear();
+        allPerishingEvents.Clear();
+        allPerishingEvents.AddRange(BuildPerishingEventRows(stepResult));
         RefreshVisibleAllocations();
         RefreshVisibleConsumerCostSummaries();
+        RefreshVisiblePerishingEvents();
         ApplyTimelineVisuals(stepResult);
         StatusMessage = $"Advanced the timeline to period {currentPeriod}. {stepResult.InFlightMovementCount} movement(s) remain in flight.";
     }
@@ -2594,8 +2623,10 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
         allAllocationModels.Clear();
         allAllocations.Clear();
         allConsumerCostSummaries.Clear();
+        allPerishingEvents.Clear();
         VisibleAllocations.Clear();
         VisibleConsumerCostSummaries.Clear();
+        VisiblePerishingEvents.Clear();
         ClearFlowVisuals();
         ClearTimelineVisuals();
         Canvas.ClearRouteHighlight();
@@ -2611,6 +2642,7 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
         TimelineToolbar.Headline = TimelineHeadline;
         OnPropertyChanged(nameof(VisibleAllocationHeadline));
         OnPropertyChanged(nameof(VisibleConsumerCostHeadline));
+        OnPropertyChanged(nameof(VisiblePerishingHeadline));
         RaiseReportStatePropertiesChanged();
         StatusMessage = message;
     }
@@ -2821,10 +2853,26 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
         RaiseReportStatePropertiesChanged();
     }
 
+    private void RefreshVisiblePerishingEvents()
+    {
+        VisiblePerishingEvents.Clear();
+
+        var source = allPerishingEvents.Where(item => LayersPanel.ShouldIncludeTraffic(item.TrafficType));
+
+        foreach (var row in source)
+        {
+            VisiblePerishingEvents.Add(row);
+        }
+
+        OnPropertyChanged(nameof(VisiblePerishingHeadline));
+        RaiseReportStatePropertiesChanged();
+    }
+
     private void HandleLayersChanged(object? sender, EventArgs e)
     {
         RefreshVisibleAllocations();
         RefreshVisibleConsumerCostSummaries();
+        RefreshVisiblePerishingEvents();
         RefreshFlowVisuals();
     }
 
@@ -2875,12 +2923,68 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
         OnPropertyChanged(nameof(HasReportSnapshot));
         OnPropertyChanged(nameof(RoutesTabHeader));
         OnPropertyChanged(nameof(ConsumerCostsTabHeader));
+        OnPropertyChanged(nameof(PerishingTabHeader));
         OnPropertyChanged(nameof(RoutesEmptyText));
         OnPropertyChanged(nameof(ConsumerCostsEmptyText));
+        OnPropertyChanged(nameof(PerishingEmptyText));
         OnPropertyChanged(nameof(RoutesEmptyStateVisibility));
         OnPropertyChanged(nameof(RoutesGridVisibility));
         OnPropertyChanged(nameof(ConsumerCostsEmptyStateVisibility));
         OnPropertyChanged(nameof(ConsumerCostsGridVisibility));
+        OnPropertyChanged(nameof(PerishingEmptyStateVisibility));
+        OnPropertyChanged(nameof(PerishingGridVisibility));
+    }
+
+    private IReadOnlyList<PerishingEventRowViewModel> BuildPerishingEventRows(
+        TemporalNetworkSimulationEngine.TemporalSimulationStepResult stepResult)
+    {
+        var nodeNamesById = Nodes
+            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
+            .ToDictionary(node => node.Id, node => node.Name, Comparer);
+        var edgeLabelsById = Edges
+            .Where(edge => !string.IsNullOrWhiteSpace(edge.Id))
+            .ToDictionary(
+                edge => edge.Id,
+                edge =>
+                {
+                    var from = nodeNamesById.GetValueOrDefault(edge.FromNodeId, edge.FromNodeId);
+                    var to = nodeNamesById.GetValueOrDefault(edge.ToNodeId, edge.ToNodeId);
+                    return $"{from} → {to}";
+                },
+                Comparer);
+
+        return stepResult.PressureEvents
+            .Where(item => PerishingEventRowViewModel.IsPerishingCause(item.Cause))
+            .GroupBy(
+                item => (item.Period, item.TrafficType, item.IsEdge, item.EntityId, item.Cause))
+            .Select(group =>
+            {
+                var sample = group.First();
+                var locationType = sample.IsEdge ? "Edge" : "Node";
+                var locationLabel = sample.IsEdge
+                    ? edgeLabelsById.GetValueOrDefault(sample.EntityId, sample.EntityId)
+                    : nodeNamesById.GetValueOrDefault(sample.EntityId, sample.EntityId);
+                var detail = group
+                    .Select(item => item.Detail)
+                    .Where(item => !string.IsNullOrWhiteSpace(item))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .FirstOrDefault() ?? string.Empty;
+
+                return new PerishingEventRowViewModel(
+                    sample.Period,
+                    sample.TrafficType,
+                    locationType,
+                    sample.EntityId,
+                    locationLabel,
+                    sample.Cause.ToString(),
+                    group.Sum(item => item.Quantity),
+                    group.Sum(item => item.WeightedImpact),
+                    detail);
+            })
+            .OrderByDescending(item => item.Quantity)
+            .ThenBy(item => item.TrafficType, Comparer)
+            .ThenBy(item => item.LocationLabel, Comparer)
+            .ToList();
     }
 
     private static void AddNodeOutboundQuantity(string nodeId, double quantity, IDictionary<string, NodeFlowVisualSummary> nodeVisualsById)

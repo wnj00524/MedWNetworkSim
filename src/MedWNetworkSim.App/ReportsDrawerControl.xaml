@@ -102,6 +102,43 @@
                                    Visibility="{Binding ConsumerCostsEmptyStateVisibility}" />
                     </Grid>
                 </TabItem>
+
+                <TabItem Header="{Binding PerishingTabHeader}">
+                    <Grid Margin="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="8" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="{Binding VisiblePerishingHeadline}" />
+                        <DataGrid Grid.Row="2"
+                                  ItemsSource="{Binding VisiblePerishingEvents}"
+                                  AutoGenerateColumns="False"
+                                  IsReadOnly="True"
+                                  Visibility="{Binding PerishingGridVisibility}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Binding="{Binding Period}" Header="Period" Width="65" />
+                                <DataGridTextColumn Binding="{Binding TrafficType}" Header="Traffic" Width="125" />
+                                <DataGridTextColumn Binding="{Binding LocationType}" Header="At" Width="70" />
+                                <DataGridTextColumn Binding="{Binding LocationLabel}" Header="Location" Width="180" />
+                                <DataGridTextColumn Binding="{Binding Quantity, StringFormat={}{0:0.##}}" Header="Perished Qty" Width="95" />
+                                <DataGridTextColumn Binding="{Binding Cause}" Header="Cause" Width="165" />
+                                <DataGridTextColumn Binding="{Binding WeightedImpact, StringFormat={}{0:0.##}}" Header="Impact" Width="80" />
+                                <DataGridTextColumn Binding="{Binding Detail}" Header="Detail" Width="*" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <TextBlock Grid.Row="2"
+                                   Margin="0,24,0,0"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="14"
+                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Text="{Binding PerishingEmptyText}"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding PerishingEmptyStateVisibility}" />
+                    </Grid>
+                </TabItem>
             </TabControl>
         </Grid>
     </Border>

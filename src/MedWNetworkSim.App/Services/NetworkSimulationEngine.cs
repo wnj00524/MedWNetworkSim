@@ -120,8 +120,17 @@ public sealed class NetworkSimulationEngine
     /// <returns>The consumer cost summaries.</returns>
     public IReadOnlyList<ConsumerCostSummary> SummarizeConsumerCosts(IEnumerable<TrafficSimulationOutcome> outcomes)
     {
-        return outcomes
-            .SelectMany(outcome => outcome.Allocations)
+        return SummarizeConsumerCosts(outcomes.SelectMany(outcome => outcome.Allocations));
+    }
+
+    /// <summary>
+    /// Aggregates route allocations into landed-cost summaries for each consumer node and traffic type.
+    /// </summary>
+    /// <param name="allocations">The route allocations to aggregate.</param>
+    /// <returns>The consumer cost summaries.</returns>
+    public IReadOnlyList<ConsumerCostSummary> SummarizeConsumerCosts(IEnumerable<RouteAllocation> allocations)
+    {
+        return allocations
             .GroupBy(allocation => new { allocation.TrafficType, allocation.ConsumerNodeId, allocation.ConsumerName })
             .Select(group =>
             {

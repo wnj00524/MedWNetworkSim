@@ -53,6 +53,9 @@ public sealed class NodeViewModel : ObservableObject
     private string pressureTopCause = string.Empty;
     private bool hasTimelineDetails;
     private double deliveredDemandQuantity;
+    private string producedTrafficDetails = "none visible";
+    private string transhippedTrafficDetails = "none visible";
+    private string storedTrafficDetails = "none visible";
     private readonly ObservableCollection<NodeDemandBadgeViewModel> demandBadges = [];
     private Brush nodeBorderDisplayBrush = DefaultNodeBorder;
     private Brush simulationBrush = IdleBrush;
@@ -667,6 +670,10 @@ public sealed class NodeViewModel : ObservableObject
                 lines.Add($"Flow: {FlowSummaryLabel}");
             }
 
+            lines.Add($"Produced traffic: {producedTrafficDetails}");
+            lines.Add($"Transhipped traffic: {transhippedTrafficDetails}");
+            lines.Add($"Stored traffic: {storedTrafficDetails}");
+
             if (HasTimelineDetails)
             {
                 lines.Add($"Timeline: {TimelineSummaryLabel}");
@@ -851,6 +858,17 @@ public sealed class NodeViewModel : ObservableObject
         localQuantity = 0d;
         hasSimulationDetails = false;
         RefreshSimulationDerivedState();
+    }
+
+    public void ApplyTooltipTrafficDetails(
+        IReadOnlyList<KeyValuePair<string, double>> producedByTraffic,
+        IReadOnlyList<KeyValuePair<string, double>> storedByTraffic,
+        IReadOnlyList<KeyValuePair<string, double>> transhippedByTraffic)
+    {
+        producedTrafficDetails = FormatTrafficDetails(producedByTraffic);
+        storedTrafficDetails = FormatTrafficDetails(storedByTraffic);
+        transhippedTrafficDetails = FormatTrafficDetails(transhippedByTraffic);
+        OnPropertyChanged(nameof(FullTrafficSummary));
     }
 
     public void ApplyTimelineVisuals(double availableSupply, double demandBacklog, double storeInventory)
@@ -1135,6 +1153,13 @@ public sealed class NodeViewModel : ObservableObject
             <= 2 => string.Join(", ", items),
             _ => $"{items[0]}, {items[1]} +{items.Count - 2}"
         };
+    }
+
+    private static string FormatTrafficDetails(IReadOnlyList<KeyValuePair<string, double>> values)
+    {
+        return values.Count == 0
+            ? "none visible"
+            : string.Join(", ", values.Select(value => $"{value.Key} {value.Value:0.##}"));
     }
 
     private static IReadOnlyList<string> SplitTags(string? value)

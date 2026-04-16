@@ -87,6 +87,13 @@ public sealed class EdgeViewModel : ObservableObject
         get => fromNodeId;
         set
         {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                // WPF ComboBox can transiently push null/empty when the ItemsSource is refreshed.
+                // Ignore that intermediate value so an existing endpoint is not accidentally cleared.
+                return;
+            }
+
             if (!SetProperty(ref fromNodeId, value))
             {
                 return;
@@ -118,6 +125,13 @@ public sealed class EdgeViewModel : ObservableObject
         get => toNodeId;
         set
         {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                // WPF ComboBox can transiently push null/empty when the ItemsSource is refreshed.
+                // Ignore that intermediate value so an existing endpoint is not accidentally cleared.
+                return;
+            }
+
             if (!SetProperty(ref toNodeId, value))
             {
                 return;

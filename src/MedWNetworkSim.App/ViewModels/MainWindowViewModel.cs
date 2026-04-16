@@ -2741,6 +2741,10 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
                 ? TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty
                 : stepResult.EdgeFlows.GetValueOrDefault(edge.Id, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty);
             edge.ApplySimulationVisuals(summary.ForwardQuantity, summary.ReverseQuantity, maxEdgeFlowQuantity, hasSimulationSnapshot: true);
+            edge.ApplyTimelinePressure(
+                string.IsNullOrWhiteSpace(edge.Id)
+                    ? null
+                    : stepResult.EdgePressureById.GetValueOrDefault(edge.Id));
         }
 
         ApplyRouteHighlights();
@@ -2765,7 +2769,10 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
             node.ApplyTimelineVisuals(
                 trafficStates.Sum(item => item.AvailableSupply),
                 trafficStates.Sum(item => item.DemandBacklog),
-                trafficStates.Sum(item => item.StoreInventory));
+                trafficStates.Sum(item => item.StoreInventory),
+                string.IsNullOrWhiteSpace(node.Id)
+                    ? null
+                    : stepResult.NodePressureById.GetValueOrDefault(node.Id));
         }
     }
 
@@ -2775,6 +2782,7 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
         {
             edge.ClearSimulationVisuals();
             edge.ApplyRouteHighlight(false);
+            edge.ClearTimelinePressure();
         }
 
         foreach (var node in Nodes)

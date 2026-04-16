@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Media;
 using MedWNetworkSim.App.Models;
+using MedWNetworkSim.App.Services;
 
 namespace MedWNetworkSim.App.ViewModels;
 
@@ -43,6 +44,8 @@ public sealed class NodeViewModel : ObservableObject
     private double availableSupplyQuantity;
     private double demandBacklogQuantity;
     private double storeInventoryQuantity;
+    private double pressureScore;
+    private string pressureTopCause = string.Empty;
     private bool hasTimelineDetails;
     private Brush nodeBorderDisplayBrush = DefaultNodeBorder;
     private Brush simulationBrush = IdleBrush;
@@ -541,9 +544,19 @@ public sealed class NodeViewModel : ObservableObject
                 parts.Add($"stored {storeInventoryQuantity:0.##}");
             }
 
+            if (pressureScore > Epsilon)
+            {
+                parts.Add($"pressure {pressureScore:0.##}");
+            }
+
             return parts.Count == 0 ? "No waiting stock or demand." : string.Join("  ", parts);
         }
     }
+
+    public string PressureSummaryLabel => pressureScore <= Epsilon
+        ? "No pressure detected."
+        : $"pressure {pressureScore:0.##}" +
+          (string.IsNullOrWhiteSpace(pressureTopCause) ? string.Empty : $" | top cause {pressureTopCause}");
 
     public string TranshipmentUsageLabel
     {
@@ -612,6 +625,11 @@ public sealed class NodeViewModel : ObservableObject
             if (HasTimelineDetails)
             {
                 lines.Add($"Timeline: {TimelineSummaryLabel}");
+            }
+
+            if (pressureScore > Epsilon)
+            {
+                lines.Add($"Pressure: {PressureSummaryLabel}");
             }
 
             if (HasTranshipmentUsageDetails)
@@ -786,12 +804,24 @@ public sealed class NodeViewModel : ObservableObject
 
     public void ApplyTimelineVisuals(double availableSupply, double demandBacklog, double storeInventory)
     {
+        ApplyTimelineVisuals(availableSupply, demandBacklog, storeInventory, null);
+    }
+
+    public void ApplyTimelineVisuals(
+        double availableSupply,
+        double demandBacklog,
+        double storeInventory,
+        TemporalNetworkSimulationEngine.NodePressureSnapshot? pressure)
+    {
         availableSupplyQuantity = Math.Max(0d, availableSupply);
         demandBacklogQuantity = Math.Max(0d, demandBacklog);
         storeInventoryQuantity = Math.Max(0d, storeInventory);
+        pressureScore = pressure?.Score > Epsilon ? pressure.Value.Score : 0d;
+        pressureTopCause = pressure is { TopCause: { Length: > 0 } } ? pressure.Value.TopCause : string.Empty;
         hasTimelineDetails = availableSupplyQuantity > Epsilon ||
             demandBacklogQuantity > Epsilon ||
-            storeInventoryQuantity > Epsilon;
+            storeInventoryQuantity > Epsilon ||
+            pressureScore > Epsilon;
         RefreshSimulationDerivedState();
     }
 
@@ -800,6 +830,8 @@ public sealed class NodeViewModel : ObservableObject
         availableSupplyQuantity = 0d;
         demandBacklogQuantity = 0d;
         storeInventoryQuantity = 0d;
+        pressureScore = 0d;
+        pressureTopCause = string.Empty;
         hasTimelineDetails = false;
         RefreshSimulationDerivedState();
     }
@@ -902,6 +934,7 @@ public sealed class NodeViewModel : ObservableObject
         OnPropertyChanged(nameof(SimulationBrush));
         OnPropertyChanged(nameof(HasSimulationDetails));
         OnPropertyChanged(nameof(TimelineSummaryLabel));
+        OnPropertyChanged(nameof(PressureSummaryLabel));
         OnPropertyChanged(nameof(FullTrafficSummary));
     }
 

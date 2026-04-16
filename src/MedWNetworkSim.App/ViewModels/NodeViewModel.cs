@@ -9,6 +9,8 @@ namespace MedWNetworkSim.App.ViewModels;
 
 public sealed class NodeViewModel : ObservableObject
 {
+    private static readonly StringComparer TrafficComparer = StringComparer.OrdinalIgnoreCase;
+
     public const double DefaultWidth = 168d;
     public const double DefaultHeight = 112d;
 

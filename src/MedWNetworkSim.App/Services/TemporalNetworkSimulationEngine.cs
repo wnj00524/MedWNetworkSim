@@ -45,9 +45,12 @@ public sealed class TemporalNetworkSimulationEngine
         var definitionsByTraffic = effectiveNetwork.TrafficTypes.ToDictionary(definition => definition.Name, definition => definition, Comparer);
         var occupiedEdgeCapacity = state.OccupiedEdgeCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
         var occupiedTranshipmentCapacity = state.OccupiedTranshipmentCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
+        var nodePressure = new Dictionary<string, PressureAccumulator>(Comparer);
+        var edgePressure = new Dictionary<string, PressureAccumulator>(Comparer);
+        var pressureEvents = new List<PressureEvent>();
 
-        ExpireNodeTraffic(nodeStates);
-        ExpireInFlightMovements(movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+        ExpireNodeTraffic(nodeStates, nodePressure, pressureEvents, nextPeriod);
+        ExpireInFlightMovements(movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity, edgePressure, nodePressure, pressureEvents, nextPeriod);
 
         ValidateResourceOccupancy(edgeLookup, nodeLookup, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         ValidateMovementResourceClaims(movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
@@ -146,6 +149,41 @@ public sealed class TemporalNetworkSimulationEngine
 
         var edgeOccupancySnapshot = SnapshotResourceOccupancy(occupiedEdgeCapacity);
         var transhipmentOccupancySnapshot = SnapshotResourceOccupancy(occupiedTranshipmentCapacity);
+        ApplyCapacityPressure(effectiveNetwork, edgeOccupancySnapshot, transhipmentOccupancySnapshot, edgePressure, nodePressure, pressureEvents, nextPeriod);
+
+        foreach (var pair in nodeStates)
+        {
+            if (pair.Value.DemandBacklog <= Epsilon)
+            {
+                continue;
+            }
+
+            AddNodePressure(nodePressure, pair.Key.NodeId, pair.Key.TrafficType, PressureCauseKind.DemandBacklog, pair.Value.DemandBacklog, pressureEvents, nextPeriod);
+        }
+
+        var allocationTargets = plannedAllocations
+            .Where(allocation => allocation.PathNodeIds.Count > 0)
+            .Select(allocation => allocation.PathNodeIds[^1])
+            .ToHashSet(Comparer);
+
+        foreach (var pair in nodeStates.Where(pair => pair.Value.DemandBacklog > Epsilon))
+        {
+            if (allocationTargets.Contains(pair.Key.NodeId))
+            {
+                continue;
+            }
+
+            AddNodePressure(nodePressure, pair.Key.NodeId, pair.Key.TrafficType, PressureCauseKind.RouteUnavailable, pair.Value.DemandBacklog, pressureEvents, nextPeriod, weight: 1.2d);
+        }
+
+        var nodePressureSnapshot = nodePressure.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value.ToNodeSnapshot(),
+            Comparer);
+        var edgePressureSnapshot = edgePressure.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value.ToEdgeSnapshot(),
+            Comparer);
 
         state.CurrentPeriod = nextPeriod;
         state.NodeStates.Clear();
@@ -182,21 +220,46 @@ public sealed class TemporalNetworkSimulationEngine
             edgeOccupancySnapshot,
             transhipmentOccupancySnapshot,
             effectivePeriod,
-            movements.Count);
+            movements.Count,
+            nodePressureSnapshot,
+            edgePressureSnapshot,
+            pressureEvents);
     }
 
-    private static void ExpireNodeTraffic(IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates)
+    private static void ExpireNodeTraffic(
+        IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
+        IDictionary<string, PressureAccumulator> nodePressure,
+        ICollection<PressureEvent> pressureEvents,
+        int period)
     {
-        foreach (var state in nodeStates.Values)
+        foreach (var pair in nodeStates)
         {
-            state.AdvancePerishability();
+            var delta = pair.Value.AdvancePerishability();
+            if (delta.ExpiredAvailableSupply + delta.ExpiredStoreInventory <= Epsilon)
+            {
+                continue;
+            }
+
+            AddNodePressure(
+                nodePressure,
+                pair.Key.NodeId,
+                pair.Key.TrafficType,
+                PressureCauseKind.PerishedInNodeInventory,
+                delta.ExpiredAvailableSupply + delta.ExpiredStoreInventory,
+                pressureEvents,
+                period,
+                weight: 1.4d);
         }
     }
 
     private static void ExpireInFlightMovements(
         IList<TemporalInFlightMovement> movements,
         IDictionary<string, double> occupiedEdgeCapacity,
-        IDictionary<string, double> occupiedTranshipmentCapacity)
+        IDictionary<string, double> occupiedTranshipmentCapacity,
+        IDictionary<string, PressureAccumulator> edgePressure,
+        IDictionary<string, PressureAccumulator> nodePressure,
+        ICollection<PressureEvent> pressureEvents,
+        int period)
     {
         for (var index = movements.Count - 1; index >= 0; index--)
         {
@@ -215,6 +278,30 @@ public sealed class TemporalNetworkSimulationEngine
             if (!movement.IsWaitingBetweenEdges)
             {
                 ReleaseCurrentMovementResources(movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+                if (movement.CurrentEdgeIndex >= 0 && movement.CurrentEdgeIndex < movement.PathEdgeIds.Count)
+                {
+                    AddEdgePressure(
+                        edgePressure,
+                        movement.PathEdgeIds[movement.CurrentEdgeIndex],
+                        movement.TrafficType,
+                        PressureCauseKind.PerishedInTransit,
+                        movement.Quantity,
+                        pressureEvents,
+                        period,
+                        weight: 1.6d);
+                }
+            }
+            else if (movement.CurrentEdgeIndex + 1 < movement.PathNodeIds.Count)
+            {
+                AddNodePressure(
+                    nodePressure,
+                    movement.PathNodeIds[movement.CurrentEdgeIndex + 1],
+                    movement.TrafficType,
+                    PressureCauseKind.PerishedInTransit,
+                    movement.Quantity,
+                    pressureEvents,
+                    period,
+                    weight: 1.6d);
             }
 
             movements.RemoveAt(index);
@@ -1411,6 +1498,114 @@ public sealed class TemporalNetworkSimulationEngine
         nodeFlowById[nodeId] = existing with { InboundQuantity = existing.InboundQuantity + quantity };
     }
 
+    private static void ApplyCapacityPressure(
+        NetworkModel network,
+        IReadOnlyDictionary<string, double> edgeOccupancy,
+        IReadOnlyDictionary<string, double> transhipmentOccupancy,
+        IDictionary<string, PressureAccumulator> edgePressure,
+        IDictionary<string, PressureAccumulator> nodePressure,
+        ICollection<PressureEvent> pressureEvents,
+        int period)
+    {
+        foreach (var edge in network.Edges)
+        {
+            if (!edge.Capacity.HasValue || edge.Capacity.Value <= Epsilon)
+            {
+                continue;
+            }
+
+            var occupancy = edgeOccupancy.GetValueOrDefault(edge.Id, 0d);
+            var utilization = occupancy / edge.Capacity.Value;
+            if (utilization < 0.95d || occupancy <= Epsilon)
+            {
+                continue;
+            }
+
+            AddEdgePressure(
+                edgePressure,
+                edge.Id,
+                string.Empty,
+                PressureCauseKind.EdgeCapacitySaturation,
+                occupancy,
+                pressureEvents,
+                period);
+        }
+
+        foreach (var node in network.Nodes)
+        {
+            if (!node.TranshipmentCapacity.HasValue || node.TranshipmentCapacity.Value <= Epsilon)
+            {
+                continue;
+            }
+
+            var occupancy = transhipmentOccupancy.GetValueOrDefault(node.Id, 0d);
+            var utilization = occupancy / node.TranshipmentCapacity.Value;
+            if (utilization < 0.95d || occupancy <= Epsilon)
+            {
+                continue;
+            }
+
+            AddNodePressure(
+                nodePressure,
+                node.Id,
+                string.Empty,
+                PressureCauseKind.TranshipmentCapacitySaturation,
+                occupancy,
+                pressureEvents,
+                period);
+        }
+    }
+
+    private static void AddNodePressure(
+        IDictionary<string, PressureAccumulator> pressureByNodeId,
+        string nodeId,
+        string trafficType,
+        PressureCauseKind cause,
+        double quantity,
+        ICollection<PressureEvent> pressureEvents,
+        int period,
+        double weight = 1d)
+    {
+        if (quantity <= Epsilon || string.IsNullOrWhiteSpace(nodeId))
+        {
+            return;
+        }
+
+        if (!pressureByNodeId.TryGetValue(nodeId, out var accumulator))
+        {
+            accumulator = new PressureAccumulator();
+            pressureByNodeId[nodeId] = accumulator;
+        }
+
+        accumulator.Add(cause, quantity, weight);
+        pressureEvents.Add(new PressureEvent(period, nodeId, isEdge: false, trafficType, cause, quantity, quantity * weight, string.Empty));
+    }
+
+    private static void AddEdgePressure(
+        IDictionary<string, PressureAccumulator> pressureByEdgeId,
+        string edgeId,
+        string trafficType,
+        PressureCauseKind cause,
+        double quantity,
+        ICollection<PressureEvent> pressureEvents,
+        int period,
+        double weight = 1d)
+    {
+        if (quantity <= Epsilon || string.IsNullOrWhiteSpace(edgeId))
+        {
+            return;
+        }
+
+        if (!pressureByEdgeId.TryGetValue(edgeId, out var accumulator))
+        {
+            accumulator = new PressureAccumulator();
+            pressureByEdgeId[edgeId] = accumulator;
+        }
+
+        accumulator.Add(cause, quantity, weight);
+        pressureEvents.Add(new PressureEvent(period, edgeId, isEdge: true, trafficType, cause, quantity, quantity * weight, string.Empty));
+    }
+
     public static int GetEffectivePeriod(int absolutePeriod, int? loopLength)
     {
         if (!loopLength.HasValue || loopLength.Value < 1)
@@ -1868,7 +2063,10 @@ public sealed class TemporalNetworkSimulationEngine
         IReadOnlyDictionary<string, double> EdgeOccupancy,
         IReadOnlyDictionary<string, double> TranshipmentOccupancy,
         int EffectivePeriod,
-        int InFlightMovementCount);
+        int InFlightMovementCount,
+        IReadOnlyDictionary<string, NodePressureSnapshot> NodePressureById,
+        IReadOnlyDictionary<string, EdgePressureSnapshot> EdgePressureById,
+        IReadOnlyList<PressureEvent> PressureEvents);
 
     public readonly record struct TemporalNodeStateSnapshot(double AvailableSupply, double DemandBacklog, double StoreInventory);
 
@@ -1930,11 +2128,12 @@ public sealed class TemporalNetworkSimulationEngine
             return ConsumeFromBatches(storeInventoryBatches, quantity);
         }
 
-        public void AdvancePerishability()
+        public TemporalPerishabilityDelta AdvancePerishability()
         {
-            AdvancePerishability(availableSupplyBatches);
-            AdvancePerishability(storeInventoryBatches);
+            var expiredAvailable = AdvancePerishability(availableSupplyBatches);
+            var expiredStore = AdvancePerishability(storeInventoryBatches);
             ReservedStoreReceipts = Math.Max(0d, Math.Min(ReservedStoreReceipts, StoreInventory));
+            return new TemporalPerishabilityDelta(expiredAvailable, expiredStore);
         }
 
         public TemporalNodeTrafficState Clone()
@@ -2017,19 +2216,25 @@ public sealed class TemporalNetworkSimulationEngine
             return quantity > Epsilon ? totalCost / quantity : 0d;
         }
 
-        private static void AdvancePerishability(List<TemporalQuantityBatch> batches)
+        private static double AdvancePerishability(List<TemporalQuantityBatch> batches)
         {
+            var expired = 0d;
             foreach (var batch in batches)
             {
                 if (batch.RemainingLifePeriods.HasValue)
                 {
                     batch.RemainingLifePeriods -= 1;
+                    if (batch.RemainingLifePeriods.Value <= 0 && batch.Quantity > Epsilon)
+                    {
+                        expired += batch.Quantity;
+                    }
                 }
             }
 
             batches.RemoveAll(batch =>
                 batch.Quantity <= Epsilon ||
                 (batch.RemainingLifePeriods.HasValue && batch.RemainingLifePeriods.Value <= 0));
+            return expired;
         }
 
         private static double GetWeightedUnitCost(IEnumerable<TemporalQuantityBatch> batches)
@@ -2131,6 +2336,85 @@ public sealed class TemporalNetworkSimulationEngine
     public readonly record struct NodeFlowVisualSummary(double OutboundQuantity, double InboundQuantity)
     {
         public static NodeFlowVisualSummary Empty => new(0d, 0d);
+    }
+
+    public enum PressureCauseKind
+    {
+        DemandBacklog,
+        InputShortage,
+        StoreCapacitySaturation,
+        EdgeCapacitySaturation,
+        TranshipmentCapacitySaturation,
+        RouteUnavailable,
+        PerishedInNodeInventory,
+        PerishedInTransit,
+        TimelineShock
+    }
+
+    public readonly record struct PressureEvent(
+        int Period,
+        string EntityId,
+        bool IsEdge,
+        string TrafficType,
+        PressureCauseKind Cause,
+        double Quantity,
+        double WeightedImpact,
+        string Detail);
+
+    public readonly record struct NodePressureSnapshot(
+        double Score,
+        double BacklogQuantity,
+        double ExpiredQuantity,
+        IReadOnlyDictionary<PressureCauseKind, double> CauseWeights,
+        string TopCause);
+
+    public readonly record struct EdgePressureSnapshot(
+        double Score,
+        double BlockedQuantity,
+        double ExpiredInTransitQuantity,
+        double Utilization,
+        IReadOnlyDictionary<PressureCauseKind, double> CauseWeights,
+        string TopCause);
+
+    public readonly record struct TemporalPerishabilityDelta(double ExpiredAvailableSupply, double ExpiredStoreInventory);
+
+    private sealed class PressureAccumulator
+    {
+        private readonly Dictionary<PressureCauseKind, double> weightedByCause = [];
+
+        public void Add(PressureCauseKind cause, double quantity, double weight)
+        {
+            if (quantity <= Epsilon || weight <= 0d)
+            {
+                return;
+            }
+
+            weightedByCause[cause] = weightedByCause.GetValueOrDefault(cause, 0d) + (quantity * weight);
+        }
+
+        public NodePressureSnapshot ToNodeSnapshot()
+        {
+            var score = weightedByCause.Sum(pair => pair.Value);
+            var backlogQuantity = weightedByCause.GetValueOrDefault(PressureCauseKind.DemandBacklog, 0d);
+            var expiredQuantity =
+                weightedByCause.GetValueOrDefault(PressureCauseKind.PerishedInNodeInventory, 0d) +
+                weightedByCause.GetValueOrDefault(PressureCauseKind.PerishedInTransit, 0d);
+            var topCause = weightedByCause.Count == 0
+                ? string.Empty
+                : weightedByCause.MaxBy(pair => pair.Value).Key.ToString();
+            return new NodePressureSnapshot(score, backlogQuantity, expiredQuantity, weightedByCause, topCause);
+        }
+
+        public EdgePressureSnapshot ToEdgeSnapshot()
+        {
+            var score = weightedByCause.Sum(pair => pair.Value);
+            var blockedQuantity = weightedByCause.GetValueOrDefault(PressureCauseKind.EdgeCapacitySaturation, 0d);
+            var expiredInTransitQuantity = weightedByCause.GetValueOrDefault(PressureCauseKind.PerishedInTransit, 0d);
+            var topCause = weightedByCause.Count == 0
+                ? string.Empty
+                : weightedByCause.MaxBy(pair => pair.Value).Key.ToString();
+            return new EdgePressureSnapshot(score, blockedQuantity, expiredInTransitQuantity, utilization: 0d, weightedByCause, topCause);
+        }
     }
 
     private sealed record GraphArc(string EdgeId, string FromNodeId, string ToNodeId, double Time, double Cost);

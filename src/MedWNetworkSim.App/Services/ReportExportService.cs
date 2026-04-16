@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
@@ -27,9 +28,12 @@ public sealed class ReportExportService
 
         var materializedOutcomes = outcomes.ToList();
         var materializedConsumerCosts = consumerCosts.ToList();
-        var contents = format == ReportExportFormat.Csv
-            ? BuildCurrentCsvReport(network, materializedOutcomes, materializedConsumerCosts)
-            : BuildCurrentHtmlReport(network, materializedOutcomes, materializedConsumerCosts);
+        var contents = format switch
+        {
+            ReportExportFormat.Csv => BuildCurrentCsvReport(network, materializedOutcomes, materializedConsumerCosts),
+            ReportExportFormat.Json => BuildCurrentJsonReport(network, materializedOutcomes, materializedConsumerCosts),
+            _ => BuildCurrentHtmlReport(network, materializedOutcomes, materializedConsumerCosts)
+        };
         File.WriteAllText(path, contents, Encoding.UTF8);
     }
 
@@ -48,9 +52,12 @@ public sealed class ReportExportService
             throw new InvalidOperationException("Timeline report periods must be greater than zero.");
         }
 
-        var contents = format == ReportExportFormat.Csv
-            ? BuildTimelineCsvReport(network, periodResults)
-            : BuildTimelineHtmlReport(network, periodResults);
+        var contents = format switch
+        {
+            ReportExportFormat.Csv => BuildTimelineCsvReport(network, periodResults),
+            ReportExportFormat.Json => BuildTimelineJsonReport(network, periodResults),
+            _ => BuildTimelineHtmlReport(network, periodResults)
+        };
         File.WriteAllText(path, contents, Encoding.UTF8);
     }
 
@@ -271,7 +278,7 @@ public sealed class ReportExportService
             builder.AppendLine("<h3>Node Activity</h3>");
             AppendHtmlTable(
                 builder,
-                ["Node", "Outbound", "Inbound", "Ready Supply", "Demand Backlog", "Store Inventory"],
+                ["Node", "Outbound", "Inbound", "Ready Supply", "Demand Backlog", "Backlog by Good", "Store Inventory"],
                 network.Nodes.Select(node =>
                 {
                     var flow = stepResult.NodeFlows.GetValueOrDefault(node.Id, TemporalNetworkSimulationEngine.NodeFlowVisualSummary.Empty);
@@ -279,6 +286,10 @@ public sealed class ReportExportService
                         .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id))
                         .Select(pair => pair.Value)
                         .ToList();
+                    var backlogByGood = stepResult.NodeStates
+                        .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id) && pair.Value.DemandBacklog > 0d)
+                        .OrderBy(pair => pair.Key.TrafficType, Comparer)
+                        .Select(pair => $"{pair.Key.TrafficType}:{FormatNumber(pair.Value.DemandBacklog)}");
                     return new[]
                     {
                         $"{node.Name} ({node.Id})",
@@ -286,6 +297,7 @@ public sealed class ReportExportService
                         FormatNumber(flow.InboundQuantity),
                         FormatNumber(states.Sum(item => item.AvailableSupply)),
                         FormatNumber(states.Sum(item => item.DemandBacklog)),
+                        backlogByGood.Any() ? string.Join(", ", backlogByGood) : "None",
                         FormatNumber(states.Sum(item => item.StoreInventory))
                     };
                 }));
@@ -529,6 +541,12 @@ public sealed class ReportExportService
 
         foreach (var result in results)
         {
+            var trafficNames = network.TrafficTypes
+                .Select(type => type.Name)
+                .Distinct(Comparer)
+                .OrderBy(name => name, Comparer)
+                .ToList();
+
             AppendCsvTable(
                 builder,
                 $"{FormatTimelinePeriodLabel(network, result)} Summary",
@@ -581,7 +599,7 @@ public sealed class ReportExportService
             AppendCsvTable(
                 builder,
                 $"{FormatTimelinePeriodLabel(network, result)} Node Activity",
-                ["Node", "Outbound", "Inbound", "Ready Supply", "Demand Backlog", "Store Inventory"],
+                ["Node", "Outbound", "Inbound", "Ready Supply", "Demand Backlog", .. trafficNames.Select(name => $"{name}_Backlog"), "Store Inventory"],
                 network.Nodes.Select(node =>
                 {
                     var flow = result.NodeFlows.GetValueOrDefault(node.Id, TemporalNetworkSimulationEngine.NodeFlowVisualSummary.Empty);
@@ -589,15 +607,22 @@ public sealed class ReportExportService
                         .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id))
                         .Select(pair => pair.Value)
                         .ToList();
-                    return new[]
+                    var backlogByType = result.NodeStates
+                        .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id))
+                        .GroupBy(pair => pair.Key.TrafficType, pair => pair.Value.DemandBacklog, Comparer)
+                        .ToDictionary(group => group.Key, group => group.Sum(), Comparer);
+                    var row = new List<string>
                     {
                         $"{node.Name} ({node.Id})",
                         FormatNumber(flow.OutboundQuantity),
                         FormatNumber(flow.InboundQuantity),
                         FormatNumber(states.Sum(item => item.AvailableSupply)),
                         FormatNumber(states.Sum(item => item.DemandBacklog)),
-                        FormatNumber(states.Sum(item => item.StoreInventory))
                     };
+
+                    row.AddRange(trafficNames.Select(name => FormatNumber(backlogByType.GetValueOrDefault(name, 0d))));
+                    row.Add(FormatNumber(states.Sum(item => item.StoreInventory)));
+                    return row.ToArray();
                 }));
 
             AppendCsvTable(
@@ -645,6 +670,73 @@ public sealed class ReportExportService
         }
 
         return builder.ToString();
+    }
+
+    private static string BuildCurrentJsonReport(
+        NetworkModel network,
+        IReadOnlyList<TrafficSimulationOutcome> outcomes,
+        IReadOnlyList<ConsumerCostSummary> consumerCosts)
+    {
+        var report = new
+        {
+            reportType = "current",
+            network = new { network.Name, network.Description, nodes = network.Nodes.Count, edges = network.Edges.Count },
+            trafficOutcomes = outcomes.Select(outcome => new
+            {
+                trafficType = outcome.TrafficType,
+                delivered = outcome.TotalDelivered,
+                unmetDemand = outcome.UnmetDemand
+            }),
+            nodes = network.Nodes.Select(node => new
+            {
+                node_id = node.Id,
+                node_name = node.Name,
+                backlog = node.TrafficProfiles.ToDictionary(
+                    profile => profile.TrafficType,
+                    _ => 0d,
+                    Comparer)
+            }),
+            consumerCosts = consumerCosts.Select(cost => new
+            {
+                trafficType = cost.TrafficType,
+                consumer = cost.ConsumerNodeId,
+                local = cost.LocalQuantity,
+                imported = cost.ImportedQuantity
+            })
+        };
+
+        return JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static string BuildTimelineJsonReport(
+        NetworkModel network,
+        IReadOnlyList<TemporalNetworkSimulationEngine.TemporalSimulationStepResult> results)
+    {
+        var report = new
+        {
+            reportType = "timeline",
+            periods = results.Count,
+            nodes = results.Select(result => new
+            {
+                period = result.Period,
+                nodes = network.Nodes.Select(node =>
+                {
+                    var states = result.NodeStates.Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id)).ToList();
+                    var backlog = states
+                        .GroupBy(pair => pair.Key.TrafficType, pair => pair.Value.DemandBacklog, Comparer)
+                        .ToDictionary(group => group.Key, group => group.Sum(), Comparer);
+                    return new
+                    {
+                        node_id = node.Id,
+                        node_name = node.Name,
+                        demand_backlog_total = states.Sum(pair => pair.Value.DemandBacklog),
+                        backlog
+                    };
+                })
+            })
+        };
+
+        return JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
     }
 
     private static string FormatPlaceIdentity(NodeModel node)

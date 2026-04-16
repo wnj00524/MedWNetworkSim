@@ -69,7 +69,12 @@ public sealed class ReportExportWindowViewModel : ObservableObject
             return path;
         }
 
-        var desiredExtension = format == ReportExportFormat.Csv ? ".csv" : ".html";
+        var desiredExtension = format switch
+        {
+            ReportExportFormat.Csv => ".csv",
+            ReportExportFormat.Json => ".json",
+            _ => ".html"
+        };
         if (!Path.HasExtension(path))
         {
             return path + desiredExtension;

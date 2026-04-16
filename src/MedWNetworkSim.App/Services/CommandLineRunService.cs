@@ -92,7 +92,7 @@ MedW Network Simulator CLI
 
 Usage:
   MedWNetworkSim.App.exe help
-  MedWNetworkSim.App.exe run --file <network.json> --output <report.html|report.csv> [--mode simulation|timeline] [--report current|timeline] [--turns <count>]
+  MedWNetworkSim.App.exe run --file <network.json> --output <report.html|report.csv|report.json> [--mode simulation|timeline] [--report current|timeline] [--turns <count>]
   MedWNetworkSim.App.exe new --file <network.json> [--name <name>] [--description <text>] [--overwrite]
   MedWNetworkSim.App.exe set-network --file <network.json> [--name <name>] [--description <text>] [--loop-length <periods>|none]
   MedWNetworkSim.App.exe add-traffic --file <network.json> --name <traffic-name> [--description <text>] [--preference speed|cost|totalCost] [--bid <amount>|none]
@@ -112,6 +112,7 @@ Notes:
   - Output format is chosen from the output file extension:
       .html or .htm -> HTML
       .csv          -> CSV
+      .json         -> JSON
       anything else -> CSV
   - `add-traffic`, `add-node`, and `add-edge` create or update existing items when the same name/id is already present.
   - Use `none` for optional capacities or schedules when you want to clear them.
@@ -1252,6 +1253,12 @@ Examples:
         if (Comparer.Equals(extension, ".csv"))
         {
             format = ReportExportFormat.Csv;
+            return Path.GetFullPath(outputPath);
+        }
+
+        if (Comparer.Equals(extension, ".json"))
+        {
+            format = ReportExportFormat.Json;
             return Path.GetFullPath(outputPath);
         }
 

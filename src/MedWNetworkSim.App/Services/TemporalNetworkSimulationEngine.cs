@@ -116,13 +116,15 @@ public sealed class TemporalNetworkSimulationEngine
 
             AddEdgeFlow(edgeFlowById, edge, movement);
             AddNodeDeparture(nodeFlowById, movement.PathNodeIds[movement.CurrentEdgeIndex], movement.Quantity);
-            AddNodeArrival(nodeFlowById, movement.PathNodeIds[movement.CurrentEdgeIndex + 1], movement.Quantity);
             movement.RemainingPeriodsOnCurrentEdge -= 1;
 
             if (movement.RemainingPeriodsOnCurrentEdge > 0)
             {
                 continue;
             }
+
+            var arrivalNodeId = movement.PathNodeIds[movement.CurrentEdgeIndex + 1];
+            AddNodeArrival(nodeFlowById, arrivalNodeId, movement.Quantity);
 
             if (movement.CurrentEdgeIndex == movement.PathEdgeIds.Count - 1)
             {

@@ -185,7 +185,7 @@ public sealed class ReportExportService
                 ["Periods Simulated", periods.ToString(CultureInfo.InvariantCulture)],
                 ["Loop Length", network.TimelineLoopLength.HasValue ? network.TimelineLoopLength.Value.ToString(CultureInfo.InvariantCulture) : "None"],
                 ["Allocations Planned", allAllocations.Count.ToString(CultureInfo.InvariantCulture)],
-                ["Total Delivered", FormatNumber(allAllocations.Sum(allocation => allocation.Quantity))],
+                ["Total Quantity Planned", FormatNumber(allAllocations.Sum(allocation => allocation.Quantity))],
                 ["Periods With Movement", periodResults.Count(result => result.Allocations.Count > 0).ToString(CultureInfo.InvariantCulture)],
                 ["Final In-Flight Movements", finalPeriodResult.InFlightMovementCount.ToString(CultureInfo.InvariantCulture)]
             ]);
@@ -193,7 +193,7 @@ public sealed class ReportExportService
         builder.AppendLine("<h2>Timeline Outcomes By Traffic</h2>");
         AppendHtmlTable(
             builder,
-            ["Traffic Type", "Delivered", "Movements", "Avg Delivered Cost / Unit"],
+            ["Traffic Type", "Planned Quantity", "Movements", "Avg Planned Delivered Cost / Unit"],
             allAllocations
                 .GroupBy(allocation => allocation.TrafficType, Comparer)
                 .OrderBy(group => group.Key, Comparer)
@@ -218,14 +218,14 @@ public sealed class ReportExportService
                 builder,
                 ["Measure", "Value"],
                 [
-                    ["Delivered This Period", FormatNumber(stepResult.Allocations.Sum(allocation => allocation.Quantity))],
+                    ["New Quantity Started This Period", FormatNumber(stepResult.Allocations.Sum(allocation => allocation.Quantity))],
                     ["Movements Planned", stepResult.Allocations.Count.ToString(CultureInfo.InvariantCulture)],
                     ["Edges Used", stepResult.EdgeFlows.Count(summary => TotalEdgeFlow(summary.Value) > 0).ToString(CultureInfo.InvariantCulture)],
                     ["Nodes Active", stepResult.NodeFlows.Count(summary => summary.Value.OutboundQuantity > 0 || summary.Value.InboundQuantity > 0).ToString(CultureInfo.InvariantCulture)],
                     ["In-Flight After Period", stepResult.InFlightMovementCount.ToString(CultureInfo.InvariantCulture)]
                 ]);
 
-            builder.AppendLine("<h3>Routed Movements</h3>");
+            builder.AppendLine("<h3>Movements Started This Period</h3>");
             if (stepResult.Allocations.Count == 0)
             {
                 builder.AppendLine("<p>No movements were planned in this period.</p>");
@@ -458,14 +458,14 @@ public sealed class ReportExportService
                 ["Periods Simulated", periods.ToString(CultureInfo.InvariantCulture)],
                 ["Loop Length", network.TimelineLoopLength.HasValue ? network.TimelineLoopLength.Value.ToString(CultureInfo.InvariantCulture) : "None"],
                 ["Allocations Planned", allAllocations.Count.ToString(CultureInfo.InvariantCulture)],
-                ["Total Delivered", FormatNumber(allAllocations.Sum(item => item.Quantity))],
+                ["Total Quantity Planned", FormatNumber(allAllocations.Sum(item => item.Quantity))],
                 ["Periods With Movement", results.Count(result => result.Allocations.Count > 0).ToString(CultureInfo.InvariantCulture)],
                 ["Final In-Flight Movements", results[^1].InFlightMovementCount.ToString(CultureInfo.InvariantCulture)]
             ]);
         AppendCsvTable(
             builder,
             "Timeline Outcomes By Traffic",
-            ["Traffic Type", "Delivered", "Movements", "Avg Delivered Cost / Unit"],
+            ["Traffic Type", "Planned Quantity", "Movements", "Avg Planned Delivered Cost / Unit"],
             allAllocations
                 .GroupBy(allocation => allocation.TrafficType, Comparer)
                 .OrderBy(group => group.Key, Comparer)
@@ -489,7 +489,7 @@ public sealed class ReportExportService
                 $"{FormatTimelinePeriodLabel(network, result)} Summary",
                 ["Measure", "Value"],
                 [
-                    ["Delivered This Period", FormatNumber(result.Allocations.Sum(item => item.Quantity))],
+                    ["New Quantity Started This Period", FormatNumber(result.Allocations.Sum(item => item.Quantity))],
                     ["Movements Planned", result.Allocations.Count.ToString(CultureInfo.InvariantCulture)],
                     ["Edges Used", result.EdgeFlows.Count(item => TotalEdgeFlow(item.Value) > 0).ToString(CultureInfo.InvariantCulture)],
                     ["Nodes Active", result.NodeFlows.Count(item => item.Value.OutboundQuantity > 0 || item.Value.InboundQuantity > 0).ToString(CultureInfo.InvariantCulture)],
@@ -498,7 +498,7 @@ public sealed class ReportExportService
 
             AppendCsvTable(
                 builder,
-                $"{FormatTimelinePeriodLabel(network, result)} Routed Movements",
+                $"{FormatTimelinePeriodLabel(network, result)} Movements Started This Period",
                 ["Traffic Type", "Producer", "Consumer", "Qty", "Path", "Time", "Delivered Cost"],
                 result.Allocations.Select(allocation => new[]
                 {

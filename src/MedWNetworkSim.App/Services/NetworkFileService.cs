@@ -737,7 +737,8 @@ public sealed class NetworkFileService
                     definition.AllocationMode,
                     trafficTypesWithExplicitFlowSplitPolicy is null || trafficTypesWithExplicitFlowSplitPolicy.Contains(name)),
                 RouteChoiceSettings = NormalizeRouteChoiceSettings(definition.RouteChoiceSettings, name),
-                CapacityBidPerUnit = capacityBidPerUnit
+                CapacityBidPerUnit = capacityBidPerUnit,
+                PerishabilityPeriods = definition.PerishabilityPeriods
             };
         }
 

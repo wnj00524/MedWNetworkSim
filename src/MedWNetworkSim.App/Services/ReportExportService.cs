@@ -222,7 +222,9 @@ public sealed class ReportExportService
                     ["Movements Planned", stepResult.Allocations.Count.ToString(CultureInfo.InvariantCulture)],
                     ["Edges Used", stepResult.EdgeFlows.Count(summary => TotalEdgeFlow(summary.Value) > 0).ToString(CultureInfo.InvariantCulture)],
                     ["Nodes Active", stepResult.NodeFlows.Count(summary => summary.Value.OutboundQuantity > 0 || summary.Value.InboundQuantity > 0).ToString(CultureInfo.InvariantCulture)],
-                    ["In-Flight After Period", stepResult.InFlightMovementCount.ToString(CultureInfo.InvariantCulture)]
+                    ["In-Flight After Period", stepResult.InFlightMovementCount.ToString(CultureInfo.InvariantCulture)],
+                    ["Nodes With Pressure", stepResult.NodePressureById.Count(snapshot => snapshot.Value.Score > 0).ToString(CultureInfo.InvariantCulture)],
+                    ["Edges With Pressure", stepResult.EdgePressureById.Count(snapshot => snapshot.Value.Score > 0).ToString(CultureInfo.InvariantCulture)]
                 ]);
 
             builder.AppendLine("<h3>Movements Started This Period</h3>");
@@ -287,6 +289,49 @@ public sealed class ReportExportService
                         FormatNumber(states.Sum(item => item.StoreInventory))
                     };
                 }));
+
+            builder.AppendLine("<h3>Pressure Overview</h3>");
+            AppendHtmlTable(
+                builder,
+                ["Entity Type", "Entity", "Score", "Top Cause", "Cause Breakdown"],
+                network.Nodes.Select(node =>
+                {
+                    var snapshot = stepResult.NodePressureById.GetValueOrDefault(
+                        node.Id,
+                        new TemporalNetworkSimulationEngine.NodePressureSnapshot(
+                            0d,
+                            0d,
+                            0d,
+                            new Dictionary<TemporalNetworkSimulationEngine.PressureCauseKind, double>(),
+                            string.Empty));
+                    return new[]
+                    {
+                        "Node",
+                        $"{node.Name} ({node.Id})",
+                        FormatNumber(snapshot.Score),
+                        string.IsNullOrWhiteSpace(snapshot.TopCause) ? "None" : snapshot.TopCause,
+                        FormatCauseBreakdown(snapshot.CauseWeights)
+                    };
+                }).Concat(network.Edges.Select(edge =>
+                {
+                    var snapshot = stepResult.EdgePressureById.GetValueOrDefault(
+                        edge.Id,
+                        new TemporalNetworkSimulationEngine.EdgePressureSnapshot(
+                            0d,
+                            0d,
+                            0d,
+                            0d,
+                            new Dictionary<TemporalNetworkSimulationEngine.PressureCauseKind, double>(),
+                            string.Empty));
+                    return new[]
+                    {
+                        "Edge",
+                        edge.Id,
+                        FormatNumber(snapshot.Score),
+                        string.IsNullOrWhiteSpace(snapshot.TopCause) ? "None" : snapshot.TopCause,
+                        FormatCauseBreakdown(snapshot.CauseWeights)
+                    };
+                })));
         }
 
         return FinishHtmlReport(builder);
@@ -493,7 +538,9 @@ public sealed class ReportExportService
                     ["Movements Planned", result.Allocations.Count.ToString(CultureInfo.InvariantCulture)],
                     ["Edges Used", result.EdgeFlows.Count(item => TotalEdgeFlow(item.Value) > 0).ToString(CultureInfo.InvariantCulture)],
                     ["Nodes Active", result.NodeFlows.Count(item => item.Value.OutboundQuantity > 0 || item.Value.InboundQuantity > 0).ToString(CultureInfo.InvariantCulture)],
-                    ["In-Flight After Period", result.InFlightMovementCount.ToString(CultureInfo.InvariantCulture)]
+                    ["In-Flight After Period", result.InFlightMovementCount.ToString(CultureInfo.InvariantCulture)],
+                    ["Nodes With Pressure", result.NodePressureById.Count(snapshot => snapshot.Value.Score > 0).ToString(CultureInfo.InvariantCulture)],
+                    ["Edges With Pressure", result.EdgePressureById.Count(snapshot => snapshot.Value.Score > 0).ToString(CultureInfo.InvariantCulture)]
                 ]);
 
             AppendCsvTable(
@@ -552,6 +599,49 @@ public sealed class ReportExportService
                         FormatNumber(states.Sum(item => item.StoreInventory))
                     };
                 }));
+
+            AppendCsvTable(
+                builder,
+                $"{FormatTimelinePeriodLabel(network, result)} Pressure Overview",
+                ["Entity Type", "Entity", "Score", "Top Cause", "Cause Breakdown"],
+                network.Nodes.Select(node =>
+                {
+                    var snapshot = result.NodePressureById.GetValueOrDefault(
+                        node.Id,
+                        new TemporalNetworkSimulationEngine.NodePressureSnapshot(
+                            0d,
+                            0d,
+                            0d,
+                            new Dictionary<TemporalNetworkSimulationEngine.PressureCauseKind, double>(),
+                            string.Empty));
+                    return new[]
+                    {
+                        "Node",
+                        $"{node.Name} ({node.Id})",
+                        FormatNumber(snapshot.Score),
+                        string.IsNullOrWhiteSpace(snapshot.TopCause) ? "None" : snapshot.TopCause,
+                        FormatCauseBreakdown(snapshot.CauseWeights)
+                    };
+                }).Concat(network.Edges.Select(edge =>
+                {
+                    var snapshot = result.EdgePressureById.GetValueOrDefault(
+                        edge.Id,
+                        new TemporalNetworkSimulationEngine.EdgePressureSnapshot(
+                            0d,
+                            0d,
+                            0d,
+                            0d,
+                            new Dictionary<TemporalNetworkSimulationEngine.PressureCauseKind, double>(),
+                            string.Empty));
+                    return new[]
+                    {
+                        "Edge",
+                        edge.Id,
+                        FormatNumber(snapshot.Score),
+                        string.IsNullOrWhiteSpace(snapshot.TopCause) ? "None" : snapshot.TopCause,
+                        FormatCauseBreakdown(snapshot.CauseWeights)
+                    };
+                })));
         }
 
         return builder.ToString();
@@ -1005,6 +1095,22 @@ public sealed class ReportExportService
         }
 
         return value.Value.ToString("0.##", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatCauseBreakdown(
+        IReadOnlyDictionary<TemporalNetworkSimulationEngine.PressureCauseKind, double> causeWeights)
+    {
+        if (causeWeights.Count == 0)
+        {
+            return "None";
+        }
+
+        return string.Join(
+            "; ",
+            causeWeights
+                .Where(pair => pair.Value > 0)
+                .OrderByDescending(pair => pair.Value)
+                .Select(pair => $"{pair.Key} {FormatNumber(pair.Value)}"));
     }
 
     private static string FormatUtilisation(double flow, double? capacity)

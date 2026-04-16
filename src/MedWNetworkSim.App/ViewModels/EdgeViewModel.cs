@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
 using MedWNetworkSim.App.Models;
+using MedWNetworkSim.App.Services;
 
 namespace MedWNetworkSim.App.ViewModels;
 
@@ -36,6 +37,8 @@ public sealed class EdgeViewModel : ObservableObject
     private NodeViewModel? sourceNode;
     private NodeViewModel? targetNode;
     private bool hasSimulationDetails;
+    private double pressureScore;
+    private string pressureTopCause = string.Empty;
     private double routedForwardQuantity;
     private double routedReverseQuantity;
     private double flowStrokeThickness;
@@ -340,7 +343,13 @@ public sealed class EdgeViewModel : ObservableObject
         $"Time {Time:0.##} | Cost {Cost:0.##} | Total {TotalCost:0.##}{Environment.NewLine}" +
         $"{CapacityDisplayLabel}{Environment.NewLine}" +
         $"Flow: {(HasSimulationDetails ? FlowSummaryLabel : "none visible")}{Environment.NewLine}" +
-        $"Utilization: {UtilizationPercentLabel}";
+        $"Utilization: {UtilizationPercentLabel}{Environment.NewLine}" +
+        $"Pressure: {PressureSummaryLabel}";
+
+    public string PressureSummaryLabel => pressureScore <= Epsilon
+        ? "none"
+        : $"{pressureScore:0.##}" +
+          (string.IsNullOrWhiteSpace(pressureTopCause) ? string.Empty : $" ({pressureTopCause})");
 
     public string FlowSummaryLabel
     {
@@ -494,6 +503,22 @@ public sealed class EdgeViewModel : ObservableObject
         routedReverseQuantity = 0d;
         hasSimulationDetails = false;
         RefreshSimulationDerivedState(0d);
+    }
+
+    public void ApplyTimelinePressure(TemporalNetworkSimulationEngine.EdgePressureSnapshot? pressure)
+    {
+        pressureScore = pressure?.Score > Epsilon ? pressure.Value.Score : 0d;
+        pressureTopCause = pressure is { TopCause: { Length: > 0 } } ? pressure.Value.TopCause : string.Empty;
+        OnPropertyChanged(nameof(PressureSummaryLabel));
+        OnPropertyChanged(nameof(EdgeToolTipText));
+    }
+
+    public void ClearTimelinePressure()
+    {
+        pressureScore = 0d;
+        pressureTopCause = string.Empty;
+        OnPropertyChanged(nameof(PressureSummaryLabel));
+        OnPropertyChanged(nameof(EdgeToolTipText));
     }
 
     public void ApplyRouteHighlight(bool isHighlighted)

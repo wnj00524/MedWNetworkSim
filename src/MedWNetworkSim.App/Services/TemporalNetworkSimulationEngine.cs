@@ -67,6 +67,8 @@ public sealed class TemporalNetworkSimulationEngine
         var edgeFlowById = new Dictionary<string, EdgeFlowVisualSummary>(Comparer);
         var nodeFlowById = new Dictionary<string, NodeFlowVisualSummary>(Comparer);
 
+          var newlyStartedMovements = new List<TemporalInFlightMovement>();
+
         foreach (var allocation in plannedAllocations)
         {
             var perishabilityPeriods = GetPerishabilityPeriods(definitionsByTraffic, allocation.TrafficType);
@@ -86,11 +88,10 @@ public sealed class TemporalNetworkSimulationEngine
             };
 
             ClaimCurrentMovementResources(edgeLookup, nodeLookup, movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
-            newlyAllocatedMovements.Add(movement);
+            newlyStartedMovements.Add(movement);
         }
 
-        var edgeOccupancySnapshot = SnapshotResourceOccupancy(occupiedEdgeCapacity);
-        var transhipmentOccupancySnapshot = SnapshotResourceOccupancy(occupiedTranshipmentCapacity);
+        
 
         foreach (var movement in movements.ToList())
         {
@@ -134,10 +135,15 @@ public sealed class TemporalNetworkSimulationEngine
             TryMoveMovementToNextEdge(edgeLookup, nodeLookup, movement, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         }
 
+        movements.AddRange(newlyStartedMovements);
+
         movements.AddRange(newlyAllocatedMovements);
 
         ValidateResourceOccupancy(edgeLookup, nodeLookup, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         ValidateMovementResourceClaims(movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+
+        var edgeOccupancySnapshot = SnapshotResourceOccupancy(occupiedEdgeCapacity);
+        var transhipmentOccupancySnapshot = SnapshotResourceOccupancy(occupiedTranshipmentCapacity);
 
         state.CurrentPeriod = nextPeriod;
         state.NodeStates.Clear();

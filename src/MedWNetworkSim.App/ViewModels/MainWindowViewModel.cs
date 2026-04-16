@@ -3172,7 +3172,9 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
             return;
         }
 
-        var existing = edgeTrafficById.GetValueOrDefault(edgeId, EdgeTrafficBreakdown.Empty);
+        var existing = edgeTrafficById.TryGetValue(edgeId, out var current)
+            ? current
+            : EdgeTrafficBreakdown.Empty;
         if (isForward)
         {
             AddTrafficQuantity(existing.ForwardByTraffic, trafficType, quantity);
@@ -3212,7 +3214,10 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
             return;
         }
 
-        breakdown[trafficType] = breakdown.GetValueOrDefault(trafficType) + quantity;
+        var currentQuantity = breakdown.TryGetValue(trafficType, out var existingQuantity)
+            ? existingQuantity
+            : 0d;
+        breakdown[trafficType] = currentQuantity + quantity;
     }
 
     private static IReadOnlyList<KeyValuePair<string, double>> ToOrderedTrafficPairs(IReadOnlyDictionary<string, double>? breakdown)

@@ -21,6 +21,39 @@
                        Foreground="{DynamicResource MutedForegroundBrush}"
                        Text="Node cards summarize producers, consumers, stores, transhipment hubs, inventory, backlog, and capacity stress when those overlays are enabled."
                        TextWrapping="Wrap" />
+            <TextBlock Margin="0,12,0,0"
+                       FontWeight="SemiBold"
+                       Text="Demand goods legend" />
+            <StackPanel Margin="0,6,0,0"
+                        KeyboardNavigation.TabNavigation="Cycle">
+                <Border Margin="0,0,0,4"
+                        Padding="6,4"
+                        Background="#FFD45B5B"
+                        CornerRadius="8"
+                        Focusable="True">
+                    <TextBlock Foreground="White"
+                               Text="🧂 Spice backlog" />
+                </Border>
+                <Border Margin="0,0,0,4"
+                        Padding="6,4"
+                        Background="#FF4A8EDC"
+                        CornerRadius="8"
+                        Focusable="True">
+                    <TextBlock Foreground="White"
+                               Text="💧 Water backlog" />
+                </Border>
+                <Border Padding="6,4"
+                        Background="#FF5DAA5B"
+                        CornerRadius="8"
+                        Focusable="True">
+                    <TextBlock Foreground="White"
+                               Text="🌿 Herbs backlog" />
+                </Border>
+            </StackPanel>
+            <TextBlock Margin="0,8,0,0"
+                       Foreground="{DynamicResource MutedForegroundBrush}"
+                       Text="Urgent demand: nodes with total backlog over 5 units receive a stronger outline."
+                       TextWrapping="Wrap" />
         </StackPanel>
     </Border>
 </UserControl>

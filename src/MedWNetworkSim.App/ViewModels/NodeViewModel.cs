@@ -13,12 +13,15 @@ public sealed class NodeViewModel : ObservableObject
     public const double DefaultHeight = 112d;
 
     private const double UtilizationTrackWidth = 92d;
+    private const double DemandMeterTrackWidth = 116d;
+    private const double UrgentBacklogThreshold = 5d;
     private const double Epsilon = 0.000001d;
 
     private static readonly Brush IdleBrush = CreateFrozenBrush("#FFD7C7B1");
     private static readonly Brush LowUsageBrush = CreateFrozenBrush("#FF9BAA76");
     private static readonly Brush MediumUsageBrush = CreateFrozenBrush("#FFC48B4B");
     private static readonly Brush HighUsageBrush = CreateFrozenBrush("#FFC56245");
+    private static readonly Brush UrgentBacklogBorderBrush = CreateFrozenBrush("#FFDA8A34");
     private static Brush DefaultNodeBorder => GetThemeBrush("NodeBorderBrush", "#FFC7B27C");
 
     private string id;
@@ -47,6 +50,8 @@ public sealed class NodeViewModel : ObservableObject
     private double pressureScore;
     private string pressureTopCause = string.Empty;
     private bool hasTimelineDetails;
+    private double deliveredDemandQuantity;
+    private readonly ObservableCollection<NodeDemandBadgeViewModel> demandBadges = [];
     private Brush nodeBorderDisplayBrush = DefaultNodeBorder;
     private Brush simulationBrush = IdleBrush;
 
@@ -304,6 +309,7 @@ public sealed class NodeViewModel : ObservableObject
         : string.Empty;
 
     public ObservableCollection<NodeTrafficProfileViewModel> TrafficProfiles { get; }
+    public ObservableCollection<NodeDemandBadgeViewModel> DemandBadges => demandBadges;
 
     public string? PlaceType
     {
@@ -579,6 +585,10 @@ public sealed class NodeViewModel : ObservableObject
     public Visibility SimulationPanelVisibility => HasSimulationDetails ? Visibility.Visible : Visibility.Collapsed;
 
     public Visibility TimelinePanelVisibility => HasTimelineDetails ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility DemandBadgeVisibility => demandBadges.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility DemandMeterVisibility => HasTimelineDetails && (deliveredDemandQuantity > Epsilon || demandBacklogQuantity > Epsilon)
+        ? Visibility.Visible
+        : Visibility.Collapsed;
 
     public Visibility TranshipmentUsageVisibility => HasTranshipmentUsageDetails ? Visibility.Visible : Visibility.Collapsed;
 
@@ -589,6 +599,39 @@ public sealed class NodeViewModel : ObservableObject
     public double TranshipmentUtilizationBarWidth => TranshipmentUsageBarVisibility == Visibility.Visible
         ? UtilizationTrackWidth * transhipmentUtilizationRatio
         : 0d;
+    public double DemandMeterFillWidth => DemandMeterVisibility == Visibility.Visible
+        ? DemandMeterTrackWidth * DemandMeterRatio
+        : 0d;
+    public double DemandMeterTrackWidthValue => DemandMeterTrackWidth;
+    public double DemandMeterRatio
+    {
+        get
+        {
+            var totalRequired = deliveredDemandQuantity + demandBacklogQuantity;
+            if (totalRequired <= Epsilon)
+            {
+                return 0d;
+            }
+
+            return Math.Clamp(deliveredDemandQuantity / totalRequired, 0d, 1d);
+        }
+    }
+    public bool HasUrgentBacklog => demandBacklogQuantity > UrgentBacklogThreshold;
+    public string DemandMeterSummary => $"Demand fulfilled {deliveredDemandQuantity:0.##} / {(deliveredDemandQuantity + demandBacklogQuantity):0.##}";
+    public string DemandTooltipText
+    {
+        get
+        {
+            if (demandBadges.Count == 0)
+            {
+                return "Node requires no backlog goods.";
+            }
+
+            var lines = new List<string> { "Node requires:" };
+            lines.AddRange(demandBadges.Select(badge => $"- {badge.TrafficType}: {badge.QuantityLabel} units"));
+            return string.Join(Environment.NewLine, lines);
+        }
+    }
 
     public Brush NodeBorderDisplayBrush => nodeBorderDisplayBrush;
 
@@ -804,24 +847,28 @@ public sealed class NodeViewModel : ObservableObject
 
     public void ApplyTimelineVisuals(double availableSupply, double demandBacklog, double storeInventory)
     {
-        ApplyTimelineVisuals(availableSupply, demandBacklog, storeInventory, null);
+        ApplyTimelineVisuals(availableSupply, demandBacklog, storeInventory, 0d, [], null);
     }
 
     public void ApplyTimelineVisuals(
         double availableSupply,
         double demandBacklog,
         double storeInventory,
+        double deliveredDemand,
+        IReadOnlyList<KeyValuePair<string, double>> backlogByTraffic,
         TemporalNetworkSimulationEngine.NodePressureSnapshot? pressure)
     {
         availableSupplyQuantity = Math.Max(0d, availableSupply);
         demandBacklogQuantity = Math.Max(0d, demandBacklog);
         storeInventoryQuantity = Math.Max(0d, storeInventory);
+        deliveredDemandQuantity = Math.Max(0d, deliveredDemand);
         pressureScore = pressure?.Score > Epsilon ? pressure.Value.Score : 0d;
         pressureTopCause = pressure is { TopCause: { Length: > 0 } } ? pressure.Value.TopCause : string.Empty;
         hasTimelineDetails = availableSupplyQuantity > Epsilon ||
             demandBacklogQuantity > Epsilon ||
             storeInventoryQuantity > Epsilon ||
             pressureScore > Epsilon;
+        UpdateDemandBadges(backlogByTraffic);
         RefreshSimulationDerivedState();
     }
 
@@ -830,9 +877,11 @@ public sealed class NodeViewModel : ObservableObject
         availableSupplyQuantity = 0d;
         demandBacklogQuantity = 0d;
         storeInventoryQuantity = 0d;
+        deliveredDemandQuantity = 0d;
         pressureScore = 0d;
         pressureTopCause = string.Empty;
         hasTimelineDetails = false;
+        demandBadges.Clear();
         RefreshSimulationDerivedState();
     }
 
@@ -921,12 +970,22 @@ public sealed class NodeViewModel : ObservableObject
             transhipmentQuantity > Epsilon || routedOutboundQuantity > Epsilon || routedInboundQuantity > Epsilon || localQuantity > Epsilon);
         nodeBorderDisplayBrush = HasSimulationDetails
             ? simulationBrush
+            : HasUrgentBacklog
+                ? UrgentBacklogBorderBrush
             : GetThemeBrush("NodeBorderBrush", "#FFC7B27C");
 
         OnPropertyChanged(nameof(FlowSummaryLabel));
         OnPropertyChanged(nameof(TranshipmentUsageLabel));
         OnPropertyChanged(nameof(SimulationPanelVisibility));
         OnPropertyChanged(nameof(TimelinePanelVisibility));
+        OnPropertyChanged(nameof(DemandBadgeVisibility));
+        OnPropertyChanged(nameof(DemandMeterVisibility));
+        OnPropertyChanged(nameof(DemandMeterFillWidth));
+        OnPropertyChanged(nameof(DemandMeterTrackWidthValue));
+        OnPropertyChanged(nameof(DemandMeterRatio));
+        OnPropertyChanged(nameof(DemandMeterSummary));
+        OnPropertyChanged(nameof(DemandTooltipText));
+        OnPropertyChanged(nameof(HasUrgentBacklog));
         OnPropertyChanged(nameof(TranshipmentUsageVisibility));
         OnPropertyChanged(nameof(TranshipmentUsageBarVisibility));
         OnPropertyChanged(nameof(TranshipmentUtilizationBarWidth));
@@ -936,6 +995,47 @@ public sealed class NodeViewModel : ObservableObject
         OnPropertyChanged(nameof(TimelineSummaryLabel));
         OnPropertyChanged(nameof(PressureSummaryLabel));
         OnPropertyChanged(nameof(FullTrafficSummary));
+    }
+
+    private void UpdateDemandBadges(IReadOnlyList<KeyValuePair<string, double>> backlogByTraffic)
+    {
+        demandBadges.Clear();
+
+        foreach (var pair in backlogByTraffic
+                     .Where(item => item.Value > Epsilon)
+                     .OrderByDescending(item => item.Value)
+                     .ThenBy(item => item.Key, Comparer))
+        {
+            demandBadges.Add(new NodeDemandBadgeViewModel(
+                pair.Key,
+                pair.Value,
+                GetDemandIcon(pair.Key),
+                GetDemandBrush(pair.Key)));
+        }
+    }
+
+    private static Brush GetDemandBrush(string trafficType)
+    {
+        var color = trafficType.Trim().ToLowerInvariant() switch
+        {
+            "spice" => "#FFD45B5B",
+            "water" => "#FF4A8EDC",
+            "herbs" => "#FF5DAA5B",
+            _ => "#FF8B7E6A"
+        };
+
+        return CreateFrozenBrush(color);
+    }
+
+    private static string GetDemandIcon(string trafficType)
+    {
+        return trafficType.Trim().ToLowerInvariant() switch
+        {
+            "spice" => "🧂",
+            "water" => "💧",
+            "herbs" => "🌿",
+            _ => "◉"
+        };
     }
 
     private void RaiseWorldbuilderSummaryPropertiesChanged()

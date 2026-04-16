@@ -29,7 +29,7 @@
                 <TextBlock Margin="0,8,0,0"
                            FontSize="12"
                            Foreground="{DynamicResource MutedForegroundBrush}"
-                           Text="Export a readable HTML report or a spreadsheet-friendly CSV report for the current network. The current report captures the one-shot simulation outputs, and the timeline report simulates the network from period 1 for the number of periods you choose."
+                           Text="Export a readable HTML report, a spreadsheet-friendly CSV report, or a structured JSON report for the current network. The current report captures the one-shot simulation outputs, and the timeline report simulates the network from period 1 for the number of periods you choose."
                            TextWrapping="Wrap" />
             </StackPanel>
         </Border>
@@ -151,7 +151,7 @@
                         <TextBlock VerticalAlignment="Center"
                                    FontSize="12"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="HTML is best for a polished readable report. CSV is best for spreadsheet analysis or further processing." />
+                                   Text="HTML is best for a polished readable report. CSV is best for spreadsheet analysis. JSON is best for machine-readable integrations." />
                         <Button DockPanel.Dock="Right"
                                 Margin="12,0,0,0"
                                 Content="Close"

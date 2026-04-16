@@ -520,6 +520,9 @@
                                         <Thumb Width="{Binding Width}"
                                                Height="{Binding Height}"
                                                Cursor="SizeAll"
+                                               Focusable="True"
+                                               IsTabStop="True"
+                                               ToolTipService.ShowsToolTipOnKeyboardFocus="True"
                                                PreviewMouseLeftButtonDown="NodeThumb_OnPreviewMouseLeftButtonDown"
                                                PreviewMouseLeftButtonUp="NodeThumb_OnPreviewMouseLeftButtonUp"
                                                DragDelta="NodeThumb_OnDragDelta"
@@ -532,7 +535,18 @@
                                                                 BorderBrush="{Binding NodeBorderDisplayBrush}"
                                                                 BorderThickness="1.4"
                                                                 CornerRadius="{Binding NodeCornerRadius}"
-                                                                Visibility="{Binding SquareNodeVisibility}" />
+                                                                Visibility="{Binding SquareNodeVisibility}">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="BorderThickness" Value="1.4" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding HasUrgentBacklog}" Value="True">
+                                                                            <Setter Property="BorderThickness" Value="3.2" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                        </Border>
                                                         <Ellipse Fill="{DynamicResource NodeBrush}"
                                                                  Stroke="{Binding NodeBorderDisplayBrush}"
                                                                  StrokeThickness="1.4"
@@ -550,6 +564,7 @@
                                                                 <RowDefinition Height="Auto" />
                                                                 <RowDefinition Height="Auto" />
                                                                 <RowDefinition Height="*" />
+                                                                <RowDefinition Height="Auto" />
                                                                 <RowDefinition Height="Auto" />
                                                             </Grid.RowDefinitions>
 
@@ -586,6 +601,34 @@
                                                                 </ItemsControl.ItemTemplate>
                                                             </ItemsControl>
 
+                                                            <ItemsControl Grid.Row="2"
+                                                                          HorizontalAlignment="Right"
+                                                                          VerticalAlignment="Top"
+                                                                          Visibility="{Binding DemandBadgeVisibility}"
+                                                                          ToolTip="{Binding DemandTooltipText}"
+                                                                          ToolTipService.ShowsToolTipOnKeyboardFocus="True"
+                                                                          ItemsSource="{Binding DemandBadges}">
+                                                                <ItemsControl.ItemsPanel>
+                                                                    <ItemsPanelTemplate>
+                                                                        <WrapPanel />
+                                                                    </ItemsPanelTemplate>
+                                                                </ItemsControl.ItemsPanel>
+                                                                <ItemsControl.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <Border Margin="3,0,0,3"
+                                                                                Padding="4,1"
+                                                                                Background="{Binding AccentBrush}"
+                                                                                CornerRadius="8"
+                                                                                AutomationProperties.Name="{Binding AutomationLabel}">
+                                                                            <TextBlock FontSize="10"
+                                                                                       FontWeight="SemiBold"
+                                                                                       Foreground="White"
+                                                                                       Text="{Binding Icon}" />
+                                                                        </Border>
+                                                                    </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                            </ItemsControl>
+
                                                             <StackPanel Grid.Row="3">
                                                                 <TextBlock FontSize="10"
                                                                            Foreground="{DynamicResource MutedForegroundBrush}"
@@ -604,6 +647,27 @@
                                                                            Text="{Binding TimelineSummaryLabel}"
                                                                            TextTrimming="CharacterEllipsis"
                                                                            Visibility="{Binding TimelinePanelVisibility}" />
+                                                            </StackPanel>
+
+                                                            <StackPanel Grid.Row="4"
+                                                                        Margin="0,6,0,0"
+                                                                        Visibility="{Binding DemandMeterVisibility}"
+                                                                        ToolTip="{Binding DemandTooltipText}"
+                                                                        ToolTipService.ShowsToolTipOnKeyboardFocus="True"
+                                                                        AutomationProperties.Name="{Binding DemandMeterSummary}">
+                                                                <Border Width="{Binding DemandMeterTrackWidthValue}"
+                                                                        Height="6"
+                                                                        Background="{DynamicResource CardAltBrush}"
+                                                                        CornerRadius="3">
+                                                                    <Border Width="{Binding DemandMeterFillWidth}"
+                                                                            HorizontalAlignment="Left"
+                                                                            Background="{DynamicResource AccentStrongBrush}"
+                                                                            CornerRadius="3" />
+                                                                </Border>
+                                                                <TextBlock Margin="0,2,0,0"
+                                                                           FontSize="10"
+                                                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                                                           Text="{Binding DemandMeterSummary}" />
                                                             </StackPanel>
                                                         </Grid>
                                                     </Grid>

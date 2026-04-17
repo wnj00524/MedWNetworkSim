@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Globalization;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Services;
 
@@ -212,7 +213,20 @@ public sealed class EdgeTrafficPermissionRowViewModel : ObservableObject
             return null;
         }
 
-        return double.TryParse(LimitValueText, out var parsedValue) ? parsedValue : null;
+        var rawValue = LimitValueText.Trim();
+        if (rawValue.EndsWith('%'))
+        {
+            rawValue = rawValue[..^1].TrimEnd();
+        }
+
+        if (double.TryParse(rawValue, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.CurrentCulture, out var parsedCurrentCulture))
+        {
+            return parsedCurrentCulture;
+        }
+
+        return double.TryParse(rawValue, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var parsedInvariantCulture)
+            ? parsedInvariantCulture
+            : null;
     }
 
     private void RaiseStateChanged()

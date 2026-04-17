@@ -12,7 +12,9 @@
         MinHeight="680"
         WindowStartupLocation="CenterOwner">
     <Window.Resources>
-        <Style x:Key="AccessibleEditorButtonStyle" TargetType="Button">
+        <Style x:Key="AccessibleEditorButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="MinWidth" Value="120" />
             <Setter Property="MinHeight" Value="44" />
             <Setter Property="Margin" Value="0,0,8,0" />

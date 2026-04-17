@@ -345,7 +345,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!isGraphKeyboardMode)
+        if (!isGraphKeyboardMode || IsTextInputElement(e.OriginalSource))
         {
             ActivateGraphKeyboardMode();
         }

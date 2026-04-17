@@ -9,6 +9,7 @@ public sealed class OsmToSimulationMapper
     public NetworkModel Map(
         GraphSimplifier.SimplifiedGraph graph,
         string sourceFileName,
+        OsmImportSummary? importSummary = null,
         Random? random = null)
     {
         ArgumentNullException.ThrowIfNull(graph);
@@ -51,7 +52,7 @@ public sealed class OsmToSimulationMapper
         return new NetworkModel
         {
             Name = $"OSM Import - {sourceFileName}",
-            Description = "Imported from OpenStreetMap and simplified for simulation.",
+            Description = BuildDescription(importSummary),
             TrafficTypes =
             [
                 new TrafficTypeDefinition
@@ -65,6 +66,18 @@ public sealed class OsmToSimulationMapper
             Nodes = nodeModels,
             Edges = edges
         };
+    }
+
+    private static string BuildDescription(OsmImportSummary? summary)
+    {
+        if (summary is null)
+        {
+            return "Imported from OpenStreetMap and simplified for simulation.";
+        }
+
+        return $"Imported from OpenStreetMap and simplified for simulation. " +
+               $"Raw nodes: {summary.Parse.RawNodeCount:N0}; raw ways: {summary.Parse.RawWayCount:N0}; retained roads: {summary.Parse.RetainedWayCount:N0}; " +
+               $"simplified nodes: {summary.SimplifiedNodeCount:N0}; simplified edges: {summary.SimplifiedEdgeCount:N0}; skipped entities: {summary.Parse.SkippedEntityCount:N0}.";
     }
 
     private static string BuildNodeId(long osmId) => $"osm-node-{osmId}";

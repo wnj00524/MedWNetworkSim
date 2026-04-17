@@ -1161,7 +1161,7 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
     {
         IsImportingOsm = true;
         OsmImportProgress = 0d;
-        OsmImportStatus = "Starting OSM import...";
+        OsmImportStatus = "Starting OpenStreetMap import...";
         StatusMessage = OsmImportStatus;
     }
 
@@ -1184,7 +1184,7 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
 
     public void LoadImportedNetwork(NetworkModel network, string path)
     {
-        LoadNetwork(network, null, $"Imported OSM file '{Path.GetFileName(path)}'.");
+        LoadNetwork(network, null, $"Imported OpenStreetMap file '{Path.GetFileName(path)}'.");
         ActiveFileLabel = Path.GetFileName(path);
         HasUnsavedChanges = true;
     }

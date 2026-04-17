@@ -86,8 +86,8 @@ public partial class MainWindow : Window
 
         var dialog = new OpenFileDialog
         {
-            Title = "Import OSM file",
-            Filter = "OpenStreetMap XML (*.osm)|*.osm|All files (*.*)|*.*",
+            Title = "Import OpenStreetMap file",
+            Filter = "OpenStreetMap files (*.osm;*.pbf)|*.osm;*.pbf|OSM XML (*.osm)|*.osm|OSM PBF (*.pbf)|*.pbf|All files (*.*)|*.*",
             CheckFileExists = true,
             Multiselect = false
         };
@@ -110,7 +110,7 @@ public partial class MainWindow : Window
             await Dispatcher.InvokeAsync(() =>
             {
                 FitCanvasToNetwork();
-                SetCanvasHint("OSM import complete. Network auto-fit to canvas.");
+                SetCanvasHint("OpenStreetMap import complete. Network auto-fit to canvas.");
             });
         }
         catch (Exception ex)

@@ -1,6 +1,9 @@
 using MedWNetworkSim.App.Models;
+using MedWNetworkSim.App.Import;
 using MedWNetworkSim.App.Services;
 using MedWNetworkSim.App.ViewModels;
+using OsmSharp;
+using OsmSharp.Streams;
 
 ScenarioA_LongEdgeBlocksRelaunch();
 ScenarioB_CapacityFreesAfterCompletion();
@@ -56,6 +59,11 @@ ScenarioAU_ResetTimelineClearsEdgePressureVisuals();
 ScenarioAR_HierarchicalSubnetworkInterfacesRouteThroughChild();
 ScenarioAS_HierarchicalSubnetworkValidationRejectsInvalidInterfaces();
 ScenarioAT_EmbedSubnetworkPlacesCompositeNode();
+ScenarioAU_OsmImportParserSelectionByExtension();
+ScenarioAV_OsmImportPbfHappyPath();
+ScenarioAW_OsmImportPbfNoSupportedRoads();
+ScenarioAX_OsmImportInvalidPbfIsRejected();
+ScenarioAY_OsmImportPbfAndOsmParity();
 
 Console.WriteLine("Verification passed.");
 
@@ -2048,5 +2056,223 @@ static void AssertSequenceEqual(IReadOnlyList<int> expected, IReadOnlyList<int> 
     if (expected.Count != actual.Count || expected.Where((item, index) => item != actual[index]).Any())
     {
         throw new InvalidOperationException($"{label}: expected [{string.Join(", ", expected)}], actual [{string.Join(", ", actual)}].");
+    }
+}
+
+static void AssertSequenceEqual(IReadOnlyList<string> expected, IReadOnlyList<string> actual, string label)
+{
+    if (expected.Count != actual.Count || expected.Where((item, index) => !string.Equals(item, actual[index], StringComparison.Ordinal)).Any())
+    {
+        throw new InvalidOperationException($"{label}: expected [{string.Join(", ", expected)}], actual [{string.Join(", ", actual)}].");
+    }
+}
+
+static void ScenarioAU_OsmImportParserSelectionByExtension()
+{
+    var service = new OsmImportService(
+        [new OsmXmlParser(), new OsmPbfParser()],
+        new GraphSimplifier(),
+        new OsmToSimulationMapper());
+
+    var xmlParser = service.ResolveParser("map.osm");
+    var pbfParser = service.ResolveParser("map.pbf");
+
+    AssertTrue(xmlParser is OsmXmlParser, "AU parser for .osm");
+    AssertTrue(pbfParser is OsmPbfParser, "AU parser for .pbf");
+}
+
+static void ScenarioAV_OsmImportPbfHappyPath()
+{
+    using var fixture = CreateEquivalentOsmFixtures();
+    var importer = new OsmImporter();
+    var network = importer.ImportFromFile(fixture.PbfPath);
+
+    AssertAtLeast(2, network.Nodes.Count, "AV imported nodes");
+    AssertAtLeast(1, network.Edges.Count, "AV imported edges");
+}
+
+static void ScenarioAW_OsmImportPbfNoSupportedRoads()
+{
+    var tempPath = Path.Combine(Path.GetTempPath(), $"osm-empty-{Guid.NewGuid():N}.pbf");
+
+    try
+    {
+        WritePbf(
+            tempPath,
+            [
+                new Node { Id = 1, Latitude = 0d, Longitude = 0d },
+                new Node { Id = 2, Latitude = 0.01d, Longitude = 0.01d },
+                new Way { Id = 10, Nodes = [1, 2], Tags = new TagsCollection(new Tag("building", "yes")) }
+            ]);
+
+        var importer = new OsmImporter();
+        AssertThrows<InvalidDataException>(
+            () => importer.ImportFromFile(tempPath),
+            "did not contain any supported road data",
+            "AW empty road data");
+    }
+    finally
+    {
+        TryDelete(tempPath);
+    }
+}
+
+static void ScenarioAX_OsmImportInvalidPbfIsRejected()
+{
+    var tempPath = Path.Combine(Path.GetTempPath(), $"osm-invalid-{Guid.NewGuid():N}.pbf");
+
+    try
+    {
+        File.WriteAllText(tempPath, "not a valid pbf");
+
+        var importer = new OsmImporter();
+        AssertThrows<InvalidDataException>(
+            () => importer.ImportFromFile(tempPath),
+            "valid OpenStreetMap PBF",
+            "AX invalid pbf");
+    }
+    finally
+    {
+        TryDelete(tempPath);
+    }
+}
+
+static void ScenarioAY_OsmImportPbfAndOsmParity()
+{
+    using var fixture = CreateEquivalentOsmFixtures();
+    var importer = new OsmImporter();
+
+    var xmlNetwork = importer.ImportFromFile(fixture.OsmPath);
+    var pbfNetwork = importer.ImportFromFile(fixture.PbfPath);
+
+    AssertEqual(xmlNetwork.Nodes.Count, pbfNetwork.Nodes.Count, "AY node parity");
+    AssertEqual(xmlNetwork.Edges.Count, pbfNetwork.Edges.Count, "AY edge parity");
+
+    var xmlRoutes = xmlNetwork.Edges
+        .Select(edge => $"{edge.FromNodeId}->{edge.ToNodeId}:{edge.RouteType}")
+        .OrderBy(value => value)
+        .ToList();
+    var pbfRoutes = pbfNetwork.Edges
+        .Select(edge => $"{edge.FromNodeId}->{edge.ToNodeId}:{edge.RouteType}")
+        .OrderBy(value => value)
+        .ToList();
+
+    AssertSequenceEqual(xmlRoutes, pbfRoutes, "AY route parity");
+}
+
+static EquivalentOsmFixture CreateEquivalentOsmFixtures()
+{
+    var fixtureDirectory = Path.Combine(Path.GetTempPath(), $"osm-fixture-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(fixtureDirectory);
+
+    var osmPath = Path.Combine(fixtureDirectory, "fixture.osm");
+    var pbfPath = Path.Combine(fixtureDirectory, "fixture.pbf");
+
+    var osmXml = """
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0000" />
+  <node id="2" lat="37.0005" lon="-122.0005" />
+  <node id="3" lat="37.0010" lon="-122.0010" />
+  <way id="10">
+    <nd ref="1" />
+    <nd ref="2" />
+    <nd ref="3" />
+    <tag k="highway" v="primary" />
+  </way>
+</osm>
+""";
+
+    File.WriteAllText(osmPath, osmXml);
+
+    WritePbf(
+        pbfPath,
+        [
+            new Node { Id = 1, Latitude = 37.0000d, Longitude = -122.0000d },
+            new Node { Id = 2, Latitude = 37.0005d, Longitude = -122.0005d },
+            new Node { Id = 3, Latitude = 37.0010d, Longitude = -122.0010d },
+            new Way
+            {
+                Id = 10,
+                Nodes = [1, 2, 3],
+                Tags = new TagsCollection(new Tag("highway", "primary"))
+            }
+        ]);
+
+    return new EquivalentOsmFixture(fixtureDirectory, osmPath, pbfPath);
+}
+
+static void WritePbf(string path, IEnumerable<OsmGeo> elements)
+{
+    using var stream = File.Create(path);
+    var target = new PBFOsmStreamTarget(stream);
+    target.RegisterSource(elements.ToOsmStreamSource());
+    target.Pull();
+}
+
+static void TryDelete(string path)
+{
+    if (File.Exists(path))
+    {
+        File.Delete(path);
+    }
+}
+
+sealed class EquivalentOsmFixture : IDisposable
+{
+    public EquivalentOsmFixture(string directoryPath, string osmPath, string pbfPath)
+    {
+        DirectoryPath = directoryPath;
+        OsmPath = osmPath;
+        PbfPath = pbfPath;
+    }
+
+    public string DirectoryPath { get; }
+
+    public string OsmPath { get; }
+
+    public string PbfPath { get; }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(DirectoryPath))
+        {
+            Directory.Delete(DirectoryPath, recursive: true);
+        }
+    }
+}
+
+static void AssertThrows<TException>(Action action, string expectedMessagePart, string scenario)
+    where TException : Exception
+{
+    try
+    {
+        action();
+    }
+    catch (TException exception)
+    {
+        if (exception.Message.Contains(expectedMessagePart, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException($"{scenario} expected message containing '{expectedMessagePart}', but was '{exception.Message}'.");
+    }
+
+    throw new InvalidOperationException($"{scenario} expected exception {typeof(TException).Name}.");
+}
+
+static void AssertTrue(bool condition, string scenario)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException($"{scenario} expected condition to be true.");
+    }
+}
+
+static void AssertAtLeast(int expectedMinimum, int actual, string scenario)
+{
+    if (actual < expectedMinimum)
+    {
+        throw new InvalidOperationException($"{scenario} expected at least {expectedMinimum} but got {actual}.");
     }
 }

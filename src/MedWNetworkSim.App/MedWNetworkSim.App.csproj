@@ -16,6 +16,10 @@
     <PublishTrimmed>false</PublishTrimmed>
 </PropertyGroup>
 
+
+  <ItemGroup>
+    <PackageReference Include="OsmSharp" Version="6.0.0" />
+  </ItemGroup>
   <ItemGroup>
     <Resource Include="Assets\AppIcon.ico" />
     <None Include="Samples\*.json">

@@ -26,11 +26,17 @@ public sealed class OsmImportService
 
     public SimulationNetwork ImportFromFile(string path)
     {
-        return ImportFromFileAsync(path).GetAwaiter().GetResult();
+        return ImportFromFileAsync(path, options: null).GetAwaiter().GetResult();
+    }
+
+    public SimulationNetwork ImportFromFile(string path, OsmImportOptions? options)
+    {
+        return ImportFromFileAsync(path, options: options).GetAwaiter().GetResult();
     }
 
     public async Task<SimulationNetwork> ImportFromFileAsync(
         string path,
+        OsmImportOptions? options = null,
         IProgress<OsmImportProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -54,7 +60,8 @@ public sealed class OsmImportService
         }
 
         progress?.Report(new OsmImportProgress(0.72d, "Simplifying network…"));
-        var simplified = simplifier.Simplify(parsed.Graph);
+        var simplificationOptions = GraphSimplificationOptions.FromImportOptions(options);
+        var simplified = simplifier.Simplify(parsed.Graph, simplificationOptions);
 
         if (simplified.Edges.Count == 0)
         {
@@ -62,7 +69,17 @@ public sealed class OsmImportService
         }
 
         progress?.Report(new OsmImportProgress(0.86d, "Building simulation network…"));
-        var summary = new OsmImportSummary(parsed.Summary, simplified.Nodes.Count, simplified.Edges.Count);
+        var retentionSummary = simplified.Stats is null
+            ? null
+            : new OsmRetentionSummary(
+                simplified.Stats.MandatoryKeptNodes,
+                simplified.Stats.OptionalKeptNodes,
+                simplified.Nodes.Count,
+                simplified.Stats.RequestedPercentage,
+                simplified.Stats.EffectivePercentage,
+                simplified.Stats.BaselineNodeCount);
+
+        var summary = new OsmImportSummary(parsed.Summary, simplified.Nodes.Count, simplified.Edges.Count, retentionSummary);
         var network = mapper.Map(simplified, Path.GetFileName(path), summary);
 
         var warningSuffix = parsed.Summary.Warnings.Count > 0
@@ -71,9 +88,20 @@ public sealed class OsmImportService
 
         progress?.Report(new OsmImportProgress(
             1d,
-            $"Imported {simplified.Nodes.Count:N0} nodes and {simplified.Edges.Count:N0} edges from road data.{warningSuffix}"));
+            BuildCompletedMessage(simplified, warningSuffix)));
 
         return network;
+    }
+
+    private static string BuildCompletedMessage(GraphSimplifier.SimplifiedGraph simplified, string warningSuffix)
+    {
+        if (simplified.Stats is null)
+        {
+            return $"Imported {simplified.Nodes.Count:N0} nodes and {simplified.Edges.Count:N0} edges from road data.{warningSuffix}";
+        }
+
+        return $"Imported {simplified.Nodes.Count:N0} nodes and {simplified.Edges.Count:N0} edges from road data " +
+               $"(requested retention: {simplified.Stats.RequestedPercentage}%; effective: {simplified.Stats.EffectivePercentage}%).{warningSuffix}";
     }
 
     public IOsmGraphParser ResolveParser(string path)

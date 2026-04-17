@@ -78,7 +78,12 @@ public sealed class OsmToSimulationMapper
 
         return $"Imported from OpenStreetMap and simplified for simulation. " +
                $"Raw nodes: {summary.Parse.RawNodeCount:N0}; raw ways: {summary.Parse.RawWayCount:N0}; retained roads: {summary.Parse.RetainedWayCount:N0}; " +
-               $"simplified nodes: {summary.SimplifiedNodeCount:N0}; simplified edges: {summary.SimplifiedEdgeCount:N0}; skipped entities: {summary.Parse.SkippedEntityCount:N0}.";
+               $"baseline simplified nodes: {summary.Retention?.BaselineSimplifiedNodeCount ?? summary.SimplifiedNodeCount:N0}; " +
+               $"mandatory kept nodes: {summary.Retention?.MandatoryKeptNodes ?? summary.SimplifiedNodeCount:N0}; " +
+               $"optional kept nodes: {summary.Retention?.OptionalKeptNodes ?? 0:N0}; " +
+               $"final retained node count: {summary.SimplifiedNodeCount:N0}; simplified edges: {summary.SimplifiedEdgeCount:N0}; " +
+               $"requested percentage: {summary.Retention?.RequestedPercentage ?? 100}%; effective percentage: {summary.Retention?.EffectivePercentage ?? 100}%; " +
+               $"skipped entities: {summary.Parse.SkippedEntityCount:N0}.";
     }
 
 

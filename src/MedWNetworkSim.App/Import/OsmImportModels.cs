@@ -33,9 +33,58 @@ public sealed record OsmParseSummary(
 
 public sealed record OsmParseResult(OsmParsedGraph Graph, OsmParseSummary Summary);
 
+public enum OsmRetentionStrategy
+{
+    Balanced,
+    PreserveShape,
+    PreserveJunctionImportance
+}
+
+public sealed record OsmImportOptions(
+    bool EnableNodeRetentionTarget = false,
+    int TargetRetainedNodePercentage = 100,
+    OsmRetentionStrategy RetentionStrategy = OsmRetentionStrategy.Balanced,
+    bool AlwaysKeepNamedRoadTransitions = true,
+    bool PreserveShapeOnLongSegments = true)
+{
+    public int ClampedTargetRetainedNodePercentage => Math.Clamp(TargetRetainedNodePercentage, 1, 100);
+}
+
+public sealed record GraphSimplificationOptions(
+    bool EnableNodeRetentionTarget = false,
+    int TargetRetainedNodePercentage = 100,
+    OsmRetentionStrategy RetentionStrategy = OsmRetentionStrategy.Balanced,
+    bool AlwaysKeepNamedRoadTransitions = true,
+    bool PreserveShapeOnLongSegments = true)
+{
+    public static GraphSimplificationOptions FromImportOptions(OsmImportOptions? options)
+    {
+        if (options is null)
+        {
+            return new GraphSimplificationOptions();
+        }
+
+        return new GraphSimplificationOptions(
+            options.EnableNodeRetentionTarget,
+            options.ClampedTargetRetainedNodePercentage,
+            options.RetentionStrategy,
+            options.AlwaysKeepNamedRoadTransitions,
+            options.PreserveShapeOnLongSegments);
+    }
+}
+
+public sealed record OsmRetentionSummary(
+    int MandatoryKeptNodes,
+    int OptionalKeptNodes,
+    int FinalRetainedNodeCount,
+    int RequestedPercentage,
+    int EffectivePercentage,
+    int BaselineSimplifiedNodeCount);
+
 public sealed record OsmImportSummary(
     OsmParseSummary Parse,
     int SimplifiedNodeCount,
-    int SimplifiedEdgeCount);
+    int SimplifiedEdgeCount,
+    OsmRetentionSummary? Retention = null);
 
 public sealed record OsmImportProgress(double Fraction, string Message);

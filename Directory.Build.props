@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'MedWNetworkSim.UI'">
+    <BaseIntermediateOutputPath>obj-avalonia-ui\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'MedWNetworkSim.App.Avalonia'">
+    <BaseIntermediateOutputPath>obj-avalonia-app\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

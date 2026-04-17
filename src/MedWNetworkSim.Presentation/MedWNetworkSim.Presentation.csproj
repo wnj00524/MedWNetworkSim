@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MedWNetworkSim.Rendering\MedWNetworkSim.Rendering.csproj" />
+    <ProjectReference Include="..\MedWNetworkSim.Interaction\MedWNetworkSim.Interaction.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\MedWNetworkSim.App\Models\*.cs" Link="Legacy\Models\%(Filename)%(Extension)" />
+    <Compile Include="..\MedWNetworkSim.App\Services\*.cs" Exclude="..\MedWNetworkSim.App\Services\AppThemeManager.cs" Link="Legacy\Services\%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

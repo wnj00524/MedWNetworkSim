@@ -1,0 +1,373 @@
+{
+  "format": 1,
+  "restore": {
+    "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.UI\\MedWNetworkSim.UI.csproj": {}
+  },
+  "projects": {
+    "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Interaction\\MedWNetworkSim.Interaction.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Interaction\\MedWNetworkSim.Interaction.csproj",
+        "projectName": "MedWNetworkSim.Interaction",
+        "projectPath": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Interaction\\MedWNetworkSim.Interaction.csproj",
+        "packagesPath": "C:\\Users\\jdwil\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Interaction\\obj\\",
+        "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+        ],
+        "configFilePaths": [
+          "C:\\Users\\jdwil\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "C:\\Program Files\\dotnet\\library-packs": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Rendering\\MedWNetworkSim.Rendering.csproj": {
+                "projectPath": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Rendering\\MedWNetworkSim.Rendering.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "false",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.200"
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[8.0.25, 8.0.25]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Ref",
+              "version": "[8.0.25, 8.0.25]"
+            },
+            {
+              "name": "Microsoft.WindowsDesktop.App.Ref",
+              "version": "[8.0.25, 8.0.25]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.201/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Presentation\\MedWNetworkSim.Presentation.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Presentation\\MedWNetworkSim.Presentation.csproj",
+        "projectName": "MedWNetworkSim.Presentation",
+        "projectPath": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Presentation\\MedWNetworkSim.Presentation.csproj",
+        "packagesPath": "C:\\Users\\jdwil\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Presentation\\obj\\",
+        "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+        ],
+        "configFilePaths": [
+          "C:\\Users\\jdwil\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "C:\\Program Files\\dotnet\\library-packs": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Interaction\\MedWNetworkSim.Interaction.csproj": {
+                "projectPath": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Interaction\\MedWNetworkSim.Interaction.csproj"
+              },
+              "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Rendering\\MedWNetworkSim.Rendering.csproj": {
+                "projectPath": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Rendering\\MedWNetworkSim.Rendering.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "false",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.200"
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[8.0.25, 8.0.25]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Ref",
+              "version": "[8.0.25, 8.0.25]"
+            },
+            {
+              "name": "Microsoft.WindowsDesktop.App.Ref",
+              "version": "[8.0.25, 8.0.25]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.201/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Rendering\\MedWNetworkSim.Rendering.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Rendering\\MedWNetworkSim.Rendering.csproj",
+        "projectName": "MedWNetworkSim.Rendering",
+        "projectPath": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Rendering\\MedWNetworkSim.Rendering.csproj",
+        "packagesPath": "C:\\Users\\jdwil\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Rendering\\obj\\",
+        "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+        ],
+        "configFilePaths": [
+          "C:\\Users\\jdwil\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "C:\\Program Files\\dotnet\\library-packs": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "false",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.200"
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "SkiaSharp": {
+              "target": "Package",
+              "version": "[3.119.1, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[8.0.25, 8.0.25]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Ref",
+              "version": "[8.0.25, 8.0.25]"
+            },
+            {
+              "name": "Microsoft.WindowsDesktop.App.Ref",
+              "version": "[8.0.25, 8.0.25]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.201/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.UI\\MedWNetworkSim.UI.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.UI\\MedWNetworkSim.UI.csproj",
+        "projectName": "MedWNetworkSim.UI",
+        "projectPath": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.UI\\MedWNetworkSim.UI.csproj",
+        "packagesPath": "C:\\Users\\jdwil\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.UI\\obj-avalonia-ui\\",
+        "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+        ],
+        "configFilePaths": [
+          "C:\\Users\\jdwil\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "C:\\Program Files\\dotnet\\library-packs": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Interaction\\MedWNetworkSim.Interaction.csproj": {
+                "projectPath": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Interaction\\MedWNetworkSim.Interaction.csproj"
+              },
+              "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Presentation\\MedWNetworkSim.Presentation.csproj": {
+                "projectPath": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Presentation\\MedWNetworkSim.Presentation.csproj"
+              },
+              "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Rendering\\MedWNetworkSim.Rendering.csproj": {
+                "projectPath": "C:\\Users\\jdwil\\source\\repos\\Codex\\MedWNetworkSim\\src\\MedWNetworkSim.Rendering\\MedWNetworkSim.Rendering.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "noWarn": [
+            "NU1903",
+            "NU1904"
+          ],
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "false",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.200"
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "Avalonia": {
+              "target": "Package",
+              "version": "[0.10.12, )"
+            },
+            "Avalonia.Desktop": {
+              "target": "Package",
+              "version": "[0.10.12, )"
+            },
+            "SkiaSharp": {
+              "target": "Package",
+              "version": "[3.119.1, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[8.0.25, 8.0.25]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Ref",
+              "version": "[8.0.25, 8.0.25]"
+            },
+            {
+              "name": "Microsoft.WindowsDesktop.App.Ref",
+              "version": "[8.0.25, 8.0.25]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.201/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

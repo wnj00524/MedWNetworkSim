@@ -27,6 +27,7 @@
   <ItemGroup>
     <Resource Include="Assets\AppIcon.ico" />
     <Resource Include="Assets\IntroPlaceholder.jpg" />
+    <Resource Include="Assets\logo.jpg" />
     <None Include="Samples\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

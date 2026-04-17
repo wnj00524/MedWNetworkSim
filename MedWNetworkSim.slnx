@@ -2,5 +2,10 @@
   <Folder Name="/src/">
     <Project Path="src/MedWNetworkSim.App/MedWNetworkSim.App.csproj" />
     <Project Path="src/MedWNetworkSim.App.Verification/MedWNetworkSim.App.Verification.csproj" />
+    <Project Path="src/MedWNetworkSim.Rendering/MedWNetworkSim.Rendering.csproj" />
+    <Project Path="src/MedWNetworkSim.Interaction/MedWNetworkSim.Interaction.csproj" />
+    <Project Path="src/MedWNetworkSim.Presentation/MedWNetworkSim.Presentation.csproj" />
+    <Project Path="src/MedWNetworkSim.UI/MedWNetworkSim.UI.csproj" />
+    <Project Path="src/MedWNetworkSim.App.Avalonia/MedWNetworkSim.App.Avalonia.csproj" />
   </Folder>
 </Solution>

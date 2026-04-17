@@ -1,0 +1,9 @@
+<Project>
+  <!--
+    Avalonia 11.3.x injects a build-time telemetry target that writes under
+    %LocalAppData%\AvaloniaUI\BuildServices. On this workstation that path can be
+    denied, which breaks normal local builds before compilation even starts.
+    Override the imported target with a no-op so builds stay deterministic.
+  -->
+  <Target Name="AvaloniaStats" />
+</Project>

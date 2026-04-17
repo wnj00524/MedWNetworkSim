@@ -40,6 +40,7 @@ public sealed class GraphCanvasControl : Control
     private string statusDetail = "Waiting for the graph scene.";
     private bool hasVisibleFrame;
     private bool hasError;
+    private int statusNotificationVersion;
 
     public GraphCanvasControl()
     {
@@ -333,14 +334,24 @@ public sealed class GraphCanvasControl : Control
         statusDetail = detail;
         hasError = isError;
         hasVisibleFrame = visibleFrame;
-
-        StatusChanged?.Invoke(this, new GraphCanvasStatusChangedEventArgs
+        var notificationVersion = ++statusNotificationVersion;
+        var eventArgs = new GraphCanvasStatusChangedEventArgs
         {
             Title = title,
             Detail = detail,
             IsError = isError,
             HasVisibleFrame = visibleFrame
-        });
+        };
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (notificationVersion != statusNotificationVersion)
+            {
+                return;
+            }
+
+            StatusChanged?.Invoke(this, eventArgs);
+        }, DispatcherPriority.Background);
     }
 
     private static void LogDebug(string message)

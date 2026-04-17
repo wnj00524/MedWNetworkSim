@@ -10,6 +10,15 @@
         MinWidth="680"
         MinHeight="560"
         WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <Style x:Key="AccessibleEditorButtonStyle" TargetType="Button">
+            <Setter Property="MinWidth" Value="120" />
+            <Setter Property="MinHeight" Value="44" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="KeyboardNavigation.IsTabStop" Value="True" />
+        </Style>
+    </Window.Resources>
     <Grid Margin="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -213,7 +222,7 @@
 
                         <TextBlock FontSize="15"
                                    FontWeight="SemiBold"
-                                   Text="Edge traffic defaults" />
+                                   Text="Edge Traffic Permissions" />
                         <TextBlock Grid.Row="2"
                                    FontSize="12"
                                    Foreground="{DynamicResource MutedForegroundBrush}"
@@ -221,6 +230,10 @@
                                    TextWrapping="Wrap" />
 
                         <DataGrid Grid.Row="4"
+                                  TabIndex="2"
+                                  ToolTip="Set permissions for each traffic type on the selected edge"
+                                  AutomationProperties.Name="Edge Traffic Permission Control"
+                                  AutomationProperties.HelpText="Select which traffic types are permitted on each edge by default"
                                   ItemsSource="{Binding EdgeTrafficPermissionDefaults}"
                                   AutoGenerateColumns="False"
                                   CanUserAddRows="False"
@@ -279,7 +292,7 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Foreground="#B42318"
-                                                       Text="{Binding ValidationMessage}"
+                                                       Text="{Binding ValidationMessage, StringFormat=⚠ {0}}"
                                                        TextWrapping="Wrap"
                                                        Visibility="{Binding ValidationVisibility}" />
                                         </DataTemplate>
@@ -299,8 +312,13 @@
                     <DockPanel LastChildFill="True">
                         <Button DockPanel.Dock="Right"
                                 Margin="14,0,0,0"
-                                Content="Apply Default To All Traffic"
-                                Click="ApplyDefaultAllocationModeToAll_Click" />
+                                Content="Apply Settings"
+                                Click="ApplyDefaultAllocationModeToAll_Click"
+                                Style="{StaticResource AccessibleEditorButtonStyle}"
+                                ToolTip="Apply the current default allocation mode to all traffic types"
+                                AutomationProperties.Name="Apply Settings Button"
+                                AutomationProperties.HelpText="Applies the selected default allocation mode to all existing traffic types."
+                                TabIndex="1" />
                         <StackPanel>
                             <TextBlock FontSize="15"
                                        FontWeight="SemiBold"
@@ -324,8 +342,13 @@
                        TextWrapping="Wrap" />
             <Button DockPanel.Dock="Right"
                     Margin="12,0,0,0"
-                    Content="Close"
-                    Click="Close_Click" />
+                    Content="Save Changes"
+                    Click="Close_Click"
+                    Style="{StaticResource AccessibleEditorButtonStyle}"
+                    ToolTip="Click to save changes to the network configuration"
+                    AutomationProperties.Name="Save Changes Button"
+                    AutomationProperties.HelpText="Saves all modifications made to the network configuration."
+                    TabIndex="0" />
         </DockPanel>
     </Grid>
 </Window>

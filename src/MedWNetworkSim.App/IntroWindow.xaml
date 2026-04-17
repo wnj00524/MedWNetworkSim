@@ -14,7 +14,7 @@
             BorderThickness="1"
             SnapsToDevicePixels="True">
         <Grid>
-            <Image Source="Assets/IntroPlaceholder.jpg"
+            <Image Source="Assets/logo.jpg"
                    Stretch="UniformToFill"
                    SnapsToDevicePixels="True"
                    RenderOptions.BitmapScalingMode="HighQuality" />

@@ -2,16 +2,38 @@ namespace MedWNetworkSim.App.Import;
 
 public sealed class GraphSimplifier
 {
-    public sealed record SimplifiedNode(long Id, double Latitude, double Longitude);
+    public sealed record SimplifiedNode(
+        long Id,
+        double Latitude,
+        double Longitude,
+        OsmNameTags? NameTags,
+        IReadOnlyList<string> ConnectedRoadLabels,
+        bool IsTerminal);
 
-    public sealed record SimplifiedEdge(long FromNodeId, long ToNodeId, string HighwayType, double LengthKilometers);
+    public sealed record SimplifiedEdge(
+        long FromNodeId,
+        long ToNodeId,
+        string HighwayType,
+        double CollapsedPathLengthKilometers,
+        IReadOnlyList<long> RawPathNodeIds);
 
     public sealed record SimplifiedGraph(
         IReadOnlyDictionary<long, SimplifiedNode> Nodes,
         IReadOnlyList<SimplifiedEdge> Edges);
 
-    private sealed record Segment(int Id, long FromNodeId, long ToNodeId, string HighwayType, double LengthKilometers);
+    private sealed record Segment(
+        int Id,
+        long FromNodeId,
+        long ToNodeId,
+        string HighwayType,
+        double LengthKilometers,
+        long? WayId,
+        OsmNameTags? WayNameTags);
 
+    /// <summary>
+    /// Simplifies raw OSM road geometry so the simulation graph keeps only topology-significant nodes
+    /// (junctions and terminals) while each simplified edge preserves true traversed distance.
+    /// </summary>
     public SimplifiedGraph Simplify(OsmParsedGraph graph)
     {
         ArgumentNullException.ThrowIfNull(graph);
@@ -21,7 +43,14 @@ public sealed class GraphSimplifier
             {
                 var from = graph.Nodes[edge.FromNodeId];
                 var to = graph.Nodes[edge.ToNodeId];
-                return new Segment(index, edge.FromNodeId, edge.ToNodeId, edge.HighwayType, CalculateDistanceKilometers(from.Latitude, from.Longitude, to.Latitude, to.Longitude));
+                return new Segment(
+                    index,
+                    edge.FromNodeId,
+                    edge.ToNodeId,
+                    edge.HighwayType,
+                    CalculateDistanceKilometers(from.Latitude, from.Longitude, to.Latitude, to.Longitude),
+                    edge.WayId,
+                    edge.WayNameTags);
             })
             .ToList();
 
@@ -31,14 +60,14 @@ public sealed class GraphSimplifier
         var visitedSegments = new HashSet<int>();
         var simplifiedEdges = new List<SimplifiedEdge>();
 
-        foreach (var startNodeId in keepNodeIds)
+        foreach (var startNodeId in keepNodeIds.OrderBy(id => id))
         {
             if (!adjacency.TryGetValue(startNodeId, out var incidentSegments))
             {
                 continue;
             }
 
-            foreach (var incidentSegment in incidentSegments)
+            foreach (var incidentSegment in incidentSegments.OrderBy(segment => segment.Id))
             {
                 if (visitedSegments.Contains(incidentSegment.Id))
                 {
@@ -64,7 +93,15 @@ public sealed class GraphSimplifier
                 nodeId =>
                 {
                     var source = graph.Nodes[nodeId];
-                    return new SimplifiedNode(nodeId, source.Latitude, source.Longitude);
+                    var connectedLabels = BuildConnectedRoadLabels(nodeId, adjacency);
+                    var degree = adjacency.TryGetValue(nodeId, out var segmentsAtNode) ? segmentsAtNode.Count : 0;
+                    return new SimplifiedNode(
+                        nodeId,
+                        source.Latitude,
+                        source.Longitude,
+                        source.NameTags,
+                        connectedLabels,
+                        IsTerminalNode(nodeId, adjacency, degree));
                 });
 
         return new SimplifiedGraph(simplifiedNodes, simplifiedEdges);
@@ -97,7 +134,7 @@ public sealed class GraphSimplifier
     private static HashSet<long> DetermineNodesToKeep(Dictionary<long, List<Segment>> adjacency)
     {
         var keepNodeIds = adjacency
-            .Where(pair => pair.Value.Count != 2)
+            .Where(pair => ShouldKeepNode(pair.Key, pair.Value))
             .Select(pair => pair.Key)
             .ToHashSet();
 
@@ -106,12 +143,85 @@ public sealed class GraphSimplifier
             return keepNodeIds;
         }
 
-        if (adjacency.Keys.FirstOrDefault() is var fallbackNode && adjacency.Count > 0)
+        if (adjacency.Count > 0)
         {
-            keepNodeIds.Add(fallbackNode);
+            keepNodeIds.Add(adjacency.Keys.Min());
         }
 
         return keepNodeIds;
+    }
+
+    private static bool ShouldKeepNode(long nodeId, List<Segment> incidentSegments)
+    {
+        if (incidentSegments.Count != 2)
+        {
+            return true;
+        }
+
+        var distinctNeighbours = incidentSegments
+            .Select(segment => GetOtherNode(segment, nodeId))
+            .Distinct()
+            .Count();
+
+        // Keep degree-2 nodes when they are not a clean pass-through between two distinct neighbours.
+        return distinctNeighbours != 2;
+    }
+
+    private static bool IsTerminalNode(long nodeId, Dictionary<long, List<Segment>> adjacency, int degree)
+    {
+        if (degree <= 1)
+        {
+            return true;
+        }
+
+        if (!adjacency.TryGetValue(nodeId, out var incidentSegments) || incidentSegments.Count != 2)
+        {
+            return false;
+        }
+
+        return incidentSegments.Select(segment => GetOtherNode(segment, nodeId)).Distinct().Count() < 2;
+    }
+
+    private static List<string> BuildConnectedRoadLabels(long nodeId, Dictionary<long, List<Segment>> adjacency)
+    {
+        if (!adjacency.TryGetValue(nodeId, out var segments))
+        {
+            return [];
+        }
+
+        return segments
+            .Select(segment => PickRoadLabel(segment.WayNameTags))
+            .Where(label => !string.IsNullOrWhiteSpace(label))
+            .Select(label => label!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(label => label, StringComparer.OrdinalIgnoreCase)
+            .Take(3)
+            .ToList();
+    }
+
+    private static string? PickRoadLabel(OsmNameTags? tags)
+    {
+        if (tags is null)
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(tags.Name))
+        {
+            return tags.Name.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(tags.Ref))
+        {
+            return tags.Ref.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(tags.OfficialName))
+        {
+            return tags.OfficialName.Trim();
+        }
+
+        return null;
     }
 
     private static SimplifiedEdge? WalkPath(
@@ -127,6 +237,7 @@ public sealed class GraphSimplifier
         var previousNodeId = startNodeId;
         var totalLength = firstSegment.LengthKilometers;
         var roadClass = firstSegment.HighwayType;
+        var rawPathNodes = new List<long> { startNodeId, currentNodeId };
 
         while (!keepNodeIds.Contains(currentNodeId))
         {
@@ -135,11 +246,8 @@ public sealed class GraphSimplifier
                 break;
             }
 
-            var nextSegment = currentSegments.FirstOrDefault(segment => !visitedSegments.Contains(segment.Id) && GetOtherNode(segment, currentNodeId) != previousNodeId);
-            if (nextSegment is null)
-            {
-                nextSegment = currentSegments.FirstOrDefault(segment => !visitedSegments.Contains(segment.Id));
-            }
+            var nextSegment = currentSegments.FirstOrDefault(segment => !visitedSegments.Contains(segment.Id) && GetOtherNode(segment, currentNodeId) != previousNodeId)
+                           ?? currentSegments.FirstOrDefault(segment => !visitedSegments.Contains(segment.Id));
 
             if (nextSegment is null)
             {
@@ -149,6 +257,7 @@ public sealed class GraphSimplifier
             visitedSegments.Add(nextSegment.Id);
             previousNodeId = currentNodeId;
             currentNodeId = GetOtherNode(nextSegment, currentNodeId);
+            rawPathNodes.Add(currentNodeId);
             totalLength += nextSegment.LengthKilometers;
             roadClass = SelectDominantRoadClass(roadClass, nextSegment.HighwayType);
         }
@@ -158,7 +267,7 @@ public sealed class GraphSimplifier
             return null;
         }
 
-        return new SimplifiedEdge(startNodeId, currentNodeId, roadClass, Math.Max(totalLength, 0.001d));
+        return new SimplifiedEdge(startNodeId, currentNodeId, roadClass, Math.Max(totalLength, 0.001d), rawPathNodes);
     }
 
     private static long GetOtherNode(Segment segment, long nodeId)

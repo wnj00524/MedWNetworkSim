@@ -61,9 +61,8 @@ public sealed class OsmXmlParser : IOsmSourceParser
 
     private static int CountDistinctWays(IReadOnlyList<OsmParsedEdge> edges)
     {
-        // XML parser flattens ways into segments and does not preserve way IDs currently.
-        // For parity with legacy behavior, we treat retained way count as number of road segments.
-        return edges.Count;
+        var distinctWayCount = edges.Select(edge => edge.WayId).Where(wayId => wayId.HasValue).Distinct().Count();
+        return distinctWayCount > 0 ? distinctWayCount : edges.Count;
     }
 
     private static void ValidateInputPath(string path, string formatName)
@@ -115,9 +114,10 @@ public sealed class OsmXmlParser : IOsmSourceParser
             }
 
             rawWayCount++;
-
+            var wayId = TryParseLong(reader.GetAttribute("id"));
             var refs = new List<long>();
             string? highwayType = null;
+            OsmNameTags? wayNameTags = null;
 
             if (reader.IsEmptyElement)
             {
@@ -140,10 +140,10 @@ public sealed class OsmXmlParser : IOsmSourceParser
 
                 if (reader.Name.Equals("nd", StringComparison.Ordinal))
                 {
-                    var refValue = reader.GetAttribute("ref");
-                    if (long.TryParse(refValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var nodeRef))
+                    var nodeRef = TryParseLong(reader.GetAttribute("ref"));
+                    if (nodeRef.HasValue)
                     {
-                        refs.Add(nodeRef);
+                        refs.Add(nodeRef.Value);
                     }
 
                     continue;
@@ -152,12 +152,15 @@ public sealed class OsmXmlParser : IOsmSourceParser
                 if (reader.Name.Equals("tag", StringComparison.Ordinal))
                 {
                     var key = reader.GetAttribute("k");
-                    if (!"highway".Equals(key, StringComparison.OrdinalIgnoreCase))
+                    var value = reader.GetAttribute("v");
+                    if ("highway".Equals(key, StringComparison.OrdinalIgnoreCase))
                     {
-                        continue;
+                        highwayType = value?.Trim();
                     }
-
-                    highwayType = reader.GetAttribute("v")?.Trim();
+                    else
+                    {
+                        wayNameTags = MergeNameTag(key, value, wayNameTags);
+                    }
                 }
             }
 
@@ -177,7 +180,7 @@ public sealed class OsmXmlParser : IOsmSourceParser
 
                 requiredNodeIds.Add(fromNodeId);
                 requiredNodeIds.Add(toNodeId);
-                parsedEdges.Add(new OsmParsedEdge(fromNodeId, toNodeId, highwayType));
+                parsedEdges.Add(new OsmParsedEdge(fromNodeId, toNodeId, highwayType, wayId, wayNameTags));
             }
         }
 
@@ -215,20 +218,76 @@ public sealed class OsmXmlParser : IOsmSourceParser
 
             rawNodeCount++;
 
-            var idValue = reader.GetAttribute("id");
+            var nodeId = TryParseLong(reader.GetAttribute("id"));
             var latValue = reader.GetAttribute("lat");
             var lonValue = reader.GetAttribute("lon");
-            if (!long.TryParse(idValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var nodeId) ||
-                !requiredNodeIds.Contains(nodeId) ||
+            if (!nodeId.HasValue ||
+                !requiredNodeIds.Contains(nodeId.Value) ||
                 !double.TryParse(latValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var latitude) ||
                 !double.TryParse(lonValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var longitude))
             {
                 continue;
             }
 
-            parsedNodes[nodeId] = new OsmParsedNode(nodeId, latitude, longitude);
+            var nameTags = await ReadNodeTagsAsync(reader, cancellationToken).ConfigureAwait(false);
+            parsedNodes[nodeId.Value] = new OsmParsedNode(nodeId.Value, latitude, longitude, nameTags);
         }
 
         rawNodeCountReporter(rawNodeCount);
+    }
+
+    private static async Task<OsmNameTags?> ReadNodeTagsAsync(XmlReader reader, CancellationToken cancellationToken)
+    {
+        OsmNameTags? nameTags = null;
+        if (reader.IsEmptyElement)
+        {
+            return null;
+        }
+
+        var depth = reader.Depth;
+        while (await reader.ReadAsync().ConfigureAwait(false))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (reader.NodeType == XmlNodeType.EndElement && reader.Depth == depth && reader.Name.Equals("node", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            if (reader.NodeType != XmlNodeType.Element || !reader.Name.Equals("tag", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            nameTags = MergeNameTag(reader.GetAttribute("k"), reader.GetAttribute("v"), nameTags);
+        }
+
+        return nameTags;
+    }
+
+    private static long? TryParseLong(string? value)
+    {
+        return long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private static OsmNameTags? MergeNameTag(string? key, string? value, OsmNameTags? current)
+    {
+        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(value))
+        {
+            return current;
+        }
+
+        var existing = current ?? new OsmNameTags(null, null, null, null);
+        var trimmed = value.Trim();
+        return key.Trim().ToLowerInvariant() switch
+        {
+            "name" => existing with { Name = trimmed },
+            "ref" => existing with { Ref = trimmed },
+            "junction:name" => existing with { JunctionName = trimmed },
+            "official_name" => existing with { OfficialName = trimmed },
+            _ => existing
+        };
     }
 }

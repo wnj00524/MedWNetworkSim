@@ -64,6 +64,18 @@ ScenarioAV_OsmImportPbfHappyPath();
 ScenarioAW_OsmImportPbfNoSupportedRoads();
 ScenarioAX_OsmImportInvalidPbfIsRejected();
 ScenarioAY_OsmImportPbfAndOsmParity();
+ScenarioAZ_OsmImportStraightRoadSimplification();
+ScenarioBA_OsmImportCurvedRoadUsesCollapsedDistanceForMetrics();
+ScenarioBB_OsmImportTJunctionRetention();
+ScenarioBC_OsmImportCrossroadsRetention();
+ScenarioBD_OsmImportDeadEndRetention();
+ScenarioBE_OsmImportReachabilityPreservedAfterSimplification();
+ScenarioBF_OsmImportNodeCountReduction();
+ScenarioBG_OsmImportDefaultMetricRegression();
+ScenarioBH_OsmImportDirectNodeNaming();
+ScenarioBI_OsmImportDerivedJunctionNaming();
+ScenarioBJ_OsmImportFallbackNaming();
+ScenarioBK_OsmImportDeterministicNaming();
 
 Console.WriteLine("Verification passed.");
 
@@ -2159,6 +2171,299 @@ static void ScenarioAY_OsmImportPbfAndOsmParity()
 
     AssertSequenceEqual(xmlRoutes, pbfRoutes, "AY route parity");
 }
+
+
+
+static void ScenarioAZ_OsmImportStraightRoadSimplification()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0000" />
+  <node id="2" lat="37.0000" lon="-122.0020" />
+  <node id="3" lat="37.0000" lon="-122.0040" />
+  <node id="4" lat="37.0000" lon="-122.0060" />
+  <way id="10">
+    <nd ref="1" /><nd ref="2" /><nd ref="3" /><nd ref="4" />
+    <tag k="highway" v="residential" />
+    <tag k="name" v="High Street" />
+  </way>
+</osm>
+""");
+
+    var importer = new OsmImporter();
+    var network = importer.ImportFromFile(fixture.OsmPath);
+
+    AssertEqual(2d, network.Nodes.Count, "AZ retained endpoint count");
+    AssertEqual(1d, network.Edges.Count, "AZ collapsed edge count");
+
+    var expectedDistance = DistanceKm(37.0000, -122.0000, 37.0000, -122.0020)
+                         + DistanceKm(37.0000, -122.0020, 37.0000, -122.0040)
+                         + DistanceKm(37.0000, -122.0040, 37.0000, -122.0060);
+
+    AssertEqual(Math.Max(expectedDistance, 0.1d), network.Edges[0].Time ?? 0d, "AZ path length used for time");
+}
+
+static void ScenarioBA_OsmImportCurvedRoadUsesCollapsedDistanceForMetrics()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0000" />
+  <node id="2" lat="37.0010" lon="-122.0000" />
+  <node id="3" lat="37.0010" lon="-122.0010" />
+  <way id="10">
+    <nd ref="1" /><nd ref="2" /><nd ref="3" />
+    <tag k="highway" v="primary" />
+    <tag k="name" v="Curved Lane" />
+  </way>
+</osm>
+""");
+
+    var network = new OsmImporter().ImportFromFile(fixture.OsmPath);
+    AssertEqual(2d, network.Nodes.Count, "BA retained endpoint count");
+    AssertEqual(1d, network.Edges.Count, "BA collapsed edge count");
+
+    var collapsedDistance = DistanceKm(37.0000, -122.0000, 37.0010, -122.0000)
+                          + DistanceKm(37.0010, -122.0000, 37.0010, -122.0010);
+    var straightDistance = DistanceKm(37.0000, -122.0000, 37.0010, -122.0010);
+    var edge = network.Edges[0];
+
+    AssertEqual(Math.Max(collapsedDistance, 0.1d), edge.Cost ?? 0d, "BA cost from collapsed distance");
+    AssertTrue(Math.Abs((edge.Cost ?? 0d) - Math.Max(straightDistance, 0.1d)) > 0.01d, "BA cost not straight-line distance");
+}
+
+static void ScenarioBB_OsmImportTJunctionRetention()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0010" />
+  <node id="2" lat="37.0010" lon="-122.0010" />
+  <node id="3" lat="37.0020" lon="-122.0010" />
+  <node id="4" lat="37.0010" lon="-122.0000" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><nd ref="3" /><tag k="highway" v="secondary" /><tag k="name" v="Main Road" /></way>
+  <way id="11"><nd ref="4" /><nd ref="2" /><tag k="highway" v="secondary" /><tag k="name" v="Branch Road" /></way>
+</osm>
+""");
+
+    var network = new OsmImporter().ImportFromFile(fixture.OsmPath);
+    AssertEqual(4d, network.Nodes.Count, "BB t-junction retains branch point");
+    AssertEqual(3d, network.Edges.Count, "BB t-junction edge count");
+}
+
+static void ScenarioBC_OsmImportCrossroadsRetention()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0010" />
+  <node id="2" lat="37.0010" lon="-122.0010" />
+  <node id="3" lat="37.0020" lon="-122.0010" />
+  <node id="4" lat="37.0010" lon="-122.0000" />
+  <node id="5" lat="37.0010" lon="-122.0020" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><nd ref="3" /><tag k="highway" v="secondary" /><tag k="name" v="North Road" /></way>
+  <way id="11"><nd ref="4" /><nd ref="2" /><nd ref="5" /><tag k="highway" v="secondary" /><tag k="name" v="East Road" /></way>
+</osm>
+""");
+
+    var network = new OsmImporter().ImportFromFile(fixture.OsmPath);
+    AssertEqual(5d, network.Nodes.Count, "BC crossroads node count");
+    AssertEqual(4d, network.Edges.Count, "BC crossroads edge count");
+}
+
+static void ScenarioBD_OsmImportDeadEndRetention()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0000" />
+  <node id="2" lat="37.0000" lon="-122.0010" />
+  <node id="3" lat="37.0010" lon="-122.0010" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><nd ref="3" /><tag k="highway" v="residential" /><tag k="name" v="Spur Lane" /></way>
+</osm>
+""");
+
+    var network = new OsmImporter().ImportFromFile(fixture.OsmPath);
+    AssertEqual(2d, network.Nodes.Count, "BD dead-end keeps terminal endpoint");
+}
+
+static void ScenarioBE_OsmImportReachabilityPreservedAfterSimplification()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0000" />
+  <node id="2" lat="37.0000" lon="-122.0010" />
+  <node id="3" lat="37.0000" lon="-122.0020" />
+  <node id="4" lat="37.0010" lon="-122.0010" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><nd ref="3" /><tag k="highway" v="primary" /><tag k="name" v="Main Street" /></way>
+  <way id="11"><nd ref="2" /><nd ref="4" /><tag k="highway" v="residential" /><tag k="name" v="Branch" /></way>
+</osm>
+""");
+
+    var network = new OsmImporter().ImportFromFile(fixture.OsmPath);
+    var adjacency = BuildNetworkAdjacency(network);
+    var start = network.Nodes.Single(node => node.Name.StartsWith("Main", StringComparison.OrdinalIgnoreCase) || node.Name.StartsWith("OSM", StringComparison.Ordinal));
+    var reachable = TraverseReachableNodes(start.Id, adjacency);
+
+    AssertTrue(reachable.Count == network.Nodes.Count, "BE reachability preserved among retained nodes");
+}
+
+static void ScenarioBF_OsmImportNodeCountReduction()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0000" />
+  <node id="2" lat="37.0000" lon="-122.0005" />
+  <node id="3" lat="37.0000" lon="-122.0010" />
+  <node id="4" lat="37.0000" lon="-122.0015" />
+  <node id="5" lat="37.0000" lon="-122.0020" />
+  <node id="6" lat="37.0000" lon="-122.0025" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><nd ref="3" /><nd ref="4" /><nd ref="5" /><nd ref="6" /><tag k="highway" v="residential" /><tag k="name" v="Long Road" /></way>
+</osm>
+""");
+
+    var network = new OsmImporter().ImportFromFile(fixture.OsmPath);
+    AssertTrue(network.Nodes.Count < 6, "BF simplification reduces raw node count");
+}
+
+static void ScenarioBG_OsmImportDefaultMetricRegression()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0000" />
+  <node id="2" lat="37.0000" lon="-122.0001" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><tag k="highway" v="residential" /><tag k="name" v="Short Road" /></way>
+</osm>
+""");
+
+    var network = new OsmImporter().ImportFromFile(fixture.OsmPath);
+    var edge = network.Edges.Single();
+    AssertEqual(0.1d, edge.Time ?? 0d, "BG time floor regression");
+    AssertEqual(0.1d, edge.Cost ?? 0d, "BG cost floor regression");
+}
+
+static void ScenarioBH_OsmImportDirectNodeNaming()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0000"><tag k="name" v="King's Cross" /></node>
+  <node id="2" lat="37.0000" lon="-122.0010" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><tag k="highway" v="residential" /><tag k="name" v="Station Road" /></way>
+</osm>
+""");
+
+    var network = new OsmImporter().ImportFromFile(fixture.OsmPath);
+    AssertTrue(network.Nodes.Any(node => node.Name == "King's Cross"), "BH direct node name is used");
+}
+
+static void ScenarioBI_OsmImportDerivedJunctionNaming()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0010" />
+  <node id="2" lat="37.0010" lon="-122.0010" />
+  <node id="3" lat="37.0020" lon="-122.0010" />
+  <node id="4" lat="37.0010" lon="-122.0000" />
+  <node id="5" lat="37.0010" lon="-122.0020" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><nd ref="3" /><tag k="highway" v="secondary" /><tag k="name" v="High Street" /></way>
+  <way id="11"><nd ref="4" /><nd ref="2" /><nd ref="5" /><tag k="highway" v="secondary" /><tag k="name" v="Station Road" /></way>
+</osm>
+""");
+
+    var network = new OsmImporter().ImportFromFile(fixture.OsmPath);
+    AssertTrue(network.Nodes.Any(node => node.Name.Contains("High Street", StringComparison.Ordinal) && node.Name.Contains("Station Road", StringComparison.Ordinal)), "BI derived junction name from connected roads");
+}
+
+static void ScenarioBJ_OsmImportFallbackNaming()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0000" />
+  <node id="2" lat="37.0000" lon="-122.0010" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><tag k="highway" v="residential" /></way>
+</osm>
+""");
+
+    var network = new OsmImporter().ImportFromFile(fixture.OsmPath);
+    AssertTrue(network.Nodes.All(node => node.Name.StartsWith("OSM ", StringComparison.Ordinal)), "BJ fallback synthetic naming");
+}
+
+static void ScenarioBK_OsmImportDeterministicNaming()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0000" />
+  <node id="2" lat="37.0000" lon="-122.0010" />
+  <node id="3" lat="37.0010" lon="-122.0010" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><tag k="highway" v="residential" /><tag k="name" v="A Road" /></way>
+  <way id="11"><nd ref="2" /><nd ref="3" /><tag k="highway" v="residential" /><tag k="name" v="B Road" /></way>
+</osm>
+""");
+
+    var importer = new OsmImporter();
+    var first = importer.ImportFromFile(fixture.OsmPath).Nodes.OrderBy(node => node.Id).Select(node => node.Name).ToList();
+    var second = importer.ImportFromFile(fixture.OsmPath).Nodes.OrderBy(node => node.Id).Select(node => node.Name).ToList();
+
+    AssertSequenceEqual(first, second, "BK deterministic node naming");
+}
+
+static EquivalentOsmFixture CreateXmlOsmFixture(string osmXml)
+{
+    var fixtureDirectory = Path.Combine(Path.GetTempPath(), $"osm-xml-fixture-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(fixtureDirectory);
+
+    var osmPath = Path.Combine(fixtureDirectory, "fixture.osm");
+    var pbfPath = Path.Combine(fixtureDirectory, "fixture.pbf");
+
+    File.WriteAllText(osmPath, osmXml);
+    WritePbf(pbfPath, []);
+
+    return new EquivalentOsmFixture(fixtureDirectory, osmPath, pbfPath);
+}
+
+static Dictionary<string, HashSet<string>> BuildNetworkAdjacency(NetworkModel network)
+{
+    var adjacency = network.Nodes.ToDictionary(node => node.Id, _ => new HashSet<string>(StringComparer.Ordinal));
+    foreach (var edge in network.Edges)
+    {
+        adjacency[edge.FromNodeId].Add(edge.ToNodeId);
+        adjacency[edge.ToNodeId].Add(edge.FromNodeId);
+    }
+
+    return adjacency;
+}
+
+static HashSet<string> TraverseReachableNodes(string startNodeId, Dictionary<string, HashSet<string>> adjacency)
+{
+    var visited = new HashSet<string>(StringComparer.Ordinal);
+    var queue = new Queue<string>();
+    queue.Enqueue(startNodeId);
+    visited.Add(startNodeId);
+
+    while (queue.Count > 0)
+    {
+        var nodeId = queue.Dequeue();
+        foreach (var neighbour in adjacency[nodeId])
+        {
+            if (visited.Add(neighbour))
+            {
+                queue.Enqueue(neighbour);
+            }
+        }
+    }
+
+    return visited;
+}
+
+static double DistanceKm(double lat1, double lon1, double lat2, double lon2)
+{
+    const double earthRadiusKm = 6371d;
+
+    var latDelta = ToRadians(lat2 - lat1);
+    var lonDelta = ToRadians(lon2 - lon1);
+    var a = Math.Sin(latDelta / 2d) * Math.Sin(latDelta / 2d) +
+            Math.Cos(ToRadians(lat1)) * Math.Cos(ToRadians(lat2)) * Math.Sin(lonDelta / 2d) * Math.Sin(lonDelta / 2d);
+    var c = 2d * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1d - a));
+    return earthRadiusKm * c;
+}
+
+static double ToRadians(double degrees) => degrees * Math.PI / 180d;
 
 static EquivalentOsmFixture CreateEquivalentOsmFixtures()
 {

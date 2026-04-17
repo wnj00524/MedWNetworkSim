@@ -26,7 +26,8 @@ public sealed class OsmToSimulationMapper
             .Select(node => new NodeModel
             {
                 Id = BuildNodeId(node.Id),
-                Name = $"OSM {node.Id}",
+                Name = BuildNodeDisplayName(node),
+                LoreDescription = BuildNodeDescription(node),
                 X = node.Longitude,
                 Y = -node.Latitude,
                 TrafficProfiles = []
@@ -42,8 +43,8 @@ public sealed class OsmToSimulationMapper
                 IsBidirectional = true,
                 RouteType = edge.HighwayType,
                 Capacity = GetCapacity(edge.HighwayType),
-                Time = Math.Max(edge.LengthKilometers, 0.1d),
-                Cost = Math.Max(edge.LengthKilometers, 0.1d)
+                Time = Math.Max(edge.CollapsedPathLengthKilometers, 0.1d),
+                Cost = Math.Max(edge.CollapsedPathLengthKilometers, 0.1d)
             })
             .ToList();
 
@@ -78,6 +79,80 @@ public sealed class OsmToSimulationMapper
         return $"Imported from OpenStreetMap and simplified for simulation. " +
                $"Raw nodes: {summary.Parse.RawNodeCount:N0}; raw ways: {summary.Parse.RawWayCount:N0}; retained roads: {summary.Parse.RetainedWayCount:N0}; " +
                $"simplified nodes: {summary.SimplifiedNodeCount:N0}; simplified edges: {summary.SimplifiedEdgeCount:N0}; skipped entities: {summary.Parse.SkippedEntityCount:N0}.";
+    }
+
+
+    private static string BuildNodeDisplayName(GraphSimplifier.SimplifiedNode node)
+    {
+        if (TryGetDirectName(node.NameTags) is { Length: > 0 } directName)
+        {
+            return directName;
+        }
+
+        if (node.ConnectedRoadLabels.Count >= 2)
+        {
+            return string.Join(" / ", node.ConnectedRoadLabels.Take(3));
+        }
+
+        if (node.ConnectedRoadLabels.Count == 1)
+        {
+            var roadName = node.ConnectedRoadLabels[0];
+            return node.IsTerminal
+                ? $"{roadName} end"
+                : roadName;
+        }
+
+        return $"OSM {node.Id}";
+    }
+
+    private static string? BuildNodeDescription(GraphSimplifier.SimplifiedNode node)
+    {
+        if (TryGetDirectName(node.NameTags) is { Length: > 0 })
+        {
+            return "Imported from OpenStreetMap";
+        }
+
+        if (node.ConnectedRoadLabels.Count >= 2)
+        {
+            return $"Intersection of {string.Join(" and ", node.ConnectedRoadLabels.Take(2))}";
+        }
+
+        if (node.ConnectedRoadLabels.Count == 1 && node.IsTerminal)
+        {
+            return $"Terminal point on {node.ConnectedRoadLabels[0]}";
+        }
+
+        return "Imported from OpenStreetMap";
+    }
+
+    private static string? TryGetDirectName(OsmNameTags? tags)
+    {
+        if (tags is null)
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(tags.Name))
+        {
+            return tags.Name.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(tags.Ref))
+        {
+            return tags.Ref.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(tags.JunctionName))
+        {
+            return tags.JunctionName.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(tags.OfficialName))
+        {
+            return tags.OfficialName.Trim();
+        }
+
+        return null;
     }
 
     private static string BuildNodeId(long osmId) => $"osm-node-{osmId}";

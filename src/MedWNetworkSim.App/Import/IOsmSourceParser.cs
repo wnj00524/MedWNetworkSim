@@ -1,11 +1,6 @@
 namespace MedWNetworkSim.App.Import;
 
-public interface IOsmSourceParser
-{
-    bool CanParseExtension(string extension);
-
-    Task<OsmParseResult> ParseAsync(
-        string path,
-        IProgress<OsmImportProgress>? progress = null,
-        CancellationToken cancellationToken = default);
-}
+/// <summary>
+/// Backwards-compatible alias for OSM graph parsers.
+/// </summary>
+public interface IOsmSourceParser : IOsmGraphParser;

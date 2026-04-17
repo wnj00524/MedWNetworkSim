@@ -99,7 +99,7 @@ public sealed class OsmPbfParser : IOsmSourceParser
                         continue;
                     }
 
-                    nodes[nodeId] = new OsmParsedNode(nodeId, node.Latitude.Value, node.Longitude.Value);
+                    nodes[nodeId] = new OsmParsedNode(nodeId, node.Latitude.Value, node.Longitude.Value, ReadNameTags(node.Tags));
                 }
             }
 
@@ -132,7 +132,7 @@ public sealed class OsmPbfParser : IOsmSourceParser
                         continue;
                     }
 
-                    edges.Add(new OsmParsedEdge(fromNodeId, toNodeId, highwayType));
+                    edges.Add(new OsmParsedEdge(fromNodeId, toNodeId, highwayType, way.Id, ReadNameTags(way.Tags)));
                 }
             }
 
@@ -182,5 +182,42 @@ public sealed class OsmPbfParser : IOsmSourceParser
         return way.Tags?.TryGetValue("highway", out var highwayType) == true
             ? highwayType?.Trim()
             : null;
+    }
+
+    private static OsmNameTags? ReadNameTags(TagsCollectionBase? tags)
+    {
+        if (tags is null)
+        {
+            return null;
+        }
+
+        string? name = null;
+        string? reference = null;
+        string? junctionName = null;
+        string? officialName = null;
+
+        if (tags.TryGetValue("name", out var nameValue))
+        {
+            name = nameValue?.Trim();
+        }
+
+        if (tags.TryGetValue("ref", out var refValue))
+        {
+            reference = refValue?.Trim();
+        }
+
+        if (tags.TryGetValue("junction:name", out var junctionValue))
+        {
+            junctionName = junctionValue?.Trim();
+        }
+
+        if (tags.TryGetValue("official_name", out var officialValue))
+        {
+            officialName = officialValue?.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(reference) && string.IsNullOrWhiteSpace(junctionName) && string.IsNullOrWhiteSpace(officialName)
+            ? null
+            : new OsmNameTags(name, reference, junctionName, officialName);
     }
 }

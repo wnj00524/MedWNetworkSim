@@ -109,6 +109,7 @@ Notes:
   - `run` is the same reporting flow as the GUI export path.
   - If you omit the command and pass the older positional form, it still runs a report:
       MedWNetworkSim.App.exe <network-file> <simulation|timeline> <current|timeline> <output-file> [turns]
+  - `-nointro` or `--nointro` skips the GUI intro screen on startup.
   - Output format is chosen from the output file extension:
       .html or .htm -> HTML
       .csv          -> CSV

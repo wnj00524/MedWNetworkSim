@@ -24,6 +24,8 @@ If you are using the built `.exe`, replace the start of each example with the ex
 
 Use `--gui` or `--force-gui` if you want the desktop app to open even though arguments are present.
 
+Use `-nointro` or `--nointro` if you want the desktop app to skip the 1.5 second intro image at startup.
+
 ## Get help
 
 Any of these will show the built-in help:

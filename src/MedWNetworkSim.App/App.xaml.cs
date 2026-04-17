@@ -8,21 +8,29 @@ namespace MedWNetworkSim.App;
 public partial class App : Application
 {
     private const uint AttachParentProcess = 0xFFFFFFFF;
+    private static readonly TimeSpan IntroDuration = TimeSpan.FromSeconds(1.5);
     private readonly CommandLineRunService commandLineRunService = new();
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
-        if (commandLineRunService.ShouldRunFromCommandLine(e.Args))
+        var args = RemoveIntroArguments(e.Args);
+        var skipIntro = args.Length != e.Args.Length;
+
+        if (commandLineRunService.ShouldRunFromCommandLine(args))
         {
-            RunCommandLineMode(e.Args);
+            RunCommandLineMode(args);
             return;
         }
 
-        var window = new MainWindow();
-        MainWindow = window;
-        window.Show();
+        if (skipIntro)
+        {
+            ShowMainWindow();
+            return;
+        }
+
+        await ShowIntroWindowAsync();
     }
 
     private void RunCommandLineMode(string[] args)
@@ -57,6 +65,48 @@ public partial class App : Application
         {
             // Best effort only. If there is no parent console, writes simply have nowhere visible to go.
         }
+    }
+
+    private async Task ShowIntroWindowAsync()
+    {
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
+        var introWindow = new IntroWindow();
+        var introClosed = false;
+        introWindow.Closed += (_, _) => introClosed = true;
+        MainWindow = introWindow;
+        introWindow.Show();
+
+        await Task.Delay(IntroDuration);
+
+        if (introClosed)
+        {
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
+            Shutdown();
+            return;
+        }
+
+        ShowMainWindow();
+        introWindow.Close();
+    }
+
+    private void ShowMainWindow()
+    {
+        var window = new MainWindow();
+        MainWindow = window;
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
+        window.Show();
+    }
+
+    private static string[] RemoveIntroArguments(IEnumerable<string> args)
+    {
+        return args.Where(arg => !IsNoIntroToken(arg)).ToArray();
+    }
+
+    private static bool IsNoIntroToken(string arg)
+    {
+        return string.Equals(arg, "-nointro", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(arg, "--nointro", StringComparison.OrdinalIgnoreCase);
     }
 
     [DllImport("kernel32.dll", SetLastError = true)]

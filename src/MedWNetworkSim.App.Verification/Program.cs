@@ -84,6 +84,7 @@ ScenarioBP_OsmImportShapeAnchorsPreservedOnLongCurvedChain();
 ScenarioBQ_OsmImportDistancePreservedAfterThinning();
 ScenarioBR_OsmImportIntegrationFixtureRetentionSummary();
 ScenarioBS_OsmImportAlwaysKeepsNamedRoadTransitions();
+ScenarioBT_OsmImportArticulationDetectionHandlesDeepGraphsWithoutOverflow();
 
 Console.WriteLine("Verification passed.");
 
@@ -2557,6 +2558,44 @@ static void ScenarioBS_OsmImportAlwaysKeepsNamedRoadTransitions()
         new OsmImportOptions(true, 10, OsmRetentionStrategy.Balanced, true, true));
 
     AssertTrue(network.Nodes.Any(node => node.Id == "osm-node-2"), "BS named-road transition node retained");
+}
+
+static void ScenarioBT_OsmImportArticulationDetectionHandlesDeepGraphsWithoutOverflow()
+{
+    const int chainLength = 12000;
+    var builder = new System.Text.StringBuilder();
+    builder.AppendLine("<osm version=\"0.6\" generator=\"verification\">");
+
+    for (var i = 1; i <= chainLength; i++)
+    {
+        builder.AppendLine($"  <node id=\"{i}\" lat=\"37.{i % 10000:D4}\" lon=\"-122.0000\" />");
+        var spurId = chainLength + i;
+        builder.AppendLine($"  <node id=\"{spurId}\" lat=\"37.{i % 10000:D4}\" lon=\"-122.0010\" />");
+    }
+
+    builder.Append("  <way id=\"10\">");
+    for (var i = 1; i <= chainLength; i++)
+    {
+        builder.Append($"<nd ref=\"{i}\" />");
+    }
+
+    builder.AppendLine("<tag k=\"highway\" v=\"primary\" /></way>");
+
+    for (var i = 1; i <= chainLength; i++)
+    {
+        var spurId = chainLength + i;
+        var wayId = 10 + i;
+        builder.AppendLine($"  <way id=\"{wayId}\"><nd ref=\"{i}\" /><nd ref=\"{spurId}\" /><tag k=\"highway\" v=\"residential\" /></way>");
+    }
+
+    builder.AppendLine("</osm>");
+
+    using var fixture = CreateXmlOsmFixture(builder.ToString());
+    var network = new OsmImporter().ImportFromFile(
+        fixture.OsmPath,
+        new OsmImportOptions(true, 5, OsmRetentionStrategy.PreserveJunctionImportance, true, false));
+
+    AssertTrue(network.Nodes.Count >= chainLength, "BT import completed for deep articulation graph");
 }
 
 static EquivalentOsmFixture CreateXmlOsmFixture(string osmXml)

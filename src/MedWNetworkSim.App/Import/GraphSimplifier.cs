@@ -448,14 +448,14 @@ public sealed class GraphSimplifier
         {
             if (!disc.ContainsKey(nodeId))
             {
-                TarjanDfs(nodeId, graph, disc, low, parent, articulation, ref time);
+                TarjanDfsIterative(nodeId, graph, disc, low, parent, articulation, ref time);
             }
         }
 
         return articulation;
     }
 
-    private static void TarjanDfs(
+    private static void TarjanDfsIterative(
         long node,
         Dictionary<long, List<long>> graph,
         Dictionary<long, int> disc,
@@ -464,30 +464,64 @@ public sealed class GraphSimplifier
         HashSet<long> articulation,
         ref int time)
     {
+        var stack = new Stack<TarjanFrame>();
         disc[node] = ++time;
         low[node] = disc[node];
-        var children = 0;
+        stack.Push(new TarjanFrame(node, parent.GetValueOrDefault(node)));
 
-        foreach (var neighbor in graph[node])
+        while (stack.Count > 0)
         {
-            if (!disc.ContainsKey(neighbor))
-            {
-                children++;
-                parent[neighbor] = node;
-                TarjanDfs(neighbor, graph, disc, low, parent, articulation, ref time);
-                low[node] = Math.Min(low[node], low[neighbor]);
+            var frame = stack.Peek();
+            var neighbors = graph[frame.Node];
 
-                var isRoot = !parent.ContainsKey(node);
-                if ((isRoot && children > 1) || (!isRoot && low[neighbor] >= disc[node]))
-                {
-                    articulation.Add(node);
-                }
-            }
-            else if (parent.GetValueOrDefault(node) != neighbor)
+            if (frame.NextNeighborIndex < neighbors.Count)
             {
-                low[node] = Math.Min(low[node], disc[neighbor]);
+                var neighbor = neighbors[frame.NextNeighborIndex];
+                frame.NextNeighborIndex++;
+
+                if (!disc.ContainsKey(neighbor))
+                {
+                    frame.Children++;
+                    parent[neighbor] = frame.Node;
+                    disc[neighbor] = ++time;
+                    low[neighbor] = disc[neighbor];
+                    stack.Push(new TarjanFrame(neighbor, frame.Node));
+                }
+                else if (frame.ParentNode != neighbor)
+                {
+                    low[frame.Node] = Math.Min(low[frame.Node], disc[neighbor]);
+                }
+
+                continue;
+            }
+
+            stack.Pop();
+
+            if (frame.ParentNode is null)
+            {
+                if (frame.Children > 1)
+                {
+                    articulation.Add(frame.Node);
+                }
+
+                continue;
+            }
+
+            var parentNode = frame.ParentNode.Value;
+            low[parentNode] = Math.Min(low[parentNode], low[frame.Node]);
+            if (low[frame.Node] >= disc[parentNode])
+            {
+                articulation.Add(parentNode);
             }
         }
+    }
+
+    private sealed class TarjanFrame(long node, long? parentNode)
+    {
+        public long Node { get; } = node;
+        public long? ParentNode { get; } = parentNode;
+        public int NextNeighborIndex { get; set; }
+        public int Children { get; set; }
     }
 
     private static double CalculateSpacingBonus(int pathNodeCount, int index)

@@ -35,6 +35,11 @@ public partial class OsmImportOptionsWindow : Window
             return;
         }
 
+        if (RetentionTextBox is null)
+        {
+            return;
+        }
+
         isUpdatingValue = true;
         var value = (int)Math.Round(e.NewValue, MidpointRounding.AwayFromZero);
         RetentionTextBox.Text = value.ToString(CultureInfo.InvariantCulture);
@@ -85,6 +90,11 @@ public partial class OsmImportOptionsWindow : Window
 
     private void UpdateEstimatedText(int percentage)
     {
+        if (EstimatedCountText is null)
+        {
+            return;
+        }
+
         EstimatedCountText.Text = $"Estimated retained node count: approximately {percentage}% of parsed OSM road nodes (final exact count shown after parsing).";
     }
 }

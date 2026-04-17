@@ -21,7 +21,7 @@
             <Border VerticalAlignment="Bottom"
                     Background="#7F000000"
                     Padding="24,16">
-                <TextBlock Text="Placeholder intro image"
+                <TextBlock Text=""
                            Foreground="White"
                            FontSize="24"
                            FontWeight="SemiBold" />

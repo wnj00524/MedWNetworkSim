@@ -3037,6 +3037,7 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
             edge.ClearSimulationVisuals();
             edge.ApplyTrafficDetails([], []);
             edge.ApplyRouteHighlight(false);
+            edge.ClearTimelinePressure();
         }
 
         foreach (var node in Nodes)

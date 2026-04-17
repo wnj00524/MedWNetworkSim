@@ -52,6 +52,7 @@ ScenarioAN_ReportRouteSelectionHighlightsCanvas();
 ScenarioAO_TimelineAndCanvasOnlyUpdateSurfaces();
 ScenarioAP_InspectorTabsAndManualCloseBehave();
 ScenarioAQ_EdgeToolTipAndReportEmptyStatesArePopulated();
+ScenarioAU_ResetTimelineClearsEdgePressureVisuals();
 ScenarioAR_HierarchicalSubnetworkInterfacesRouteThroughChild();
 ScenarioAS_HierarchicalSubnetworkValidationRejectsInvalidInterfaces();
 ScenarioAT_EmbedSubnetworkPlacesCompositeNode();
@@ -998,6 +999,33 @@ static void ScenarioAQ_EdgeToolTipAndReportEmptyStatesArePopulated()
         !viewModel.RoutesTabHeader.Contains(viewModel.VisibleAllocations.Count.ToString(), StringComparison.Ordinal))
     {
         throw new InvalidOperationException("AQ reports drawer did not expose populated rows and counts after simulation.");
+    }
+}
+
+static void ScenarioAU_ResetTimelineClearsEdgePressureVisuals()
+{
+    var viewModel = CreateSampleViewModel();
+    var edge = viewModel.Edges.First();
+    edge.ApplyTimelinePressure(new TemporalNetworkSimulationEngine.EdgePressureSnapshot(
+        Score: 12d,
+        BlockedQuantity: 12d,
+        ExpiredInTransitQuantity: 0d,
+        Utilization: 0d,
+        CauseWeights: new Dictionary<TemporalNetworkSimulationEngine.PressureCauseKind, double>
+        {
+            [TemporalNetworkSimulationEngine.PressureCauseKind.EdgeCapacitySaturation] = 12d
+        },
+        TopCause: TemporalNetworkSimulationEngine.PressureCauseKind.EdgeCapacitySaturation.ToString()));
+
+    if (edge.PressureSummaryLabel == "none")
+    {
+        throw new InvalidOperationException("AU setup failed to apply non-empty edge pressure.");
+    }
+
+    viewModel.ResetTimeline();
+    if (!string.Equals(edge.PressureSummaryLabel, "none", StringComparison.Ordinal))
+    {
+        throw new InvalidOperationException("AU reset timeline should clear edge pressure visuals.");
     }
 }
 

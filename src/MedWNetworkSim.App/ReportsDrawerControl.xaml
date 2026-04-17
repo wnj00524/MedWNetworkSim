@@ -2,13 +2,50 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:MedWNetworkSim.App.ViewModels">
-    <Border Padding="16" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="18" MaxHeight="420">
+    <UserControl.Resources>
+        <Style x:Key="DrawerSegmentedTabItemStyle" TargetType="TabItem">
+            <Setter Property="MinHeight" Value="44" />
+            <Setter Property="Padding" Value="18,10" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Background" Value="{DynamicResource CardAltBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource StrongForegroundBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Segment"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="10">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Segment" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                <Setter TargetName="Segment" Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Segment" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="Segment" Property="BorderBrush" Value="{DynamicResource KeyboardFocusBrush}" />
+                                <Setter TargetName="Segment" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Border Padding="20" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="18">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="12" />
+                <RowDefinition Height="16" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="12" />
+                <RowDefinition Height="16" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -18,32 +55,38 @@
             </DockPanel>
 
             <UniformGrid Grid.Row="2" Columns="3">
-                <Border Margin="0,0,8,0" Padding="10" Background="{DynamicResource CardBrush}" CornerRadius="10">
+                <Border Margin="0,0,10,0" Padding="14" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="12">
                     <StackPanel>
                         <TextBlock FontSize="10" Foreground="{DynamicResource MutedForegroundBrush}" Text="Routes" />
-                        <TextBlock Text="{Binding RoutesTabHeader}" FontWeight="SemiBold" />
+                        <TextBlock Margin="0,2,0,0" Text="{Binding RoutesTabHeader}" FontSize="14" FontWeight="SemiBold" />
                         <TextBlock Foreground="{DynamicResource MutedForegroundBrush}" Text="{Binding VisibleAllocationHeadline}" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                 </Border>
-                <Border Margin="0,0,8,0" Padding="10" Background="{DynamicResource CardBrush}" CornerRadius="10">
+                <Border Margin="0,0,10,0" Padding="14" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="12">
                     <StackPanel>
                         <TextBlock FontSize="10" Foreground="{DynamicResource MutedForegroundBrush}" Text="Consumer costs" />
-                        <TextBlock Text="{Binding ConsumerCostsTabHeader}" FontWeight="SemiBold" />
+                        <TextBlock Margin="0,2,0,0" Text="{Binding ConsumerCostsTabHeader}" FontSize="14" FontWeight="SemiBold" />
                         <TextBlock Foreground="{DynamicResource MutedForegroundBrush}" Text="{Binding VisibleConsumerCostHeadline}" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                 </Border>
-                <Border Padding="10" Background="{DynamicResource CardBrush}" CornerRadius="10">
+                <Border Padding="14" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="12">
                     <StackPanel>
                         <TextBlock FontSize="10" Foreground="{DynamicResource MutedForegroundBrush}" Text="Perishing" />
-                        <TextBlock Text="{Binding PerishingTabHeader}" FontWeight="SemiBold" />
+                        <TextBlock Margin="0,2,0,0" Text="{Binding PerishingTabHeader}" FontSize="14" FontWeight="SemiBold" />
                         <TextBlock Foreground="{DynamicResource MutedForegroundBrush}" Text="{Binding VisiblePerishingHeadline}" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                 </Border>
             </UniformGrid>
 
-            <TabControl Grid.Row="4" MinHeight="250">
-                <TabItem Header="Routes">
-                    <Grid Margin="10">
+            <TabControl Grid.Row="4" MinHeight="260" ItemContainerStyle="{StaticResource DrawerSegmentedTabItemStyle}">
+                <TabItem>
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Routes" />
+                            <TextBlock Margin="8,0,0,0" Foreground="{DynamicResource MutedForegroundBrush}" Text="{Binding VisibleAllocations.Count}" />
+                        </StackPanel>
+                    </TabItem.Header>
+                    <Grid Margin="0,12,0,0">
                         <DataGrid ItemsSource="{Binding VisibleAllocations}" SelectedItem="{Binding ReportsDrawer.SelectedReportRow, Mode=TwoWay}" AutoGenerateColumns="False" IsReadOnly="True" Visibility="{Binding RoutesGridVisibility}">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Binding="{Binding Period}" Header="Period" Width="65" />
@@ -60,8 +103,14 @@
                     </Grid>
                 </TabItem>
 
-                <TabItem Header="Consumer costs">
-                    <Grid Margin="10">
+                <TabItem>
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Consumer costs" />
+                            <TextBlock Margin="8,0,0,0" Foreground="{DynamicResource MutedForegroundBrush}" Text="{Binding VisibleConsumerCostSummaries.Count}" />
+                        </StackPanel>
+                    </TabItem.Header>
+                    <Grid Margin="0,12,0,0">
                         <DataGrid ItemsSource="{Binding VisibleConsumerCostSummaries}" AutoGenerateColumns="False" IsReadOnly="True" Visibility="{Binding ConsumerCostsGridVisibility}">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Binding="{Binding TrafficType}" Header="Traffic" Width="140" />
@@ -76,8 +125,14 @@
                     </Grid>
                 </TabItem>
 
-                <TabItem Header="Perishing">
-                    <Grid Margin="10">
+                <TabItem>
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Perishing" />
+                            <TextBlock Margin="8,0,0,0" Foreground="{DynamicResource MutedForegroundBrush}" Text="{Binding VisiblePerishingEvents.Count}" />
+                        </StackPanel>
+                    </TabItem.Header>
+                    <Grid Margin="0,12,0,0">
                         <DataGrid ItemsSource="{Binding VisiblePerishingEvents}" AutoGenerateColumns="False" IsReadOnly="True" Visibility="{Binding PerishingGridVisibility}">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Binding="{Binding Period}" Header="Period" Width="65" />

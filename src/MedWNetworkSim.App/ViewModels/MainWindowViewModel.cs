@@ -107,6 +107,12 @@ public sealed class MainWindowViewModel : ObservableObject
     private bool isImportingOsm;
     private double osmImportProgress;
     private string osmImportStatus = "Idle";
+    private double reportsDrawerMaxHeight = 360d;
+    private double reportsDrawerMinHeight = 240d;
+    private string workspaceModeCallout = "Build mode keeps construction surfaces front and center.";
+    private string runControlLabel = "Run simulation";
+    private string timelineControlLabel = "Timeline controls";
+    private bool emphasizeSimulationControls;
 
     public MainWindowViewModel()
     {
@@ -118,7 +124,10 @@ public sealed class MainWindowViewModel : ObservableObject
     Terminology.IsWorldbuilderMode = isWorldbuilderMode;
     LayersPanel.LayersChanged += HandleLayersChanged;
     ReportsDrawer.RouteSelected += HandleReportRouteSelected;
+    ReportsDrawer.PropertyChanged += HandleReportsDrawerPropertyChanged;
+    InspectorPanel.PropertyChanged += HandleInspectorPanelPropertyChanged;
     CreateNewNetwork();
+    ApplyWorkspaceMode(selectedWorkspaceMode);
     }
 
     public ObservableCollection<NodeViewModel> Nodes { get; } = [];
@@ -372,7 +381,51 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
     public AppWorkspaceMode SelectedWorkspaceMode
     {
         get => selectedWorkspaceMode;
-        set => SetProperty(ref selectedWorkspaceMode, value);
+        set
+        {
+            if (!SetProperty(ref selectedWorkspaceMode, value))
+            {
+                return;
+            }
+
+            ApplyWorkspaceMode(value);
+        }
+    }
+
+    public double ReportsDrawerMaxHeight
+    {
+        get => reportsDrawerMaxHeight;
+        private set => SetProperty(ref reportsDrawerMaxHeight, value);
+    }
+
+    public double ReportsDrawerMinHeight
+    {
+        get => reportsDrawerMinHeight;
+        private set => SetProperty(ref reportsDrawerMinHeight, value);
+    }
+
+    public string WorkspaceModeCallout
+    {
+        get => workspaceModeCallout;
+        private set => SetProperty(ref workspaceModeCallout, value);
+    }
+
+    public string RunControlLabel
+    {
+        get => runControlLabel;
+        private set => SetProperty(ref runControlLabel, value);
+    }
+
+    public string TimelineControlLabel
+    {
+        get => timelineControlLabel;
+        private set => SetProperty(ref timelineControlLabel, value);
+    }
+
+    public bool EmphasizeSimulationControls
+    {
+        get => emphasizeSimulationControls;
+        private set => SetProperty(ref emphasizeSimulationControls, value);
     }
 
     public string NetworkName
@@ -642,15 +695,7 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
 
     public void ToggleReportsDrawer()
     {
-        ReportsDrawer.IsOpen = !ReportsDrawer.IsOpen;
-        if (!ReportsDrawer.IsOpen)
-        {
-            ReportsDrawer.SelectedReportRow = null;
-            Canvas.ClearRouteHighlight();
-            ApplyRouteHighlights();
-        }
-
-        OnPropertyChanged(nameof(BottomWorkspaceVisibility));
+        SetReportsDrawerOpen(!ReportsDrawer.IsOpen);
     }
 
     public void ToggleLegendPanel()
@@ -3277,6 +3322,82 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
             edge.ApplyRouteHighlight(
                 !string.IsNullOrWhiteSpace(edge.Id) &&
                 highlightedEdgeIds.Contains(edge.Id));
+        }
+    }
+
+    private void ApplyWorkspaceMode(AppWorkspaceMode mode)
+    {
+        switch (mode)
+        {
+            case AppWorkspaceMode.Build:
+                WorkspaceModeCallout = "Build mode prioritizes the canvas and keeps construction tools in view.";
+                RunControlLabel = "Run simulation";
+                TimelineControlLabel = "Timeline controls";
+                EmphasizeSimulationControls = false;
+                ReportsDrawerMinHeight = 240d;
+                ReportsDrawerMaxHeight = 380d;
+                SetReportsDrawerOpen(false);
+                break;
+
+            case AppWorkspaceMode.Simulate:
+                WorkspaceModeCallout = "Simulate mode highlights run and timeline controls while keeping the canvas dominant.";
+                RunControlLabel = "Run simulation now";
+                TimelineControlLabel = "Step timeline";
+                EmphasizeSimulationControls = true;
+                ReportsDrawerMinHeight = 250d;
+                ReportsDrawerMaxHeight = 400d;
+                if (!IsOptionalSidePanelOpen)
+                {
+                    suppressInspectorAutoOpen = false;
+                    InspectorPanel.IsOpen = true;
+                }
+
+                SetReportsDrawerOpen(false);
+                break;
+
+            case AppWorkspaceMode.Analyze:
+                WorkspaceModeCallout = "Analyze mode keeps reports visible so outcomes stay in focus.";
+                RunControlLabel = "Run simulation";
+                TimelineControlLabel = "Timeline controls";
+                EmphasizeSimulationControls = false;
+                ReportsDrawerMinHeight = 300d;
+                ReportsDrawerMaxHeight = 460d;
+                SetReportsDrawerOpen(true);
+                break;
+        }
+
+        OnPropertyChanged(nameof(BottomWorkspaceVisibility));
+    }
+
+    private void SetReportsDrawerOpen(bool isOpen)
+    {
+        if (ReportsDrawer.IsOpen == isOpen)
+        {
+            return;
+        }
+
+        ReportsDrawer.IsOpen = isOpen;
+        if (!isOpen)
+        {
+            ReportsDrawer.SelectedReportRow = null;
+            Canvas.ClearRouteHighlight();
+            ApplyRouteHighlights();
+        }
+    }
+
+    private void HandleReportsDrawerPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ReportsDrawerViewModel.IsOpen))
+        {
+            OnPropertyChanged(nameof(BottomWorkspaceVisibility));
+        }
+    }
+
+    private void HandleInspectorPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(InspectorPanelViewModel.IsOpen))
+        {
+            RaiseOptionalSurfacePropertiesChanged();
         }
     }
 

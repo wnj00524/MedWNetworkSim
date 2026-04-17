@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using MedWNetworkSim.App.Import;
 using MedWNetworkSim.App.ViewModels;
 
 namespace MedWNetworkSim.App;
@@ -31,6 +32,7 @@ public partial class MainWindow : Window
     private double panStartHorizontalOffset;
     private double panStartVerticalOffset;
     private Cursor? previousCanvasCursor;
+    private readonly OsmImporter osmImporter = new();
 
     public MainWindow()
     {
@@ -73,6 +75,57 @@ public partial class MainWindow : Window
         }
 
         ExecuteWithErrorHandling(() => PreserveViewportAcrossWorkspaceShift(() => ViewModel.LoadFromFile(dialog.FileName)));
+    }
+
+    private async void ImportOsm_Click(object sender, RoutedEventArgs e)
+    {
+        if (!TryConfirmDiscardOrSaveChanges("import an OSM map"))
+        {
+            return;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "Import OSM file",
+            Filter = "OpenStreetMap XML (*.osm)|*.osm|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            ViewModel.StartOsmImport();
+
+            var progress = new Progress<OsmImportProgress>(ViewModel.ReportOsmImportProgress);
+            var importedNetwork = await Task.Run(
+                () => osmImporter.ImportFromFileAsync(dialog.FileName, progress),
+                CancellationToken.None);
+
+            PreserveViewportAcrossWorkspaceShift(() => ViewModel.LoadImportedNetwork(importedNetwork, dialog.FileName));
+            await Dispatcher.InvokeAsync(() =>
+            {
+                FitCanvasToNetwork();
+                SetCanvasHint("OSM import complete. Network auto-fit to canvas.");
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                ex.Message,
+                "MedW Network Simulator",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            ViewModel.FinishOsmImport();
+        }
     }
 
     private void GraphMl_Click(object sender, RoutedEventArgs e)
@@ -1180,6 +1233,33 @@ public partial class MainWindow : Window
         NetworkCanvasScaleTransform.ScaleX = 1d;
         NetworkCanvasScaleTransform.ScaleY = 1d;
         SetCanvasHint("Canvas zoom reset.");
+    }
+
+    private void FitCanvasToNetwork()
+    {
+        if (!ViewModel.HasNetwork)
+        {
+            return;
+        }
+
+        NetworkCanvasScrollViewer.UpdateLayout();
+
+        var viewportWidth = Math.Max(1d, NetworkCanvasScrollViewer.ViewportWidth);
+        var viewportHeight = Math.Max(1d, NetworkCanvasScrollViewer.ViewportHeight);
+        var workspaceWidth = Math.Max(1d, ViewModel.WorkspaceWidth);
+        var workspaceHeight = Math.Max(1d, ViewModel.WorkspaceHeight);
+        var widthZoom = viewportWidth / workspaceWidth;
+        var heightZoom = viewportHeight / workspaceHeight;
+        var targetZoom = Math.Clamp(Math.Min(widthZoom, heightZoom) * 0.92d, MinimumCanvasZoom, MaximumCanvasZoom);
+
+        canvasZoom = targetZoom;
+        NetworkCanvasScaleTransform.ScaleX = targetZoom;
+        NetworkCanvasScaleTransform.ScaleY = targetZoom;
+
+        var horizontalOffset = Math.Max(0d, (workspaceWidth * targetZoom - viewportWidth) / 2d);
+        var verticalOffset = Math.Max(0d, (workspaceHeight * targetZoom - viewportHeight) / 2d);
+        NetworkCanvasScrollViewer.ScrollToHorizontalOffset(horizontalOffset);
+        NetworkCanvasScrollViewer.ScrollToVerticalOffset(verticalOffset);
     }
 
     private void CycleWorkspaceRegions(bool reverse)

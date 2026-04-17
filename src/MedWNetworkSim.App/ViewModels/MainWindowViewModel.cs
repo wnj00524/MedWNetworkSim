@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows;
+using MedWNetworkSim.App.Import;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Presets;
 using MedWNetworkSim.App.Services;
@@ -102,6 +103,9 @@ public sealed class MainWindowViewModel : ObservableObject
     private bool suppressInspectorAutoOpen;
     private string graphKeyboardHint = "Press F6 to move into the canvas workspace.";
     private string focusedEdgeStatus = "No route focused.";
+    private bool isImportingOsm;
+    private double osmImportProgress;
+    private string osmImportStatus = "Idle";
 
     public MainWindowViewModel()
     {
@@ -184,6 +188,38 @@ public sealed class MainWindowViewModel : ObservableObject
     public string ActiveWorldLabel => HasNetwork
         ? $"{NetworkName} | {ActiveFileLabel}"
         : "No world loaded";
+
+    public bool IsImportingOsm
+    {
+        get => isImportingOsm;
+        private set
+        {
+            if (SetProperty(ref isImportingOsm, value))
+            {
+                OnPropertyChanged(nameof(IsOsmImportProgressIndeterminate));
+            }
+        }
+    }
+
+    public double OsmImportProgress
+    {
+        get => osmImportProgress;
+        private set
+        {
+            if (SetProperty(ref osmImportProgress, value))
+            {
+                OnPropertyChanged(nameof(IsOsmImportProgressIndeterminate));
+            }
+        }
+    }
+
+    public string OsmImportStatus
+    {
+        get => osmImportStatus;
+        private set => SetProperty(ref osmImportStatus, value);
+    }
+
+    public bool IsOsmImportProgressIndeterminate => IsImportingOsm && OsmImportProgress <= 0d;
 
     public string? CurrentFilePath
     {
@@ -1119,6 +1155,38 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
         var network = graphMlFileService.Load(path, options);
         LoadNetwork(network, null, $"Imported GraphML file '{Path.GetFileName(path)}'.");
         ActiveFileLabel = Path.GetFileName(path);
+    }
+
+    public void StartOsmImport()
+    {
+        IsImportingOsm = true;
+        OsmImportProgress = 0d;
+        OsmImportStatus = "Starting OSM import...";
+        StatusMessage = OsmImportStatus;
+    }
+
+    public void ReportOsmImportProgress(OsmImportProgress progress)
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+
+        IsImportingOsm = true;
+        OsmImportProgress = Math.Clamp(progress.Fraction, 0d, 1d);
+        OsmImportStatus = progress.Message;
+        StatusMessage = progress.Message;
+    }
+
+    public void FinishOsmImport()
+    {
+        IsImportingOsm = false;
+        OsmImportProgress = 0d;
+        OsmImportStatus = "Idle";
+    }
+
+    public void LoadImportedNetwork(NetworkModel network, string path)
+    {
+        LoadNetwork(network, null, $"Imported OSM file '{Path.GetFileName(path)}'.");
+        ActiveFileLabel = Path.GetFileName(path);
+        HasUnsavedChanges = true;
     }
 
     public void SaveToFile(string path)

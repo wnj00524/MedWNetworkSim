@@ -1,48 +1,49 @@
 <UserControl x:Class="MedWNetworkSim.App.InspectorPanelControl"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Border Padding="16"
-            Background="{DynamicResource PanelBrush}"
-            BorderBrush="{DynamicResource BorderBrush}"
-            BorderThickness="1"
-            CornerRadius="18">
-        <StackPanel>
-            <TextBlock FontSize="18"
-                       FontWeight="SemiBold"
-                       Text="{Binding Title}" />
-            <TabControl Margin="0,12,0,0"
-                        SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}">
-                <TabItem Header="Summary">
-                    <TextBlock Margin="10"
-                               Foreground="{DynamicResource MutedForegroundBrush}"
-                               Text="{Binding SummaryText}"
-                               TextWrapping="Wrap" />
+    <Border Padding="16" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="18">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="10" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="12" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <TextBlock FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource AccentStrongBrush}" Text="{Binding Title}" />
+
+            <UniformGrid Grid.Row="2" Columns="2" Margin="0,0,0,0">
+                <Border Margin="0,0,8,0" Padding="10" Background="{DynamicResource CardBrush}" CornerRadius="10">
+                    <StackPanel>
+                        <TextBlock FontSize="10" Foreground="{DynamicResource MutedForegroundBrush}" Text="Current selection" />
+                        <TextBlock Margin="0,2,0,0" FontSize="12" FontWeight="SemiBold" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Border>
+                <Border Padding="10" Background="{DynamicResource CardBrush}" CornerRadius="10">
+                    <StackPanel>
+                        <TextBlock FontSize="10" Foreground="{DynamicResource MutedForegroundBrush}" Text="Focus" />
+                        <TextBlock Margin="0,2,0,0" FontSize="12" FontWeight="SemiBold" Text="Flow + capacity context" />
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <TabControl Grid.Row="4" SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}">
+                <TabItem Header="Overview">
+                    <ScrollViewer Margin="8" VerticalScrollBarVisibility="Auto"><TextBlock Foreground="{DynamicResource MutedForegroundBrush}" Text="{Binding SummaryText}" TextWrapping="Wrap" /></ScrollViewer>
                 </TabItem>
                 <TabItem Header="Flows">
-                    <TextBlock Margin="10"
-                               Foreground="{DynamicResource MutedForegroundBrush}"
-                               Text="{Binding FlowsText}"
-                               TextWrapping="Wrap" />
+                    <ScrollViewer Margin="8" VerticalScrollBarVisibility="Auto"><TextBlock Foreground="{DynamicResource MutedForegroundBrush}" Text="{Binding FlowsText}" TextWrapping="Wrap" /></ScrollViewer>
                 </TabItem>
                 <TabItem Header="Capacity">
-                    <TextBlock Margin="10"
-                               Foreground="{DynamicResource MutedForegroundBrush}"
-                               Text="{Binding CapacityText}"
-                               TextWrapping="Wrap" />
+                    <ScrollViewer Margin="8" VerticalScrollBarVisibility="Auto"><TextBlock Foreground="{DynamicResource MutedForegroundBrush}" Text="{Binding CapacityText}" TextWrapping="Wrap" /></ScrollViewer>
                 </TabItem>
                 <TabItem Header="Routing">
-                    <TextBlock Margin="10"
-                               Foreground="{DynamicResource MutedForegroundBrush}"
-                               Text="{Binding RoutingText}"
-                               TextWrapping="Wrap" />
+                    <ScrollViewer Margin="8" VerticalScrollBarVisibility="Auto"><TextBlock Foreground="{DynamicResource MutedForegroundBrush}" Text="{Binding RoutingText}" TextWrapping="Wrap" /></ScrollViewer>
                 </TabItem>
                 <TabItem Header="Timeline">
-                    <TextBlock Margin="10"
-                               Foreground="{DynamicResource MutedForegroundBrush}"
-                               Text="{Binding TimelineText}"
-                               TextWrapping="Wrap" />
+                    <ScrollViewer Margin="8" VerticalScrollBarVisibility="Auto"><TextBlock Foreground="{DynamicResource MutedForegroundBrush}" Text="{Binding TimelineText}" TextWrapping="Wrap" /></ScrollViewer>
                 </TabItem>
             </TabControl>
-        </StackPanel>
+        </Grid>
     </Border>
 </UserControl>

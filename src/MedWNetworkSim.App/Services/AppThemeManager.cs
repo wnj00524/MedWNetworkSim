@@ -7,7 +7,7 @@ namespace MedWNetworkSim.App.Services;
 
 public static class AppThemeManager
 {
-    private static AppTheme currentTheme = AppTheme.Classic;
+    private static AppTheme currentTheme = AppTheme.TurkeyOakCommand;
 
     static AppThemeManager()
     {
@@ -25,9 +25,12 @@ public static class AppThemeManager
             return;
         }
 
-        var palette = theme == AppTheme.System
-            ? BuildSystemPalette()
-            : BuildPalette(theme);
+        var palette = theme switch
+        {
+            AppTheme.System => BuildSystemPalette(),
+            AppTheme.HighContrast => BuildHighContrastPalette(),
+            _ => BuildTurkeyOakPalette()
+        };
 
         SetBrushColor("WindowBrush", palette.Window);
         SetBrushColor("PanelBrush", palette.Panel);
@@ -35,6 +38,7 @@ public static class AppThemeManager
         SetBrushColor("CanvasLineBrush", palette.CanvasLine);
         SetBrushColor("AccentBrush", palette.Accent);
         SetBrushColor("AccentStrongBrush", palette.AccentStrong);
+        SetBrushColor("AccentSoftBrush", palette.AccentSoft);
         SetBrushColor("BorderBrush", palette.Border);
         SetBrushColor("NodeBrush", palette.Node);
         SetBrushColor("NodeBorderBrush", palette.NodeBorder);
@@ -50,6 +54,11 @@ public static class AppThemeManager
         SetBrushColor("TrackBrush", palette.Track);
         SetBrushColor("NodeWatermarkBrush", palette.Watermark);
         SetBrushColor("NodeBadgeBrush", palette.NodeBadge);
+        SetBrushColor("SuccessBrush", palette.Success);
+        SetBrushColor("WarningBrush", palette.Warning);
+        SetBrushColor("DangerBrush", palette.Danger);
+        SetBrushColor("KeyboardFocusBrush", palette.Focus);
+        SetBrushColor("KeyboardFocusFillBrush", palette.FocusFill);
 
         Application.Current.Resources["AppFontFamily"] = palette.FontFamily;
     }
@@ -62,81 +71,63 @@ public static class AppThemeManager
         }
     }
 
-    private static ThemePalette BuildPalette(AppTheme theme)
-    {
-        return theme switch
-        {
-            AppTheme.Futuristic => new ThemePalette(
-                ColorFromHex("#FF0A1220"),
-                ColorFromHex("#FF111B2D"),
-                ColorFromHex("#FF0E1625"),
-                ColorFromHex("#3388E3FF"),
-                ColorFromHex("#FF2C7BE5"),
-                ColorFromHex("#FF7AF0FF"),
-                ColorFromHex("#FF29405D"),
-                ColorFromHex("#FF162235"),
-                ColorFromHex("#FF4AA6FF"),
-                ColorFromHex("#FF6EA8FF"),
-                ColorFromHex("#FF8AB4FF"),
-                ColorFromHex("#FF121E31"),
-                ColorFromHex("#FFA6B9D5"),
-                ColorFromHex("#FFF2FAFF"),
-                ColorFromHex("#FF16253B"),
-                ColorFromHex("#FF132035"),
-                ColorFromHex("#FF101A2B"),
-                ColorFromHex("#FF17263A"),
-                ColorFromHex("#FF233754"),
-                ColorFromHex("#662C7BE5"),
-                ColorFromHex("#FF17263A"),
-                new FontFamily("Bahnschrift")),
-            AppTheme.Stone => new ThemePalette(
-                ColorFromHex("#FFE9E4DA"),
-                ColorFromHex("#FFF6F2EA"),
-                ColorFromHex("#FFEEE7DC"),
-                ColorFromHex("#33807A73"),
-                ColorFromHex("#FF7A6750"),
-                ColorFromHex("#FF54463A"),
-                ColorFromHex("#FFC9C0B1"),
-                ColorFromHex("#FFF7F4EE"),
-                ColorFromHex("#FF9B8B76"),
-                ColorFromHex("#FF6A6157"),
-                ColorFromHex("#FFF0E6D9"),
-                ColorFromHex("#FFF2EBE1"),
-                ColorFromHex("#FF6A6157"),
-                ColorFromHex("#FF2B2622"),
-                ColorFromHex("#FFF8F3EB"),
-                ColorFromHex("#FFF3EADF"),
-                ColorFromHex("#FFF6EFE7"),
-                ColorFromHex("#FFE8DED1"),
-                ColorFromHex("#FFD6CABA"),
-                ColorFromHex("#667A6750"),
-                ColorFromHex("#FFE8DED1"),
-                new FontFamily("Georgia")),
-            _ => new ThemePalette(
-                ColorFromHex("#FFF4EFE6"),
-                ColorFromHex("#FFFFFCF7"),
-                ColorFromHex("#FFF8F3E9"),
-                ColorFromHex("#23A07C5F"),
-                ColorFromHex("#FF9B5E33"),
-                ColorFromHex("#FF6F3E1B"),
-                ColorFromHex("#FFD7C7B1"),
-                ColorFromHex("#FFF9F8F1"),
-                ColorFromHex("#FFC7B27C"),
-                ColorFromHex("#FF7A685D"),
-                ColorFromHex("#FFF7EBDD"),
-                ColorFromHex("#FFF8F1E7"),
-                ColorFromHex("#FF6E5D51"),
-                ColorFromHex("#FF2D231E"),
-                ColorFromHex("#FFFDF9F3"),
-                ColorFromHex("#FFF8F1E7"),
-                ColorFromHex("#FFFFFBF4"),
-                ColorFromHex("#FFF0E6D6"),
-                ColorFromHex("#FFE7DCCB"),
-                ColorFromHex("#66A67C54"),
-                ColorFromHex("#FFF0E6D6"),
-                new FontFamily("Segoe UI"))
-        };
-    }
+    private static ThemePalette BuildTurkeyOakPalette() => new(
+        ColorFromHex("#FF060D12"),
+        ColorFromHex("#FF0B141B"),
+        ColorFromHex("#FF09131C"),
+        ColorFromHex("#332F6E7A"),
+        ColorFromHex("#FF4AB7A8"),
+        ColorFromHex("#FF6FF5E2"),
+        ColorFromHex("#264AB7A8"),
+        ColorFromHex("#FF1D3240"),
+        ColorFromHex("#FF11222C"),
+        ColorFromHex("#FF4CC9B5"),
+        ColorFromHex("#FF8EF6EB"),
+        ColorFromHex("#FF0F1B24"),
+        ColorFromHex("#FF8EA4B2"),
+        ColorFromHex("#FFE4F4F3"),
+        ColorFromHex("#FF101C26"),
+        ColorFromHex("#FF0E1A23"),
+        ColorFromHex("#FF101E29"),
+        ColorFromHex("#FF152632"),
+        ColorFromHex("#FF243541"),
+        ColorFromHex("#6638C2B2"),
+        ColorFromHex("#FF132430"),
+        ColorFromHex("#FF3FCF81"),
+        ColorFromHex("#FFEAAA4F"),
+        ColorFromHex("#FFE06464"),
+        ColorFromHex("#FF80F8F5"),
+        ColorFromHex("#3080F8F5"),
+        new FontFamily("Segoe UI Semibold"));
+
+    private static ThemePalette BuildHighContrastPalette() => new(
+        Colors.Black,
+        Colors.Black,
+        ColorFromHex("#FF050505"),
+        ColorFromHex("#66FFFFFF"),
+        ColorFromHex("#FF00FFFF"),
+        ColorFromHex("#FFFFFFFF"),
+        ColorFromHex("#FF78FFFF"),
+        ColorFromHex("#FFFFFFFF"),
+        ColorFromHex("#FFFFFFFF"),
+        ColorFromHex("#FFFFFFFF"),
+        ColorFromHex("#FF000000"),
+        ColorFromHex("#FF101010"),
+        ColorFromHex("#FFD0D0D0"),
+        ColorFromHex("#FFFFFFFF"),
+        ColorFromHex("#FF111111"),
+        ColorFromHex("#FF0A0A0A"),
+        ColorFromHex("#FF101010"),
+        ColorFromHex("#FF1A1A1A"),
+        ColorFromHex("#FF2C2C2C"),
+        ColorFromHex("#88FFFFFF"),
+        ColorFromHex("#FF161616"),
+        ColorFromHex("#FF4BFF9A"),
+        ColorFromHex("#FFFFC75A"),
+        ColorFromHex("#FFFF6A6A"),
+        ColorFromHex("#FFFFFFFF"),
+        ColorFromHex("#44FFFFFF"),
+        SystemFonts.MessageFontFamily);
 
     private static ThemePalette BuildSystemPalette()
     {
@@ -155,6 +146,7 @@ public static class AppThemeManager
             canvasLine,
             accent,
             SystemColors.HotTrackColor,
+            Color.FromArgb(0x33, accent.R, accent.G, accent.B),
             border,
             SystemColors.WindowColor,
             accent,
@@ -170,6 +162,11 @@ public static class AppThemeManager
             SystemColors.ControlDarkColor,
             Color.FromArgb(0x55, accent.R, accent.G, accent.B),
             SystemColors.ControlColor,
+            ColorFromHex("#FF008744"),
+            ColorFromHex("#FFB37A00"),
+            ColorFromHex("#FFB00020"),
+            accent,
+            Color.FromArgb(0x33, accent.R, accent.G, accent.B),
             SystemFonts.MessageFontFamily);
     }
 
@@ -190,6 +187,7 @@ public static class AppThemeManager
         Color CanvasLine,
         Color Accent,
         Color AccentStrong,
+        Color AccentSoft,
         Color Border,
         Color Node,
         Color NodeBorder,
@@ -205,5 +203,10 @@ public static class AppThemeManager
         Color Track,
         Color Watermark,
         Color NodeBadge,
+        Color Success,
+        Color Warning,
+        Color Danger,
+        Color Focus,
+        Color FocusFill,
         FontFamily FontFamily);
 }

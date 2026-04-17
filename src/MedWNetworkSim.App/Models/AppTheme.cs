@@ -2,8 +2,7 @@ namespace MedWNetworkSim.App.Models;
 
 public enum AppTheme
 {
-    Classic,
+    TurkeyOakCommand,
     System,
-    Futuristic,
-    Stone
+    HighContrast
 }

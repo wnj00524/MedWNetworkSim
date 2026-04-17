@@ -71,7 +71,8 @@ public sealed class MainWindowViewModel : ObservableObject
     private int? timelineLoopLength;
     private int simulationSeed = 12345;
     private string statusMessage = "Start a blank world, open a saved world, or load an example to explore the system.";
-    private AppTheme selectedTheme = AppTheme.Classic;
+    private AppTheme selectedTheme = AppTheme.TurkeyOakCommand;
+    private AppWorkspaceMode selectedWorkspaceMode = AppWorkspaceMode.Build;
     private TrafficSummaryViewModel? selectedTraffic;
     private NodeViewModel? selectedNode;
     private NodeTrafficProfileViewModel? selectedNodeTrafficProfile;
@@ -175,6 +176,7 @@ public sealed class MainWindowViewModel : ObservableObject
     ];
 
     public Array ThemeOptions { get; } = Enum.GetValues(typeof(AppTheme));
+    public Array WorkspaceModes { get; } = Enum.GetValues(typeof(AppWorkspaceMode));
 
     public IReadOnlyList<PlaceTemplate> PlaceTemplateOptions { get; } =
         PlaceTemplateCatalog.Templates;
@@ -365,6 +367,12 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
 
             AppThemeManager.ApplyTheme(value);
         }
+    }
+
+    public AppWorkspaceMode SelectedWorkspaceMode
+    {
+        get => selectedWorkspaceMode;
+        set => SetProperty(ref selectedWorkspaceMode, value);
     }
 
     public string NetworkName

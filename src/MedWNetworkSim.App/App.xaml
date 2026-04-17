@@ -3,50 +3,42 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:MedWNetworkSim.App">
     <Application.Resources>
-        <FontFamily x:Key="AppFontFamily">Segoe UI</FontFamily>
-        <SolidColorBrush x:Key="WindowBrush" Color="#FFF4EFE6" />
-        <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFCF7" />
-        <SolidColorBrush x:Key="CanvasBrush" Color="#FFF8F3E9" />
-        <SolidColorBrush x:Key="CanvasLineBrush" Color="#23A07C5F" />
-        <SolidColorBrush x:Key="AccentBrush" Color="#FF9B5E33" />
-        <SolidColorBrush x:Key="AccentStrongBrush" Color="#FF6F3E1B" />
-        <SolidColorBrush x:Key="BorderBrush" Color="#FFD7C7B1" />
-        <SolidColorBrush x:Key="NodeBrush" Color="#FFF9F8F1" />
-        <SolidColorBrush x:Key="NodeBorderBrush" Color="#FFC7B27C" />
-        <SolidColorBrush x:Key="EdgeBrush" Color="#FF7A685D" />
-        <SolidColorBrush x:Key="EdgeLabelBrush" Color="#FFF7EBDD" />
-        <SolidColorBrush x:Key="InfoPanelBrush" Color="#FFF8F1E7" />
-        <SolidColorBrush x:Key="MutedForegroundBrush" Color="#FF6E5D51" />
-        <SolidColorBrush x:Key="StrongForegroundBrush" Color="#FF2D231E" />
-        <SolidColorBrush x:Key="InputBrush" Color="#FFFDF9F3" />
-        <SolidColorBrush x:Key="SectionBrush" Color="#FFF8F1E7" />
-        <SolidColorBrush x:Key="CardBrush" Color="#FFFFFBF4" />
-        <SolidColorBrush x:Key="CardAltBrush" Color="#FFF0E6D6" />
-        <SolidColorBrush x:Key="TrackBrush" Color="#FFE7DCCB" />
-        <SolidColorBrush x:Key="NodeWatermarkBrush" Color="#66A67C54" />
-        <SolidColorBrush x:Key="NodeBadgeBrush" Color="#FFF0E6D6" />
-        <SolidColorBrush x:Key="KeyboardFocusBrush" Color="#FF0D57C7" />
-        <SolidColorBrush x:Key="KeyboardFocusFillBrush" Color="#220D57C7" />
+        <FontFamily x:Key="AppFontFamily">Segoe UI Semibold</FontFamily>
+        <SolidColorBrush x:Key="WindowBrush" Color="#FF060D12" />
+        <SolidColorBrush x:Key="PanelBrush" Color="#FF0B141B" />
+        <SolidColorBrush x:Key="CanvasBrush" Color="#FF09131C" />
+        <SolidColorBrush x:Key="CanvasLineBrush" Color="#332F6E7A" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#FF4AB7A8" />
+        <SolidColorBrush x:Key="AccentStrongBrush" Color="#FF6FF5E2" />
+        <SolidColorBrush x:Key="AccentSoftBrush" Color="#264AB7A8" />
+        <SolidColorBrush x:Key="BorderBrush" Color="#FF1D3240" />
+        <SolidColorBrush x:Key="NodeBrush" Color="#FF11222C" />
+        <SolidColorBrush x:Key="NodeBorderBrush" Color="#FF4CC9B5" />
+        <SolidColorBrush x:Key="EdgeBrush" Color="#FF8EF6EB" />
+        <SolidColorBrush x:Key="EdgeLabelBrush" Color="#FF0F1B24" />
+        <SolidColorBrush x:Key="InfoPanelBrush" Color="#FF0F1B24" />
+        <SolidColorBrush x:Key="MutedForegroundBrush" Color="#FF8EA4B2" />
+        <SolidColorBrush x:Key="StrongForegroundBrush" Color="#FFE4F4F3" />
+        <SolidColorBrush x:Key="InputBrush" Color="#FF101C26" />
+        <SolidColorBrush x:Key="SectionBrush" Color="#FF0E1A23" />
+        <SolidColorBrush x:Key="CardBrush" Color="#FF101E29" />
+        <SolidColorBrush x:Key="CardAltBrush" Color="#FF152632" />
+        <SolidColorBrush x:Key="TrackBrush" Color="#FF243541" />
+        <SolidColorBrush x:Key="NodeWatermarkBrush" Color="#6638C2B2" />
+        <SolidColorBrush x:Key="NodeBadgeBrush" Color="#FF132430" />
+        <SolidColorBrush x:Key="SuccessBrush" Color="#FF3FCF81" />
+        <SolidColorBrush x:Key="WarningBrush" Color="#FFEAAA4F" />
+        <SolidColorBrush x:Key="DangerBrush" Color="#FFE06464" />
+        <SolidColorBrush x:Key="KeyboardFocusBrush" Color="#FF80F8F5" />
+        <SolidColorBrush x:Key="KeyboardFocusFillBrush" Color="#3080F8F5" />
 
-        <ControlTemplate x:Key="StrongFocusVisualTemplate">
-            <Border Margin="-2"
-                    BorderBrush="{DynamicResource KeyboardFocusBrush}"
-                    BorderThickness="2"
-                    CornerRadius="6"
-                    SnapsToDevicePixels="True" />
-        </ControlTemplate>
+        <Thickness x:Key="CardPadding">14</Thickness>
 
-        <DrawingBrush x:Key="CanvasGridBrush"
-                      TileMode="Tile"
-                      Viewport="0,0,32,32"
-                      ViewportUnits="Absolute"
-                      Viewbox="0,0,32,32"
-                      ViewboxUnits="Absolute"
-                      Stretch="None">
+        <DrawingBrush x:Key="CanvasGridBrush" TileMode="Tile" Viewport="0,0,48,48" ViewportUnits="Absolute" Viewbox="0,0,48,48" ViewboxUnits="Absolute" Stretch="None">
             <DrawingBrush.Drawing>
                 <DrawingGroup>
-                    <GeometryDrawing Brush="{DynamicResource CanvasBrush}" Geometry="M0,0 H32 V32 H0 Z" />
-                    <GeometryDrawing Geometry="M32,0 L0,0 0,32">
+                    <GeometryDrawing Brush="{DynamicResource CanvasBrush}" Geometry="M0,0 H48 V48 H0 Z" />
+                    <GeometryDrawing Geometry="M48,0 L0,0 0,48">
                         <GeometryDrawing.Pen>
                             <Pen Brush="{DynamicResource CanvasLineBrush}" Thickness="1" />
                         </GeometryDrawing.Pen>
@@ -55,6 +47,10 @@
             </DrawingBrush.Drawing>
         </DrawingBrush>
 
+        <ControlTemplate x:Key="StrongFocusVisualTemplate">
+            <Border Margin="-2" BorderBrush="{DynamicResource KeyboardFocusBrush}" BorderThickness="2" CornerRadius="8" SnapsToDevicePixels="True" />
+        </ControlTemplate>
+
         <Style TargetType="Window">
             <Setter Property="FontFamily" Value="{DynamicResource AppFontFamily}" />
             <Setter Property="Foreground" Value="{DynamicResource StrongForegroundBrush}" />
@@ -62,48 +58,35 @@
             <Setter Property="Icon" Value="/Assets/AppIcon.ico" />
         </Style>
 
+        <Style TargetType="Border" x:Key="GlassCardStyle">
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Padding" Value="{DynamicResource CardPadding}" />
+        </Style>
+
         <Style TargetType="Button">
             <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
-            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Foreground" Value="#FF061317" />
             <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="14,10" />
-            <Setter Property="Margin" Value="0,0,12,0" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="14,8" />
+            <Setter Property="Margin" Value="0,0,8,0" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle">
-                <Setter.Value>
-                    <Style TargetType="Control">
-                        <Setter Property="Template" Value="{StaticResource StrongFocusVisualTemplate}" />
-                    </Style>
-                </Setter.Value>
+                <Setter.Value><Style TargetType="Control"><Setter Property="Template" Value="{StaticResource StrongFocusVisualTemplate}" /></Style></Setter.Value>
             </Setter>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Grid>
-                            <Border x:Name="KeyboardFocusBorder"
-                                    Margin="-2"
-                                    BorderBrush="{DynamicResource KeyboardFocusBrush}"
-                                    BorderThickness="2"
-                                    CornerRadius="14"
-                                    Opacity="0" />
-                            <Border x:Name="ButtonBorder"
-                                    Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="{TemplateBinding BorderThickness}"
-                                    CornerRadius="12"
-                                    Padding="{TemplateBinding Padding}">
-                                <ContentPresenter HorizontalAlignment="Center"
-                                                  VerticalAlignment="Center" />
-                            </Border>
-                        </Grid>
+                        <Border x:Name="ButtonBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="KeyboardFocusBorder" Property="Opacity" Value="1" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.55" />
-                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonBorder" Property="Opacity" Value="0.9" /></Trigger>
+                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonBorder" Property="Opacity" Value="0.8" /></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45" /></Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -111,51 +94,24 @@
         </Style>
 
         <Style TargetType="ToggleButton">
-            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="14,10" />
-            <Setter Property="Margin" Value="0,0,12,0" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="FocusVisualStyle">
-                <Setter.Value>
-                    <Style TargetType="Control">
-                        <Setter Property="Template" Value="{StaticResource StrongFocusVisualTemplate}" />
-                    </Style>
-                </Setter.Value>
-            </Setter>
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource StrongForegroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="Margin" Value="0,0,8,0" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
-                        <Grid>
-                            <Border x:Name="KeyboardFocusBorder"
-                                    Margin="-2"
-                                    BorderBrush="{DynamicResource KeyboardFocusBrush}"
-                                    BorderThickness="2"
-                                    CornerRadius="14"
-                                    Opacity="0" />
-                            <Border x:Name="RootBorder"
-                                    Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="{TemplateBinding BorderThickness}"
-                                    CornerRadius="12"
-                                    Padding="{TemplateBinding Padding}">
-                                <ContentPresenter HorizontalAlignment="Center"
-                                                  VerticalAlignment="Center" />
-                            </Border>
-                        </Grid>
+                        <Border x:Name="Root" CornerRadius="8" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="RootBorder" Property="Background" Value="{DynamicResource AccentStrongBrush}" />
-                                <Setter TargetName="RootBorder" Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}" />
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}" />
                             </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="KeyboardFocusBorder" Property="Opacity" Value="1" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="RootBorder" Property="Opacity" Value="0.55" />
-                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Root" Property="Opacity" Value="0.45" /></Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -163,9 +119,11 @@
         </Style>
 
         <Style TargetType="TextBox">
+            <Setter Property="Foreground" Value="{DynamicResource StrongForegroundBrush}" />
             <Setter Property="Background" Value="{DynamicResource InputBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,6" />
             <Style.Triggers>
                 <Trigger Property="IsKeyboardFocused" Value="True">
                     <Setter Property="BorderBrush" Value="{DynamicResource KeyboardFocusBrush}" />
@@ -175,105 +133,61 @@
         </Style>
 
         <Style TargetType="ComboBox">
+            <Setter Property="Foreground" Value="{DynamicResource StrongForegroundBrush}" />
             <Setter Property="Background" Value="{DynamicResource InputBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Style.Triggers>
-                <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                    <Setter Property="BorderBrush" Value="{DynamicResource KeyboardFocusBrush}" />
-                    <Setter Property="BorderThickness" Value="2" />
-                </Trigger>
-            </Style.Triggers>
         </Style>
 
-        <Style TargetType="CheckBox">
-            <Setter Property="FocusVisualStyle">
-                <Setter.Value>
-                    <Style TargetType="Control">
-                        <Setter Property="Template" Value="{StaticResource StrongFocusVisualTemplate}" />
-                    </Style>
-                </Setter.Value>
-            </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsKeyboardFocused" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource KeyboardFocusFillBrush}" />
-                </Trigger>
-            </Style.Triggers>
+        <Style TargetType="TabControl">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
         </Style>
 
         <Style TargetType="TabItem">
-            <Setter Property="FocusVisualStyle">
+            <Setter Property="Padding" Value="12,7" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="Background" Value="{DynamicResource CardAltBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource MutedForegroundBrush}" />
+            <Setter Property="Template">
                 <Setter.Value>
-                    <Style TargetType="Control">
-                        <Setter Property="Template" Value="{StaticResource StrongFocusVisualTemplate}" />
-                    </Style>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Tab" Background="{TemplateBinding Background}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="7">
+                            <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Tab" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                <Setter TargetName="Tab" Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource StrongForegroundBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
                 </Setter.Value>
             </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsKeyboardFocused" Value="True">
-                    <Setter Property="BorderBrush" Value="{DynamicResource KeyboardFocusBrush}" />
-                    <Setter Property="BorderThickness" Value="2" />
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
-        <Style TargetType="Expander">
-            <Setter Property="FocusVisualStyle">
-                <Setter.Value>
-                    <Style TargetType="Control">
-                        <Setter Property="Template" Value="{StaticResource StrongFocusVisualTemplate}" />
-                    </Style>
-                </Setter.Value>
-            </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsKeyboardFocused" Value="True">
-                    <Setter Property="BorderBrush" Value="{DynamicResource KeyboardFocusBrush}" />
-                    <Setter Property="BorderThickness" Value="2" />
-                </Trigger>
-            </Style.Triggers>
         </Style>
 
         <Style TargetType="DataGrid">
             <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource StrongForegroundBrush}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="GridLinesVisibility" Value="Horizontal" />
             <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource BorderBrush}" />
-            <Setter Property="RowBackground" Value="{DynamicResource PanelBrush}" />
-            <Setter Property="AlternatingRowBackground" Value="{DynamicResource InfoPanelBrush}" />
+            <Setter Property="RowBackground" Value="{DynamicResource CardBrush}" />
+            <Setter Property="AlternatingRowBackground" Value="{DynamicResource CardAltBrush}" />
             <Setter Property="HeadersVisibility" Value="Column" />
             <Setter Property="CanUserAddRows" Value="False" />
             <Setter Property="CanUserDeleteRows" Value="False" />
             <Setter Property="CanUserResizeRows" Value="False" />
         </Style>
 
-        <Style TargetType="DataGridRow">
-            <Style.Triggers>
-                <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                    <Setter Property="BorderBrush" Value="{DynamicResource KeyboardFocusBrush}" />
-                    <Setter Property="BorderThickness" Value="2" />
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
         <Style TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="{DynamicResource CardAltBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource SectionBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource StrongForegroundBrush}" />
-            <Setter Property="Padding" Value="12,10" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-        </Style>
-
-        <Style TargetType="ListBox">
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Background" Value="Transparent" />
-        </Style>
-
-        <Style TargetType="ListBoxItem">
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0,0,0,10" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Padding" Value="8,6" />
         </Style>
     </Application.Resources>
 </Application>

@@ -22,11 +22,8 @@
         </Grid.RowDefinitions>
 
         <Border x:Name="TopControlsRegion"
-                Padding="18"
-                Background="{DynamicResource PanelBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="1"
-                CornerRadius="14"
+                Padding="16"
+                Style="{StaticResource GlassCardStyle}"
                 Focusable="True"
                 KeyboardNavigation.TabNavigation="Continue">
             <Grid>
@@ -34,274 +31,30 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-
-                <StackPanel Margin="0,0,24,0">
-                    <TextBlock FontSize="20"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource AccentStrongBrush}"
-                               Text="World Systems Builder" />
-                    <TextBlock Margin="0,4,0,0"
-                               FontSize="12"
-                               Foreground="{DynamicResource MutedForegroundBrush}"
-                               Text="{Binding ActiveWorldLabel}" />
-                    <Border Margin="0,10,0,0"
-                            Padding="10,8"
-                            Background="{DynamicResource SectionBrush}"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="8">
-                        <WrapPanel>
-                            <CheckBox Content="Worldbuilding language"
-                                      FontSize="12"
-                                      FontWeight="SemiBold"
-                                      Foreground="{DynamicResource AccentStrongBrush}"
-                                      IsChecked="{Binding IsWorldbuilderMode, Mode=TwoWay}" />
-                            <TextBlock Margin="12,0,0,0"
-                                       VerticalAlignment="Center"
-                                       FontSize="11"
-                                       Foreground="{DynamicResource MutedForegroundBrush}"
-                                       Text="Build places, routes, and flows first. Use advanced controls when the model needs detail." />
-                        </WrapPanel>
-                    </Border>
+                <StackPanel>
+                    <TextBlock FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource AccentStrongBrush}" Text="Turkey Oak Command Deck" />
+                    <TextBlock Margin="0,4,0,0" Foreground="{DynamicResource MutedForegroundBrush}" Text="{Binding ActiveWorldLabel}" />
+                    <WrapPanel Margin="0,10,0,0">
+                        <Button Content="New world" Click="NewNetwork_Click" />
+                        <Button Content="Open..." Click="OpenFile_Click" />
+                        <Button Content="Import OSM" Click="ImportOsm_Click" />
+                        <Button Content="Quick save" Click="QuickSave_Click" IsEnabled="{Binding HasNetwork}" />
+                        <Button Content="Export reports" Click="Reports_Click" IsEnabled="{Binding HasNetwork}" />
+                    </WrapPanel>
                 </StackPanel>
-
-                <WrapPanel Grid.Column="1"
-                           HorizontalAlignment="Right"
-                           VerticalAlignment="Top"
-                           ItemWidth="Auto"
-                            Margin="0,-4,0,0">
-                    <Border Margin="0,4,10,0"
-                            Padding="12"
-                            Background="{DynamicResource SectionBrush}"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="14">
-                        <StackPanel>
-                            <TextBlock FontSize="11"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource AccentStrongBrush}"
-                                       Text="START" />
-                            <WrapPanel Margin="0,8,0,0">
-                                <Button Content="New World" Click="NewNetwork_Click" />
-                                <Button Content="Open World..." Click="OpenFile_Click" />
-                                <Button Content="Import OpenStreetMap File..." Click="ImportOsm_Click" />
-                            </WrapPanel>
-                            <StackPanel Margin="0,8,0,0">
-                                <StackPanel.Style>
-                                    <Style TargetType="StackPanel">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsImportingOsm}" Value="True">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </StackPanel.Style>
-                                <TextBlock FontSize="11"
-                                           Foreground="{DynamicResource MutedForegroundBrush}"
-                                           Text="{Binding OsmImportStatus}" />
-                                <ProgressBar Margin="0,4,0,0"
-                                             Height="8"
-                                             Minimum="0"
-                                             Maximum="1"
-                                             Value="{Binding OsmImportProgress, Mode=OneWay}"
-                                             IsIndeterminate="{Binding IsOsmImportProgressIndeterminate}" />
-                            </StackPanel>
-                            <WrapPanel Margin="0,8,0,0"
-                                       VerticalAlignment="Center">
-                                <TextBlock VerticalAlignment="Center"
-                                           Margin="0,0,8,0"
-                                           FontSize="11"
-                                           Foreground="{DynamicResource MutedForegroundBrush}"
-                                           Text="Example" />
-                                <ComboBox Width="260"
-                                          Margin="0,0,10,0"
-                                          DisplayMemberPath="DisplayLabel"
-                                          ItemsSource="{Binding WorldbuilderScenarioOptions}"
-                                          SelectedItem="{Binding SelectedWorldbuilderScenario, Mode=TwoWay}" />
-                                <Button Content="Start From Example"
-                                        Click="LoadWorldbuilderScenario_Click" />
-                            </WrapPanel>
-                            <WrapPanel Margin="0,8,0,0"
-                                       VerticalAlignment="Center">
-                                <TextBlock VerticalAlignment="Center"
-                                           Margin="0,0,8,0"
-                                           FontSize="11"
-                                           Foreground="{DynamicResource MutedForegroundBrush}"
-                                           Text="Template" />
-                                <ComboBox Width="190"
-                                          Margin="0,0,10,0"
-                                          DisplayMemberPath="DisplayName"
-                                          ItemsSource="{Binding PlaceTemplateOptions}"
-                                          SelectedItem="{Binding SelectedPlaceTemplate, Mode=TwoWay}" />
-                                <Button Content="Start From Template"
-                                        Click="AddNodeFromTemplate_Click" />
-                            </WrapPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Margin="0,4,10,0"
-                            Padding="12"
-                            Background="{DynamicResource SectionBrush}"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="14">
-                        <StackPanel>
-                            <TextBlock FontSize="11"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource AccentStrongBrush}"
-                                       Text="ADVANCED" />
-                            <WrapPanel Margin="0,8,0,0">
-                                <Button Content="Properties..."
-                                        Click="NetworkProperties_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="Save JSON..."
-                                        Click="SaveFile_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="Quick Save"
-                                        Click="QuickSave_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="GraphML..."
-                                        Click="GraphMl_Click" />
-                                <Button Content="Embed Network..."
-                                        Click="EmbedSubnetwork_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="Export..."
-                                        Click="Reports_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="Fit Map"
-                                        Click="AutoArrange_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
-                            </WrapPanel>
-                            <WrapPanel Margin="0,8,0,0"
-                                       VerticalAlignment="Center">
-                                <TextBlock VerticalAlignment="Center"
-                                           Margin="0,0,8,0"
-                                           FontSize="11"
-                                           Foreground="{DynamicResource MutedForegroundBrush}"
-                                           Text="Theme" />
-                                <ComboBox Width="140"
-                                          ItemsSource="{Binding ThemeOptions}"
-                                          SelectedItem="{Binding SelectedTheme, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox Margin="12,0,0,0"
-                                          VerticalAlignment="Center"
-                                          Content="Loop"
-                                          FontSize="11"
-                                          Foreground="{DynamicResource MutedForegroundBrush}"
-                                          IsChecked="{Binding IsTimelineLoopEnabled, Mode=TwoWay}" />
-                                <TextBox Width="56"
-                                         Margin="8,0,0,0"
-                                         IsEnabled="{Binding IsTimelineLoopEnabled}"
-                                         Background="{DynamicResource InputBrush}"
-                                         BorderBrush="{DynamicResource BorderBrush}"
-                                         BorderThickness="1"
-                                         Text="{Binding TimelineLoopLength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            </WrapPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Margin="0,4,10,0"
-                            Padding="12"
-                            Background="{DynamicResource SectionBrush}"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="14"
-                            Visibility="Collapsed">
-                        <StackPanel>
-                            <TextBlock FontSize="11"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource AccentStrongBrush}"
-                                       Text="Workspace" />
-                            <WrapPanel Margin="0,8,0,0">
-                                <ToggleButton Content="{Binding CanvasOnlyButtonLabel}"
-                                              Click="ToggleCanvasOnly_Click"
-                                              IsChecked="{Binding IsCanvasOnlyMode, Mode=OneWay}"
-                                              IsEnabled="{Binding HasNetwork}" />
-                                <ToggleButton Content="Layers"
-                                              Click="ToggleLayers_Click"
-                                              IsChecked="{Binding IsLayersPanelOpen, Mode=OneWay}"
-                                              IsEnabled="{Binding HasNetwork}" />
-                                <ToggleButton Content="Inspector"
-                                              Click="ToggleInspector_Click"
-                                              IsChecked="{Binding InspectorPanel.IsOpen, Mode=OneWay}"
-                                              IsEnabled="{Binding HasNetwork}" />
-                                <ToggleButton Content="Reports"
-                                              Click="ToggleReportsDrawer_Click"
-                                              IsChecked="{Binding ReportsDrawer.IsOpen, Mode=OneWay}"
-                                              IsEnabled="{Binding HasNetwork}" />
-                                <ToggleButton Content="Legend"
-                                              Click="ToggleLegend_Click"
-                                              IsChecked="{Binding IsLegendPanelOpen, Mode=OneWay}"
-                                              IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="Fit"
-                                        Click="AutoArrange_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
-                            </WrapPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Margin="0,4,10,0"
-                            Padding="12"
-                            Background="{DynamicResource SectionBrush}"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="14"
-                            Visibility="Collapsed">
-                        <StackPanel>
-                            <TextBlock FontSize="11"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource AccentStrongBrush}"
-                                       Text="Simulation" />
-                            <WrapPanel Margin="0,8,0,0">
-                                <Button Content="Run Simulation"
-                                        Click="RunSimulation_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="Reset Timeline"
-                                        Click="ResetTimeline_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="Next Period"
-                                        Click="NextTimelinePeriod_Click"
-                                        IsEnabled="{Binding HasNetwork}" />
-                            </WrapPanel>
-                            <local:TimelineToolbarControl Margin="0,8,0,0" />
-                        </StackPanel>
-                    </Border>
-
-                    <Border Margin="0,4,0,0"
-                            Padding="12"
-                            Background="{DynamicResource SectionBrush}"
-                            BorderBrush="{DynamicResource BorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="14"
-                            Visibility="Collapsed">
-                        <StackPanel>
-                            <TextBlock FontSize="11"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource AccentStrongBrush}"
-                                       Text="Appearance" />
-                            <Grid Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="150" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock VerticalAlignment="Center"
-                                           Margin="0,0,10,0"
-                                           FontSize="11"
-                                           Foreground="{DynamicResource MutedForegroundBrush}"
-                                           Text="Theme" />
-                                <ComboBox Grid.Column="1"
-                                          ItemsSource="{Binding ThemeOptions}"
-                                          SelectedItem="{Binding SelectedTheme, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            </Grid>
-                            <CheckBox Margin="0,8,0,0"
-                                      Content="Worldbuilder mode"
-                                      FontSize="12"
-                                      FontWeight="SemiBold"
-                                      Foreground="{DynamicResource AccentStrongBrush}"
-                                      IsChecked="{Binding IsWorldbuilderMode, Mode=TwoWay}" />
-                        </StackPanel>
-                    </Border>
-                </WrapPanel>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                    <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource AccentStrongBrush}" Text="Workspace mode" />
+                    <ComboBox Width="180" Margin="0,8,0,0" ItemsSource="{Binding WorkspaceModes}" SelectedItem="{Binding SelectedWorkspaceMode, Mode=TwoWay}" />
+                    <WrapPanel Margin="0,10,0,0">
+                        <ToggleButton Content="Layers" Click="ToggleLayers_Click" IsChecked="{Binding IsLayersPanelOpen, Mode=OneWay}" IsEnabled="{Binding HasNetwork}" />
+                        <ToggleButton Content="Inspector" Click="ToggleInspector_Click" IsChecked="{Binding InspectorPanel.IsOpen, Mode=OneWay}" IsEnabled="{Binding HasNetwork}" />
+                        <ToggleButton Content="Analyze drawer" Click="ToggleReportsDrawer_Click" IsChecked="{Binding ReportsDrawer.IsOpen, Mode=OneWay}" IsEnabled="{Binding HasNetwork}" />
+                    </WrapPanel>
+                    <WrapPanel Margin="0,10,0,0">
+                        <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource MutedForegroundBrush}" Text="Theme:" />
+                        <ComboBox Width="150" Margin="8,0,0,0" ItemsSource="{Binding ThemeOptions}" SelectedItem="{Binding SelectedTheme, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </WrapPanel>
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -341,7 +94,7 @@
                                 <TextBlock FontSize="16"
                                            FontWeight="SemiBold"
                                            Foreground="{DynamicResource AccentStrongBrush}"
-                                           Text="Build / Simulate / Analyze" />
+                                           Text="Command bar" />
                                 <TextBlock Margin="0,3,0,0"
                                            FontSize="11"
                                            Foreground="{DynamicResource MutedForegroundBrush}"
@@ -354,33 +107,21 @@
                                 <Button Content="{Binding Terminology.AddNodeButton}"
                                         Click="AddNode_Click"
                                         IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="{Binding Terminology.Edges, StringFormat=Connect {0}...}"
+                                <Button Content="Connect routes..."
                                         Click="EditEdges_Click"
                                         IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="{Binding Terminology.TrafficTypes, StringFormat=Define {0}...}"
+                                <Button Content="Traffic roles..."
                                         Click="EditTrafficTypes_Click"
                                         IsEnabled="{Binding HasNetwork}" />
                                 <Button Content="Run"
                                         Click="RunSimulation_Click"
                                         IsEnabled="{Binding HasNetwork}" />
-                                 <Button Content="Reset Timeline"
-                                        Click="ResetTimeline_Click"
-                                         IsEnabled="{Binding HasNetwork}" />       
-                                <Button Content="Next Period"
+                                <Button Content="Next period"
                                         Click="NextTimelinePeriod_Click"
                                         IsEnabled="{Binding HasNetwork}" />
-                                <ToggleButton Content="Layers"
-                                              Click="ToggleLayers_Click"
-                                              IsChecked="{Binding IsLayersPanelOpen, Mode=OneWay}"
-                                              IsEnabled="{Binding HasNetwork}" />
-                                <ToggleButton Content="Inspector"
-                                              Click="ToggleInspector_Click"
-                                              IsChecked="{Binding InspectorPanel.IsOpen, Mode=OneWay}"
-                                              IsEnabled="{Binding HasNetwork}" />
-                                <ToggleButton Content="Reports"
-                                              Click="ToggleReportsDrawer_Click"
-                                              IsChecked="{Binding ReportsDrawer.IsOpen, Mode=OneWay}"
-                                              IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="Reset"
+                                        Click="ResetTimeline_Click"
+                                        IsEnabled="{Binding HasNetwork}" />
                             </WrapPanel>
                         </Grid>
                     </Border>
@@ -400,11 +141,11 @@
                                 <TextBlock FontSize="11"
                                            FontWeight="SemiBold"
                                            Foreground="{DynamicResource AccentStrongBrush}"
-                                           Text="{Binding GraphKeyboardHint}" />
+                                           Text="Canvas guidance" />
                                 <TextBlock Margin="0,2,0,0"
                                            FontSize="10"
                                            Foreground="{DynamicResource MutedForegroundBrush}"
-                                           Text="{Binding FocusedEdgeStatus}" />
+                                           Text="{Binding GraphKeyboardHint}" />
                             </StackPanel>
                             <Button Grid.Column="1"
                                     Margin="12,0,0,0"

@@ -8,7 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\MedWNetworkSim.App\MedWNetworkSim.App.csproj" />
+    <ProjectReference Include="..\MedWNetworkSim.App\MedWNetworkSim.App.csproj">
+      <AdditionalProperties>SelfContained=false</AdditionalProperties>
+    </ProjectReference>
   </ItemGroup>
 
 </Project>

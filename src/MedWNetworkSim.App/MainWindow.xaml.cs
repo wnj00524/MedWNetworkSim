@@ -1,6 +1,8 @@
 using Microsoft.Win32;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -15,10 +17,14 @@ public partial class MainWindow : Window
     private const double MinimumCanvasZoom = 0.2d;
     private const double MaximumCanvasZoom = 3.0d;
     private const double CanvasZoomStep = 1.1d;
+    private const double KeyboardMoveStep = 16d;
+    private const double KeyboardPanStep = 36d;
 
     private Point? pendingCanvasContextMenuPosition;
     private NodeViewModel? edgeCreationSourceNode;
+    private EdgeViewModel? focusedKeyboardEdge;
     private bool edgeCreationIsBidirectional = true;
+    private bool isGraphKeyboardMode;
     private double canvasZoom = 1d;
     private bool isPanningCanvas;
     private Point panStartViewerPosition;
@@ -31,6 +37,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         ViewModel = new MainWindowViewModel();
         DataContext = ViewModel;
+        SetDefaultCanvasHint();
     }
 
     public MainWindowViewModel ViewModel { get; }
@@ -295,6 +302,8 @@ public partial class MainWindow : Window
         if (sender is Thumb { DataContext: NodeViewModel node })
         {
             ViewModel.SelectedNode = node;
+            FocusKeyboardNode(node);
+            SetCanvasHint("Place selected. Enter edits. Ctrl+Arrow moves. E starts a route. Shift+F10 opens actions.");
 
             if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
             {
@@ -314,6 +323,76 @@ public partial class MainWindow : Window
         if (sender is FrameworkElement { DataContext: EdgeViewModel edge })
         {
             ViewModel.SelectedEdge = edge;
+            FocusKeyboardEdge(edge);
+            e.Handled = true;
+        }
+    }
+
+    private void NodeThumb_OnGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is not Thumb { DataContext: NodeViewModel node })
+        {
+            return;
+        }
+
+        FocusKeyboardNode(node);
+    }
+
+    private void NodeThumb_OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (sender is not Thumb { DataContext: NodeViewModel node })
+        {
+            return;
+        }
+
+        if (!isGraphKeyboardMode)
+        {
+            ActivateGraphKeyboardMode();
+        }
+
+        ViewModel.SelectedNode = node;
+        FocusKeyboardNode(node);
+
+        if (e.Key == Key.Enter)
+        {
+            OpenNodeEditorWindow();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Space)
+        {
+            SetCanvasHint("Place selected. Enter edits. E starts a route. Shift+F10 opens actions.");
+            e.Handled = true;
+            return;
+        }
+
+        if ((e.Key == Key.F10 && Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) || e.Key == Key.Apps)
+        {
+            OpenNodeContextMenu(node);
+            e.Handled = true;
+            return;
+        }
+
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) &&
+            (e.Key is Key.Left or Key.Right or Key.Up or Key.Down))
+        {
+            MoveNodeFromKeyboard(node, e.Key);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.E)
+        {
+            BeginEdgeCreation(node, isBidirectional: true);
+            SetCanvasHint("Route creation mode. Move to a second place and press Enter or click. Esc cancels.");
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            EndEdgeCreation();
             e.Handled = true;
         }
     }
@@ -328,6 +407,8 @@ public partial class MainWindow : Window
 
     private void NetworkCanvasGrid_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        ActivateGraphKeyboardMode();
+
         if (e.ClickCount != 2 || edgeCreationSourceNode is not null)
         {
             return;
@@ -367,6 +448,8 @@ public partial class MainWindow : Window
 
     private void NetworkCanvasGrid_OnPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
+        ActivateGraphKeyboardMode();
+
         if (sender is not IInputElement canvasGrid)
         {
             pendingCanvasContextMenuPosition = null;
@@ -404,6 +487,28 @@ public partial class MainWindow : Window
         ViewModel.SelectedEdge = null;
         OpenBlankCanvasContextMenu();
         e.Handled = true;
+    }
+
+    private void NetworkCanvasGrid_OnGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        ActivateGraphKeyboardMode();
+    }
+
+    private void NetworkCanvasGrid_OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        ActivateGraphKeyboardMode();
+
+        if (e.Key == Key.F6)
+        {
+            CycleWorkspaceRegions(reverse: Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+            e.Handled = true;
+            return;
+        }
+
+        if (HandleGraphCanvasKeyCommands(e))
+        {
+            e.Handled = true;
+        }
     }
 
     private void NetworkCanvasGrid_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -478,6 +583,19 @@ public partial class MainWindow : Window
     {
         base.OnPreviewKeyDown(e);
 
+        if (e.Key == Key.F6)
+        {
+            CycleWorkspaceRegions(reverse: Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+            e.Handled = true;
+            return;
+        }
+
+        if (isGraphKeyboardMode && HandleGraphCanvasKeyCommands(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key != Key.Delete || IsTextInputElement(e.OriginalSource))
         {
             return;
@@ -526,6 +644,7 @@ public partial class MainWindow : Window
     private void BeginEdgeCreation(NodeViewModel sourceNode, bool isBidirectional)
     {
         EndCanvasPan();
+        FocusKeyboardEdge(null);
         edgeCreationSourceNode = sourceNode;
         edgeCreationIsBidirectional = isBidirectional;
         EdgeCreationPreviewLine.X1 = sourceNode.CenterX;
@@ -534,6 +653,7 @@ public partial class MainWindow : Window
         EdgeCreationPreviewLine.Y2 = sourceNode.CenterY;
         EdgeCreationPreviewLine.Visibility = Visibility.Visible;
         Mouse.Capture(NetworkCanvasGrid);
+        SetCanvasHint($"Creating route from '{sourceNode.Name}'. Focus another place and press Enter, or click destination. Esc cancels.");
     }
 
     private void BeginEdgeCreationFromContext(NodeViewModel node)
@@ -548,6 +668,10 @@ public partial class MainWindow : Window
         edgeCreationSourceNode = null;
         edgeCreationIsBidirectional = true;
         EdgeCreationPreviewLine.Visibility = Visibility.Collapsed;
+        if (isGraphKeyboardMode)
+        {
+            SetCanvasHint("Canvas active. Arrow keys move between places. Ctrl+Tab cycles connected routes. Enter edits. N adds a place. E starts a route.");
+        }
 
         if (Mouse.Captured == NetworkCanvasGrid)
         {
@@ -705,6 +829,396 @@ public partial class MainWindow : Window
         return false;
     }
 
+    private void ShowKeyboardHelp_Click(object sender, RoutedEventArgs e)
+    {
+        MessageBox.Show(
+            this,
+            "Canvas keyboard shortcuts:\n" +
+            "• F6 cycles workspace regions (top, canvas, right rail, reports)\n" +
+            "• Arrow keys move between places\n" +
+            "• Ctrl+Arrow moves selected place\n" +
+            "• Shift+Arrow pans the canvas\n" +
+            "• Enter edits selected place/route\n" +
+            "• Ctrl+Tab cycles routes connected to selected place\n" +
+            "• Space selects a place\n" +
+            "• E starts route creation, Esc cancels\n" +
+            "• N adds a place\n" +
+            "• +/- zoom, 0 reset zoom\n" +
+            "• Delete removes selected item\n" +
+            "• Shift+F10 or Menu opens actions",
+            "Keyboard controls",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private void ActivateGraphKeyboardMode()
+    {
+        isGraphKeyboardMode = true;
+        SetCanvasHint("Canvas active. Arrow keys move between places. Ctrl+Tab cycles connected routes. Enter edits. N adds a place. E starts a route. Shift+F10 opens actions.");
+    }
+
+    private void SetDefaultCanvasHint()
+    {
+        ViewModel.GraphKeyboardHint = "Press F6 to move focus to the canvas workspace. Use Arrow keys for graph navigation and Ctrl+Tab to cycle connected routes.";
+        ViewModel.FocusedEdgeStatus = "No route focused.";
+    }
+
+    private void SetCanvasHint(string hint)
+    {
+        ViewModel.GraphKeyboardHint = hint;
+    }
+
+    private bool HandleGraphCanvasKeyCommands(KeyEventArgs e)
+    {
+        if (!isGraphKeyboardMode)
+        {
+            return false;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            EndEdgeCreation();
+            FocusKeyboardEdge(null);
+            SetCanvasHint("Canvas active. Arrow keys move between places. Ctrl+Tab cycles connected routes. Enter edits. N adds a place.");
+            return true;
+        }
+
+        if (Keyboard.Modifiers == ModifierKeys.Shift && (e.Key is Key.Left or Key.Right or Key.Up or Key.Down))
+        {
+            PanCanvasByKeyboard(e.Key);
+            return true;
+        }
+
+        if (e.Key is Key.Add or Key.OemPlus)
+        {
+            ApplyZoomAtCenter(CanvasZoomStep);
+            return true;
+        }
+
+        if (e.Key is Key.Subtract or Key.OemMinus)
+        {
+            ApplyZoomAtCenter(1d / CanvasZoomStep);
+            return true;
+        }
+
+        if (e.Key == Key.D0 || e.Key == Key.NumPad0)
+        {
+            ResetCanvasZoom();
+            return true;
+        }
+
+        if (e.Key == Key.N)
+        {
+            ExecuteWithErrorHandling(() => PreserveViewportAcrossWorkspaceShift(ViewModel.AddNode));
+            if (ViewModel.SelectedNode is not null)
+            {
+                FocusKeyboardNode(ViewModel.SelectedNode);
+            }
+
+            return true;
+        }
+
+        if (e.Key == Key.E && ViewModel.SelectedNode is not null)
+        {
+            BeginEdgeCreation(ViewModel.SelectedNode, isBidirectional: true);
+            SetCanvasHint("Route creation mode. Pick a destination place. Esc cancels.");
+            return true;
+        }
+
+        if (e.Key == Key.Enter)
+        {
+            if (edgeCreationSourceNode is not null &&
+                ViewModel.SelectedNode is not null &&
+                !ReferenceEquals(edgeCreationSourceNode, ViewModel.SelectedNode))
+            {
+                var source = edgeCreationSourceNode;
+                var target = ViewModel.SelectedNode;
+                var isBidirectional = edgeCreationIsBidirectional;
+                ExecuteWithErrorHandling(() => ViewModel.AddEdgeBetween(source, target, isBidirectional));
+                EndEdgeCreation();
+                FocusKeyboardEdge(ViewModel.SelectedEdge);
+                return true;
+            }
+
+            if (focusedKeyboardEdge is not null)
+            {
+                ViewModel.SelectedEdge = focusedKeyboardEdge;
+                OpenEdgeEditorWindow();
+                return true;
+            }
+
+            if (ViewModel.SelectedNode is not null)
+            {
+                OpenNodeEditorWindow();
+                return true;
+            }
+        }
+
+        if (e.Key == Key.Delete && !IsTextInputElement(e.OriginalSource))
+        {
+            return ConfirmAndDeleteSelectedItem();
+        }
+
+        if ((e.Key == Key.F10 && Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) || e.Key == Key.Apps)
+        {
+            if (focusedKeyboardEdge is not null)
+            {
+                OpenEdgeContextMenu(focusedKeyboardEdge);
+                return true;
+            }
+
+            if (ViewModel.SelectedNode is not null)
+            {
+                OpenNodeContextMenu(ViewModel.SelectedNode);
+                return true;
+            }
+
+            OpenBlankCanvasContextMenu();
+            return true;
+        }
+
+        if (e.Key == Key.Tab && Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && ViewModel.SelectedNode is not null)
+        {
+            FocusNextConnectedEdge(ViewModel.SelectedNode, forward: !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+            return true;
+        }
+
+        if (e.Key is Key.Left or Key.Right or Key.Up or Key.Down)
+        {
+            return FocusNearbyNode(e.Key);
+        }
+
+        return false;
+    }
+
+    private void FocusKeyboardNode(NodeViewModel? node)
+    {
+        foreach (var candidate in ViewModel.Nodes)
+        {
+            candidate.IsKeyboardFocused = ReferenceEquals(candidate, node);
+        }
+
+        if (node is null)
+        {
+            return;
+        }
+
+        ViewModel.SelectedNode = node;
+        ViewModel.SelectedEdge = null;
+        FocusKeyboardEdge(null);
+
+        var thumb = FindNodeThumb(node);
+        if (thumb is not null && !thumb.IsKeyboardFocused)
+        {
+            thumb.Focus();
+        }
+    }
+
+    private void FocusKeyboardEdge(EdgeViewModel? edge)
+    {
+        focusedKeyboardEdge = edge;
+        foreach (var candidate in ViewModel.Edges)
+        {
+            candidate.IsKeyboardFocused = ReferenceEquals(candidate, edge);
+        }
+
+        if (edge is null)
+        {
+            ViewModel.FocusedEdgeStatus = "No route focused.";
+            return;
+        }
+
+        ViewModel.SelectedEdge = edge;
+        ViewModel.FocusedEdgeStatus = $"Route focused: {DescribeEdge(edge)}. Enter edits. Delete removes. Esc clears.";
+        SetCanvasHint("Route selected. Enter edits. Delete removes. Esc clears selection.");
+    }
+
+    private bool FocusNearbyNode(Key key)
+    {
+        if (ViewModel.Nodes.Count == 0)
+        {
+            return false;
+        }
+
+        var current = ViewModel.SelectedNode ?? ViewModel.Nodes[0];
+        var currentPoint = new Point(current.CenterX, current.CenterY);
+        var direction = key switch
+        {
+            Key.Left => new Vector(-1, 0),
+            Key.Right => new Vector(1, 0),
+            Key.Up => new Vector(0, -1),
+            Key.Down => new Vector(0, 1),
+            _ => new Vector(0, 0)
+        };
+
+        var best = ViewModel.Nodes
+            .Where(node => !ReferenceEquals(node, current))
+            .Select(node => new
+            {
+                Node = node,
+                Delta = new Vector(node.CenterX - currentPoint.X, node.CenterY - currentPoint.Y)
+            })
+            .Where(item => Vector.Multiply(item.Delta, direction) > 0d)
+            .OrderByDescending(item => Vector.Multiply(item.Delta, direction))
+            .ThenBy(item => item.Delta.LengthSquared)
+            .FirstOrDefault()?.Node;
+
+        if (best is null)
+        {
+            return false;
+        }
+
+        FocusKeyboardNode(best);
+        SetCanvasHint($"Focused place '{best.Name}'. Enter edits. Ctrl+Arrow moves. E starts a route.");
+        return true;
+    }
+
+    private void MoveNodeFromKeyboard(NodeViewModel node, Key key)
+    {
+        var (dx, dy) = key switch
+        {
+            Key.Left => (-KeyboardMoveStep, 0d),
+            Key.Right => (KeyboardMoveStep, 0d),
+            Key.Up => (0d, -KeyboardMoveStep),
+            Key.Down => (0d, KeyboardMoveStep),
+            _ => (0d, 0d)
+        };
+
+        if (Math.Abs(dx) < double.Epsilon && Math.Abs(dy) < double.Epsilon)
+        {
+            return;
+        }
+
+        ExecuteWithErrorHandling(() => PreserveViewportAcrossWorkspaceShift(() => ViewModel.MoveNode(node, dx, dy)));
+        SetCanvasHint($"Moved place '{node.Name}'. Ctrl+Arrow continues moving in grid steps.");
+    }
+
+    private void FocusNextConnectedEdge(NodeViewModel node, bool forward)
+    {
+        var connectedEdges = ViewModel.Edges
+            .Where(edge => string.Equals(edge.FromNodeId, node.Id, StringComparison.OrdinalIgnoreCase) ||
+                           string.Equals(edge.ToNodeId, node.Id, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (connectedEdges.Count == 0)
+        {
+            ViewModel.FocusedEdgeStatus = $"No routes are connected to '{node.Name}'.";
+            return;
+        }
+
+        var currentIndex = focusedKeyboardEdge is null
+            ? -1
+            : connectedEdges.FindIndex(edge => ReferenceEquals(edge, focusedKeyboardEdge));
+        var offset = forward ? 1 : -1;
+        var nextIndex = (currentIndex + offset + connectedEdges.Count) % connectedEdges.Count;
+        FocusKeyboardEdge(connectedEdges[nextIndex]);
+    }
+
+    private Thumb? FindNodeThumb(NodeViewModel node)
+    {
+        return FindVisualChildren<Thumb>(NetworkCanvasGrid).FirstOrDefault(thumb => ReferenceEquals(thumb.DataContext, node));
+    }
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        var childCount = VisualTreeHelper.GetChildrenCount(root);
+        for (var index = 0; index < childCount; index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T matched)
+            {
+                yield return matched;
+            }
+
+            foreach (var descendant in FindVisualChildren<T>(child))
+            {
+                yield return descendant;
+            }
+        }
+    }
+
+    private void PanCanvasByKeyboard(Key key)
+    {
+        var (dx, dy) = key switch
+        {
+            Key.Left => (-KeyboardPanStep, 0d),
+            Key.Right => (KeyboardPanStep, 0d),
+            Key.Up => (0d, -KeyboardPanStep),
+            Key.Down => (0d, KeyboardPanStep),
+            _ => (0d, 0d)
+        };
+
+        NetworkCanvasScrollViewer.ScrollToHorizontalOffset(Math.Max(0d, NetworkCanvasScrollViewer.HorizontalOffset + dx));
+        NetworkCanvasScrollViewer.ScrollToVerticalOffset(Math.Max(0d, NetworkCanvasScrollViewer.VerticalOffset + dy));
+    }
+
+    private void ApplyZoomAtCenter(double factor)
+    {
+        var previousZoom = canvasZoom;
+        var nextZoom = Math.Clamp(previousZoom * factor, MinimumCanvasZoom, MaximumCanvasZoom);
+        if (Math.Abs(nextZoom - previousZoom) < 0.0001d)
+        {
+            return;
+        }
+
+        var viewportCenter = new Point(
+            NetworkCanvasScrollViewer.ViewportWidth / 2d,
+            NetworkCanvasScrollViewer.ViewportHeight / 2d);
+        var contentX = (NetworkCanvasScrollViewer.HorizontalOffset + viewportCenter.X) / Math.Max(previousZoom, 0.001d);
+        var contentY = (NetworkCanvasScrollViewer.VerticalOffset + viewportCenter.Y) / Math.Max(previousZoom, 0.001d);
+
+        canvasZoom = nextZoom;
+        NetworkCanvasScaleTransform.ScaleX = nextZoom;
+        NetworkCanvasScaleTransform.ScaleY = nextZoom;
+        NetworkCanvasScrollViewer.ScrollToHorizontalOffset((contentX * nextZoom) - viewportCenter.X);
+        NetworkCanvasScrollViewer.ScrollToVerticalOffset((contentY * nextZoom) - viewportCenter.Y);
+    }
+
+    private void ResetCanvasZoom()
+    {
+        canvasZoom = 1d;
+        NetworkCanvasScaleTransform.ScaleX = 1d;
+        NetworkCanvasScaleTransform.ScaleY = 1d;
+        SetCanvasHint("Canvas zoom reset.");
+    }
+
+    private void CycleWorkspaceRegions(bool reverse)
+    {
+        var regions = new List<FrameworkElement> { TopControlsRegion, NetworkCanvasGrid };
+        if (RightRailRegion.Visibility == Visibility.Visible)
+        {
+            regions.Add(RightRailRegion);
+        }
+
+        if (BottomReportsRegion.Visibility == Visibility.Visible)
+        {
+            regions.Add(BottomReportsRegion);
+        }
+
+        if (regions.Count == 0)
+        {
+            return;
+        }
+
+        var focusedElement = FocusManager.GetFocusedElement(this) as DependencyObject;
+        var currentIndex = regions.FindIndex(region => focusedElement is not null && IsDescendantOf(focusedElement, region));
+        var offset = reverse ? -1 : 1;
+        var nextIndex = currentIndex < 0
+            ? 0
+            : (currentIndex + offset + regions.Count) % regions.Count;
+        regions[nextIndex].Focus();
+
+        if (ReferenceEquals(regions[nextIndex], NetworkCanvasGrid))
+        {
+            ActivateGraphKeyboardMode();
+        }
+        else
+        {
+            isGraphKeyboardMode = false;
+            SetDefaultCanvasHint();
+        }
+    }
+
     private void OpenNodeEditorWindow()
     {
         // The dedicated window keeps node-role editing simpler than trying to fit every selector into the main pane.
@@ -791,6 +1305,7 @@ public partial class MainWindow : Window
             if (ConfirmDeletion($"Delete edge {edgeDescription}?"))
             {
                 ExecuteWithErrorHandling(ViewModel.RemoveSelectedEdge);
+                FocusKeyboardEdge(null);
                 return true;
             }
 
@@ -805,6 +1320,7 @@ public partial class MainWindow : Window
             if (ConfirmDeletion($"Delete node '{nodeName}' and any connected edges?"))
             {
                 ExecuteWithErrorHandling(ViewModel.RemoveSelectedNode);
+                FocusKeyboardEdge(null);
                 return true;
             }
         }

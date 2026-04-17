@@ -47,6 +47,8 @@ public sealed class EdgeViewModel : ObservableObject
     private double capacityUtilizationRatio;
     private Brush flowStrokeBrush = IdleBrush;
     private bool isRouteHighlighted;
+    private bool isSelected;
+    private bool isKeyboardFocused;
     private string trafficDetailsLabel = "none visible";
 
     public EdgeViewModel(EdgeModel model, NodeViewModel? sourceNode, NodeViewModel? targetNode)
@@ -441,6 +443,18 @@ public sealed class EdgeViewModel : ObservableObject
     public Visibility FlowOverlayVisibility => HasValidEndpoints && RoutedTotalQuantity > Epsilon
         ? Visibility.Visible
         : Visibility.Collapsed;
+
+    public bool IsSelected
+    {
+        get => isSelected;
+        set => SetProperty(ref isSelected, value);
+    }
+
+    public bool IsKeyboardFocused
+    {
+        get => isKeyboardFocused;
+        set => SetProperty(ref isKeyboardFocused, value);
+    }
 
     public Visibility RouteHighlightVisibility => HasValidEndpoints && isRouteHighlighted
         ? Visibility.Visible

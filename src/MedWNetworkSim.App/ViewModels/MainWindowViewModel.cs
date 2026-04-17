@@ -100,6 +100,8 @@ public sealed class MainWindowViewModel : ObservableObject
     private bool isLayersPanelOpen;
     private bool isLegendPanelOpen;
     private bool suppressInspectorAutoOpen;
+    private string graphKeyboardHint = "Press F6 to move into the canvas workspace.";
+    private string focusedEdgeStatus = "No route focused.";
 
     public MainWindowViewModel()
     {
@@ -411,6 +413,18 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
         private set => SetProperty(ref statusMessage, value);
     }
 
+    public string GraphKeyboardHint
+    {
+        get => graphKeyboardHint;
+        set => SetProperty(ref graphKeyboardHint, value);
+    }
+
+    public string FocusedEdgeStatus
+    {
+        get => focusedEdgeStatus;
+        set => SetProperty(ref focusedEdgeStatus, value);
+    }
+
     public bool HasNetwork
     {
         get => hasNetwork;
@@ -665,9 +679,21 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
         get => selectedNode;
         set
         {
-            if (!SetProperty(ref selectedNode, value))
+            if (ReferenceEquals(selectedNode, value))
             {
                 return;
+            }
+
+            if (selectedNode is not null)
+            {
+                selectedNode.IsSelected = false;
+            }
+
+            SetProperty(ref selectedNode, value);
+
+            if (value is not null)
+            {
+                value.IsSelected = true;
             }
 
             SelectedNodeTrafficProfile = value?.TrafficProfiles.FirstOrDefault();
@@ -968,9 +994,21 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
         get => selectedEdge;
         set
         {
-            if (!SetProperty(ref selectedEdge, value))
+            if (ReferenceEquals(selectedEdge, value))
             {
                 return;
+            }
+
+            if (selectedEdge is not null)
+            {
+                selectedEdge.IsSelected = false;
+            }
+
+            SetProperty(ref selectedEdge, value);
+
+            if (value is not null)
+            {
+                value.IsSelected = true;
             }
 
             if (value is not null)
@@ -979,6 +1017,16 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
                 RaiseOptionalSurfacePropertiesChanged();
             }
         }
+    }
+
+    public void SetStatusMessage(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        StatusMessage = message.Trim();
     }
 
     public TrafficTypeDefinitionEditorViewModel? SelectedTrafficDefinition

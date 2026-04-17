@@ -59,6 +59,8 @@ public sealed class NodeViewModel : ObservableObject
     private readonly ObservableCollection<NodeDemandBadgeViewModel> demandBadges = [];
     private Brush nodeBorderDisplayBrush = DefaultNodeBorder;
     private Brush simulationBrush = IdleBrush;
+    private bool isSelected;
+    private bool isKeyboardFocused;
 
     public NodeViewModel(NodeModel model)
     {
@@ -639,6 +641,18 @@ public sealed class NodeViewModel : ObservableObject
     }
 
     public Brush NodeBorderDisplayBrush => nodeBorderDisplayBrush;
+
+    public bool IsSelected
+    {
+        get => isSelected;
+        set => SetProperty(ref isSelected, value);
+    }
+
+    public bool IsKeyboardFocused
+    {
+        get => isKeyboardFocused;
+        set => SetProperty(ref isKeyboardFocused, value);
+    }
 
     public Brush SimulationBrush => simulationBrush;
 

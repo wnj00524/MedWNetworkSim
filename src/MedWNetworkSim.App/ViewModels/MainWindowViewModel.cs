@@ -88,6 +88,8 @@ public sealed class MainWindowViewModel : ObservableObject
     private TemporalNetworkSimulationEngine.TemporalSimulationStepResult? lastTimelineStepResult;
     private int currentPeriod;
     private bool hasTimelineSnapshot;
+    private double workspaceMinX;
+    private double workspaceMinY;
     private double workspaceWidth = 1600d;
     private double workspaceHeight = 1000d;
     private bool hasNetwork;
@@ -597,6 +599,34 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
     {
         IsLegendPanelOpen = !IsLegendPanelOpen;
     }
+
+    public double WorkspaceMinX
+    {
+        get => workspaceMinX;
+        private set
+        {
+            if (SetProperty(ref workspaceMinX, value))
+            {
+                OnPropertyChanged(nameof(WorkspaceTranslateX));
+            }
+        }
+    }
+
+    public double WorkspaceMinY
+    {
+        get => workspaceMinY;
+        private set
+        {
+            if (SetProperty(ref workspaceMinY, value))
+            {
+                OnPropertyChanged(nameof(WorkspaceTranslateY));
+            }
+        }
+    }
+
+    public double WorkspaceTranslateX => -WorkspaceMinX;
+
+    public double WorkspaceTranslateY => -WorkspaceMinY;
 
     public double WorkspaceWidth
     {
@@ -2746,18 +2776,30 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
 
     private void RecalculateWorkspace()
     {
+        const double defaultWidth = 1600d;
+        const double defaultHeight = 1000d;
+        const double minimumWidth = 1400d;
+        const double minimumHeight = 900d;
+        const double padding = 200d;
+
         if (Nodes.Count == 0)
         {
-            WorkspaceWidth = 1600d;
-            WorkspaceHeight = 1000d;
+            WorkspaceMinX = 0d;
+            WorkspaceMinY = 0d;
+            WorkspaceWidth = defaultWidth;
+            WorkspaceHeight = defaultHeight;
             return;
         }
 
-        var maxX = Nodes.Max(node => node.CenterX + (node.Width / 2d));
-        var maxY = Nodes.Max(node => node.CenterY + (node.Height / 2d));
+        var minLeft = Nodes.Min(node => node.Left);
+        var minTop = Nodes.Min(node => node.Top);
+        var maxRight = Nodes.Max(node => node.Left + node.Width);
+        var maxBottom = Nodes.Max(node => node.Top + node.Height);
 
-        WorkspaceWidth = Math.Max(1400d, maxX + 180d);
-        WorkspaceHeight = Math.Max(900d, maxY + 180d);
+        WorkspaceMinX = minLeft - padding;
+        WorkspaceMinY = minTop - padding;
+        WorkspaceWidth = Math.Max(minimumWidth, (maxRight - minLeft) + (padding * 2d));
+        WorkspaceHeight = Math.Max(minimumHeight, (maxBottom - minTop) + (padding * 2d));
     }
 
     private void InvalidateSimulationResults(string message)

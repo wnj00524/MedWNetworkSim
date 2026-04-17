@@ -61,11 +61,11 @@
           "dependencies": {
             "Avalonia": {
               "target": "Package",
-              "version": "[0.10.12, )"
+              "version": "[12.0.1, )"
             },
             "Avalonia.Desktop": {
               "target": "Package",
-              "version": "[0.10.12, )"
+              "version": "[12.0.1, )"
             }
           },
           "imports": [

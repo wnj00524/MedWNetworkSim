@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("MedWNetworkSim.App.Avalonia")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f703f3593cfa170fdcd7653c9689eaa744647cc9")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+04f5342c989f7d3b59733de076d8ae09fae03ef2")]
 [assembly: System.Reflection.AssemblyProductAttribute("MedWNetworkSim.App.Avalonia")]
 [assembly: System.Reflection.AssemblyTitleAttribute("MedWNetworkSim.App.Avalonia")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -12,6 +12,13 @@
         WindowStartupLocation="CenterOwner">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <Style x:Key="AccessibleEditorButtonStyle" TargetType="Button">
+            <Setter Property="MinWidth" Value="120" />
+            <Setter Property="MinHeight" Value="44" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="KeyboardNavigation.IsTabStop" Value="True" />
+        </Style>
     </Window.Resources>
     <Grid Margin="18">
         <Grid.RowDefinitions>
@@ -65,8 +72,14 @@
                                Text="{Binding Terminology.TrafficTypes}" />
 
                     <WrapPanel Grid.Row="2">
-                        <Button Content="{Binding Terminology.AddTrafficTypeButton}" Click="AddTrafficType_Click" />
-                        <Button Content="Remove Selected" Click="RemoveTrafficType_Click" />
+                        <Button Content="{Binding Terminology.AddTrafficTypeButton}"
+                                Click="AddTrafficType_Click"
+                                Style="{StaticResource AccessibleEditorButtonStyle}"
+                                ToolTip="Add a new traffic type" />
+                        <Button Content="Remove Selected Traffic Type"
+                                Click="RemoveTrafficType_Click"
+                                Style="{StaticResource AccessibleEditorButtonStyle}"
+                                ToolTip="Remove the selected traffic type" />
                     </WrapPanel>
 
                     <DataGrid Grid.Row="4"
@@ -380,8 +393,12 @@
                        Text="{Binding Terminology.TrafficTypeEditorTip}" />
             <Button DockPanel.Dock="Right"
                     Margin="12,0,0,0"
-                    Content="Close"
-                    Click="Close_Click" />
+                    Content="Save Changes"
+                    Click="Close_Click"
+                    Style="{StaticResource AccessibleEditorButtonStyle}"
+                    ToolTip="Click to save changes to the network configuration"
+                    AutomationProperties.Name="Save Changes Button"
+                    AutomationProperties.HelpText="Saves all modifications made to the network configuration." />
         </DockPanel>
     </Grid>
 </Window>

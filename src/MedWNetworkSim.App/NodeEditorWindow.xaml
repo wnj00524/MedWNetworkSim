@@ -92,10 +92,10 @@
                                   ItemsSource="{Binding DemographicDemandPresetOptions}"
                                   SelectedItem="{Binding SelectedDemographicDemandPreset, Mode=TwoWay}"
                                   ToolTip="{Binding SelectedDemographicDemandPresetMappingSummary}" />
-                        <Button Content="Apply Preset"
+                        <Button Content="Apply Settings"
                                 Click="ApplyDemographicDemandPreset_Click"
                                 ToolTip="{Binding SelectedDemographicDemandPresetDescription}" />
-                        <Button Content="Remove Selected" Click="RemoveNode_Click" />
+                        <Button Content="Remove Selected Node" Click="RemoveNode_Click" />
                     </WrapPanel>
 
                     <Grid Grid.Row="4">
@@ -360,7 +360,7 @@
                     <WrapPanel Grid.Row="2">
                         <Button Content="{Binding Terminology.AddTrafficRoleButton}" Click="AddTrafficRole_Click" />
                         <Button Content="{Binding Terminology.ApplyTrafficRoleToAllNodesButton}" Click="ApplyTrafficRoleToAllNodes_Click" />
-                        <Button Content="Remove Selected" Click="RemoveTrafficRole_Click" />
+                        <Button Content="Remove Selected Entry" Click="RemoveTrafficRole_Click" />
                     </WrapPanel>
 
                     <ScrollViewer Grid.Row="4"
@@ -618,7 +618,12 @@
                        Text="{Binding StatusMessage}" />
             <Button DockPanel.Dock="Right"
                     Margin="12,0,0,0"
-                    Content="Close"
+                    MinWidth="120"
+                    MinHeight="44"
+                    Content="Save Changes"
+                    ToolTip="Click to save changes to the network configuration"
+                    AutomationProperties.Name="Save Changes Button"
+                    AutomationProperties.HelpText="Saves all modifications made to the network configuration."
                     Click="Close_Click" />
         </DockPanel>
     </Grid>

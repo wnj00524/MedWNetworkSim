@@ -407,7 +407,6 @@
                               Width="{Binding WorkspaceWidth}"
                               Height="{Binding WorkspaceHeight}"
                               Focusable="True"
-                              IsTabStop="True"
                               KeyboardNavigation.TabNavigation="None"
                               AutomationProperties.Name="Network graph canvas workspace"
                               AutomationProperties.HelpText="Canvas workspace. Arrow keys move node focus, Enter edits, N adds a place, E starts a route, and Shift+F10 opens actions."

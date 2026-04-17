@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -13,9 +16,16 @@ using MedWNetworkSim.Interaction;
 using MedWNetworkSim.Presentation;
 using MedWNetworkSim.Rendering;
 using SkiaSharp;
-using System.Windows.Input;
 
 namespace MedWNetworkSim.UI;
+
+public sealed class GraphCanvasStatusChangedEventArgs : EventArgs
+{
+    public required string Title { get; init; }
+    public required string Detail { get; init; }
+    public required bool IsError { get; init; }
+    public required bool HasVisibleFrame { get; init; }
+}
 
 public sealed class GraphCanvasControl : Control
 {
@@ -26,14 +36,35 @@ public sealed class GraphCanvasControl : Control
     private readonly DispatcherTimer animationTimer;
     private WriteableBitmap? bitmap;
     private DateTimeOffset lastFrame = DateTimeOffset.UtcNow;
+    private string statusTitle = "Canvas placeholder";
+    private string statusDetail = "Waiting for the graph scene.";
+    private bool hasVisibleFrame;
+    private bool hasError;
 
     public GraphCanvasControl()
     {
         Focusable = true;
         ClipToBounds = true;
+        MinHeight = 420;
+        MinWidth = 720;
+
         animationTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(33), DispatcherPriority.Background, HandleAnimationTick);
-        animationTimer.Start();
+        AttachedToVisualTree += (_, _) =>
+        {
+            LogDebug("Attached to visual tree.");
+            if (!animationTimer.IsEnabled)
+            {
+                animationTimer.Start();
+            }
+        };
+        DetachedFromVisualTree += (_, _) =>
+        {
+            LogDebug("Detached from visual tree.");
+            animationTimer.Stop();
+        };
     }
+
+    public event EventHandler<GraphCanvasStatusChangedEventArgs>? StatusChanged;
 
     public WorkspaceViewModel? ViewModel
     {
@@ -44,28 +75,66 @@ public sealed class GraphCanvasControl : Control
     public override void Render(DrawingContext context)
     {
         base.Render(context);
-        if (ViewModel is null || Bounds.Width <= 0d || Bounds.Height <= 0d)
+
+        LogDebug(
+            $"Render() called. Bounds={Bounds.Width:0.##}x{Bounds.Height:0.##}, ViewModelNull={ViewModel is null}, BitmapReady={bitmap is not null}.");
+
+        DrawBaseBackground(context);
+
+        if (ViewModel is null)
         {
+            UpdateStatus("Waiting for scene", "ViewModel is null. The shell rendered, but the graph scene has not been attached yet.", isError: false, visibleFrame: false);
+            DrawStatusPanel(context, statusTitle, statusDetail, isError: false);
             return;
         }
 
-        EnsureBitmap((int)Math.Ceiling(Bounds.Width), (int)Math.Ceiling(Bounds.Height));
-        if (bitmap is null)
+        if (Bounds.Width <= 0d || Bounds.Height <= 0d)
         {
+            UpdateStatus("Canvas placeholder", $"Waiting for layout. Bounds are {Bounds.Width:0.##} x {Bounds.Height:0.##}.", isError: false, visibleFrame: false);
+            DrawStatusPanel(context, statusTitle, statusDetail, isError: false);
             return;
         }
 
-        var viewportSize = new GraphSize(Bounds.Width, Bounds.Height);
-        var interactionContext = ViewModel.CreateInteractionContext(viewportSize);
-        using (var locked = bitmap.Lock())
+        try
         {
-            var imageInfo = new SKImageInfo(locked.Size.Width, locked.Size.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+            var pixelWidth = Math.Max(1, (int)Math.Ceiling(Bounds.Width));
+            var pixelHeight = Math.Max(1, (int)Math.Ceiling(Bounds.Height));
+            EnsureBitmap(pixelWidth, pixelHeight);
+            if (bitmap is null)
+            {
+                UpdateStatus("Canvas placeholder", "WriteableBitmap creation did not succeed.", isError: true, visibleFrame: false);
+                DrawStatusPanel(context, statusTitle, statusDetail, isError: true);
+                return;
+            }
+
+            var viewportSize = new GraphSize(Bounds.Width, Bounds.Height);
+            var interactionContext = ViewModel.CreateInteractionContext(viewportSize);
+
+            using var locked = bitmap.Lock();
+            var imageInfo = new SKImageInfo(
+                locked.Size.Width,
+                locked.Size.Height,
+                SKColorType.Bgra8888,
+                SKAlphaType.Premul);
+
             using var surface = SKSurface.Create(imageInfo, locked.Address, locked.RowBytes);
+            if (surface is null)
+            {
+                throw new InvalidOperationException($"SKSurface.Create returned null for {locked.Size.Width}x{locked.Size.Height} with row bytes {locked.RowBytes}.");
+            }
+
             renderer.Render(surface.Canvas, interactionContext.Scene, interactionContext.Viewport, viewportSize);
             surface.Canvas.Flush();
-        }
 
-        context.DrawImage(bitmap, new Rect(0d, 0d, bitmap.PixelSize.Width, bitmap.PixelSize.Height), Bounds);
+            context.DrawImage(bitmap, new Rect(0d, 0d, bitmap.PixelSize.Width, bitmap.PixelSize.Height), Bounds);
+            UpdateStatus("Canvas rendered", $"Rendered {bitmap.PixelSize.Width} x {bitmap.PixelSize.Height}.", isError: false, visibleFrame: true);
+        }
+        catch (Exception ex)
+        {
+            LogDebug($"Render failure: {ex}");
+            UpdateStatus("Render error", ex.Message, isError: true, visibleFrame: false);
+            DrawStatusPanel(context, "Graph canvas failed to render", ex.Message, isError: true);
+        }
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -77,7 +146,7 @@ public sealed class GraphCanvasControl : Control
             return;
         }
 
-        var context = ViewModel.CreateInteractionContext(new GraphSize(Bounds.Width, Bounds.Height));
+        var interactionContext = ViewModel.CreateInteractionContext(new GraphSize(Bounds.Width, Bounds.Height));
         var point = e.GetPosition(this);
         var button = e.GetCurrentPoint(this).Properties.PointerUpdateKind switch
         {
@@ -88,7 +157,7 @@ public sealed class GraphCanvasControl : Control
         };
 
         ViewModel.InteractionController.OnPointerPressed(
-            context,
+            interactionContext,
             button,
             new GraphPoint(point.X, point.Y),
             e.KeyModifiers.HasFlag(KeyModifiers.Shift),
@@ -179,20 +248,28 @@ public sealed class GraphCanvasControl : Control
         if (width <= 0 || height <= 0)
         {
             bitmap = null;
+            LogDebug("Bitmap skipped because requested size was zero.");
             return;
         }
 
-        if (bitmap?.PixelSize.Width == width && bitmap.PixelSize.Height == height)
+        if (bitmap is not null &&
+            bitmap.PixelSize.Width == width &&
+            bitmap.PixelSize.Height == height)
         {
             return;
         }
 
-        bitmap = new WriteableBitmap(new PixelSize(width, height), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
+        bitmap = new WriteableBitmap(
+            new PixelSize(width, height),
+            new Vector(96, 96),
+            Avalonia.Platform.PixelFormat.Bgra8888,
+            Avalonia.Platform.AlphaFormat.Premul);
+        LogDebug($"Bitmap created successfully at {width}x{height}.");
     }
 
     private void HandleAnimationTick(object? sender, EventArgs e)
     {
-        if (ViewModel is null)
+        if (ViewModel is null || VisualRoot is null || Bounds.Width <= 0d || Bounds.Height <= 0d)
         {
             return;
         }
@@ -203,10 +280,80 @@ public sealed class GraphCanvasControl : Control
         ViewModel.TickAnimation(elapsed);
         InvalidateVisual();
     }
+
+    private void DrawBaseBackground(DrawingContext context)
+    {
+        context.DrawRectangle(
+            new SolidColorBrush(Color.Parse("#DCEBFA")),
+            new Pen(new SolidColorBrush(Color.Parse("#7FA7C9")), 1),
+            Bounds);
+    }
+
+    private void DrawStatusPanel(DrawingContext context, string title, string detail, bool isError)
+    {
+        var panelRect = new Rect(
+            Bounds.X + 16d,
+            Bounds.Y + 16d,
+            Math.Max(0d, Bounds.Width - 32d),
+            Math.Max(0d, Bounds.Height - 32d));
+
+        var fill = new SolidColorBrush(Color.Parse(isError ? "#FFF0F0" : "#F7FBFF"));
+        var border = new Pen(new SolidColorBrush(Color.Parse(isError ? "#CC5252" : "#4D8AC3")), 2);
+        context.DrawRectangle(fill, border, panelRect);
+
+        var titleText = CreateFormattedText(title, 24d, FontWeight.Bold, isError ? "#7F1D1D" : "#163B63");
+        var detailText = CreateFormattedText(detail, 14d, FontWeight.Normal, isError ? "#993333" : "#365B7E");
+
+        context.DrawText(titleText, new Point(panelRect.X + 18d, panelRect.Y + 18d));
+        context.DrawText(detailText, new Point(panelRect.X + 18d, panelRect.Y + 58d));
+    }
+
+    private static FormattedText CreateFormattedText(string text, double fontSize, FontWeight weight, string color)
+    {
+        return new FormattedText(
+            text,
+            CultureInfo.CurrentUICulture,
+            FlowDirection.LeftToRight,
+            new Typeface(new FontFamily("Segoe UI"), FontStyle.Normal, weight),
+            fontSize,
+            new SolidColorBrush(Color.Parse(color)));
+    }
+
+    private void UpdateStatus(string title, string detail, bool isError, bool visibleFrame)
+    {
+        if (statusTitle == title &&
+            statusDetail == detail &&
+            hasError == isError &&
+            hasVisibleFrame == visibleFrame)
+        {
+            return;
+        }
+
+        statusTitle = title;
+        statusDetail = detail;
+        hasError = isError;
+        hasVisibleFrame = visibleFrame;
+
+        StatusChanged?.Invoke(this, new GraphCanvasStatusChangedEventArgs
+        {
+            Title = title,
+            Detail = detail,
+            IsError = isError,
+            HasVisibleFrame = visibleFrame
+        });
+    }
+
+    private static void LogDebug(string message)
+    {
+        Trace.WriteLine($"[GraphCanvasControl] {message}");
+    }
 }
 
 public sealed class ShellWindow : Window
 {
+    private static bool UseDiagnosticCanvasIsolation =>
+        string.Equals(Environment.GetEnvironmentVariable("MEDW_AVALONIA_ISOLATION"), "1", StringComparison.Ordinal);
+
     public ShellWindow()
     {
         var viewModel = new WorkspaceViewModel();
@@ -215,7 +362,7 @@ public sealed class ShellWindow : Window
         Height = 1080;
         MinWidth = 1320;
         MinHeight = 860;
-        Background = new SolidColorBrush(Color.Parse("#07111C"));
+        Background = new SolidColorBrush(Color.Parse("#EEF4FA"));
         Title = viewModel.WindowTitle;
         viewModel.PropertyChanged += (_, e) =>
         {
@@ -225,23 +372,30 @@ public sealed class ShellWindow : Window
             }
         };
 
-        Content = BuildLayout(viewModel);
+        try
+        {
+            Content = BuildLayout(viewModel);
+        }
+        catch (Exception ex)
+        {
+            Content = BuildWindowFailureSurface(ex);
+        }
     }
 
     private static Control BuildLayout(WorkspaceViewModel viewModel)
     {
         var root = new DockPanel
         {
-            Margin = new Thickness(18),
+            Margin = new Thickness(16),
             LastChildFill = true
         };
 
         var status = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#0C1B2A")),
+            Background = new SolidColorBrush(Color.Parse("#DAE8F5")),
             CornerRadius = new CornerRadius(14),
             Padding = new Thickness(14, 10),
-            BorderBrush = new SolidColorBrush(Color.Parse("#1C374D")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#87A9C7")),
             BorderThickness = new Thickness(1),
             Child = new Grid
             {
@@ -257,13 +411,32 @@ public sealed class ShellWindow : Window
         DockPanel.SetDock(status, Dock.Bottom);
         root.Children.Add(status);
 
+        var smokeBanner = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#FFF4B3")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#D2A106")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(18, 12),
+            Child = new TextBlock
+            {
+                Text = "Shell loaded. If the graph fails, a visible fallback panel should appear in the center region.",
+                FontSize = 18,
+                FontWeight = FontWeight.Bold,
+                Foreground = new SolidColorBrush(Color.Parse("#5E4300"))
+            }
+        };
+        DockPanel.SetDock(smokeBanner, Dock.Top);
+        root.Children.Add(smokeBanner);
+
         var topBar = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#0D1624")),
+            Background = new SolidColorBrush(Color.Parse("#F8FBFF")),
             CornerRadius = new CornerRadius(18),
             Padding = new Thickness(18, 14),
-            BorderBrush = new SolidColorBrush(Color.Parse("#223B52")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
             BorderThickness = new Thickness(1),
+            Margin = new Thickness(0, 12, 0, 0),
             Child = BuildTopBar(viewModel)
         };
         DockPanel.SetDock(topBar, Dock.Top);
@@ -271,54 +444,14 @@ public sealed class ShellWindow : Window
 
         var centerGrid = new Grid
         {
-            Margin = new Thickness(0, 18, 0, 18),
-            ColumnDefinitions = new ColumnDefinitions("84,*,330"),
+            Margin = new Thickness(0, 16, 0, 16),
+            ColumnDefinitions = new ColumnDefinitions("96,*,340"),
             RowDefinitions = new RowDefinitions("*,250")
         };
 
-        centerGrid.Children.Add(BuildToolRail(viewModel));
-
-        var canvasGrid = new Grid
-        {
-            RowDefinitions = new RowDefinitions("Auto,*"),
-            Children =
-            {
-                new Border
-                {
-                    Margin = new Thickness(8, 8, 8, 10),
-                    Padding = new Thickness(12, 8),
-                    Background = new SolidColorBrush(Color.Parse("#0D1B2A")),
-                    CornerRadius = new CornerRadius(12),
-                    Child = new TextBlock
-                    {
-                        Text = "Skia graph canvas | Pan with middle mouse, marquee with drag, connect with right-drag, N adds, F fits, E starts keyboard connect.",
-                        Foreground = new SolidColorBrush(Color.Parse("#8FAEC5")),
-                        FontSize = 12
-                    }
-                }
-            }
-        };
-        var graphCanvas = new GraphCanvasControl
-        {
-            Margin = new Thickness(4),
-            ViewModel = viewModel
-        };
-        Grid.SetRow(graphCanvas, 1);
-        canvasGrid.Children.Add(graphCanvas);
-
-        var canvasHost = new Border
-        {
-            Background = new SolidColorBrush(Color.Parse("#06101A")),
-            CornerRadius = new CornerRadius(24),
-            BorderBrush = new SolidColorBrush(Color.Parse("#223B52")),
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(10),
-            Child = canvasGrid
-        };
-        Grid.SetColumn(canvasHost, 1);
-        centerGrid.Children.Add(canvasHost);
-
-        centerGrid.Children.Add(BuildInspector(viewModel));
+        centerGrid.Children.Add(BuildToolRail());
+        centerGrid.Children.Add(BuildCanvasArea(viewModel));
+        centerGrid.Children.Add(BuildInspector());
         centerGrid.Children.Add(BuildBottomStrip(viewModel));
 
         root.Children.Add(centerGrid);
@@ -329,7 +462,7 @@ public sealed class ShellWindow : Window
     {
         var grid = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+            ColumnDefinitions = new ColumnDefinitions("*,Auto")
         };
 
         var titleStack = new StackPanel
@@ -340,15 +473,22 @@ public sealed class ShellWindow : Window
                 new TextBlock
                 {
                     Text = "MedW Network Sim Workstation",
-                    FontSize = 24,
+                    FontSize = 28,
                     FontWeight = FontWeight.Bold,
-                    Foreground = new SolidColorBrush(Color.Parse("#E5EDF6"))
+                    Foreground = new SolidColorBrush(Color.Parse("#16324C"))
+                },
+                new TextBlock
+                {
+                    Text = "Shell loaded",
+                    FontSize = 16,
+                    FontWeight = FontWeight.SemiBold,
+                    Foreground = new SolidColorBrush(Color.Parse("#9C6E00"))
                 },
                 new TextBlock
                 {
                     Text = viewModel.TopCommandBar,
                     FontSize = 12,
-                    Foreground = new SolidColorBrush(Color.Parse("#8DA6BA"))
+                    Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
                 }
             }
         };
@@ -374,13 +514,13 @@ public sealed class ShellWindow : Window
         return grid;
     }
 
-    private static Control BuildToolRail(WorkspaceViewModel viewModel)
+    private static Control BuildToolRail()
     {
         var border = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#0B1724")),
+            Background = new SolidColorBrush(Color.Parse("#E8F0F8")),
             CornerRadius = new CornerRadius(20),
-            BorderBrush = new SolidColorBrush(Color.Parse("#223B52")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
             BorderThickness = new Thickness(1),
             Padding = new Thickness(10),
             Margin = new Thickness(0, 0, 14, 0),
@@ -401,16 +541,16 @@ public sealed class ShellWindow : Window
         return border;
     }
 
-    private static Control BuildInspector(WorkspaceViewModel viewModel)
+    private static Control BuildInspector()
     {
         var details = new ItemsControl
         {
-            [!ItemsControl.ItemsProperty] = new Binding("Inspector.Details"),
+            [!ItemsControl.ItemsSourceProperty] = new Binding("Inspector.Details"),
             ItemTemplate = new FuncDataTemplate<string>((item, _) =>
                 new TextBlock
                 {
                     Text = item,
-                    Foreground = new SolidColorBrush(Color.Parse("#A7C0D3")),
+                    Foreground = new SolidColorBrush(Color.Parse("#31506B")),
                     Margin = new Thickness(0, 0, 0, 8),
                     TextWrapping = TextWrapping.Wrap
                 })
@@ -418,9 +558,9 @@ public sealed class ShellWindow : Window
 
         var border = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#0B1724")),
+            Background = new SolidColorBrush(Color.Parse("#F6FAFE")),
             CornerRadius = new CornerRadius(22),
-            BorderBrush = new SolidColorBrush(Color.Parse("#223B52")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
             BorderThickness = new Thickness(1),
             Padding = new Thickness(18),
             Child = new StackPanel
@@ -433,20 +573,20 @@ public sealed class ShellWindow : Window
                         Text = "Inspector",
                         FontSize = 20,
                         FontWeight = FontWeight.Bold,
-                        Foreground = new SolidColorBrush(Color.Parse("#E5EDF6"))
+                        Foreground = new SolidColorBrush(Color.Parse("#16324C"))
                     },
                     new TextBlock
                     {
                         [!TextBlock.TextProperty] = new Binding("Inspector.Headline"),
                         FontSize = 16,
                         FontWeight = FontWeight.SemiBold,
-                        Foreground = new SolidColorBrush(Color.Parse("#F3D38A"))
+                        Foreground = new SolidColorBrush(Color.Parse("#8C5A00"))
                     },
                     new TextBlock
                     {
                         [!TextBlock.TextProperty] = new Binding("Inspector.Summary"),
                         TextWrapping = TextWrapping.Wrap,
-                        Foreground = new SolidColorBrush(Color.Parse("#8DA6BA"))
+                        Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
                     },
                     details
                 }
@@ -460,7 +600,7 @@ public sealed class ShellWindow : Window
     {
         var metrics = new ItemsControl
         {
-            [!ItemsControl.ItemsProperty] = new Binding("ReportMetrics"),
+            [!ItemsControl.ItemsSourceProperty] = new Binding("ReportMetrics"),
             ItemTemplate = new FuncDataTemplate<ReportMetricViewModel>((metric, _) =>
                 new Button
                 {
@@ -493,40 +633,39 @@ public sealed class ShellWindow : Window
         var playbackHint = new TextBlock
         {
             Margin = new Thickness(0, 12, 0, 0),
-            Foreground = new SolidColorBrush(Color.Parse("#9BB3C7")),
-            Text = "Premium workstation strip: playback controls, timeline scrubber, and report entry points."
+            Foreground = new SolidColorBrush(Color.Parse("#4D6781")),
+            Text = "Playback, timeline scrubber, and report entry points stay visible while debugging the canvas."
         };
         Grid.SetRow(playbackHint, 1);
         Grid.SetColumnSpan(playbackHint, 5);
         playbackGrid.Children.Add(playbackHint);
 
+        var tabControl = new TabControl();
+        tabControl.Items.Add(
+            new TabItem
+            {
+                Header = "Playback",
+                Content = playbackGrid
+            });
+        tabControl.Items.Add(
+            new TabItem
+            {
+                Header = "Reports",
+                Content = new ScrollViewer
+                {
+                    Content = metrics
+                }
+            });
+
         var strip = new Border
         {
             Margin = new Thickness(14, 14, 0, 0),
-            Background = new SolidColorBrush(Color.Parse("#0B1724")),
+            Background = new SolidColorBrush(Color.Parse("#F6FAFE")),
             CornerRadius = new CornerRadius(20),
-            BorderBrush = new SolidColorBrush(Color.Parse("#223B52")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
             BorderThickness = new Thickness(1),
             Padding = new Thickness(18),
-            Child = new TabControl
-            {
-                Items = new[]
-                {
-                    new TabItem
-                    {
-                        Header = "Playback",
-                        Content = playbackGrid
-                    },
-                    new TabItem
-                    {
-                        Header = "Reports",
-                        Content = new ScrollViewer
-                        {
-                            Content = metrics
-                        }
-                    }
-                }
-            }
+            Child = tabControl
         };
 
         Grid.SetColumn(strip, 1);
@@ -535,13 +674,202 @@ public sealed class ShellWindow : Window
         return strip;
     }
 
+    private static Control BuildCanvasArea(WorkspaceViewModel viewModel)
+    {
+        if (UseDiagnosticCanvasIsolation)
+        {
+            var isolated = BuildCanvasFallbackPanel(
+                "Graph area isolated",
+                "The staged isolation panel is active. This confirms the shell layout renders even without the live GraphCanvasControl.",
+                isError: false);
+            Grid.SetColumn(isolated, 1);
+            return isolated;
+        }
+
+        try
+        {
+            var canvasHost = new Border
+            {
+                Background = new SolidColorBrush(Color.Parse("#DCEAF7")),
+                CornerRadius = new CornerRadius(24),
+                BorderBrush = new SolidColorBrush(Color.Parse("#7FA7C9")),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(10),
+                MinHeight = 520,
+                MinWidth = 760
+            };
+
+            var canvasHeader = new Border
+            {
+                Margin = new Thickness(8, 8, 8, 10),
+                Padding = new Thickness(12, 8),
+                Background = new SolidColorBrush(Color.Parse("#F8FCFF")),
+                CornerRadius = new CornerRadius(12),
+                BorderBrush = new SolidColorBrush(Color.Parse("#93B7D7")),
+                BorderThickness = new Thickness(1),
+                Child = new TextBlock
+                {
+                    Text = "Shell loaded | Live graph canvas active. If rendering fails, a fallback panel will appear here instead of a silent black surface.",
+                    Foreground = new SolidColorBrush(Color.Parse("#284A67")),
+                    FontSize = 13,
+                    FontWeight = FontWeight.SemiBold,
+                    TextWrapping = TextWrapping.Wrap
+                }
+            };
+
+            var graphCanvas = new GraphCanvasControl
+            {
+                Margin = new Thickness(4),
+                ViewModel = viewModel,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch
+            };
+
+            var fallbackTitle = new TextBlock
+            {
+                Text = "Canvas placeholder",
+                FontSize = 22,
+                FontWeight = FontWeight.Bold,
+                Foreground = new SolidColorBrush(Color.Parse("#7F1D1D"))
+            };
+            var fallbackDetail = new TextBlock
+            {
+                Text = "Waiting for graph canvas diagnostics.",
+                Margin = new Thickness(0, 8, 0, 0),
+                Foreground = new SolidColorBrush(Color.Parse("#934040")),
+                TextWrapping = TextWrapping.Wrap
+            };
+            var fallbackPanel = new Border
+            {
+                Background = new SolidColorBrush(Color.Parse("#FFF2F2")),
+                BorderBrush = new SolidColorBrush(Color.Parse("#D37474")),
+                BorderThickness = new Thickness(2),
+                CornerRadius = new CornerRadius(16),
+                Padding = new Thickness(20),
+                Margin = new Thickness(24),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                IsVisible = false,
+                Child = new StackPanel
+                {
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Spacing = 6,
+                    Children =
+                    {
+                        fallbackTitle,
+                        fallbackDetail
+                    }
+                }
+            };
+
+            graphCanvas.StatusChanged += (_, args) =>
+            {
+                fallbackTitle.Text = args.IsError ? "Graph canvas failed to render" : args.Title;
+                fallbackDetail.Text = args.Detail;
+                fallbackPanel.IsVisible = args.IsError;
+            };
+
+            var canvasSurface = new Grid
+            {
+                RowDefinitions = new RowDefinitions("Auto,*"),
+                Children =
+                {
+                    canvasHeader
+                }
+            };
+            Grid.SetRow(graphCanvas, 1);
+            Grid.SetRow(fallbackPanel, 1);
+            canvasSurface.Children.Add(graphCanvas);
+            canvasSurface.Children.Add(fallbackPanel);
+            canvasHost.Child = canvasSurface;
+
+            Grid.SetColumn(canvasHost, 1);
+            return canvasHost;
+        }
+        catch (Exception ex)
+        {
+            var failed = BuildCanvasFallbackPanel("Graph canvas failed to initialize", ex.Message, isError: true);
+            Grid.SetColumn(failed, 1);
+            return failed;
+        }
+    }
+
+    private static Border BuildCanvasFallbackPanel(string title, string detail, bool isError)
+    {
+        return new Border
+        {
+            Background = new SolidColorBrush(Color.Parse(isError ? "#FFF2F2" : "#F7FBFF")),
+            BorderBrush = new SolidColorBrush(Color.Parse(isError ? "#D37474" : "#7FA7C9")),
+            BorderThickness = new Thickness(2),
+            CornerRadius = new CornerRadius(20),
+            Padding = new Thickness(24),
+            MinHeight = 520,
+            Child = new StackPanel
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Spacing = 8,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = title,
+                        FontSize = 26,
+                        FontWeight = FontWeight.Bold,
+                        Foreground = new SolidColorBrush(Color.Parse(isError ? "#7F1D1D" : "#16324C"))
+                    },
+                    new TextBlock
+                    {
+                        Text = detail,
+                        TextWrapping = TextWrapping.Wrap,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        MaxWidth = 640,
+                        Foreground = new SolidColorBrush(Color.Parse(isError ? "#934040" : "#365B7E"))
+                    }
+                }
+            }
+        };
+    }
+
+    private static Control BuildWindowFailureSurface(Exception ex)
+    {
+        return new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#FFF2F2")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#D37474")),
+            BorderThickness = new Thickness(2),
+            Padding = new Thickness(24),
+            Child = new StackPanel
+            {
+                Spacing = 10,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "Shell failed during startup",
+                        FontSize = 28,
+                        FontWeight = FontWeight.Bold,
+                        Foreground = new SolidColorBrush(Color.Parse("#7F1D1D"))
+                    },
+                    new TextBlock
+                    {
+                        Text = ex.Message,
+                        TextWrapping = TextWrapping.Wrap,
+                        Foreground = new SolidColorBrush(Color.Parse("#8F4040"))
+                    }
+                }
+            }
+        };
+    }
+
     private static TextBlock BuildBoundText(string propertyName, int column)
     {
         var text = new TextBlock
         {
             Margin = new Thickness(column == 0 ? 0 : 18, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            Foreground = new SolidColorBrush(Color.Parse(column == 0 ? "#E5EDF6" : "#9FB7CB"))
+            Foreground = new SolidColorBrush(Color.Parse(column == 0 ? "#16324C" : "#31506B"))
         };
         Grid.SetColumn(text, column);
         text.Bind(TextBlock.TextProperty, new Binding(propertyName));
@@ -555,9 +883,9 @@ public sealed class ShellWindow : Window
             Content = label,
             Command = command,
             Padding = new Thickness(12, 8),
-            Background = new SolidColorBrush(Color.Parse("#153047")),
-            Foreground = Brushes.White,
-            BorderBrush = new SolidColorBrush(Color.Parse("#2A516D")),
+            Background = new SolidColorBrush(Color.Parse("#D9EAF8")),
+            Foreground = new SolidColorBrush(Color.Parse("#17324B")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#7FA7C9")),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(12)
         };
@@ -575,7 +903,9 @@ public sealed class ShellWindow : Window
         return new Border
         {
             Height = 52,
-            Background = new SolidColorBrush(Color.Parse("#13283C")),
+            Background = new SolidColorBrush(Color.Parse("#F8FCFF")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#93B7D7")),
+            BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(14),
             Child = new TextBlock
             {
@@ -583,7 +913,7 @@ public sealed class ShellWindow : Window
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
                 FontWeight = FontWeight.Bold,
-                Foreground = new SolidColorBrush(Color.Parse("#8FB6D0"))
+                Foreground = new SolidColorBrush(Color.Parse("#355777"))
             }
         };
     }

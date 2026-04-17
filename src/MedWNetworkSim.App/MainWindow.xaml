@@ -84,7 +84,29 @@
                             <WrapPanel Margin="0,8,0,0">
                                 <Button Content="New World" Click="NewNetwork_Click" />
                                 <Button Content="Open World..." Click="OpenFile_Click" />
+                                <Button Content="Import OSM File..." Click="ImportOsm_Click" />
                             </WrapPanel>
+                            <StackPanel Margin="0,8,0,0">
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsImportingOsm}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Style>
+                                <TextBlock FontSize="11"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="{Binding OsmImportStatus}" />
+                                <ProgressBar Margin="0,4,0,0"
+                                             Height="8"
+                                             Minimum="0"
+                                             Maximum="1"
+                                             Value="{Binding OsmImportProgress}"
+                                             IsIndeterminate="{Binding IsOsmImportProgressIndeterminate}" />
+                            </StackPanel>
                             <WrapPanel Margin="0,8,0,0"
                                        VerticalAlignment="Center">
                                 <TextBlock VerticalAlignment="Center"

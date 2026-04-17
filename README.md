@@ -82,6 +82,5 @@ git clone https://github.com/wnj00524/MedWNetworkSim.git
 
 ## License & Contact
 - **License**: MIT License
-- **Contact**: [hello@uxdesigninstitute.com](mailto:hello@uxdesigninstitute.com)
 - **GitHub Issues**: [Open an issue](https://github.com/wnj00524/MedWNetworkSim/issues)
 

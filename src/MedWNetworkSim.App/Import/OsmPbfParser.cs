@@ -1,5 +1,5 @@
 using OsmSharp;
-using OsmSharp.Collections.Tags;
+using OsmSharp.Tags;
 using OsmSharp.Streams;
 using System.IO;
 

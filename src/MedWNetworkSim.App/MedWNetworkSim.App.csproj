@@ -21,6 +21,10 @@
     <PackageReference Include="OsmSharp" Version="6.0.0" />
   </ItemGroup>
   <ItemGroup>
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-xcvr-qv8h-m7xw" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Resource Include="Assets\AppIcon.ico" />
     <None Include="Samples\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

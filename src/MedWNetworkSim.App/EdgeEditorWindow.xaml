@@ -168,8 +168,8 @@
 
                     <TextBlock FontSize="16"
                                FontWeight="SemiBold"
-                               Text="Node Properties"
-                               AutomationProperties.Name="Node Properties Label"
+                               Text="Edge Properties"
+                               AutomationProperties.Name="Edge Properties Label"
                                AutomationProperties.HelpText="Displays properties and settings for the selected edge." />
 
                     <Grid Grid.Row="2">
@@ -432,8 +432,8 @@
                               MinHeight="220"
                               ScrollViewer.VerticalScrollBarVisibility="Auto">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Binding="{Binding TrafficType}" Header="Traffic type" IsReadOnly="True" Width="*" />
-                            <DataGridTemplateColumn Header="Default" Width="150">
+                            <DataGridTextColumn Binding="{Binding TrafficType}" Header="Traffic type" IsReadOnly="True" Width="Auto" />
+                            <DataGridTemplateColumn Header="Default" Width="Auto">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <CheckBox Content="{Binding OverrideChoiceText}"
@@ -441,7 +441,7 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTemplateColumn Header="State" Width="140">
+                            <DataGridTemplateColumn Header="State" Width="Auto">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding SelectedModeLabel}"
@@ -458,7 +458,7 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTemplateColumn Header="Limit type" Width="170">
+                            <DataGridTemplateColumn Header="Limit type" Width="Auto">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding SelectedLimitKindLabel}"

@@ -99,6 +99,22 @@
     }
   ],
   "simulationSeed": 20260412,
+  "edgeTrafficPermissionDefaults": [
+    {
+      "trafficType": "Crown Messengers",
+      "mode": "permitted"
+    },
+    {
+      "trafficType": "Traders",
+      "mode": "limited",
+      "limitKind": "percentOfEdgeCapacity",
+      "limitValue": 60
+    },
+    {
+      "trafficType": "Herbs",
+      "mode": "blocked"
+    }
+  ],
   "nodes": [
     {
       "id": "NORTH-FIELDS",
@@ -789,7 +805,29 @@
     { "id": "WOOD-WHARF", "fromNodeId": "KINGS-WOOD", "toNodeId": "RIVER-WHARF", "time": 2.7, "cost": 1.4, "capacity": 18, "isBidirectional": false },
     { "id": "MINE-SMITHY", "fromNodeId": "HILL-MINE", "toNodeId": "TOWN-SMITHY", "time": 2.6, "cost": 2.3, "capacity": 16, "isBidirectional": false },
     { "id": "MINE-WHARF", "fromNodeId": "HILL-MINE", "toNodeId": "RIVER-WHARF", "time": 3.5, "cost": 1.6, "capacity": 32, "isBidirectional": true },
-    { "id": "ABBEY-MARKET", "fromNodeId": "ABBEY-GARDEN", "toNodeId": "MARKET-SQUARE", "time": 1.3, "cost": 1.5, "capacity": 12, "isBidirectional": true },
+    {
+      "id": "ABBEY-MARKET",
+      "fromNodeId": "ABBEY-GARDEN",
+      "toNodeId": "MARKET-SQUARE",
+      "time": 1.3,
+      "cost": 1.5,
+      "capacity": 12,
+      "isBidirectional": true,
+      "trafficPermissions": [
+        {
+          "trafficType": "Herbs",
+          "isActive": true,
+          "mode": "permitted"
+        },
+        {
+          "trafficType": "Traders",
+          "isActive": true,
+          "mode": "limited",
+          "limitKind": "absoluteUnits",
+          "limitValue": 3
+        }
+      ]
+    },
     { "id": "ABBEY-APOTHECARY", "fromNodeId": "ABBEY-GARDEN", "toNodeId": "APOTHECARY", "time": 1.0, "cost": 2.0, "capacity": 10, "isBidirectional": false },
     { "id": "MILL-GRANARY", "fromNodeId": "RIVER-MILL", "toNodeId": "GUILD-GRANARY", "time": 0.8, "cost": 0.5, "capacity": 22, "isBidirectional": true },
     { "id": "MILL-MARKET", "fromNodeId": "RIVER-MILL", "toNodeId": "MARKET-SQUARE", "time": 1.0, "cost": 0.8, "capacity": 20, "isBidirectional": true },
@@ -798,7 +836,27 @@
     { "id": "WHARF-MARKET", "fromNodeId": "RIVER-WHARF", "toNodeId": "MARKET-SQUARE", "time": 1.2, "cost": 0.7, "capacity": 30, "isBidirectional": true },
     { "id": "WESTGATE-MARKET", "fromNodeId": "WEST-GATEHOUSE", "toNodeId": "MARKET-SQUARE", "time": 0.9, "cost": 0.7, "capacity": 14, "isBidirectional": true },
     { "id": "WESTGATE-WHARF", "fromNodeId": "WEST-GATEHOUSE", "toNodeId": "RIVER-WHARF", "time": 1.3, "cost": 0.9, "capacity": 16, "isBidirectional": true },
-    { "id": "WHARF-BRIDGE", "fromNodeId": "RIVER-WHARF", "toNodeId": "OLD-BRIDGE", "time": 0.8, "cost": 0.6, "capacity": 12, "isBidirectional": true },
+    {
+      "id": "WHARF-BRIDGE",
+      "fromNodeId": "RIVER-WHARF",
+      "toNodeId": "OLD-BRIDGE",
+      "time": 0.8,
+      "cost": 0.6,
+      "capacity": 12,
+      "isBidirectional": true,
+      "trafficPermissions": [
+        {
+          "trafficType": "Crown Messengers",
+          "isActive": true,
+          "mode": "permitted"
+        },
+        {
+          "trafficType": "Traders",
+          "isActive": true,
+          "mode": "blocked"
+        }
+      ]
+    },
     { "id": "BRIDGE-MARKET", "fromNodeId": "OLD-BRIDGE", "toNodeId": "MARKET-SQUARE", "time": 0.7, "cost": 0.5, "capacity": 10, "isBidirectional": true },
     { "id": "BRIDGE-SMITHY", "fromNodeId": "OLD-BRIDGE", "toNodeId": "TOWN-SMITHY", "time": 0.9, "cost": 0.7, "capacity": 10, "isBidirectional": true },
     { "id": "WHARF-SMITHY", "fromNodeId": "RIVER-WHARF", "toNodeId": "TOWN-SMITHY", "time": 1.7, "cost": 1.0, "capacity": 24, "isBidirectional": true },

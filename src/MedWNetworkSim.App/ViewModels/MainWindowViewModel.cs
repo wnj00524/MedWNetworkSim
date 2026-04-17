@@ -52,6 +52,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly NetworkFileService fileService = new();
     private readonly GraphMlFileService graphMlFileService = new();
     private readonly ReportExportService reportExportService = new();
+    private readonly EdgeTrafficPermissionResolver edgeTrafficPermissionResolver = new();
     private readonly NetworkSimulationEngine simulationEngine = new();
     private readonly TemporalNetworkSimulationEngine temporalSimulationEngine = new();
     private readonly List<RouteAllocation> allAllocationModels = [];
@@ -126,6 +127,8 @@ public sealed class MainWindowViewModel : ObservableObject
     public ObservableCollection<string> SubnetworkIdOptions { get; } = [];
 
     public ObservableCollection<string> TrafficTypeNameOptions { get; } = [];
+
+    public ObservableCollection<EdgeTrafficPermissionRowViewModel> EdgeTrafficPermissionDefaults { get; } = [];
 
     public ObservableCollection<RouteAllocationRowViewModel> VisibleAllocations { get; } = [];
 
@@ -2090,6 +2093,7 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
             NodeIdOptions.Clear();
             SubnetworkIdOptions.Clear();
             TrafficTypeNameOptions.Clear();
+            EdgeTrafficPermissionDefaults.Clear();
             VisibleAllocations.Clear();
             VisibleConsumerCostSummaries.Clear();
             allAllocationModels.Clear();
@@ -2128,6 +2132,8 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
                 RegisterEdge(new EdgeViewModel(edgeModel, sourceNode, targetNode));
             }
 
+            ReplaceEdgeTrafficPermissionDefaults(network.EdgeTrafficPermissionDefaults);
+
             NetworkName = network.Name;
             NetworkDescription = string.IsNullOrWhiteSpace(network.Description)
                 ? string.Empty
@@ -2144,6 +2150,7 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
             hasTimelineSnapshot = false;
             RefreshNodeIdOptions();
             RefreshTrafficTypeNameOptions();
+            RefreshEdgeTrafficPermissionEditors();
             RefreshTrafficSummariesFromCurrentState();
             LayersPanel.SyncTrafficTypes(TrafficTypes.Select(traffic => traffic.Name));
             RecalculateWorkspace();
@@ -2204,10 +2211,137 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
             DefaultAllocationMode = DefaultAllocationMode,
             SimulationSeed = simulationSeed,
             TrafficTypes = TrafficDefinitions.Select(definition => definition.ToModel()).ToList(),
+            EdgeTrafficPermissionDefaults = EdgeTrafficPermissionDefaults.Select(permission => permission.ToModel()).ToList(),
             Subnetworks = Subnetworks.Count == 0 ? null : Subnetworks.ToList(),
             Nodes = Nodes.Select(node => node.ToModel()).ToList(),
             Edges = Edges.Select(edge => edge.ToModel()).ToList()
         };
+    }
+
+    private void ReplaceEdgeTrafficPermissionDefaults(IEnumerable<EdgeTrafficPermissionRule> rules)
+    {
+        foreach (var row in EdgeTrafficPermissionDefaults)
+        {
+            row.DefinitionChanged -= HandleEdgeTrafficPermissionDefaultChanged;
+        }
+
+        EdgeTrafficPermissionDefaults.Clear();
+
+        foreach (var rule in rules)
+        {
+            var row = new EdgeTrafficPermissionRowViewModel(rule.TrafficType, supportsOverrideToggle: false, rule);
+            row.DefinitionChanged += HandleEdgeTrafficPermissionDefaultChanged;
+            EdgeTrafficPermissionDefaults.Add(row);
+        }
+    }
+
+    private void RefreshEdgeTrafficPermissionEditors(string? renamedTrafficType = null, string? replacementTrafficType = null)
+    {
+        var trafficTypes = GetAvailableTrafficTypeNames()
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(Comparer)
+            .OrderBy(name => name, Comparer)
+            .ToList();
+
+        var defaultRows = BuildPermissionRows(
+            EdgeTrafficPermissionDefaults,
+            trafficTypes,
+            supportsOverrideToggle: false,
+            renamedTrafficType,
+            replacementTrafficType);
+        ReplaceEdgeTrafficPermissionDefaults(defaultRows.Select(row => row.ToModel()));
+
+        foreach (var edge in Edges)
+        {
+            var rows = BuildPermissionRows(
+                edge.TrafficPermissions,
+                trafficTypes,
+                supportsOverrideToggle: true,
+                renamedTrafficType,
+                replacementTrafficType);
+            edge.SynchronizeTrafficPermissions(rows);
+        }
+
+        UpdateEffectiveEdgeTrafficPermissionSummaries();
+    }
+
+    private void UpdateEffectiveEdgeTrafficPermissionSummaries()
+    {
+        var previewNetwork = new NetworkModel
+        {
+            EdgeTrafficPermissionDefaults = EdgeTrafficPermissionDefaults.Select(row => row.ToModel()).ToList(),
+            Edges = Edges.Select(edge => edge.ToModel()).ToList()
+        };
+
+        foreach (var row in EdgeTrafficPermissionDefaults)
+        {
+            row.SetEffectiveSummary(EdgeTrafficPermissionResolver.FormatSummary(row.Mode, row.LimitKind, row.ToModel().LimitValue));
+        }
+
+        var previewEdgesById = previewNetwork.Edges
+            .Where(edge => !string.IsNullOrWhiteSpace(edge.Id))
+            .ToDictionary(edge => edge.Id, edge => edge, Comparer);
+
+        foreach (var edge in Edges)
+        {
+            foreach (var row in edge.TrafficPermissions)
+            {
+                row.SetEdgeCapacity(edge.Capacity);
+                if (!previewEdgesById.TryGetValue(edge.Id, out var edgeModel))
+                {
+                    row.SetEffectiveSummary("Effective: Permitted");
+                    continue;
+                }
+
+                var effective = edgeTrafficPermissionResolver.Resolve(previewNetwork, edgeModel, row.TrafficType);
+                row.SetEffectiveSummary(effective.Summary);
+            }
+        }
+    }
+
+    private static List<EdgeTrafficPermissionRowViewModel> BuildPermissionRows(
+        IEnumerable<EdgeTrafficPermissionRowViewModel> existingRows,
+        IReadOnlyList<string> trafficTypes,
+        bool supportsOverrideToggle,
+        string? renamedTrafficType,
+        string? replacementTrafficType)
+    {
+        var rowsByTraffic = existingRows
+            .GroupBy(row => row.TrafficType, Comparer)
+            .ToDictionary(group => group.Key, group => group.First(), Comparer);
+
+        if (!string.IsNullOrWhiteSpace(renamedTrafficType) &&
+            !string.IsNullOrWhiteSpace(replacementTrafficType) &&
+            rowsByTraffic.TryGetValue(renamedTrafficType, out var renamedRow))
+        {
+            rowsByTraffic.Remove(renamedTrafficType);
+            renamedRow.RenameTrafficType(replacementTrafficType);
+            rowsByTraffic[replacementTrafficType] = renamedRow;
+        }
+
+        var result = new List<EdgeTrafficPermissionRowViewModel>(trafficTypes.Count);
+        foreach (var trafficType in trafficTypes)
+        {
+            if (rowsByTraffic.TryGetValue(trafficType, out var existing))
+            {
+                existing.RenameTrafficType(trafficType);
+                result.Add(existing);
+                continue;
+            }
+
+            result.Add(new EdgeTrafficPermissionRowViewModel(
+                trafficType,
+                supportsOverrideToggle,
+                new EdgeTrafficPermissionRule
+                {
+                    TrafficType = trafficType,
+                    IsActive = !supportsOverrideToggle,
+                    Mode = EdgeTrafficPermissionMode.Permitted,
+                    LimitKind = EdgeTrafficLimitKind.AbsoluteUnits
+                }));
+        }
+
+        return result;
     }
 
     private void RegisterNode(NodeViewModel node)
@@ -2387,6 +2521,7 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
             isBulkUpdatingTrafficProfiles = false;
         }
 
+        RefreshEdgeTrafficPermissionEditors(oldValue, normalizedName);
         RefreshDerivedStateAfterStructureChange("Renamed a traffic type and updated matching node profiles.");
     }
 
@@ -2397,6 +2532,7 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
         RefreshSubnetworkIdOptions();
         RefreshTrafficTypeNameOptions();
         RefreshEdgeBindings();
+        RefreshEdgeTrafficPermissionEditors();
         RefreshTrafficSummariesFromCurrentState();
         RecalculateWorkspace();
         RefreshCounts();
@@ -2408,9 +2544,17 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
     {
         // Edge edits do not change the available node/traffic dropdown options, so avoid rebuilding them mid-edit.
         RefreshEdgeBindings();
+        UpdateEffectiveEdgeTrafficPermissionSummaries();
         RecalculateWorkspace();
         InvalidateSimulationResults(message);
         MarkDirty(message);
+    }
+
+    private void HandleEdgeTrafficPermissionDefaultChanged(object? sender, EventArgs e)
+    {
+        UpdateEffectiveEdgeTrafficPermissionSummaries();
+        InvalidateSimulationResults("Updated edge traffic defaults.");
+        MarkDirty("Updated edge traffic defaults.");
     }
 
     private void RefreshCounts()

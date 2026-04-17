@@ -44,6 +44,11 @@ public sealed class NetworkModel
     public List<TimelineEventModel> TimelineEvents { get; set; } = [];
 
     /// <summary>
+    /// Gets or sets the default edge traffic permission applied to new edges for each traffic type.
+    /// </summary>
+    public List<EdgeTrafficPermissionRule> EdgeTrafficPermissionDefaults { get; set; } = [];
+
+    /// <summary>
     /// Gets or sets embedded child networks that can be placed as composite nodes in this network.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

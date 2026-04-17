@@ -111,7 +111,7 @@ public sealed class ReportExportService
         builder.AppendLine("<h2>Edges</h2>");
         AppendHtmlTable(
             builder,
-            ["Edge", "Route", "Time", "Cost", "Capacity", "Direction"],
+            ["Edge", "Route", "Time", "Cost", "Capacity", "Direction", "Traffic permissions"],
             network.Edges.Select(edge => new[]
             {
                 edge.Id,
@@ -119,7 +119,8 @@ public sealed class ReportExportService
                 FormatNumber(edge.Time),
                 FormatNumber(edge.Cost),
                 FormatNumber(edge.Capacity),
-                edge.IsBidirectional ? "Bidirectional" : "One-way"
+                edge.IsBidirectional ? "Bidirectional" : "One-way",
+                FormatEdgeTrafficPermissions(network, edge)
             }));
 
         builder.AppendLine("<h2>Traffic Outcomes</h2>");
@@ -259,7 +260,7 @@ public sealed class ReportExportService
             builder.AppendLine("<h3>Edge Usage</h3>");
             AppendHtmlTable(
                 builder,
-                ["Edge", "Route", "Flow", "Occupancy", "Capacity", "Utilisation"],
+                ["Edge", "Route", "Flow", "Occupancy", "Capacity", "Utilisation", "Traffic permissions"],
                 network.Edges.Select(edge =>
                 {
                     var summary = stepResult.EdgeFlows.GetValueOrDefault(edge.Id, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty);
@@ -271,7 +272,8 @@ public sealed class ReportExportService
                         $"{FormatNumber(summary.ForwardQuantity)} / {FormatNumber(summary.ReverseQuantity)}",
                         FormatNumber(occupancy),
                         FormatNumber(edge.Capacity),
-                        FormatUtilisation(occupancy, edge.Capacity)
+                        FormatUtilisation(occupancy, edge.Capacity),
+                        FormatEdgeTrafficPermissions(network, edge)
                     };
                 }));
 
@@ -394,7 +396,7 @@ public sealed class ReportExportService
         AppendCsvTable(
             builder,
             "Edges",
-            ["Edge", "Route", "Time", "Cost", "Capacity", "Direction"],
+            ["Edge", "Route", "Time", "Cost", "Capacity", "Direction", "Traffic permissions"],
             network.Edges.Select(edge => new[]
             {
                 edge.Id,
@@ -402,7 +404,8 @@ public sealed class ReportExportService
                 FormatNumber(edge.Time),
                 FormatNumber(edge.Cost),
                 FormatNumber(edge.Capacity),
-                edge.IsBidirectional ? "Bidirectional" : "One-way"
+                edge.IsBidirectional ? "Bidirectional" : "One-way",
+                FormatEdgeTrafficPermissions(network, edge)
             }));
         AppendCsvTable(
             builder,
@@ -579,7 +582,7 @@ public sealed class ReportExportService
             AppendCsvTable(
                 builder,
                 $"{FormatTimelinePeriodLabel(network, result)} Edge Usage",
-                ["Edge", "Route", "Forward Flow", "Reverse Flow", "Occupancy", "Capacity", "Utilisation"],
+                ["Edge", "Route", "Forward Flow", "Reverse Flow", "Occupancy", "Capacity", "Utilisation", "Traffic permissions"],
                 network.Edges.Select(edge =>
                 {
                     var summary = result.EdgeFlows.GetValueOrDefault(edge.Id, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty);
@@ -592,7 +595,8 @@ public sealed class ReportExportService
                         FormatNumber(summary.ReverseQuantity),
                         FormatNumber(occupancy),
                         FormatNumber(edge.Capacity),
-                        FormatUtilisation(occupancy, edge.Capacity)
+                        FormatUtilisation(occupancy, edge.Capacity),
+                        FormatEdgeTrafficPermissions(network, edge)
                     };
                 }));
 
@@ -681,11 +685,18 @@ public sealed class ReportExportService
         {
             reportType = "current",
             network = new { network.Name, network.Description, nodes = network.Nodes.Count, edges = network.Edges.Count },
+            edges = network.Edges.Select(edge => new
+            {
+                edge_id = edge.Id,
+                route = $"{edge.FromNodeId}->{edge.ToNodeId}",
+                trafficPermissions = FormatEdgeTrafficPermissions(network, edge)
+            }),
             trafficOutcomes = outcomes.Select(outcome => new
             {
                 trafficType = outcome.TrafficType,
                 delivered = outcome.TotalDelivered,
-                unmetDemand = outcome.UnmetDemand
+                unmetDemand = outcome.UnmetDemand,
+                notes = outcome.Notes
             }),
             nodes = network.Nodes.Select(node => new
             {
@@ -716,6 +727,12 @@ public sealed class ReportExportService
         {
             reportType = "timeline",
             periods = results.Count,
+            edges = network.Edges.Select(edge => new
+            {
+                edge_id = edge.Id,
+                route = $"{edge.FromNodeId}->{edge.ToNodeId}",
+                trafficPermissions = FormatEdgeTrafficPermissions(network, edge)
+            }),
             nodes = results.Select(result => new
             {
                 period = result.Period,
@@ -737,6 +754,30 @@ public sealed class ReportExportService
         };
 
         return JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static string FormatEdgeTrafficPermissions(NetworkModel network, EdgeModel edge)
+    {
+        var resolver = new EdgeTrafficPermissionResolver();
+        var trafficTypes = network.TrafficTypes
+            .Select(definition => definition.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(Comparer)
+            .OrderBy(name => name, Comparer)
+            .ToList();
+
+        if (trafficTypes.Count == 0)
+        {
+            return "Implicitly permitted";
+        }
+
+        return string.Join(
+            "; ",
+            trafficTypes.Select(trafficType =>
+            {
+                var effective = resolver.Resolve(network, edge, trafficType);
+                return $"{trafficType}: {effective.Summary.Replace("Effective: ", string.Empty, StringComparison.Ordinal)}";
+            }));
     }
 
     private static string FormatPlaceIdentity(NodeModel node)

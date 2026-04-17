@@ -216,6 +216,27 @@ public sealed class NetworkFileService
             normalizedNodes,
             defaultAllocationMode,
             trafficTypesWithExplicitFlowSplitPolicy);
+        var trafficNames = trafficDefinitions
+            .Select(definition => definition.Name)
+            .ToHashSet(Comparer);
+        var edgeTrafficPermissionDefaults = NormalizeEdgeTrafficPermissionRules(
+            model.EdgeTrafficPermissionDefaults,
+            trafficNames,
+            networkName: string.IsNullOrWhiteSpace(model.Name) ? "Untitled Network" : model.Name.Trim(),
+            edgeId: null,
+            edgeCapacity: null,
+            allowInactiveRules: false);
+        for (var index = 0; index < normalizedEdges.Count; index++)
+        {
+            var normalizedEdge = normalizedEdges[index];
+            normalizedEdge.TrafficPermissions = NormalizeEdgeTrafficPermissionRules(
+                (model.Edges ?? []).ElementAtOrDefault(index)?.TrafficPermissions,
+                trafficNames,
+                networkName: string.IsNullOrWhiteSpace(model.Name) ? "Untitled Network" : model.Name.Trim(),
+                edgeId: normalizedEdge.Id,
+                edgeCapacity: normalizedEdge.Capacity,
+                allowInactiveRules: true);
+        }
         var timelineEvents = NormalizeTimelineEvents(model.TimelineEvents, normalizedNodes, edgeIds);
         ApplyAutomaticLayout(normalizedNodes, normalizedEdges, forceLayoutAllNodes);
 
@@ -229,9 +250,111 @@ public sealed class NetworkFileService
             Nodes = normalizedNodes,
             Edges = normalizedEdges,
             TrafficTypes = trafficDefinitions,
+            EdgeTrafficPermissionDefaults = edgeTrafficPermissionDefaults,
             TimelineEvents = timelineEvents,
             Subnetworks = NormalizeSubnetworks(model.Subnetworks, normalizedNodes, normalizedEdges, forceLayoutAllNodes, depth, ancestry)
         };
+    }
+
+    private List<EdgeTrafficPermissionRule> NormalizeEdgeTrafficPermissionRules(
+        IEnumerable<EdgeTrafficPermissionRule>? rules,
+        IReadOnlySet<string> trafficNames,
+        string networkName,
+        string? edgeId,
+        double? edgeCapacity,
+        bool allowInactiveRules)
+    {
+        var normalized = new Dictionary<string, EdgeTrafficPermissionRule>(Comparer);
+
+        foreach (var rule in rules ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(rule.TrafficType))
+            {
+                continue;
+            }
+
+            var trafficType = rule.TrafficType.Trim();
+            if (!trafficNames.Contains(trafficType))
+            {
+                var owner = edgeId is null
+                    ? $"Network '{networkName}'"
+                    : $"Edge '{edgeId}'";
+                throw new InvalidOperationException($"{owner} has a traffic permission rule for missing traffic type '{trafficType}'.");
+            }
+
+            var normalizedRule = new EdgeTrafficPermissionRule
+            {
+                TrafficType = trafficType,
+                Mode = rule.Mode,
+                LimitKind = rule.LimitKind,
+                LimitValue = rule.LimitValue,
+                IsActive = allowInactiveRules ? rule.IsActive : true
+            };
+
+            if (normalizedRule.Mode == EdgeTrafficPermissionMode.Limited)
+            {
+                if (!normalizedRule.LimitValue.HasValue ||
+                    double.IsNaN(normalizedRule.LimitValue.Value) ||
+                    double.IsInfinity(normalizedRule.LimitValue.Value))
+                {
+                    throw new InvalidOperationException(BuildPermissionValidationMessage(
+                        trafficType,
+                        edgeId,
+                        normalizedRule.LimitKind == EdgeTrafficLimitKind.PercentOfEdgeCapacity
+                            ? "Enter a percentage from 0 to 100."
+                            : "Enter a limit of 0 or more."));
+                }
+
+                if (normalizedRule.LimitKind == EdgeTrafficLimitKind.PercentOfEdgeCapacity)
+                {
+                    if (normalizedRule.LimitValue.Value < 0d || normalizedRule.LimitValue.Value > 100d)
+                    {
+                        throw new InvalidOperationException(BuildPermissionValidationMessage(trafficType, edgeId, "Enter a percentage from 0 to 100."));
+                    }
+
+                    if (edgeId is not null && !edgeCapacity.HasValue)
+                    {
+                        throw new InvalidOperationException(BuildPermissionValidationMessage(trafficType, edgeId, "Set an edge capacity before using a percentage limit."));
+                    }
+                }
+                else if (normalizedRule.LimitValue.Value < 0d)
+                {
+                    throw new InvalidOperationException(BuildPermissionValidationMessage(trafficType, edgeId, "Enter a limit of 0 or more."));
+                }
+            }
+            else
+            {
+                normalizedRule.LimitValue = null;
+            }
+
+            normalized[trafficType] = normalizedRule;
+        }
+
+        foreach (var trafficType in trafficNames.OrderBy(item => item, Comparer))
+        {
+            if (!normalized.ContainsKey(trafficType))
+            {
+                normalized[trafficType] = new EdgeTrafficPermissionRule
+                {
+                    TrafficType = trafficType,
+                    Mode = EdgeTrafficPermissionMode.Permitted,
+                    LimitKind = EdgeTrafficLimitKind.AbsoluteUnits,
+                    LimitValue = null,
+                    IsActive = allowInactiveRules ? false : true
+                };
+            }
+        }
+
+        return normalized.Values
+            .OrderBy(rule => rule.TrafficType, Comparer)
+            .ToList();
+    }
+
+    private static string BuildPermissionValidationMessage(string trafficType, string? edgeId, string message)
+    {
+        return edgeId is null
+            ? $"Traffic permission for '{trafficType}' is invalid. {message}"
+            : $"Traffic permission for '{trafficType}' on edge '{edgeId}' is invalid. {message}";
     }
 
     private List<SubnetworkDefinition>? NormalizeSubnetworks(

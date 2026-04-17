@@ -27,6 +27,8 @@ public sealed class NetworkState
 
     public Dictionary<string, double> RemainingNodeCapacity { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 
+    public Dictionary<EdgeTrafficResourceKey, double> RemainingEdgeTrafficCapacity { get; init; } = new(EdgeTrafficResourceKey.Comparer);
+
     public Dictionary<string, double> EdgeLoad { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 
     public Dictionary<string, double> NodeLoad { get; init; } = new(StringComparer.OrdinalIgnoreCase);
@@ -34,6 +36,8 @@ public sealed class NetworkState
     public Dictionary<string, double> EdgeCapacity { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 
     public Dictionary<string, double> NodeCapacity { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public Dictionary<EdgeTrafficResourceKey, double> EdgeTrafficLoad { get; init; } = new(EdgeTrafficResourceKey.Comparer);
 }
 
 public sealed record FlowProposal(
@@ -88,6 +92,9 @@ public sealed class RoutingTrafficContext
     public Dictionary<string, double> CommittedSupply { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, double> CommittedDemand { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public string? LastPathKey { get; set; }
+    public double PermissionLimitedDemand { get; set; }
+    public double NoPermittedPathDemand { get; set; }
+    public double CapacityBlockedDemand { get; set; }
 }
 
 public sealed record GraphArc(string EdgeId, string FromNodeId, string ToNodeId, double Time, double Cost);
@@ -136,10 +143,10 @@ public sealed class PriorityWeightedCapacityResolutionPolicy : ICapacityResoluti
         foreach (var proposal in ordered)
         {
             var routeCapacity = MixedRoutingAllocator.GetRouteRemainingCapacity(
+                proposal.TrafficType.TrafficType,
                 proposal.PathEdgeIds,
                 proposal.PathTranshipmentNodeIds,
-                networkState.RemainingEdgeCapacity,
-                networkState.RemainingNodeCapacity);
+                networkState);
             var quantity = Math.Min(proposal.Quantity, routeCapacity);
             if (quantity <= Epsilon)
             {
@@ -162,6 +169,7 @@ public sealed class PriorityWeightedCapacityResolutionPolicy : ICapacityResoluti
                 proposal.Priority));
 
             MixedRoutingAllocator.ReserveCapacity(
+                proposal.TrafficType.TrafficType,
                 proposal.PathEdgeIds,
                 proposal.PathTranshipmentNodeIds,
                 networkState,
@@ -222,13 +230,20 @@ public static partial class MixedRoutingAllocator
         IReadOnlyList<RoutingTrafficContext> contexts,
         IDictionary<string, double> remainingCapacityByEdgeId,
         IDictionary<string, double> remainingTranshipmentCapacityByNodeId,
+        IReadOnlyDictionary<EdgeTrafficResourceKey, double>? occupiedEdgeTrafficByKey = null,
         int period = 0)
     {
         adjacency = BuildAdjacency(network);
+        var permissionResolver = new EdgeTrafficPermissionResolver();
+        var edgesById = network.Edges.ToDictionary(edge => edge.Id, edge => edge, Comparer);
         var state = new NetworkState
         {
             RemainingEdgeCapacity = remainingCapacityByEdgeId.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
             RemainingNodeCapacity = remainingTranshipmentCapacityByNodeId.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
+            RemainingEdgeTrafficCapacity = permissionResolver.BuildInitialRemainingAllowances(
+                network,
+                contexts.Select(context => context.TrafficType),
+                occupiedEdgeTrafficByKey),
             EdgeCapacity = network.Edges.ToDictionary(edge => edge.Id, edge => edge.Capacity ?? double.PositiveInfinity, Comparer),
             NodeCapacity = network.Nodes.ToDictionary(node => node.Id, node => node.TranshipmentCapacity ?? double.PositiveInfinity, Comparer)
         };
@@ -241,6 +256,17 @@ public static partial class MixedRoutingAllocator
         foreach (var node in network.Nodes)
         {
             state.NodeLoad[node.Id] = Math.Max(0d, state.NodeCapacity.GetValueOrDefault(node.Id) - state.RemainingNodeCapacity.GetValueOrDefault(node.Id));
+        }
+
+        foreach (var pair in state.RemainingEdgeTrafficCapacity)
+        {
+            var allowed = permissionResolver.GetAllowedCapacity(
+                edgesById[pair.Key.EdgeId],
+                permissionResolver.Resolve(network, edgesById[pair.Key.EdgeId], pair.Key.TrafficType));
+            var occupied = occupiedEdgeTrafficByKey?.TryGetValue(pair.Key, out var value) == true ? value : 0d;
+            state.EdgeTrafficLoad[pair.Key] = double.IsPositiveInfinity(allowed)
+                ? Math.Max(0d, occupied)
+                : Math.Max(0d, allowed - pair.Value);
         }
 
         foreach (var context in contexts)
@@ -280,6 +306,11 @@ public static partial class MixedRoutingAllocator
             {
                 CommitFlow(flow, period);
             }
+        }
+
+        foreach (var context in contexts)
+        {
+            ClassifyRemainingRestrictions(network, context, state);
         }
 
         CopyRemainingCapacity(state.RemainingEdgeCapacity, remainingCapacityByEdgeId);
@@ -401,24 +432,28 @@ public static partial class MixedRoutingAllocator
     }
 
     public static void ReserveCapacity(
+        string trafficType,
         IEnumerable<string> pathEdgeIds,
         IEnumerable<string> pathTranshipmentNodeIds,
         NetworkState state,
         double quantity)
     {
         ReserveCapacity(pathEdgeIds, state.RemainingEdgeCapacity, state.EdgeLoad, quantity);
+        ReserveTrafficCapacity(trafficType, pathEdgeIds, state.RemainingEdgeTrafficCapacity, state.EdgeTrafficLoad, quantity);
         ReserveCapacity(pathTranshipmentNodeIds, state.RemainingNodeCapacity, state.NodeLoad, quantity);
     }
 
     public static double GetRouteRemainingCapacity(
+        string trafficType,
         IReadOnlyList<string> pathEdgeIds,
         IReadOnlyList<string> pathTranshipmentNodeIds,
-        IDictionary<string, double> remainingCapacityByEdgeId,
-        IDictionary<string, double> remainingTranshipmentCapacityByNodeId)
+        NetworkState state)
     {
         return Math.Min(
-            GetPathRemainingCapacity(pathEdgeIds, remainingCapacityByEdgeId),
-            GetPathRemainingCapacity(pathTranshipmentNodeIds, remainingTranshipmentCapacityByNodeId));
+            Math.Min(
+                GetPathRemainingCapacity(pathEdgeIds, state.RemainingEdgeCapacity),
+                GetTrafficPathRemainingCapacity(trafficType, pathEdgeIds, state.RemainingEdgeTrafficCapacity)),
+            GetPathRemainingCapacity(pathTranshipmentNodeIds, state.RemainingNodeCapacity));
     }
 
     public static Dictionary<string, List<GraphArc>> BuildAdjacency(NetworkModel network)
@@ -567,7 +602,8 @@ public static partial class MixedRoutingAllocator
             foreach (var arc in arcs)
             {
                 if (current.PathNodeIds.Contains(arc.ToNodeId, Comparer) ||
-                    state.RemainingEdgeCapacity.GetValueOrDefault(arc.EdgeId) <= Epsilon)
+                    state.RemainingEdgeCapacity.GetValueOrDefault(arc.EdgeId) <= Epsilon ||
+                    state.RemainingEdgeTrafficCapacity.GetValueOrDefault(new EdgeTrafficResourceKey(arc.EdgeId, context.TrafficType)) <= Epsilon)
                 {
                     continue;
                 }
@@ -714,6 +750,46 @@ public static partial class MixedRoutingAllocator
         return context.Supply.Values.Any(value => value > Epsilon) && context.Demand.Values.Any(value => value > Epsilon);
     }
 
+    private static void ClassifyRemainingRestrictions(NetworkModel network, RoutingTrafficContext context, NetworkState state)
+    {
+        if (!HasRemainingTraffic(context))
+        {
+            return;
+        }
+
+        foreach (var producerNodeId in context.Supply.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
+        {
+            foreach (var consumerNodeId in context.Demand.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
+            {
+                if (Comparer.Equals(producerNodeId, consumerNodeId))
+                {
+                    continue;
+                }
+
+                var quantity = Math.Min(
+                    context.Supply.GetValueOrDefault(producerNodeId),
+                    context.Demand.GetValueOrDefault(consumerNodeId));
+                if (quantity <= Epsilon)
+                {
+                    continue;
+                }
+
+                if (!HasAnyFeasibleRoute(network, context, producerNodeId, consumerNodeId, state, RouteConstraintMode.BlockedOnly))
+                {
+                    context.NoPermittedPathDemand += quantity;
+                }
+                else if (!HasAnyFeasibleRoute(network, context, producerNodeId, consumerNodeId, state, RouteConstraintMode.PermissionLimited))
+                {
+                    context.PermissionLimitedDemand += quantity;
+                }
+                else if (!HasAnyFeasibleRoute(network, context, producerNodeId, consumerNodeId, state, RouteConstraintMode.AllConstraints))
+                {
+                    context.CapacityBlockedDemand += quantity;
+                }
+            }
+        }
+    }
+
     private static void AddImplicitRecipeDemand(NetworkModel network, string trafficType, IDictionary<string, double> demand)
     {
         foreach (var node in network.Nodes)
@@ -789,6 +865,79 @@ public static partial class MixedRoutingAllocator
         return !Comparer.Equals(nodeId, producerNodeId) && !Comparer.Equals(nodeId, consumerNodeId);
     }
 
+    private static bool HasAnyFeasibleRoute(
+        NetworkModel network,
+        RoutingTrafficContext context,
+        string producerNodeId,
+        string consumerNodeId,
+        NetworkState state,
+        RouteConstraintMode constraintMode)
+    {
+        var permissionResolver = new EdgeTrafficPermissionResolver();
+        var edgeLookup = network.Edges.ToDictionary(edge => edge.Id, edge => edge, Comparer);
+        var visited = new HashSet<string>(Comparer) { producerNodeId };
+        var queue = new Queue<string>();
+        queue.Enqueue(producerNodeId);
+
+        while (queue.Count > 0)
+        {
+            var currentNodeId = queue.Dequeue();
+            if (Comparer.Equals(currentNodeId, consumerNodeId))
+            {
+                return true;
+            }
+
+            if (!adjacency.TryGetValue(currentNodeId, out var arcs))
+            {
+                continue;
+            }
+
+            foreach (var arc in arcs)
+            {
+                if (!edgeLookup.TryGetValue(arc.EdgeId, out var edge))
+                {
+                    continue;
+                }
+
+                var effectivePermission = permissionResolver.Resolve(network, edge, context.TrafficType);
+                if (effectivePermission.Mode == EdgeTrafficPermissionMode.Blocked)
+                {
+                    continue;
+                }
+
+                if (constraintMode is RouteConstraintMode.PermissionLimited or RouteConstraintMode.AllConstraints &&
+                    state.RemainingEdgeTrafficCapacity.GetValueOrDefault(new EdgeTrafficResourceKey(arc.EdgeId, context.TrafficType)) <= Epsilon)
+                {
+                    continue;
+                }
+
+                if (constraintMode == RouteConstraintMode.AllConstraints)
+                {
+                    if (state.RemainingEdgeCapacity.GetValueOrDefault(arc.EdgeId) <= Epsilon)
+                    {
+                        continue;
+                    }
+
+                    if (IsIntermediateNode(arc.ToNodeId, producerNodeId, consumerNodeId) &&
+                        state.RemainingNodeCapacity.GetValueOrDefault(arc.ToNodeId) <= Epsilon)
+                    {
+                        continue;
+                    }
+                }
+
+                if (!CanTraverseNode(arc.ToNodeId, producerNodeId, consumerNodeId, context.ProfilesByNodeId) ||
+                    !visited.Add(arc.ToNodeId))
+                {
+                    continue;
+                }
+
+                queue.Enqueue(arc.ToNodeId);
+            }
+        }
+
+        return false;
+    }
+
     private static IReadOnlyList<string> GetIntermediateNodeIds(IReadOnlyList<string> pathNodeIds)
     {
         return pathNodeIds.Count <= 2 ? [] : pathNodeIds.Skip(1).Take(pathNodeIds.Count - 2).ToList();
@@ -823,6 +972,27 @@ public static partial class MixedRoutingAllocator
         }
     }
 
+    private static void ReserveTrafficCapacity(
+        string trafficType,
+        IEnumerable<string> pathEdgeIds,
+        IDictionary<EdgeTrafficResourceKey, double> remainingCapacityById,
+        IDictionary<EdgeTrafficResourceKey, double> loadById,
+        double quantity)
+    {
+        foreach (var edgeId in pathEdgeIds)
+        {
+            var key = new EdgeTrafficResourceKey(edgeId, trafficType);
+            if (!remainingCapacityById.TryGetValue(key, out var remainingCapacity) ||
+                double.IsPositiveInfinity(remainingCapacity))
+            {
+                continue;
+            }
+
+            remainingCapacityById[key] = Math.Max(0d, remainingCapacity - quantity);
+            loadById[key] = (loadById.TryGetValue(key, out var existing) ? existing : 0d) + quantity;
+        }
+    }
+
     private static double GetPathRemainingCapacity(
         IReadOnlyList<string> pathResourceIds,
         IDictionary<string, double> remainingCapacityById)
@@ -830,6 +1000,25 @@ public static partial class MixedRoutingAllocator
         return pathResourceIds.Count == 0
             ? double.PositiveInfinity
             : pathResourceIds.Select(resourceId => GetOrZero(remainingCapacityById, resourceId)).DefaultIfEmpty(0d).Min();
+    }
+
+    private static double GetTrafficPathRemainingCapacity(
+        string trafficType,
+        IReadOnlyList<string> pathEdgeIds,
+        IDictionary<EdgeTrafficResourceKey, double> remainingCapacityById)
+    {
+        return pathEdgeIds.Count == 0
+            ? double.PositiveInfinity
+            : pathEdgeIds
+                .Select(edgeId =>
+                {
+                    var key = new EdgeTrafficResourceKey(edgeId, trafficType);
+                    return remainingCapacityById.TryGetValue(key, out var remainingCapacity)
+                        ? remainingCapacity
+                        : double.PositiveInfinity;
+                })
+                .DefaultIfEmpty(double.PositiveInfinity)
+                .Min();
     }
 
     private static double GetOrZero(IDictionary<string, double> values, string key)
@@ -919,4 +1108,11 @@ public static partial class MixedRoutingAllocator
         double Score,
         string PathKey,
         double Probability);
+
+    private enum RouteConstraintMode
+    {
+        BlockedOnly,
+        PermissionLimited,
+        AllConstraints
+    }
 }

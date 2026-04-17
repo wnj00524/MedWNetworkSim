@@ -79,6 +79,21 @@ public sealed class NetworkSimulationEngine
                 context.Notes.Add($"Unmet demand remains after routing: {unmetDemand:0.##} unit(s).");
             }
 
+            if (context.NoPermittedPathDemand > Epsilon)
+            {
+                context.Notes.Add($"No permitted path remained for {context.NoPermittedPathDemand:0.##} unit(s).");
+            }
+
+            if (context.PermissionLimitedDemand > Epsilon)
+            {
+                context.Notes.Add($"Permission limit reached on one or more edges for {context.PermissionLimitedDemand:0.##} unit(s).");
+            }
+
+            if (context.CapacityBlockedDemand > Epsilon)
+            {
+                context.Notes.Add($"General edge or transhipment capacity was exhausted for {context.CapacityBlockedDemand:0.##} unit(s).");
+            }
+
             if (hasFiniteCapacities && (unusedSupply > Epsilon || unmetDemand > Epsilon))
             {
                 context.Notes.Add("Shared edge or node transhipment capacity limits may have prevented additional routing.");

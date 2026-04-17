@@ -12,6 +12,7 @@
         Height="1040"
         MinWidth="1380"
         MinHeight="900"
+        WindowState="Maximized"
         WindowStartupLocation="CenterScreen">
     <Grid Margin="22">
         <Grid.RowDefinitions>

@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Text;
 using System.Windows;
+using System.Collections.ObjectModel;
 using System.Windows.Media;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Services;
@@ -64,10 +65,20 @@ public sealed class EdgeViewModel : ObservableObject
         seasonalRisk = model.SeasonalRisk;
         tollNotes = model.TollNotes;
         securityNotes = model.SecurityNotes;
+        TrafficPermissions = new ObservableCollection<EdgeTrafficPermissionRowViewModel>(
+            (model.TrafficPermissions ?? [])
+                .Select(rule =>
+                {
+                    var row = new EdgeTrafficPermissionRowViewModel(rule.TrafficType, supportsOverrideToggle: true, rule);
+                    row.DefinitionChanged += HandleTrafficPermissionChanged;
+                    return row;
+                }));
         UpdateResolvedNodes(sourceNode, targetNode);
     }
 
     public event EventHandler? DefinitionChanged;
+
+    public ObservableCollection<EdgeTrafficPermissionRowViewModel> TrafficPermissions { get; }
 
     public string Id
     {
@@ -570,8 +581,25 @@ public sealed class EdgeViewModel : ObservableObject
             AccessNotes = AccessNotes,
             SeasonalRisk = SeasonalRisk,
             TollNotes = TollNotes,
-            SecurityNotes = SecurityNotes
+            SecurityNotes = SecurityNotes,
+            TrafficPermissions = TrafficPermissions.Select(permission => permission.ToModel()).ToList()
         };
+    }
+
+    public void SynchronizeTrafficPermissions(IEnumerable<EdgeTrafficPermissionRowViewModel> rows)
+    {
+        foreach (var row in TrafficPermissions)
+        {
+            row.DefinitionChanged -= HandleTrafficPermissionChanged;
+        }
+
+        TrafficPermissions.Clear();
+
+        foreach (var row in rows)
+        {
+            row.DefinitionChanged += HandleTrafficPermissionChanged;
+            TrafficPermissions.Add(row);
+        }
     }
 
     private bool HasValidEndpoints => sourceNode is not null && targetNode is not null;
@@ -754,5 +782,10 @@ public sealed class EdgeViewModel : ObservableObject
         builder.Append(direction);
         builder.Append(' ');
         builder.Append(string.Join(", ", traffic.Select(item => $"{item.Key} {item.Value:0.##}")));
+    }
+
+    private void HandleTrafficPermissionChanged(object? sender, EventArgs e)
+    {
+        DefinitionChanged?.Invoke(this, EventArgs.Empty);
     }
 }

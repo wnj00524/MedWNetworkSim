@@ -98,10 +98,40 @@ JSON is the full-fidelity save format for the WPF app. It preserves traffic defi
 | `timelineLoopLength` | integer or null | No | Repeating timeline cycle length. Values below `1` disable looping. |
 | `defaultAllocationMode` | enum | No | Allocation mode used when the app creates new traffic types. |
 | `simulationSeed` | integer | No | Deterministic seed for stochastic route-choice behavior. |
+| `edgeTrafficPermissionDefaults` | array | No | Network-wide default edge permission rules keyed by traffic type. Omit for fully permitted behavior. |
 | `trafficTypes` | array | No | Declared traffic type definitions. Referenced traffic types are back-filled if omitted. |
 | `timelineEvents` | array | No | Optional timeline overlays that multiply production, consumption, or route cost. |
 | `nodes` | array | Yes | Places in the graph. Each node needs a unique non-empty `id`. |
 | `edges` | array | No | Routes between nodes. Each route must reference existing node ids. |
+
+## Edge Traffic Permission Defaults
+
+Edge traffic permission defaults apply to all edges unless an edge has an active override for the same traffic type.
+
+```json
+{
+  "trafficType": "Traders",
+  "mode": "limited",
+  "limitKind": "absoluteUnits",
+  "limitValue": 12
+}
+```
+
+```json
+{
+  "trafficType": "Crown Messengers",
+  "mode": "blocked"
+}
+```
+
+| Property | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `trafficType` | string | Yes | Traffic type this rule applies to. |
+| `mode` | enum | No | `permitted`, `blocked`, or `limited`. Missing values normalize to `permitted`. |
+| `limitKind` | enum | No | Required when `mode` is `limited`: `absoluteUnits` or `percentOfEdgeCapacity`. |
+| `limitValue` | number or null | No | Required when `mode` is `limited`. Use `0` or more for `absoluteUnits`, or `0` to `100` for `percentOfEdgeCapacity`. |
+
+If `edgeTrafficPermissionDefaults` is missing, every traffic type remains fully permitted by default.
 
 ## Traffic Types
 
@@ -263,6 +293,19 @@ Edges connect nodes and define route cost, time, capacity, and direction.
   "cost": 2,
   "capacity": 25,
   "isBidirectional": true,
+  "trafficPermissions": [
+    {
+      "trafficType": "Traders",
+      "isActive": true,
+      "mode": "limited",
+      "limitKind": "percentOfEdgeCapacity",
+      "limitValue": 40
+    },
+    {
+      "trafficType": "Crown Messengers",
+      "isActive": false
+    }
+  ],
   "routeType": "Road",
   "accessNotes": "Open to traders",
   "seasonalRisk": "Muddy in winter",
@@ -280,6 +323,7 @@ Edges connect nodes and define route cost, time, capacity, and direction.
 | `cost` | number | No | Non-negative route cost score. |
 | `capacity` | number or null | No | Non-negative shared route capacity. Omit for unlimited. |
 | `isBidirectional` | boolean | No | If true, traffic can move both ways. If false, only `fromNodeId` to `toNodeId`. |
+| `trafficPermissions` | array | No | Per-edge traffic permission overrides. Inactive or missing rules fall back to `edgeTrafficPermissionDefaults`, then to permitted. |
 | `routeType` | string or null | No | Optional worldbuilding route category. |
 | `accessNotes` | string or null | No | Optional access or permission notes. |
 | `seasonalRisk` | string or null | No | Optional seasonal or hazard notes. |
@@ -287,6 +331,20 @@ Edges connect nodes and define route cost, time, capacity, and direction.
 | `securityNotes` | string or null | No | Optional safety or control notes. |
 
 Every edge endpoint must reference an existing node id. `time`, `cost`, and `capacity` must be finite and non-negative.
+
+### Edge Traffic Permission Overrides
+
+Each `trafficPermissions` entry uses the same rule fields as `edgeTrafficPermissionDefaults`, plus `isActive`.
+
+| Property | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `trafficType` | string | Yes | Traffic type this override applies to. |
+| `isActive` | boolean | No | Whether this edge overrides the network default. If false or missing, the network default still applies. |
+| `mode` | enum | No | `permitted`, `blocked`, or `limited`. Used only when `isActive` is true. |
+| `limitKind` | enum | No | Required when `mode` is `limited`. |
+| `limitValue` | number or null | No | Required when `mode` is `limited`. |
+
+Percentage limits require a finite edge `capacity`. The loader rejects `percentOfEdgeCapacity` rules on edges without a defined capacity.
 
 ## Timeline Events
 
@@ -339,6 +397,7 @@ The loader normalizes files before the app uses or saves them:
 - Optional text fields are trimmed; blank optional text becomes null.
 - Missing node coordinates are auto-laid out.
 - Missing traffic definitions are created for traffic types referenced by node profiles or input requirements.
+- Missing edge traffic permission rules are treated as permitted.
 - Duplicate traffic profiles on one node are merged.
 - Duplicate input requirements for one output are summed by precursor traffic type.
 - Legacy single schedule fields are mirrored into the first window when saving.

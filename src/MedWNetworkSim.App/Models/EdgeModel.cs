@@ -78,4 +78,9 @@ public sealed class EdgeModel
     /// Gets or sets optional security notes for this route.
     /// </summary>
     public string? SecurityNotes { get; set; }
+
+    /// <summary>
+    /// Gets or sets optional traffic-specific permission overrides for this edge.
+    /// </summary>
+    public List<EdgeTrafficPermissionRule> TrafficPermissions { get; set; } = [];
 }

@@ -76,6 +76,14 @@ ScenarioBH_OsmImportDirectNodeNaming();
 ScenarioBI_OsmImportDerivedJunctionNaming();
 ScenarioBJ_OsmImportFallbackNaming();
 ScenarioBK_OsmImportDeterministicNaming();
+ScenarioBL_OsmImportMandatoryNodesAlwaysRetained();
+ScenarioBM_OsmImportArticulationPointsPreserved();
+ScenarioBN_OsmImportNoOrphanedRetainedNodes();
+ScenarioBO_OsmImportEffectivePercentageClampsToSafeMinimum();
+ScenarioBP_OsmImportShapeAnchorsPreservedOnLongCurvedChain();
+ScenarioBQ_OsmImportDistancePreservedAfterThinning();
+ScenarioBR_OsmImportIntegrationFixtureRetentionSummary();
+ScenarioBS_OsmImportAlwaysKeepsNamedRoadTransitions();
 
 Console.WriteLine("Verification passed.");
 
@@ -2401,6 +2409,154 @@ static void ScenarioBK_OsmImportDeterministicNaming()
     var second = importer.ImportFromFile(fixture.OsmPath).Nodes.OrderBy(node => node.Id).Select(node => node.Name).ToList();
 
     AssertSequenceEqual(first, second, "BK deterministic node naming");
+}
+
+static void ScenarioBL_OsmImportMandatoryNodesAlwaysRetained()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0020" />
+  <node id="2" lat="37.0010" lon="-122.0020" />
+  <node id="3" lat="37.0020" lon="-122.0020" />
+  <node id="4" lat="37.0010" lon="-122.0030" />
+  <node id="5" lat="37.0010" lon="-122.0010" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><nd ref="3" /><tag k="highway" v="secondary" /></way>
+  <way id="11"><nd ref="4" /><nd ref="2" /><nd ref="5" /><tag k="highway" v="secondary" /></way>
+</osm>
+""");
+
+    var options = new OsmImportOptions(true, 10, OsmRetentionStrategy.PreserveShape, true, true);
+    var network = new OsmImporter().ImportFromFile(fixture.OsmPath, options);
+    AssertTrue(network.Nodes.Any(node => node.Id == "osm-node-2"), "BL mandatory junction retained");
+}
+
+static void ScenarioBM_OsmImportArticulationPointsPreserved()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0000" />
+  <node id="2" lat="37.0000" lon="-122.0010" />
+  <node id="3" lat="37.0000" lon="-122.0020" />
+  <node id="4" lat="37.0010" lon="-122.0020" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><nd ref="3" /><tag k="highway" v="primary" /></way>
+  <way id="11"><nd ref="3" /><nd ref="4" /><tag k="highway" v="primary" /></way>
+</osm>
+""");
+
+    var network = new OsmImporter().ImportFromFile(
+        fixture.OsmPath,
+        new OsmImportOptions(true, 10, OsmRetentionStrategy.PreserveJunctionImportance, true, true));
+
+    AssertTrue(network.Nodes.Any(node => node.Id == "osm-node-3"), "BM articulation point retained");
+}
+
+static void ScenarioBN_OsmImportNoOrphanedRetainedNodes()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0000" />
+  <node id="2" lat="37.0000" lon="-122.0010" />
+  <node id="3" lat="37.0000" lon="-122.0020" />
+  <node id="4" lat="37.0000" lon="-122.0030" />
+  <node id="5" lat="37.0000" lon="-122.0040" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><nd ref="3" /><nd ref="4" /><nd ref="5" /><tag k="highway" v="residential" /></way>
+</osm>
+""");
+
+    var network = new OsmImporter().ImportFromFile(fixture.OsmPath, new OsmImportOptions(true, 20));
+    var adjacency = BuildNetworkAdjacency(network);
+    AssertTrue(adjacency.Values.All(neighbors => neighbors.Count > 0), "BN no orphaned retained nodes");
+}
+
+static void ScenarioBO_OsmImportEffectivePercentageClampsToSafeMinimum()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0020" />
+  <node id="2" lat="37.0010" lon="-122.0020" />
+  <node id="3" lat="37.0020" lon="-122.0020" />
+  <node id="4" lat="37.0010" lon="-122.0030" />
+  <node id="5" lat="37.0010" lon="-122.0010" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><nd ref="3" /><tag k="highway" v="secondary" /></way>
+  <way id="11"><nd ref="4" /><nd ref="2" /><nd ref="5" /><tag k="highway" v="secondary" /></way>
+</osm>
+""");
+
+    var network = new OsmImporter().ImportFromFile(fixture.OsmPath, new OsmImportOptions(true, 1));
+    var description = network.Description ?? string.Empty;
+    AssertTrue(description.Contains("requested percentage: 1%", StringComparison.OrdinalIgnoreCase), "BO summary requested percentage");
+    AssertTrue(!description.Contains("effective percentage: 1%", StringComparison.OrdinalIgnoreCase), "BO summary clamps effective percentage");
+}
+
+static void ScenarioBP_OsmImportShapeAnchorsPreservedOnLongCurvedChain()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0000" />
+  <node id="2" lat="37.0020" lon="-122.0000" />
+  <node id="3" lat="37.0030" lon="-122.0020" />
+  <node id="4" lat="37.0040" lon="-122.0040" />
+  <node id="5" lat="37.0060" lon="-122.0040" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><nd ref="3" /><nd ref="4" /><nd ref="5" /><tag k="highway" v="primary" /></way>
+</osm>
+""");
+
+    var network = new OsmImporter().ImportFromFile(
+        fixture.OsmPath,
+        new OsmImportOptions(true, 30, OsmRetentionStrategy.PreserveShape, true, true));
+
+    AssertTrue(network.Nodes.Count >= 3, "BP long curved chain keeps at least one optional anchor");
+}
+
+static void ScenarioBQ_OsmImportDistancePreservedAfterThinning()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0000" />
+  <node id="2" lat="37.0010" lon="-122.0000" />
+  <node id="3" lat="37.0015" lon="-122.0005" />
+  <node id="4" lat="37.0020" lon="-122.0010" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><nd ref="3" /><nd ref="4" /><tag k="highway" v="primary" /></way>
+</osm>
+""");
+
+    var network = new OsmImporter().ImportFromFile(fixture.OsmPath, new OsmImportOptions(true, 50));
+    var expected = DistanceKm(37.0000, -122.0000, 37.0010, -122.0000)
+                 + DistanceKm(37.0010, -122.0000, 37.0015, -122.0005)
+                 + DistanceKm(37.0015, -122.0005, 37.0020, -122.0010);
+    var actual = network.Edges.Sum(edge => edge.Time ?? 0d);
+    AssertTrue(Math.Abs(actual - expected) < 0.02d, "BQ retained graph preserves traversed distance");
+}
+
+static void ScenarioBR_OsmImportIntegrationFixtureRetentionSummary()
+{
+    using var fixture = CreateEquivalentOsmFixtures();
+    var importer = new OsmImporter();
+    var network = importer.ImportFromFile(fixture.OsmPath, new OsmImportOptions(true, 50));
+    var description = network.Description ?? string.Empty;
+
+    AssertTrue(description.Contains("mandatory kept nodes", StringComparison.OrdinalIgnoreCase), "BR summary includes mandatory count");
+    AssertTrue(description.Contains("optional kept nodes", StringComparison.OrdinalIgnoreCase), "BR summary includes optional count");
+    AssertTrue(description.Contains("effective percentage", StringComparison.OrdinalIgnoreCase), "BR summary includes effective percentage");
+}
+
+static void ScenarioBS_OsmImportAlwaysKeepsNamedRoadTransitions()
+{
+    using var fixture = CreateXmlOsmFixture("""
+<osm version="0.6" generator="verification">
+  <node id="1" lat="37.0000" lon="-122.0000" />
+  <node id="2" lat="37.0000" lon="-122.0010" />
+  <node id="3" lat="37.0000" lon="-122.0020" />
+  <way id="10"><nd ref="1" /><nd ref="2" /><tag k="highway" v="residential" /><tag k="name" v="Alpha Road" /></way>
+  <way id="11"><nd ref="2" /><nd ref="3" /><tag k="highway" v="residential" /><tag k="name" v="Beta Road" /></way>
+</osm>
+""");
+
+    var network = new OsmImporter().ImportFromFile(
+        fixture.OsmPath,
+        new OsmImportOptions(true, 10, OsmRetentionStrategy.Balanced, true, true));
+
+    AssertTrue(network.Nodes.Any(node => node.Id == "osm-node-2"), "BS named-road transition node retained");
 }
 
 static EquivalentOsmFixture CreateXmlOsmFixture(string osmXml)

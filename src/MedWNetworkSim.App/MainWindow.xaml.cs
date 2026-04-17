@@ -97,13 +97,25 @@ public partial class MainWindow : Window
             return;
         }
 
+        var optionsWindow = new OsmImportOptionsWindow
+        {
+            Owner = this
+        };
+
+        if (optionsWindow.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var importOptions = optionsWindow.ImportOptions ?? new OsmImportOptions();
+
         try
         {
             ViewModel.StartOsmImport();
 
             var progress = new Progress<OsmImportProgress>(ViewModel.ReportOsmImportProgress);
             var importedNetwork = await Task.Run(
-                () => osmImporter.ImportFromFileAsync(dialog.FileName, progress),
+                () => osmImporter.ImportFromFileAsync(dialog.FileName, importOptions, progress),
                 CancellationToken.None);
 
             PreserveViewportAcrossWorkspaceShift(() => ViewModel.LoadImportedNetwork(importedNetwork, dialog.FileName));

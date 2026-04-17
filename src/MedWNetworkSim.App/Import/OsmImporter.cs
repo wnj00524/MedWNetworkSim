@@ -21,11 +21,17 @@ public sealed class OsmImporter
         return importService.ImportFromFile(path);
     }
 
+    public SimulationNetwork ImportFromFile(string path, OsmImportOptions? options)
+    {
+        return importService.ImportFromFile(path, options);
+    }
+
     public Task<SimulationNetwork> ImportFromFileAsync(
         string path,
+        OsmImportOptions? options = null,
         IProgress<OsmImportProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        return importService.ImportFromFileAsync(path, progress, cancellationToken);
+        return importService.ImportFromFileAsync(path, options, progress, cancellationToken);
     }
 }

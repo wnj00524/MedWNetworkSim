@@ -390,25 +390,31 @@
                                     BorderThickness="1"
                                     CornerRadius="20" />
 
-                            <Line x:Name="EdgeCreationPreviewLine"
-                                  IsHitTestVisible="False"
-                                  Stroke="{DynamicResource AccentStrongBrush}"
-                                  StrokeThickness="3"
-                                  StrokeDashArray="6,4"
-                                  StrokeStartLineCap="Round"
-                                  StrokeEndLineCap="Round"
-                                  Visibility="Collapsed" />
+                            <Canvas>
+                                <Canvas.RenderTransform>
+                                    <TranslateTransform X="{Binding WorkspaceTranslateX}"
+                                                        Y="{Binding WorkspaceTranslateY}" />
+                                </Canvas.RenderTransform>
 
-                            <ItemsControl ItemsSource="{Binding Edges}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <Canvas />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate DataType="{x:Type vm:EdgeViewModel}">
-                                        <Canvas Width="{Binding DataContext.WorkspaceWidth, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                Height="{Binding DataContext.WorkspaceHeight, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                                <Line x:Name="EdgeCreationPreviewLine"
+                                      IsHitTestVisible="False"
+                                      Stroke="{DynamicResource AccentStrongBrush}"
+                                      StrokeThickness="3"
+                                      StrokeDashArray="6,4"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      Visibility="Collapsed" />
+
+                                <ItemsControl ItemsSource="{Binding Edges}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <Canvas />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:EdgeViewModel}">
+                                            <Canvas Width="{Binding DataContext.WorkspaceWidth, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    Height="{Binding DataContext.WorkspaceHeight, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
                                             <Line X1="{Binding X1}"
                                                   Y1="{Binding Y1}"
                                                   X2="{Binding X2}"
@@ -499,35 +505,35 @@
                                                                Visibility="{Binding FlowSummaryVisibility}" />
                                                 </StackPanel>
                                             </Border>
-                                        </Canvas>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                                            </Canvas>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
 
-                            <ItemsControl ItemsSource="{Binding Nodes}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <Canvas />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemContainerStyle>
-                                    <Style TargetType="ContentPresenter">
-                                        <Setter Property="Canvas.Left" Value="{Binding Left}" />
-                                        <Setter Property="Canvas.Top" Value="{Binding Top}" />
-                                    </Style>
-                                </ItemsControl.ItemContainerStyle>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate DataType="{x:Type vm:NodeViewModel}">
-                                        <Thumb Width="{Binding Width}"
-                                               Height="{Binding Height}"
-                                               Cursor="SizeAll"
-                                               Focusable="True"
-                                               IsTabStop="True"
-                                               ToolTipService.ShowsToolTipOnKeyboardFocus="True"
-                                               PreviewMouseLeftButtonDown="NodeThumb_OnPreviewMouseLeftButtonDown"
-                                               PreviewMouseLeftButtonUp="NodeThumb_OnPreviewMouseLeftButtonUp"
-                                               DragDelta="NodeThumb_OnDragDelta"
-                                               ToolTip="{Binding FullTrafficSummary}">
+                                <ItemsControl ItemsSource="{Binding Nodes}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <Canvas />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemContainerStyle>
+                                        <Style TargetType="ContentPresenter">
+                                            <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                                            <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                        </Style>
+                                    </ItemsControl.ItemContainerStyle>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:NodeViewModel}">
+                                            <Thumb Width="{Binding Width}"
+                                                   Height="{Binding Height}"
+                                                   Cursor="SizeAll"
+                                                   Focusable="True"
+                                                   IsTabStop="True"
+                                                   ToolTipService.ShowsToolTipOnKeyboardFocus="True"
+                                                   PreviewMouseLeftButtonDown="NodeThumb_OnPreviewMouseLeftButtonDown"
+                                                   PreviewMouseLeftButtonUp="NodeThumb_OnPreviewMouseLeftButtonUp"
+                                                   DragDelta="NodeThumb_OnDragDelta"
+                                                   ToolTip="{Binding FullTrafficSummary}">
                                             <Thumb.Template>
                                                 <ControlTemplate TargetType="Thumb">
                                                     <Grid>
@@ -674,10 +680,11 @@
                                                     </Grid>
                                                 </ControlTemplate>
                                             </Thumb.Template>
-                                        </Thumb>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                                            </Thumb>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Canvas>
                         </Grid>
                     </ScrollViewer>
                 </Grid>

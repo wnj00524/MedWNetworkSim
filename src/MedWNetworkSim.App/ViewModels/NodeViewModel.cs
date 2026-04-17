@@ -825,9 +825,8 @@ public sealed class NodeViewModel : ObservableObject
 
     public void MoveBy(double deltaX, double deltaY)
     {
-        // Keep the node on the positive canvas while preserving drag semantics from the node center.
-        X = Math.Max(Width / 2d, X + deltaX);
-        Y = Math.Max(Height / 2d, Y + deltaY);
+        X += deltaX;
+        Y += deltaY;
     }
 
     public void ApplySimulationVisuals(

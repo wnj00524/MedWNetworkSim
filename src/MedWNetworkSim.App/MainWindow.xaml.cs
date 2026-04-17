@@ -65,7 +65,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        ExecuteWithErrorHandling(() => ViewModel.LoadFromFile(dialog.FileName));
+        ExecuteWithErrorHandling(() => PreserveViewportAcrossWorkspaceShift(() => ViewModel.LoadFromFile(dialog.FileName)));
     }
 
     private void GraphMl_Click(object sender, RoutedEventArgs e)
@@ -93,7 +93,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        ExecuteWithErrorHandling(() => ViewModel.AddSubnetworkFromFile(dialog.FileName));
+        ExecuteWithErrorHandling(() => PreserveViewportAcrossWorkspaceShift(() => ViewModel.AddSubnetworkFromFile(dialog.FileName)));
     }
 
     private void NetworkProperties_Click(object sender, RoutedEventArgs e)
@@ -133,7 +133,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        ExecuteWithErrorHandling(ViewModel.LoadBundledSample);
+        ExecuteWithErrorHandling(() => PreserveViewportAcrossWorkspaceShift(ViewModel.LoadBundledSample));
     }
 
     private void LoadWorldbuilderScenario_Click(object sender, RoutedEventArgs e)
@@ -143,7 +143,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        ExecuteWithErrorHandling(ViewModel.LoadSelectedWorldbuilderScenario);
+        ExecuteWithErrorHandling(() => PreserveViewportAcrossWorkspaceShift(ViewModel.LoadSelectedWorldbuilderScenario));
     }
 
     private void RunSimulation_Click(object sender, RoutedEventArgs e)
@@ -165,7 +165,7 @@ public partial class MainWindow : Window
 
     private void AutoArrange_Click(object sender, RoutedEventArgs e)
     {
-        ExecuteWithErrorHandling(ViewModel.AutoArrangeNodes);
+        ExecuteWithErrorHandling(() => PreserveViewportAcrossWorkspaceShift(ViewModel.AutoArrangeNodes));
     }
 
     private void ToggleCanvasOnly_Click(object sender, RoutedEventArgs e)
@@ -210,14 +210,14 @@ public partial class MainWindow : Window
 
     private void AddNode_Click(object sender, RoutedEventArgs e)
     {
-        ExecuteWithErrorHandling(ViewModel.AddNode);
+        ExecuteWithErrorHandling(() => PreserveViewportAcrossWorkspaceShift(ViewModel.AddNode));
     }
 
     private void AddNodeFromTemplate_Click(object sender, RoutedEventArgs e)
     {
         ExecuteWithErrorHandling(() =>
         {
-            ViewModel.AddNodeFromSelectedTemplate();
+            PreserveViewportAcrossWorkspaceShift(ViewModel.AddNodeFromSelectedTemplate);
             OpenNodeEditorWindow();
         });
     }
@@ -227,7 +227,7 @@ public partial class MainWindow : Window
         ExecuteWithErrorHandling(() =>
         {
             var position = pendingCanvasContextMenuPosition;
-            ViewModel.AddNodeAt(position?.X, position?.Y);
+            PreserveViewportAcrossWorkspaceShift(() => ViewModel.AddNodeAt(position?.X, position?.Y));
             OpenNodeEditorWindow();
         });
     }
@@ -286,7 +286,7 @@ public partial class MainWindow : Window
 
         if (sender is Thumb { DataContext: NodeViewModel node })
         {
-            ViewModel.MoveNode(node, e.HorizontalChange, e.VerticalChange);
+            PreserveViewportAcrossWorkspaceShift(() => ViewModel.MoveNode(node, e.HorizontalChange, e.VerticalChange));
         }
     }
 
@@ -358,8 +358,8 @@ public partial class MainWindow : Window
 
         ExecuteWithErrorHandling(() =>
         {
-            var position = e.GetPosition(NetworkCanvasGrid);
-            ViewModel.AddNodeAt(Math.Max(0d, position.X), Math.Max(0d, position.Y));
+            var position = ToWorldCoordinates(e.GetPosition(NetworkCanvasGrid));
+            PreserveViewportAcrossWorkspaceShift(() => ViewModel.AddNodeAt(position.X, position.Y));
             OpenNodeEditorWindow();
         });
         e.Handled = true;
@@ -373,10 +373,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var position = e.GetPosition(canvasGrid);
-        pendingCanvasContextMenuPosition = new Point(
-            Math.Max(0d, position.X),
-            Math.Max(0d, position.Y));
+        pendingCanvasContextMenuPosition = ToWorldCoordinates(e.GetPosition(canvasGrid));
 
         if (e.OriginalSource is not DependencyObject hitTarget)
         {
@@ -501,9 +498,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        var position = e.GetPosition(NetworkCanvasGrid);
-        EdgeCreationPreviewLine.X2 = Math.Max(0d, position.X);
-        EdgeCreationPreviewLine.Y2 = Math.Max(0d, position.Y);
+        var position = ToWorldCoordinates(e.GetPosition(NetworkCanvasGrid));
+        EdgeCreationPreviewLine.X2 = position.X;
+        EdgeCreationPreviewLine.Y2 = position.Y;
     }
 
     protected override void OnPreviewMouseLeftButtonUp(MouseButtonEventArgs e)
@@ -602,6 +599,44 @@ public partial class MainWindow : Window
         NetworkCanvasScrollViewer.ScrollToHorizontalOffset(panStartHorizontalOffset - delta.X);
         NetworkCanvasScrollViewer.ScrollToVerticalOffset(panStartVerticalOffset - delta.Y);
         return true;
+    }
+
+    private Point ToWorldCoordinates(Point renderedPosition)
+    {
+        return new Point(
+            renderedPosition.X + ViewModel.WorkspaceMinX,
+            renderedPosition.Y + ViewModel.WorkspaceMinY);
+    }
+
+    private void PreserveViewportAcrossWorkspaceShift(Action editAction)
+    {
+        ArgumentNullException.ThrowIfNull(editAction);
+
+        var oldMinX = ViewModel.WorkspaceMinX;
+        var oldMinY = ViewModel.WorkspaceMinY;
+
+        editAction();
+
+        var deltaMinX = ViewModel.WorkspaceMinX - oldMinX;
+        var deltaMinY = ViewModel.WorkspaceMinY - oldMinY;
+
+        var horizontalShift = deltaMinX < 0d ? -deltaMinX * canvasZoom : 0d;
+        var verticalShift = deltaMinY < 0d ? -deltaMinY * canvasZoom : 0d;
+        if (horizontalShift <= 0d && verticalShift <= 0d)
+        {
+            return;
+        }
+
+        NetworkCanvasScrollViewer.UpdateLayout();
+        if (horizontalShift > 0d)
+        {
+            NetworkCanvasScrollViewer.ScrollToHorizontalOffset(NetworkCanvasScrollViewer.HorizontalOffset + horizontalShift);
+        }
+
+        if (verticalShift > 0d)
+        {
+            NetworkCanvasScrollViewer.ScrollToVerticalOffset(NetworkCanvasScrollViewer.VerticalOffset + verticalShift);
+        }
     }
 
     private void EndCanvasPan()

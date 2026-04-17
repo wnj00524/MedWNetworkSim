@@ -21,11 +21,14 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border Padding="18"
+        <Border x:Name="TopControlsRegion"
+                Padding="18"
                 Background="{DynamicResource PanelBrush}"
                 BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
-                CornerRadius="14">
+                CornerRadius="14"
+                Focusable="True"
+                KeyboardNavigation.TabNavigation="Continue">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -296,7 +299,9 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="12" />
+                        <RowDefinition Height="10" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="10" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
@@ -358,8 +363,39 @@
                         </Grid>
                     </Border>
 
+                    <Border Grid.Row="2"
+                            Padding="10,8"
+                            Background="{DynamicResource SectionBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource AccentStrongBrush}"
+                                           Text="{Binding GraphKeyboardHint}" />
+                                <TextBlock Margin="0,2,0,0"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource MutedForegroundBrush}"
+                                           Text="{Binding FocusedEdgeStatus}" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Margin="12,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Padding="10,6"
+                                    FontSize="11"
+                                    Content="Keyboard controls"
+                                    Click="ShowKeyboardHelp_Click" />
+                        </Grid>
+                    </Border>
+
                     <ScrollViewer x:Name="NetworkCanvasScrollViewer"
-                                  Grid.Row="2"
+                                  Grid.Row="4"
                                   HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Auto"
                                   CanContentScroll="False"
@@ -370,6 +406,13 @@
                         <Grid x:Name="NetworkCanvasGrid"
                               Width="{Binding WorkspaceWidth}"
                               Height="{Binding WorkspaceHeight}"
+                              Focusable="True"
+                              IsTabStop="True"
+                              KeyboardNavigation.TabNavigation="None"
+                              AutomationProperties.Name="Network graph canvas workspace"
+                              AutomationProperties.HelpText="Canvas workspace. Arrow keys move node focus, Enter edits, N adds a place, E starts a route, and Shift+F10 opens actions."
+                              GotKeyboardFocus="NetworkCanvasGrid_OnGotKeyboardFocus"
+                              PreviewKeyDown="NetworkCanvasGrid_OnPreviewKeyDown"
                               PreviewMouseLeftButtonDown="NetworkCanvasGrid_OnPreviewMouseLeftButtonDown"
                               PreviewMouseRightButtonDown="NetworkCanvasGrid_OnPreviewMouseRightButtonDown"
                               PreviewMouseWheel="NetworkCanvasGrid_OnPreviewMouseWheel">
@@ -464,6 +507,28 @@
                                                   Opacity="0.78"
                                                   Visibility="{Binding RouteHighlightVisibility}" />
 
+                                            <Line X1="{Binding X1}"
+                                                  Y1="{Binding Y1}"
+                                                  X2="{Binding X2}"
+                                                  Y2="{Binding Y2}"
+                                                  Stroke="{DynamicResource KeyboardFocusBrush}"
+                                                  StrokeThickness="7"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeEndLineCap="Round"
+                                                  Opacity="0.88"
+                                                  Visibility="Collapsed">
+                                                <Line.Style>
+                                                    <Style TargetType="Line">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsKeyboardFocused}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Line.Style>
+                                            </Line>
+
                                             <Polygon Points="{Binding ArrowPoints}"
                                                      Fill="{DynamicResource EdgeBrush}"
                                                      Visibility="{Binding ArrowVisibility}" />
@@ -486,6 +551,18 @@
                                                     MouseLeftButtonDown="EdgeVisual_OnMouseLeftButtonDown"
                                                     ToolTip="{Binding EdgeToolTipText}"
                                                     Visibility="{Binding EdgeVisibility}">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+                                                        <Setter Property="BorderThickness" Value="1" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsKeyboardFocused}" Value="True">
+                                                                <Setter Property="BorderBrush" Value="{DynamicResource KeyboardFocusBrush}" />
+                                                                <Setter Property="BorderThickness" Value="2" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
                                                 <StackPanel>
                                                     <TextBlock FontSize="11"
                                                                FontWeight="SemiBold"
@@ -528,8 +605,12 @@
                                                    Height="{Binding Height}"
                                                    Cursor="SizeAll"
                                                    Focusable="True"
-                                                   IsTabStop="True"
+                                                   IsTabStop="False"
+                                                   AutomationProperties.Name="{Binding Name, StringFormat=Place {0}}"
+                                                   AutomationProperties.HelpText="Enter edits this place, Space selects it, E starts a route, Ctrl+Arrow moves it, and Shift+F10 opens actions."
                                                    ToolTipService.ShowsToolTipOnKeyboardFocus="True"
+                                                   GotKeyboardFocus="NodeThumb_OnGotKeyboardFocus"
+                                                   PreviewKeyDown="NodeThumb_OnPreviewKeyDown"
                                                    PreviewMouseLeftButtonDown="NodeThumb_OnPreviewMouseLeftButtonDown"
                                                    PreviewMouseLeftButtonUp="NodeThumb_OnPreviewMouseLeftButtonUp"
                                                    DragDelta="NodeThumb_OnDragDelta"
@@ -537,6 +618,12 @@
                                             <Thumb.Template>
                                                 <ControlTemplate TargetType="Thumb">
                                                     <Grid>
+                                                        <Border x:Name="NodeKeyboardFocusBorder"
+                                                                Margin="-4"
+                                                                BorderBrush="{DynamicResource KeyboardFocusBrush}"
+                                                                BorderThickness="3"
+                                                                CornerRadius="12"
+                                                                Opacity="0" />
                                                         <Border Padding="12"
                                                                 Background="{DynamicResource NodeBrush}"
                                                                 BorderBrush="{Binding NodeBorderDisplayBrush}"
@@ -678,6 +765,30 @@
                                                             </StackPanel>
                                                         </Grid>
                                                     </Grid>
+                                                    <ControlTemplate.Triggers>
+                                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                            <Setter TargetName="NodeKeyboardFocusBorder"
+                                                                    Property="BorderBrush"
+                                                                    Value="{DynamicResource AccentStrongBrush}" />
+                                                            <Setter TargetName="NodeKeyboardFocusBorder"
+                                                                    Property="BorderThickness"
+                                                                    Value="2.4" />
+                                                            <Setter TargetName="NodeKeyboardFocusBorder"
+                                                                    Property="Opacity"
+                                                                    Value="0.95" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsKeyboardFocused}" Value="True">
+                                                            <Setter TargetName="NodeKeyboardFocusBorder"
+                                                                    Property="BorderBrush"
+                                                                    Value="{DynamicResource KeyboardFocusBrush}" />
+                                                            <Setter TargetName="NodeKeyboardFocusBorder"
+                                                                    Property="BorderThickness"
+                                                                    Value="3" />
+                                                            <Setter TargetName="NodeKeyboardFocusBorder"
+                                                                    Property="Opacity"
+                                                                    Value="1" />
+                                                        </DataTrigger>
+                                                    </ControlTemplate.Triggers>
                                                 </ControlTemplate>
                                             </Thumb.Template>
                                             </Thumb>
@@ -690,7 +801,10 @@
                 </Grid>
             </Border>
 
-            <ScrollViewer Grid.Column="2"
+            <ScrollViewer x:Name="RightRailRegion"
+                          Grid.Column="2"
+                          Focusable="True"
+                          IsTabStop="True"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled"
                           Visibility="{Binding DataContext.RightRailVisibility, ElementName=RootWindow}">
@@ -707,12 +821,14 @@
 
         </Grid>
 
-        <Border Grid.Row="2"
+        <Border x:Name="BottomReportsRegion"
+                Grid.Row="2"
                 Padding="18"
                 Background="{DynamicResource PanelBrush}"
                 BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
                 CornerRadius="22"
+                Focusable="True"
                 MaxHeight="360"
                 Visibility="{Binding DataContext.BottomWorkspaceVisibility, ElementName=RootWindow}">
             <local:ReportsDrawerControl />

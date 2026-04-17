@@ -47,6 +47,15 @@ git clone https://github.com/wnj00524/MedWNetworkSim.git
    - Example: `Cost + Stochastic + SinglePath`
 5. Run simulation and monitor node demand and traffic flow.
 
+### Importing OpenStreetMap road data
+- Use **File → Import OpenStreetMap File…** to import either:
+  - `*.osm` (OSM XML)
+  - `*.pbf` (OSM PBF)
+- The importer reuses the same mapping, simplification, and validation pipeline for both formats.
+- Only supported road/highway-tagged ways are imported for simulation.
+- Large real-world map extracts are simplified during import to keep graphs tractable.
+- Very large `.pbf` files can take longer to process; the app shows stage-by-stage import progress.
+
 ### Exporting Reports
 - Export detailed simulation data via `File → Export`.
 - Reports include node-specific backlogs, edge traffic states, and routing statistics.
@@ -83,4 +92,3 @@ git clone https://github.com/wnj00524/MedWNetworkSim.git
 ## License & Contact
 - **License**: MIT License
 - **GitHub Issues**: [Open an issue](https://github.com/wnj00524/MedWNetworkSim/issues)
-

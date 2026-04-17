@@ -84,7 +84,7 @@
                             <WrapPanel Margin="0,8,0,0">
                                 <Button Content="New World" Click="NewNetwork_Click" />
                                 <Button Content="Open World..." Click="OpenFile_Click" />
-                                <Button Content="Import OSM File..." Click="ImportOsm_Click" />
+                                <Button Content="Import OpenStreetMap File..." Click="ImportOsm_Click" />
                             </WrapPanel>
                             <StackPanel Margin="0,8,0,0">
                                 <StackPanel.Style>

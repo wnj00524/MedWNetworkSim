@@ -1,58 +1,95 @@
 using System.Globalization;
-using System.IO;
 using System.Xml;
 
 namespace MedWNetworkSim.App.Import;
 
-public sealed class OsmParser
+public sealed class OsmXmlParser : IOsmSourceParser
 {
-    public sealed record ParsedNode(long Id, double Latitude, double Longitude);
+    public bool CanParseExtension(string extension)
+    {
+        return ".osm".Equals(extension, StringComparison.OrdinalIgnoreCase);
+    }
 
-    public sealed record ParsedEdge(long FromNodeId, long ToNodeId, string HighwayType);
-
-    public sealed record ParsedGraph(
-        IReadOnlyDictionary<long, ParsedNode> Nodes,
-        IReadOnlyList<ParsedEdge> Edges);
-
-    public async Task<ParsedGraph> ParseAsync(
+    public async Task<OsmParseResult> ParseAsync(
         string path,
         IProgress<OsmImportProgress>? progress = null,
         CancellationToken cancellationToken = default)
+    {
+        ValidateInputPath(path, "XML");
+
+        var requiredNodeIds = new HashSet<long>();
+        var parsedEdges = new List<OsmParsedEdge>();
+        var warnings = new List<string>();
+        long rawWayCount = 0;
+
+        progress?.Report(new OsmImportProgress(0.10d, "Reading OSM XML file…"));
+        await ScanWaysAsync(path, requiredNodeIds, parsedEdges, cancellationToken, waysSeen => rawWayCount = waysSeen).ConfigureAwait(false);
+
+        var parsedNodes = new Dictionary<long, OsmParsedNode>();
+        long rawNodeCount = 0;
+        progress?.Report(new OsmImportProgress(0.35d, "Resolving referenced road nodes…"));
+        await LoadReferencedNodesAsync(
+            path,
+            requiredNodeIds,
+            parsedNodes,
+            cancellationToken,
+            nodesSeen => rawNodeCount = nodesSeen).ConfigureAwait(false);
+
+        var filteredEdges = parsedEdges
+            .Where(edge => parsedNodes.ContainsKey(edge.FromNodeId) && parsedNodes.ContainsKey(edge.ToNodeId) && edge.FromNodeId != edge.ToNodeId)
+            .ToList();
+
+        var missingNodeReferenceCount = parsedEdges.Count - filteredEdges.Count;
+        if (missingNodeReferenceCount > 0)
+        {
+            warnings.Add($"Skipped {missingNodeReferenceCount:N0} road segments due to missing node references.");
+        }
+
+        progress?.Report(new OsmImportProgress(0.60d, "Filtering road data…"));
+
+        return new OsmParseResult(
+            new OsmParsedGraph(parsedNodes, filteredEdges),
+            new OsmParseSummary(
+                RawNodeCount: rawNodeCount,
+                RawWayCount: rawWayCount,
+                RetainedWayCount: CountDistinctWays(filteredEdges),
+                SkippedEntityCount: 0,
+                MissingNodeReferenceCount: missingNodeReferenceCount,
+                Warnings: warnings));
+    }
+
+    private static int CountDistinctWays(IReadOnlyList<OsmParsedEdge> edges)
+    {
+        // XML parser flattens ways into segments and does not preserve way IDs currently.
+        // For parity with legacy behavior, we treat retained way count as number of road segments.
+        return edges.Count;
+    }
+
+    private static void ValidateInputPath(string path, string formatName)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
             throw new ArgumentException("OSM file path is required.", nameof(path));
         }
 
-        var extension = Path.GetExtension(path);
-        if (!extension.Equals(".osm", StringComparison.OrdinalIgnoreCase))
+        if (!File.Exists(path))
         {
-            throw new NotSupportedException("Only XML .osm files are supported right now. PBF support can be added later.");
+            throw new FileNotFoundException("The selected OpenStreetMap file does not exist.", path);
         }
 
-        var requiredNodeIds = new HashSet<long>();
-        var parsedEdges = new List<ParsedEdge>();
-
-        progress?.Report(new OsmImportProgress(0.05d, "Scanning OSM ways..."));
-        await ScanWaysAsync(path, requiredNodeIds, parsedEdges, cancellationToken).ConfigureAwait(false);
-
-        var parsedNodes = new Dictionary<long, ParsedNode>();
-        progress?.Report(new OsmImportProgress(0.45d, "Loading referenced OSM nodes..."));
-        await LoadReferencedNodesAsync(path, requiredNodeIds, parsedNodes, cancellationToken).ConfigureAwait(false);
-
-        var filteredEdges = parsedEdges
-            .Where(edge => parsedNodes.ContainsKey(edge.FromNodeId) && parsedNodes.ContainsKey(edge.ToNodeId) && edge.FromNodeId != edge.ToNodeId)
-            .ToList();
-
-        progress?.Report(new OsmImportProgress(0.55d, $"Parsed {parsedNodes.Count:N0} nodes and {filteredEdges.Count:N0} road segments."));
-        return new ParsedGraph(parsedNodes, filteredEdges);
+        var fileInfo = new FileInfo(path);
+        if (fileInfo.Length == 0)
+        {
+            throw new InvalidDataException($"The selected {formatName} file is empty.");
+        }
     }
 
     private static async Task ScanWaysAsync(
         string path,
         HashSet<long> requiredNodeIds,
-        List<ParsedEdge> parsedEdges,
-        CancellationToken cancellationToken)
+        List<OsmParsedEdge> parsedEdges,
+        CancellationToken cancellationToken,
+        Action<long> rawWayCountReporter)
     {
         var settings = new XmlReaderSettings
         {
@@ -61,6 +98,8 @@ public sealed class OsmParser
             IgnoreWhitespace = true,
             IgnoreComments = true
         };
+
+        long rawWayCount = 0;
 
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 1024 * 64, useAsync: true);
         using var reader = XmlReader.Create(stream, settings);
@@ -73,6 +112,8 @@ public sealed class OsmParser
             {
                 continue;
             }
+
+            rawWayCount++;
 
             var refs = new List<long>();
             string? highwayType = null;
@@ -135,16 +176,19 @@ public sealed class OsmParser
 
                 requiredNodeIds.Add(fromNodeId);
                 requiredNodeIds.Add(toNodeId);
-                parsedEdges.Add(new ParsedEdge(fromNodeId, toNodeId, highwayType));
+                parsedEdges.Add(new OsmParsedEdge(fromNodeId, toNodeId, highwayType));
             }
         }
+
+        rawWayCountReporter(rawWayCount);
     }
 
     private static async Task LoadReferencedNodesAsync(
         string path,
         HashSet<long> requiredNodeIds,
-        Dictionary<long, ParsedNode> parsedNodes,
-        CancellationToken cancellationToken)
+        Dictionary<long, OsmParsedNode> parsedNodes,
+        CancellationToken cancellationToken,
+        Action<long> rawNodeCountReporter)
     {
         var settings = new XmlReaderSettings
         {
@@ -153,6 +197,8 @@ public sealed class OsmParser
             IgnoreWhitespace = true,
             IgnoreComments = true
         };
+
+        long rawNodeCount = 0;
 
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 1024 * 64, useAsync: true);
         using var reader = XmlReader.Create(stream, settings);
@@ -166,6 +212,8 @@ public sealed class OsmParser
                 continue;
             }
 
+            rawNodeCount++;
+
             var idValue = reader.GetAttribute("id");
             var latValue = reader.GetAttribute("lat");
             var lonValue = reader.GetAttribute("lon");
@@ -177,9 +225,9 @@ public sealed class OsmParser
                 continue;
             }
 
-            parsedNodes[nodeId] = new ParsedNode(nodeId, latitude, longitude);
+            parsedNodes[nodeId] = new OsmParsedNode(nodeId, latitude, longitude);
         }
+
+        rawNodeCountReporter(rawNodeCount);
     }
 }
-
-public sealed record OsmImportProgress(double Fraction, string Message);

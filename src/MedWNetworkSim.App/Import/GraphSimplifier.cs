@@ -12,7 +12,7 @@ public sealed class GraphSimplifier
 
     private sealed record Segment(int Id, long FromNodeId, long ToNodeId, string HighwayType, double LengthKilometers);
 
-    public SimplifiedGraph Simplify(OsmParser.ParsedGraph graph)
+    public SimplifiedGraph Simplify(OsmParsedGraph graph)
     {
         ArgumentNullException.ThrowIfNull(graph);
 

@@ -1,8 +1,23 @@
 namespace MedWNetworkSim.App.Import;
 
-public sealed record OsmParsedNode(long Id, double Latitude, double Longitude);
+public sealed record OsmNameTags(
+    string? Name,
+    string? Ref,
+    string? JunctionName,
+    string? OfficialName);
 
-public sealed record OsmParsedEdge(long FromNodeId, long ToNodeId, string HighwayType);
+public sealed record OsmParsedNode(
+    long Id,
+    double Latitude,
+    double Longitude,
+    OsmNameTags? NameTags = null);
+
+public sealed record OsmParsedEdge(
+    long FromNodeId,
+    long ToNodeId,
+    string HighwayType,
+    long? WayId = null,
+    OsmNameTags? WayNameTags = null);
 
 public sealed record OsmParsedGraph(
     IReadOnlyDictionary<long, OsmParsedNode> Nodes,

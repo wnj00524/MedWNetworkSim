@@ -5,7 +5,7 @@ namespace MedWNetworkSim.App.Import;
 
 public sealed class OsmImportService
 {
-    private readonly IReadOnlyList<IOsmSourceParser> parsers;
+    private readonly IReadOnlyList<IOsmGraphParser> parsers;
     private readonly GraphSimplifier simplifier;
     private readonly OsmToSimulationMapper mapper;
 
@@ -15,7 +15,7 @@ public sealed class OsmImportService
     }
 
     public OsmImportService(
-        IReadOnlyList<IOsmSourceParser> parsers,
+        IReadOnlyList<IOsmGraphParser> parsers,
         GraphSimplifier simplifier,
         OsmToSimulationMapper mapper)
     {
@@ -76,7 +76,7 @@ public sealed class OsmImportService
         return network;
     }
 
-    public IOsmSourceParser ResolveParser(string path)
+    public IOsmGraphParser ResolveParser(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
         {

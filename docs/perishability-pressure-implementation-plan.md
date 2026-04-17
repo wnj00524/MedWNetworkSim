@@ -13,6 +13,7 @@ Add a timeline-aware **perishability pressure map** that explains *why* pressure
 2. **Capture pressure causes inside `Advance` in `TemporalNetworkSimulationEngine`.**
    - Track causes at each branch that creates backlog, expires stock, blocks movement, or consumes scarce capacity.
    - Finalize into a per-period snapshot dictionary keyed by node and edge IDs.
+   - Treat pressure as a per-period derived metric, not a persistent state variable.
 
 3. **Thread telemetry into view models (`MainWindowViewModel`, `NodeViewModel`, `EdgeViewModel`).**
    - Extend existing `ApplyTimelineVisuals` methods (add overloads or optional args) to accept pressure summaries.
@@ -45,7 +46,8 @@ Add a timeline-aware **perishability pressure map** that explains *why* pressure
   - Capture where local allocations were skipped (store/recipe exceptions) as explanatory causes.
 
 - **Method:** `ApplyCommittedState(...)` and `CompleteArrival(...)`
-  - Attribute pressure relief (negative deltas) when backlog is reduced or store receipts are fulfilled.
+  - Do not apply explicit negative pressure deltas in v1.
+  - Backlog reduction and fulfilled arrivals reduce later pressure indirectly by reducing future causes.
 
 - **Method:** `ExpireInFlightMovements(...)`
   - Emit cause entries when movement shelf life reaches zero.
@@ -172,7 +174,6 @@ public readonly record struct EdgePressureSnapshot(
 
 `PressureAccumulator` should be mutable only within one `Advance` call, with helper methods:
 - `Add(cause, quantity, weight = 1.0, detail = null)`
-- `ApplyRelief(cause, quantity)`
 - `ToNodeSnapshot()` / `ToEdgeSnapshot()`.
 
 ### Suggested score formula (deterministic and cheap)
@@ -217,7 +218,8 @@ Use these exact hook points in `TemporalNetworkSimulationEngine`:
      - `TranshipmentCapacitySaturation` if constrained by node transhipment cap.
      - `RouteUnavailable` if no viable route exists.
 5. `ApplyCommittedState(...)` / `CompleteArrival(...)`:
-   - Apply relief (negative deltas) as backlog is reduced/reservations fulfilled, then clamp accumulator floors at zero.
+   - Do not apply explicit negative relief deltas in the current implementation.
+   - Backlog reduction and fulfilled arrivals reduce future pressure indirectly by lowering later adverse causes.
 6. `ApplyTimelineEventOverlay(...)`:
    - If an active event changes production/consumption/cost multipliers, emit `TimelineShock` notes for affected entities.
 
@@ -270,6 +272,13 @@ Only add `NetworkFileService` changes if v2 introduces user-configurable weighti
   - omitted settings use built-in defaults from engine constants
 
 ## Threading Path (Simulation -> VM -> Tooltip/Report)
+
+### Current pressure semantics (implementation-aligned)
+
+- Pressure is recomputed fresh each period from current-step adverse conditions.
+- Scores may fall between periods when backlog, spoilage, or saturation conditions improve.
+- The current implementation does not apply explicit negative relief deltas.
+- Relief is modeled indirectly by reducing the causes that generate pressure in later steps.
 
 1. **Simulation layer (`TemporalNetworkSimulationEngine`)**
    - Build and fill accumulators during `Advance`.

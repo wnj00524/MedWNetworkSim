@@ -46,6 +46,8 @@ public sealed class TemporalNetworkSimulationEngine
         var occupiedEdgeCapacity = state.OccupiedEdgeCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
         var occupiedEdgeTrafficCapacity = state.OccupiedEdgeTrafficCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, EdgeTrafficResourceKey.Comparer);
         var occupiedTranshipmentCapacity = state.OccupiedTranshipmentCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
+        // Pressure is a per-period derived metric, not a persisted simulation state variable.
+        // Each Advance(...) call starts with fresh accumulators and only records current-step adverse conditions.
         var nodePressure = new Dictionary<string, PressureAccumulator>(Comparer);
         var edgePressure = new Dictionary<string, PressureAccumulator>(Comparer);
         var pressureEvents = new List<PressureEvent>();
@@ -178,6 +180,8 @@ public sealed class TemporalNetworkSimulationEngine
             AddNodePressure(nodePressure, pair.Key.NodeId, pair.Key.TrafficType, PressureCauseKind.RouteUnavailable, pair.Value.DemandBacklog, pressureEvents, nextPeriod, weight: 1.2d);
         }
 
+        // Scores can decrease between periods when adverse causes shrink in later steps.
+        // Relief is currently modeled indirectly (fewer future causes), not via explicit negative deltas.
         var nodePressureSnapshot = nodePressure.ToDictionary(
             pair => pair.Key,
             pair => pair.Value.ToNodeSnapshot(),

@@ -1,11 +1,13 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Collections.Generic;
 using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
+using Avalonia.Data.Converters;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -175,6 +177,13 @@ public sealed class GraphCanvasControl : Control
             _ => GraphPointerButton.Left
         };
 
+        if (button == GraphPointerButton.Right)
+        {
+            ShowContextMenu(ViewModel, interactionContext, point, e.GetPosition(this));
+            e.Handled = true;
+            return;
+        }
+
         ViewModel.InteractionController.OnPointerPressed(
             interactionContext,
             button,
@@ -186,6 +195,56 @@ public sealed class GraphCanvasControl : Control
         RefreshEditorSummaries(ViewModel);
         InvalidateVisual();
         e.Handled = true;
+    }
+
+    private void ShowContextMenu(WorkspaceViewModel viewModel, GraphInteractionContext interactionContext, GraphPoint screenPoint, Point localPoint)
+    {
+        var worldPoint = interactionContext.Viewport.ScreenToWorld(screenPoint, interactionContext.ViewportSize);
+        var hit = new GraphHitTester().HitTest(interactionContext.Scene, worldPoint);
+        var menu = new ContextMenu();
+        var items = new List<MenuItem>();
+
+        if (hit.NodeId is not null)
+        {
+            items.Add(BuildMenuItem("Select Node", () => viewModel.SelectNodeForEdit(hit.NodeId)));
+            items.Add(BuildMenuItem("Edit Node", () => viewModel.SelectNodeForEdit(hit.NodeId)));
+            items.Add(BuildMenuItem("Add Traffic Role", () =>
+            {
+                viewModel.SelectNodeForEdit(hit.NodeId, focusTrafficRoles: true);
+                viewModel.AddNodeTrafficProfileCommand.Execute(null);
+            }));
+            items.Add(BuildMenuItem("Delete Node", () => viewModel.DeleteNodeById(hit.NodeId)));
+            items.Add(BuildMenuItem("Start Edge From Here", () => _ = viewModel.StartEdgeFromNode(hit.NodeId)));
+        }
+        else if (hit.EdgeId is not null)
+        {
+            items.Add(BuildMenuItem("Select Route", () => viewModel.SelectRouteForEdit(hit.EdgeId)));
+            items.Add(BuildMenuItem("Edit Route", () => viewModel.SelectRouteForEdit(hit.EdgeId)));
+            items.Add(BuildMenuItem("Delete Route", () => viewModel.DeleteRouteById(hit.EdgeId)));
+        }
+        else
+        {
+            items.Add(BuildMenuItem("Add Node Here", () => viewModel.AddNodeAtPosition(worldPoint)));
+            items.Add(BuildMenuItem("Fit View", () => viewModel.FitCommand.Execute(null)));
+            items.Add(BuildMenuItem("Clear Selection", viewModel.ClearSelection));
+        }
+
+        menu.ItemsSource = items;
+        menu.Placement = PlacementMode.Pointer;
+        menu.PlacementTarget = this;
+        menu.HorizontalOffset = localPoint.X;
+        menu.VerticalOffset = localPoint.Y;
+        ContextMenu = menu;
+        menu.Open(this);
+    }
+
+    private static MenuItem BuildMenuItem(string header, Action action)
+    {
+        return new MenuItem
+        {
+            Header = header,
+            Command = new RelayCommand(action)
+        };
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
@@ -404,6 +463,17 @@ public sealed class GraphCanvasControl : Control
 
 public sealed class ShellWindow : Window
 {
+    private sealed class InverseBoolConverter : IValueConverter
+    {
+        public static InverseBoolConverter Instance { get; } = new();
+
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+            value is bool boolValue ? !boolValue : AvaloniaProperty.UnsetValue;
+
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+            value is bool boolValue ? !boolValue : AvaloniaProperty.UnsetValue;
+    }
+
     public ShellWindow()
     {
         var viewModel = new WorkspaceViewModel();
@@ -469,8 +539,8 @@ public sealed class ShellWindow : Window
         var grid = new Grid
         {
             Margin = new Thickness(0, 16, 0, 16),
-            ColumnDefinitions = new ColumnDefinitions("98,*,420"),
-            RowDefinitions = new RowDefinitions("*,260")
+            ColumnDefinitions = new ColumnDefinitions("88,*,540"),
+            RowDefinitions = new RowDefinitions("*,176")
         };
 
         grid.Children.Add(BuildToolRail(viewModel));
@@ -503,7 +573,7 @@ public sealed class ShellWindow : Window
                 },
                 new TextBlock
                 {
-                    Text = "Cross-platform editor with clear tools, traffic roles, and route access controls.",
+                    Text = "Select, drag, or marquee. Ctrl-drag between nodes to create a route.",
                     FontSize = 15,
                     Foreground = new SolidColorBrush(Color.Parse("#4D6781")),
                     TextWrapping = TextWrapping.Wrap
@@ -631,7 +701,7 @@ public sealed class ShellWindow : Window
                     },
                     new TextBlock
                     {
-                        Text = "The canvas uses one shared logical coordinate space for rendering, selection, dragging, zooming, and route creation.",
+                        Text = "Click to place a node. Right-click for context actions.",
                         FontSize = 12,
                         Foreground = new SolidColorBrush(Color.Parse("#4D6781")),
                         TextWrapping = TextWrapping.Wrap
@@ -715,6 +785,7 @@ public sealed class ShellWindow : Window
         var tabs = new TabControl();
         tabs.Items.Add(new TabItem { Header = "Selection", Content = BuildSelectionInspector(viewModel) });
         tabs.Items.Add(new TabItem { Header = "Traffic Types", Content = BuildTrafficDefinitionEditor(viewModel) });
+        tabs.Bind(SelectingItemsControl.SelectedIndexProperty, new Binding(nameof(WorkspaceViewModel.SelectedInspectorTabIndex), BindingMode.TwoWay));
 
         var border = new Border
         {
@@ -825,7 +896,7 @@ public sealed class ShellWindow : Window
         var playbackGrid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,*"),
-            RowDefinitions = new RowDefinitions("Auto,Auto")
+            RowDefinitions = new RowDefinitions("Auto")
         };
         playbackGrid.Children.Add(BuildButton("Run", viewModel.SimulateCommand));
         playbackGrid.Children.Add(BuildButton("Step", viewModel.StepCommand, 1));
@@ -837,21 +908,13 @@ public sealed class ShellWindow : Window
             Minimum = 0,
             Maximum = 12,
             Margin = new Thickness(12, 6, 0, 0)
+            ,
+            VerticalAlignment = VerticalAlignment.Center
         };
         slider.Bind(RangeBase.ValueProperty, new Binding(nameof(WorkspaceViewModel.TimelinePosition), BindingMode.TwoWay));
         Grid.SetColumn(slider, 4);
         ApplyFocusVisual(slider);
         playbackGrid.Children.Add(slider);
-
-        var hint = new TextBlock
-        {
-            Margin = new Thickness(0, 12, 0, 0),
-            Foreground = new SolidColorBrush(Color.Parse("#4D6781")),
-            Text = "Playback controls and report quick-links stay visible while you debug the graph."
-        };
-        Grid.SetRow(hint, 1);
-        Grid.SetColumnSpan(hint, 5);
-        playbackGrid.Children.Add(hint);
 
         var tabControl = new TabControl();
         tabControl.Items.Add(new TabItem { Header = "Playback", Content = playbackGrid });
@@ -875,6 +938,7 @@ public sealed class ShellWindow : Window
                     },
                     new ScrollViewer
                     {
+                        MaxHeight = 128,
                         Content = metrics
                     }
                 }
@@ -883,12 +947,12 @@ public sealed class ShellWindow : Window
 
         var strip = new Border
         {
-            Margin = new Thickness(14, 14, 0, 0),
+            Margin = new Thickness(12, 10, 0, 0),
             Background = new SolidColorBrush(Color.Parse("#F6FAFE")),
             CornerRadius = new CornerRadius(20),
             BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
             BorderThickness = new Thickness(1),
-            Padding = new Thickness(18),
+            Padding = new Thickness(14, 12),
             Child = tabControl
         };
 
@@ -944,7 +1008,7 @@ public sealed class ShellWindow : Window
     {
         var profileList = new ListBox
         {
-            Height = 120,
+            Height = 132,
             SelectionMode = SelectionMode.Single
         };
         profileList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.SelectedNodeTrafficProfiles)));
@@ -957,14 +1021,14 @@ public sealed class ShellWindow : Window
             IsVisible = false,
             Children =
             {
-                BuildSectionTitle("Node", "Edit plain-language place details, shape, and traffic roles for the selected node."),
+                BuildSectionTitle("Node", "Edit node details and traffic roles."),
                 BuildLabeledTextBox("Name", nameof(WorkspaceViewModel.NodeNameText)),
                 BuildLabeledTextBox("Place type", nameof(WorkspaceViewModel.NodePlaceTypeText)),
                 BuildLabeledTextBox("Description", nameof(WorkspaceViewModel.NodeDescriptionText)),
                 BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.NodeTranshipmentCapacityText)),
                 BuildLabeledComboBox("Node shape", nameof(WorkspaceViewModel.NodeShapeOptions), nameof(WorkspaceViewModel.NodeShape)),
                 BuildLabeledComboBox("Node kind", nameof(WorkspaceViewModel.NodeKindOptions), nameof(WorkspaceViewModel.NodeKind)),
-                BuildSectionTitle("Traffic Roles", "Select a traffic role, then edit production, demand, storage, and schedule."),
+                BuildSectionTitle("Traffic Roles", "Select a role, then edit traffic, supply, demand, storage, and timing."),
                 profileList,
                 new StackPanel
                 {
@@ -972,25 +1036,18 @@ public sealed class ShellWindow : Window
                     Spacing = 8,
                     Children =
                     {
-                        BuildBoundButton("Add Traffic Role", nameof(WorkspaceViewModel.AddNodeTrafficProfileCommand)),
-                        BuildBoundButton("Remove Traffic Role", nameof(WorkspaceViewModel.RemoveSelectedNodeTrafficProfileCommand))
+                        BuildBoundButton("Add Role", nameof(WorkspaceViewModel.AddNodeTrafficProfileCommand)),
+                        BuildBoundButton("Duplicate Role", nameof(WorkspaceViewModel.DuplicateSelectedNodeTrafficProfileCommand)),
+                        BuildBoundButton("Delete Role", nameof(WorkspaceViewModel.RemoveSelectedNodeTrafficProfileCommand))
                     }
                 },
-                BuildLabeledComboBox("Traffic type", nameof(WorkspaceViewModel.TrafficTypeNameOptions), nameof(WorkspaceViewModel.NodeTrafficTypeText)),
-                BuildLabeledComboBox("Role", nameof(WorkspaceViewModel.NodeRoleOptions), nameof(WorkspaceViewModel.NodeTrafficRoleText)),
-                BuildLabeledTextBox("Production", nameof(WorkspaceViewModel.NodeProductionText)),
-                BuildLabeledTextBox("Consumption", nameof(WorkspaceViewModel.NodeConsumptionText)),
-                BuildLabeledTextBox("Consumer premium per unit", nameof(WorkspaceViewModel.NodeConsumerPremiumText)),
-                BuildLabeledTextBox("Production start period", nameof(WorkspaceViewModel.NodeProductionStartText)),
-                BuildLabeledTextBox("Production end period", nameof(WorkspaceViewModel.NodeProductionEndText)),
-                BuildLabeledTextBox("Consumption start period", nameof(WorkspaceViewModel.NodeConsumptionStartText)),
-                BuildLabeledTextBox("Consumption end period", nameof(WorkspaceViewModel.NodeConsumptionEndText)),
-                BuildLabeledCheckBox("Can transship", nameof(WorkspaceViewModel.NodeCanTransship)),
-                BuildLabeledCheckBox("Store enabled", nameof(WorkspaceViewModel.NodeStoreEnabled)),
-                BuildLabeledTextBox("Store capacity", nameof(WorkspaceViewModel.NodeStoreCapacityText))
+                BuildValidationBlock(nameof(WorkspaceViewModel.NodeTrafficRoleValidationText)),
+                BuildTrafficRoleEmptyState(viewModel),
+                BuildTrafficRoleEditor()
             }
         };
         panel.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNode)));
+        HookInspectorSectionFocus(viewModel, panel, profileList, null);
         return panel;
     }
 
@@ -1002,7 +1059,7 @@ public sealed class ShellWindow : Window
             IsVisible = false,
             Children =
             {
-                BuildSectionTitle("Route", "Edit the selected route and its traffic access rules."),
+                BuildSectionTitle("Route", "Edit route values and access rules."),
                 BuildLabeledTextBox("Route label", nameof(WorkspaceViewModel.EdgeRouteTypeText)),
                 BuildLabeledTextBox("Travel time", nameof(WorkspaceViewModel.EdgeTimeText)),
                 BuildLabeledTextBox("Travel cost", nameof(WorkspaceViewModel.EdgeCostText)),
@@ -1016,6 +1073,7 @@ public sealed class ShellWindow : Window
             }
         };
         panel.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingEdge)));
+        HookInspectorSectionFocus(viewModel, panel, null, panel);
         return panel;
     }
 
@@ -1027,7 +1085,7 @@ public sealed class ShellWindow : Window
             IsVisible = false,
             Children =
             {
-                BuildSectionTitle("Bulk Edit", "Apply safe shared values across the selected nodes."),
+                BuildSectionTitle("Bulk Edit", "Apply shared values across selected nodes."),
                 BuildLabeledTextBox("Place type", nameof(WorkspaceViewModel.BulkPlaceTypeText)),
                 BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.BulkTranshipmentCapacityText))
             }
@@ -1038,15 +1096,9 @@ public sealed class ShellWindow : Window
 
     private static Control BuildApplyRow(ICommand applyCommand)
     {
-        return new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            Children =
-            {
-                BuildButton("Apply Changes", applyCommand)
-            }
-        };
+        var button = BuildButton("Apply Changes", applyCommand);
+        button.Bind(ContentControl.ContentProperty, new Binding(nameof(WorkspaceViewModel.ApplyInspectorLabel)));
+        return new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { button } };
     }
 
     private static Control BuildPermissionEditor(string title, string summary, string rowsPropertyName, string? edgeCapacityPropertyName)
@@ -1147,6 +1199,87 @@ public sealed class ShellWindow : Window
         };
     }
 
+    private static Control BuildTrafficRoleEditor()
+    {
+        var stack = new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                BuildSectionTitle("Identity", "Type and role"),
+                BuildLabeledComboBox("Traffic", nameof(WorkspaceViewModel.TrafficTypeNameOptions), nameof(WorkspaceViewModel.NodeTrafficTypeText)),
+                BuildLabeledComboBox("Role", nameof(WorkspaceViewModel.NodeRoleOptions), nameof(WorkspaceViewModel.NodeTrafficRoleText)),
+                BuildSectionTitle("Flow", "Supply and demand"),
+                BuildLabeledTextBox("Production", nameof(WorkspaceViewModel.NodeProductionText)),
+                BuildLabeledTextBox("Consumption", nameof(WorkspaceViewModel.NodeConsumptionText)),
+                BuildLabeledTextBox("Consumer premium", nameof(WorkspaceViewModel.NodeConsumerPremiumText)),
+                BuildSectionTitle("Timing", "Active periods"),
+                BuildLabeledTextBox("Prod start", nameof(WorkspaceViewModel.NodeProductionStartText)),
+                BuildLabeledTextBox("Prod end", nameof(WorkspaceViewModel.NodeProductionEndText)),
+                BuildLabeledTextBox("Cons start", nameof(WorkspaceViewModel.NodeConsumptionStartText)),
+                BuildLabeledTextBox("Cons end", nameof(WorkspaceViewModel.NodeConsumptionEndText)),
+                BuildSectionTitle("Storage and relay", "Movement and storage"),
+                BuildLabeledCheckBox("Can transship", nameof(WorkspaceViewModel.NodeCanTransship)),
+                BuildLabeledCheckBox("Store enabled", nameof(WorkspaceViewModel.NodeStoreEnabled)),
+                BuildLabeledTextBox("Store capacity", nameof(WorkspaceViewModel.NodeStoreCapacityText), nameof(WorkspaceViewModel.IsNodeStoreCapacityEnabled))
+            }
+        };
+        stack.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsNodeTrafficRoleSelected)));
+        return stack;
+    }
+
+    private static Control BuildTrafficRoleEmptyState(WorkspaceViewModel viewModel)
+    {
+        var panel = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#ECF4FC")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(10),
+            Child = new StackPanel
+            {
+                Spacing = 6,
+                Children =
+                {
+                    new TextBlock { Text = "No traffic role selected.", Foreground = new SolidColorBrush(Color.Parse("#31506B")) },
+                    BuildButton("Add role", viewModel.AddNodeTrafficProfileCommand)
+                }
+            }
+        };
+        panel.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsNodeTrafficRoleSelected))
+        {
+            Converter = InverseBoolConverter.Instance
+        });
+        return panel;
+    }
+
+    private static void HookInspectorSectionFocus(WorkspaceViewModel viewModel, Control nodeContainer, Control? roleTarget, Control? routeTarget)
+    {
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(WorkspaceViewModel.SelectedInspectorSection))
+            {
+                return;
+            }
+
+            if (viewModel.SelectedInspectorSection == InspectorSectionTarget.TrafficRoles && roleTarget is not null)
+            {
+                roleTarget.BringIntoView();
+                roleTarget.Focus();
+            }
+            else if (viewModel.SelectedInspectorSection == InspectorSectionTarget.Node)
+            {
+                nodeContainer.BringIntoView();
+            }
+            else if (viewModel.SelectedInspectorSection == InspectorSectionTarget.Route && routeTarget is not null)
+            {
+                routeTarget.BringIntoView();
+                routeTarget.Focus();
+            }
+        };
+    }
+
     private static TextBlock BuildBoundText(string propertyName, int column)
     {
         var text = new TextBlock
@@ -1227,6 +1360,14 @@ public sealed class ShellWindow : Window
     {
         var textBox = BuildTextBox(label);
         textBox.Bind(TextBox.TextProperty, new Binding(propertyName, BindingMode.TwoWay));
+        return BuildLabeledRow(label, textBox);
+    }
+
+    private static Control BuildLabeledTextBox(string label, string propertyName, string isEnabledPropertyName)
+    {
+        var textBox = BuildTextBox(label);
+        textBox.Bind(TextBox.TextProperty, new Binding(propertyName, BindingMode.TwoWay));
+        textBox.Bind(IsEnabledProperty, new Binding(isEnabledPropertyName));
         return BuildLabeledRow(label, textBox);
     }
 

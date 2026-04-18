@@ -389,6 +389,28 @@
             <Setter Property="SelectionUnit" Value="FullRow" />
         </Style>
 
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{DynamicResource StrongForegroundBrush}" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Margin" Value="0,2,0,2" />
+            <Setter Property="FocusVisualStyle">
+                <Setter.Value><Style TargetType="Control"><Setter Property="Template" Value="{StaticResource StrongFocusVisualTemplate}" /></Style></Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="MenuItem">
+            <Setter Property="Foreground" Value="{DynamicResource StrongForegroundBrush}" />
+            <Setter Property="Background" Value="{DynamicResource CardBrush}" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="FocusVisualStyle">
+                <Setter.Value><Style TargetType="Control"><Setter Property="Template" Value="{StaticResource StrongFocusVisualTemplate}" /></Style></Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="Expander">
+            <Setter Property="Foreground" Value="{DynamicResource StrongForegroundBrush}" />
+        </Style>
+
         <Style TargetType="DataGridRow">
             <Setter Property="MinHeight" Value="36" />
             <Setter Property="Background" Value="{DynamicResource CardBrush}" />

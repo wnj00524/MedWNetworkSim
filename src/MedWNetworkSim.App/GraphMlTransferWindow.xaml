@@ -4,7 +4,8 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="GraphML Import / Export"
+        Title="Import or Export GraphML"
+        Style="{StaticResource DialogChromeWindowStyle}"
         Width="720"
         Height="620"
         MinWidth="680"
@@ -25,12 +26,10 @@
                 BorderThickness="1"
                 CornerRadius="18">
             <StackPanel>
-                <TextBlock FontSize="18"
-                           FontWeight="SemiBold"
-                           Text="GraphML Import / Export" />
+                <TextBlock Style="{StaticResource DialogTitleTextStyle}"
+                           Text="Import or export GraphML" />
                 <TextBlock Margin="0,8,0,0"
-                           FontSize="12"
-                           Foreground="{DynamicResource MutedForegroundBrush}"
+                           Style="{StaticResource HelperTextStyle}"
                            Text="Import a generic GraphML graph into the simulator or export the current network as GraphML. The defaults below are used only when a GraphML node does not already carry MedW-specific traffic data."
                            TextWrapping="Wrap" />
             </StackPanel>
@@ -70,8 +69,7 @@
                 </Grid.ColumnDefinitions>
 
                 <TextBlock Grid.ColumnSpan="2"
-                           FontSize="16"
-                           FontWeight="SemiBold"
+                           Style="{StaticResource SectionHeaderTextStyle}"
                            Text="GraphML Files" />
 
                 <Border Grid.Row="2"
@@ -81,16 +79,14 @@
                         BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="1"
                         CornerRadius="12">
-                    <TextBlock FontSize="12"
-                               Foreground="{DynamicResource MutedForegroundBrush}"
+                    <TextBlock Style="{StaticResource HelperTextStyle}"
                                Text="Choose a GraphML file to load into the simulator, or choose a destination file to save the current network. You can type a path directly or use Browse."
                                TextWrapping="Wrap" />
                 </Border>
 
                 <TextBlock Grid.Row="4"
                            VerticalAlignment="Center"
-                           FontSize="12"
-                           Foreground="{DynamicResource MutedForegroundBrush}"
+                           Style="{StaticResource FieldLabelTextStyle}"
                            Text="Import File" />
                 <Grid Grid.Row="4"
                       Grid.Column="1">
@@ -107,15 +103,14 @@
                             Content="Browse..."
                             Click="BrowseImportGraphMl_Click" />
                     <Button Grid.Column="2"
-                            Content="Load GraphML"
+                            Content="Import GraphML"
                             Click="ImportGraphMl_Click"
                             IsEnabled="{Binding CanImport}" />
                 </Grid>
 
                 <TextBlock Grid.Row="6"
                            VerticalAlignment="Center"
-                           FontSize="12"
-                           Foreground="{DynamicResource MutedForegroundBrush}"
+                           Style="{StaticResource FieldLabelTextStyle}"
                            Text="Export File" />
                 <Grid Grid.Row="6"
                       Grid.Column="1">
@@ -133,7 +128,7 @@
                             Click="BrowseExportGraphMl_Click"
                             IsEnabled="{Binding CanExport}" />
                     <Button Grid.Column="2"
-                            Content="Save GraphML"
+                            Content="Export GraphML"
                             Click="ExportGraphMl_Click"
                             IsEnabled="{Binding CanSave}" />
                 </Grid>

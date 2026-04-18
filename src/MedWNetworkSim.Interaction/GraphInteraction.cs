@@ -45,12 +45,12 @@ public sealed class GraphInteractionController
     private bool keyboardConnectMode;
     private string? keyboardConnectSource;
 
-    public void OnPointerPressed(GraphInteractionContext context, GraphPointerButton button, GraphPoint screenPoint, bool shiftPressed, bool altPressed, bool spacePressed)
+    public void OnPointerPressed(GraphInteractionContext context, GraphPointerButton button, GraphPoint screenPoint, bool shiftPressed, bool altPressed, bool controlPressed)
     {
         var worldPoint = context.Viewport.ScreenToWorld(screenPoint, context.ViewportSize);
         var hit = hitTester.HitTest(context.Scene, worldPoint);
 
-        if (button == GraphPointerButton.Middle || (button == GraphPointerButton.Left && spacePressed))
+        if (button == GraphPointerButton.Middle)
         {
             isPanning = true;
             panPointerOrigin = screenPoint;
@@ -95,6 +95,17 @@ public sealed class GraphInteractionController
             isConnectionGesture = true;
             context.Scene.Transient.ConnectionWorld = worldPoint;
             context.StatusChanged("Connect mode: release on a target node to create a route.");
+            return;
+        }
+
+        if (controlPressed && hit.NodeId is not null && context.ToolMode == GraphToolMode.Select)
+        {
+            SelectNode(context, hit.NodeId, additive: false);
+            isConnectionGesture = true;
+            dragNodeId = null;
+            context.Scene.Transient.ConnectionSourceNodeId = hit.NodeId;
+            context.Scene.Transient.ConnectionWorld = worldPoint;
+            context.StatusChanged("Connection preview active. Drag to another node and release.");
             return;
         }
 
@@ -251,6 +262,31 @@ public sealed class GraphInteractionController
             context.StatusChanged(sourceId is null
                 ? "Connect mode: choose a source node."
                 : "Connect mode: choose a target node.");
+            return;
+        }
+
+        if (isConnectionGesture && button == GraphPointerButton.Left && context.ToolMode == GraphToolMode.Select)
+        {
+            var sourceId = context.Scene.Transient.ConnectionSourceNodeId;
+            var target = hitTester.HitTest(context.Scene, worldPoint);
+            context.Scene.Transient.ConnectionSourceNodeId = null;
+            context.Scene.Transient.ConnectionWorld = null;
+            isConnectionGesture = false;
+
+            if (sourceId is not null &&
+                target.NodeId is not null &&
+                !string.Equals(sourceId, target.NodeId, StringComparison.OrdinalIgnoreCase))
+            {
+                if (context.CreateEdge(sourceId, target.NodeId))
+                {
+                    SelectEdge(context, $"{sourceId}->{target.NodeId}", additive: false);
+                    context.StatusChanged("Route created.");
+                }
+
+                return;
+            }
+
+            context.StatusChanged("Route creation cancelled.");
         }
     }
 

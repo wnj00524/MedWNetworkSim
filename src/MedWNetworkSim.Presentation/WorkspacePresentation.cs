@@ -68,6 +68,20 @@ public enum InspectorEditMode
     Selection
 }
 
+public enum InspectorTabTarget
+{
+    Selection,
+    TrafficTypes
+}
+
+public enum InspectorSectionTarget
+{
+    None,
+    Node,
+    Route,
+    TrafficRoles
+}
+
 public sealed class ReportMetricViewModel
 {
     public required string Label { get; init; }
@@ -291,8 +305,8 @@ public sealed class WorkspaceViewModel : ObservableObject
     private TemporalNetworkSimulationEngine.TemporalSimulationState? temporalState;
     private IReadOnlyList<TrafficSimulationOutcome> lastOutcomes = [];
     private string statusText = "Select a tool and start editing.";
-    private string toolStatusText = "Select mode: click to select, drag selected nodes, or marquee select.";
-    private string toolInstructionText = "Shortcuts: S Select, A Add node, C Connect, Esc Select.";
+    private string toolStatusText = "Select mode: select, drag, or marquee.";
+    private string toolInstructionText = "Shortcuts: S Select, A Add node, C Connect, Ctrl-drag creates a route.";
     private GraphToolMode activeToolMode = GraphToolMode.Select;
     private bool reducedMotion;
     private int currentPeriod;
@@ -339,6 +353,8 @@ public sealed class WorkspaceViewModel : ObservableObject
     private string trafficPerishabilityText = string.Empty;
     private string trafficValidationText = string.Empty;
     private string pendingTrafficRemovalName = string.Empty;
+    private InspectorTabTarget selectedInspectorTab = InspectorTabTarget.Selection;
+    private InspectorSectionTarget selectedInspectorSection = InspectorSectionTarget.None;
 
     public WorkspaceViewModel()
     {
@@ -371,8 +387,9 @@ public sealed class WorkspaceViewModel : ObservableObject
         AddNodeToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.AddNode));
         ConnectToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.Connect));
         DeleteSelectionCommand = new RelayCommand(DeleteSelection, () => CanDeleteSelection);
-        ApplyInspectorCommand = new RelayCommand(ApplyInspectorEdits);
+        ApplyInspectorCommand = new RelayCommand(ApplyInspectorEdits, () => CanApplyInspectorEdits);
         AddNodeTrafficProfileCommand = new RelayCommand(AddNodeTrafficProfile, () => IsEditingNode);
+        DuplicateSelectedNodeTrafficProfileCommand = new RelayCommand(DuplicateSelectedNodeTrafficProfile, () => IsEditingNode && SelectedNodeTrafficProfileItem is not null);
         RemoveSelectedNodeTrafficProfileCommand = new RelayCommand(RemoveSelectedNodeTrafficProfile, () => IsEditingNode && SelectedNodeTrafficProfileItem is not null);
         AddTrafficDefinitionCommand = new RelayCommand(AddTrafficDefinition);
         RemoveSelectedTrafficDefinitionCommand = new RelayCommand(RemoveSelectedTrafficDefinition, () => SelectedTrafficDefinitionItem is not null);
@@ -415,6 +432,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     public RelayCommand DeleteSelectionCommand { get; }
     public RelayCommand ApplyInspectorCommand { get; }
     public RelayCommand AddNodeTrafficProfileCommand { get; }
+    public RelayCommand DuplicateSelectedNodeTrafficProfileCommand { get; }
     public RelayCommand RemoveSelectedNodeTrafficProfileCommand { get; }
     public RelayCommand AddTrafficDefinitionCommand { get; }
     public RelayCommand RemoveSelectedTrafficDefinitionCommand { get; }
@@ -441,6 +459,35 @@ public sealed class WorkspaceViewModel : ObservableObject
     public bool IsEditingNode => CurrentInspectorEditMode == InspectorEditMode.Node;
     public bool IsEditingEdge => CurrentInspectorEditMode == InspectorEditMode.Edge;
     public bool IsEditingSelection => CurrentInspectorEditMode == InspectorEditMode.Selection;
+    public InspectorTabTarget SelectedInspectorTab
+    {
+        get => selectedInspectorTab;
+        set
+        {
+            if (SetProperty(ref selectedInspectorTab, value))
+            {
+                Raise(nameof(SelectedInspectorTabIndex));
+            }
+        }
+    }
+    public int SelectedInspectorTabIndex
+    {
+        get => (int)SelectedInspectorTab;
+        set
+        {
+            if (Enum.IsDefined(typeof(InspectorTabTarget), value))
+            {
+                SelectedInspectorTab = (InspectorTabTarget)value;
+                Raise(nameof(SelectedInspectorTabIndex));
+            }
+        }
+    }
+    public InspectorSectionTarget SelectedInspectorSection { get => selectedInspectorSection; set => SetProperty(ref selectedInspectorSection, value); }
+    public string ApplyInspectorLabel => CurrentInspectorEditMode == InspectorEditMode.Node ? "Apply Node Changes" : "Apply Changes";
+    public bool IsNodeTrafficRoleSelected => SelectedNodeTrafficProfileItem is not null;
+    public bool IsNodeStoreCapacityEnabled => IsNodeTrafficRoleSelected && NodeStoreEnabled;
+    public string NodeTrafficRoleValidationText => BuildNodeTrafficRoleValidationText();
+    public bool CanApplyInspectorEdits => string.IsNullOrWhiteSpace(NodeTrafficRoleValidationText);
     public string NetworkNameText { get => networkNameText; set => SetProperty(ref networkNameText, value); }
     public string NetworkDescriptionText { get => networkDescriptionText; set => SetProperty(ref networkDescriptionText, value); }
     public string NetworkTimelineLoopLengthText { get => networkTimelineLoopLengthText; set => SetProperty(ref networkTimelineLoopLengthText, value); }
@@ -469,7 +516,17 @@ public sealed class WorkspaceViewModel : ObservableObject
     public IReadOnlyList<string> TrafficTypeNameOptions =>
         network.TrafficTypes.Select(definition => definition.Name).Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(Comparer).OrderBy(name => name, Comparer).ToList();
 
-    public string NodeTrafficTypeText { get => nodeTrafficTypeText; set => SetProperty(ref nodeTrafficTypeText, value); }
+    public string NodeTrafficTypeText
+    {
+        get => nodeTrafficTypeText;
+        set
+        {
+            if (SetProperty(ref nodeTrafficTypeText, value))
+            {
+                RaiseNodeTrafficRoleValidationStateChanged();
+            }
+        }
+    }
     public string NodeTrafficRoleText { get => nodeTrafficRoleText; set => SetProperty(ref nodeTrafficRoleText, value); }
     public string NodeProductionText { get => nodeProductionText; set => SetProperty(ref nodeProductionText, value); }
     public string NodeConsumptionText { get => nodeConsumptionText; set => SetProperty(ref nodeConsumptionText, value); }
@@ -479,7 +536,17 @@ public sealed class WorkspaceViewModel : ObservableObject
     public string NodeConsumptionStartText { get => nodeConsumptionStartText; set => SetProperty(ref nodeConsumptionStartText, value); }
     public string NodeConsumptionEndText { get => nodeConsumptionEndText; set => SetProperty(ref nodeConsumptionEndText, value); }
     public bool NodeCanTransship { get => nodeCanTransship; set => SetProperty(ref nodeCanTransship, value); }
-    public bool NodeStoreEnabled { get => nodeStoreEnabled; set => SetProperty(ref nodeStoreEnabled, value); }
+    public bool NodeStoreEnabled
+    {
+        get => nodeStoreEnabled;
+        set
+        {
+            if (SetProperty(ref nodeStoreEnabled, value))
+            {
+                Raise(nameof(IsNodeStoreCapacityEnabled));
+            }
+        }
+    }
     public string NodeStoreCapacityText { get => nodeStoreCapacityText; set => SetProperty(ref nodeStoreCapacityText, value); }
     public string EdgeRouteTypeText { get => edgeRouteTypeText; set => SetProperty(ref edgeRouteTypeText, value); }
     public string EdgeTimeText { get => edgeTimeText; set => SetProperty(ref edgeTimeText, value); }
@@ -599,13 +666,13 @@ public sealed class WorkspaceViewModel : ObservableObject
         {
             GraphToolMode.AddNode => "Add node mode: click the canvas to place a node.",
             GraphToolMode.Connect => "Connect mode: choose a source node, then a target node.",
-            _ => "Select mode: click to select, drag selected nodes, or marquee select."
+            _ => "Select mode: select, drag, or marquee."
         };
         ToolInstructionText = toolMode switch
         {
             GraphToolMode.AddNode => "Keyboard: A keeps Add node active. Esc returns to Select.",
             GraphToolMode.Connect => "Keyboard: C keeps Connect active. Esc returns to Select.",
-            _ => "Keyboard: S Select, A Add node, C Connect, Delete removes the current selection."
+            _ => "Keyboard: S Select, A Add node, C Connect. Ctrl-drag from one node to another to create a route."
         };
         Raise(nameof(IsSelectToolActive));
         Raise(nameof(IsAddNodeToolActive));
@@ -968,7 +1035,12 @@ public sealed class WorkspaceViewModel : ObservableObject
         Raise(nameof(IsEditingSelection));
         DeleteSelectionCommand.NotifyCanExecuteChanged();
         AddNodeTrafficProfileCommand.NotifyCanExecuteChanged();
+        DuplicateSelectedNodeTrafficProfileCommand.NotifyCanExecuteChanged();
         RemoveSelectedNodeTrafficProfileCommand.NotifyCanExecuteChanged();
+        ApplyInspectorCommand.NotifyCanExecuteChanged();
+        Raise(nameof(ApplyInspectorLabel));
+        Raise(nameof(CanApplyInspectorEdits));
+        Raise(nameof(NodeTrafficRoleValidationText));
 
         InspectorValidationText = string.Empty;
         var selectedNodeIds = Scene.Selection.SelectedNodeIds.ToList();
@@ -977,7 +1049,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         if (selectedNodeIds.Count == 0 && selectedEdgeIds.Count == 0)
         {
             Inspector.Headline = "Network settings";
-            Inspector.Summary = "Select a node to edit its traffic roles. Select a route to edit route settings.";
+            Inspector.Summary = "Select a node or route to edit.";
             Inspector.Details =
             [
                 $"Traffic types: {network.TrafficTypes.Count}",
@@ -995,7 +1067,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         if (selectedNodeIds.Count + selectedEdgeIds.Count > 1)
         {
             Inspector.Headline = "Bulk edit";
-            Inspector.Summary = "Use bulk edit for safe shared node changes.";
+            Inspector.Summary = "Apply shared node values.";
             Inspector.Details =
             [
                 $"{selectedNodeIds.Count} nodes selected",
@@ -1013,13 +1085,12 @@ public sealed class WorkspaceViewModel : ObservableObject
         {
             var node = network.Nodes.First(model => Comparer.Equals(model.Id, selectedNodeIds[0]));
             Inspector.Headline = node.Name;
-            Inspector.Summary = "Node settings and traffic roles";
+            Inspector.Summary = "Edit node details and traffic roles.";
             Inspector.Details =
             [
                 $"Place type: {(string.IsNullOrWhiteSpace(node.PlaceType) ? "Not set" : node.PlaceType)}",
                 $"Description: {(string.IsNullOrWhiteSpace(node.LoreDescription) ? "Not set" : node.LoreDescription)}",
-                $"Traffic roles: {node.TrafficProfiles.Count}",
-                "Select a traffic role to edit its production, demand, schedule, and storage."
+                $"Traffic roles: {node.TrafficProfiles.Count}"
             ];
             PopulateNodeEditor(node);
             SelectedEdgePermissionRows.Clear();
@@ -1061,6 +1132,7 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     private void PopulateNodeEditor(NodeModel node)
     {
+        EnsureDefaultTrafficType();
         NodeNameText = node.Name;
         NodePlaceTypeText = node.PlaceType ?? string.Empty;
         NodeDescriptionText = node.LoreDescription ?? string.Empty;
@@ -1093,6 +1165,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             NodeCanTransship = true;
             NodeStoreEnabled = false;
             NodeStoreCapacityText = string.Empty;
+            RaiseNodeTrafficRoleValidationStateChanged();
             return;
         }
 
@@ -1108,6 +1181,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         NodeCanTransship = profile.CanTransship;
         NodeStoreEnabled = profile.IsStore;
         NodeStoreCapacityText = profile.StoreCapacity?.ToString("0.##", CultureInfo.InvariantCulture) ?? string.Empty;
+        RaiseNodeTrafficRoleValidationStateChanged();
     }
 
     private void PopulateEdgeEditor(EdgeModel edge)
@@ -1243,32 +1317,41 @@ public sealed class WorkspaceViewModel : ObservableObject
         node.Shape = NodeShape;
         node.NodeKind = NodeKind;
 
-        var profile = SelectedNodeTrafficProfileItem?.Model ?? throw new InvalidOperationException("Select a traffic role to edit.");
-        var trafficType = string.IsNullOrWhiteSpace(NodeTrafficTypeText) ? network.TrafficTypes.FirstOrDefault()?.Name : NodeTrafficTypeText.Trim();
-        if (string.IsNullOrWhiteSpace(trafficType))
+        var profile = SelectedNodeTrafficProfileItem?.Model;
+        if (profile is not null)
         {
-            throw new InvalidOperationException("Choose a traffic type before saving the traffic role.");
-        }
+            var trafficValidationMessage = BuildNodeTrafficRoleValidationText();
+            if (!string.IsNullOrWhiteSpace(trafficValidationMessage))
+            {
+                throw new InvalidOperationException(trafficValidationMessage);
+            }
 
-        if (!network.TrafficTypes.Any(definition => Comparer.Equals(definition.Name, trafficType)))
-        {
-            throw new InvalidOperationException("Choose a traffic type that exists in the traffic type editor.");
-        }
+            var trafficType = string.IsNullOrWhiteSpace(NodeTrafficTypeText) ? network.TrafficTypes.FirstOrDefault()?.Name : NodeTrafficTypeText.Trim();
+            if (string.IsNullOrWhiteSpace(trafficType))
+            {
+                throw new InvalidOperationException("Choose a traffic type before saving the traffic role.");
+            }
 
-        profile.TrafficType = trafficType;
-        profile.CanTransship = NodeCanTransship;
-        NodeTrafficRoleCatalog.ApplyRoleSelection(new NodeTrafficRoleAdapter(profile), NodeTrafficRoleText);
-        profile.Production = ParseNonNegativeDouble(NodeProductionText, "Enter production as 0 or more.");
-        profile.Consumption = ParseNonNegativeDouble(NodeConsumptionText, "Enter consumption as 0 or more.");
-        profile.ConsumerPremiumPerUnit = ParseNonNegativeDouble(NodeConsumerPremiumText, "Enter consumer premium as 0 or more.");
-        profile.ProductionStartPeriod = ParseOptionalPositiveInt(NodeProductionStartText, "Enter a production start period of 1 or more, or leave it blank.");
-        profile.ProductionEndPeriod = ParseOptionalPositiveInt(NodeProductionEndText, "Enter a production end period of 1 or more, or leave it blank.");
-        profile.ConsumptionStartPeriod = ParseOptionalPositiveInt(NodeConsumptionStartText, "Enter a consumption start period of 1 or more, or leave it blank.");
-        profile.ConsumptionEndPeriod = ParseOptionalPositiveInt(NodeConsumptionEndText, "Enter a consumption end period of 1 or more, or leave it blank.");
-        profile.IsStore = NodeStoreEnabled;
-        profile.StoreCapacity = NodeStoreEnabled
-            ? ParseOptionalNonNegativeDouble(NodeStoreCapacityText, "Enter store capacity as 0 or more, or leave it blank.")
-            : null;
+            if (!network.TrafficTypes.Any(definition => Comparer.Equals(definition.Name, trafficType)))
+            {
+                throw new InvalidOperationException("Choose a traffic type that exists in the traffic type editor.");
+            }
+
+            profile.TrafficType = trafficType;
+            profile.CanTransship = NodeCanTransship;
+            NodeTrafficRoleCatalog.ApplyRoleSelection(new NodeTrafficRoleAdapter(profile), NodeTrafficRoleText);
+            profile.Production = ParseNonNegativeDouble(NodeProductionText, "Enter production as 0 or more.");
+            profile.Consumption = ParseNonNegativeDouble(NodeConsumptionText, "Enter consumption as 0 or more.");
+            profile.ConsumerPremiumPerUnit = ParseNonNegativeDouble(NodeConsumerPremiumText, "Enter consumer premium as 0 or more.");
+            profile.ProductionStartPeriod = ParseOptionalPositiveInt(NodeProductionStartText, "Enter a production start period of 1 or more, or leave it blank.");
+            profile.ProductionEndPeriod = ParseOptionalPositiveInt(NodeProductionEndText, "Enter a production end period of 1 or more, or leave it blank.");
+            profile.ConsumptionStartPeriod = ParseOptionalPositiveInt(NodeConsumptionStartText, "Enter a consumption start period of 1 or more, or leave it blank.");
+            profile.ConsumptionEndPeriod = ParseOptionalPositiveInt(NodeConsumptionEndText, "Enter a consumption end period of 1 or more, or leave it blank.");
+            profile.IsStore = NodeStoreEnabled;
+            profile.StoreCapacity = NodeStoreEnabled
+                ? ParseOptionalNonNegativeDouble(NodeStoreCapacityText, "Enter store capacity as 0 or more, or leave it blank.")
+                : null;
+        }
 
         PopulateNodeEditor(node);
         StatusText = $"Updated node '{node.Name}'.";
@@ -1322,7 +1405,40 @@ public sealed class WorkspaceViewModel : ObservableObject
         node.TrafficProfiles.Add(profile);
         PopulateNodeEditor(node);
         SelectedNodeTrafficProfileItem = SelectedNodeTrafficProfiles.LastOrDefault();
+        FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.TrafficRoles);
         StatusText = "Added a new traffic role to the selected node.";
+    }
+
+    private void DuplicateSelectedNodeTrafficProfile()
+    {
+        var nodeId = Scene.Selection.SelectedNodeIds.FirstOrDefault();
+        if (nodeId is null || SelectedNodeTrafficProfileItem is null)
+        {
+            StatusText = "Select a node traffic role to duplicate.";
+            return;
+        }
+
+        var node = network.Nodes.First(model => Comparer.Equals(model.Id, nodeId));
+        var source = SelectedNodeTrafficProfileItem.Model;
+        var duplicate = new NodeTrafficProfile
+        {
+            TrafficType = source.TrafficType,
+            Production = source.Production,
+            Consumption = source.Consumption,
+            ConsumerPremiumPerUnit = source.ConsumerPremiumPerUnit,
+            CanTransship = source.CanTransship,
+            ProductionStartPeriod = source.ProductionStartPeriod,
+            ProductionEndPeriod = source.ProductionEndPeriod,
+            ConsumptionStartPeriod = source.ConsumptionStartPeriod,
+            ConsumptionEndPeriod = source.ConsumptionEndPeriod,
+            IsStore = source.IsStore,
+            StoreCapacity = source.StoreCapacity
+        };
+        node.TrafficProfiles.Add(duplicate);
+        PopulateNodeEditor(node);
+        SelectedNodeTrafficProfileItem = SelectedNodeTrafficProfiles.FirstOrDefault(item => ReferenceEquals(item.Model, duplicate));
+        FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.TrafficRoles);
+        StatusText = "Duplicated the selected traffic role.";
     }
 
     private void RemoveSelectedNodeTrafficProfile()
@@ -1699,6 +1815,132 @@ public sealed class WorkspaceViewModel : ObservableObject
             RoutingPreference = RoutingPreference.TotalCost,
             AllocationMode = AllocationMode.GreedyBestRoute
         });
+        StatusText = "Created default traffic type 'general'.";
+    }
+
+    public void SelectNodeForEdit(string nodeId, bool focusTrafficRoles = false)
+    {
+        if (!network.Nodes.Any(node => Comparer.Equals(node.Id, nodeId)))
+        {
+            return;
+        }
+
+        Scene.Selection.SelectedNodeIds.Clear();
+        Scene.Selection.SelectedEdgeIds.Clear();
+        Scene.Selection.SelectedNodeIds.Add(nodeId);
+        FocusInspectorSection(InspectorTabTarget.Selection, focusTrafficRoles ? InspectorSectionTarget.TrafficRoles : InspectorSectionTarget.Node);
+        RefreshInspector();
+        NotifyVisualChanged();
+    }
+
+    public void SelectRouteForEdit(string edgeId)
+    {
+        if (!network.Edges.Any(edge => Comparer.Equals(edge.Id, edgeId)))
+        {
+            return;
+        }
+
+        Scene.Selection.SelectedNodeIds.Clear();
+        Scene.Selection.SelectedEdgeIds.Clear();
+        Scene.Selection.SelectedEdgeIds.Add(edgeId);
+        FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.Route);
+        RefreshInspector();
+        NotifyVisualChanged();
+    }
+
+    public string AddNodeAtPosition(GraphPoint position)
+    {
+        var nodeId = AddNodeAt(position);
+        SelectNodeForEdit(nodeId);
+        return nodeId;
+    }
+
+    public void ClearSelection()
+    {
+        Scene.Selection.SelectedNodeIds.Clear();
+        Scene.Selection.SelectedEdgeIds.Clear();
+        FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.None);
+        RefreshInspector();
+        NotifyVisualChanged();
+        StatusText = "Selection cleared.";
+    }
+
+    public void DeleteNodeById(string nodeId)
+    {
+        if (!network.Nodes.Any(node => Comparer.Equals(node.Id, nodeId)))
+        {
+            return;
+        }
+
+        Scene.Selection.SelectedNodeIds.Clear();
+        Scene.Selection.SelectedEdgeIds.Clear();
+        Scene.Selection.SelectedNodeIds.Add(nodeId);
+        DeleteSelection();
+    }
+
+    public void DeleteRouteById(string edgeId)
+    {
+        if (!network.Edges.Any(edge => Comparer.Equals(edge.Id, edgeId)))
+        {
+            return;
+        }
+
+        Scene.Selection.SelectedNodeIds.Clear();
+        Scene.Selection.SelectedEdgeIds.Clear();
+        Scene.Selection.SelectedEdgeIds.Add(edgeId);
+        DeleteSelection();
+    }
+
+    public bool StartEdgeFromNode(string nodeId)
+    {
+        if (!network.Nodes.Any(node => Comparer.Equals(node.Id, nodeId)))
+        {
+            return false;
+        }
+
+        Scene.Selection.SelectedNodeIds.Clear();
+        Scene.Selection.SelectedEdgeIds.Clear();
+        Scene.Selection.SelectedNodeIds.Add(nodeId);
+        Scene.Transient.ConnectionSourceNodeId = nodeId;
+        Scene.Transient.ConnectionWorld = Scene.FindNode(nodeId) is { } sourceNode
+            ? new GraphPoint(sourceNode.Bounds.CenterX, sourceNode.Bounds.CenterY)
+            : null;
+        FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.Node);
+        RefreshInspector();
+        NotifyVisualChanged();
+        StatusText = "Start edge: click another node to connect.";
+        return true;
+    }
+
+    public void FocusInspectorSection(InspectorTabTarget tab, InspectorSectionTarget section)
+    {
+        SelectedInspectorTab = tab;
+        SelectedInspectorSection = section;
+    }
+
+    private string BuildNodeTrafficRoleValidationText()
+    {
+        if (!IsEditingNode || SelectedNodeTrafficProfileItem is null)
+        {
+            return string.Empty;
+        }
+
+        var normalized = string.IsNullOrWhiteSpace(NodeTrafficTypeText) ? string.Empty : NodeTrafficTypeText.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return "Traffic type is required.";
+        }
+
+        return network.TrafficTypes.Any(definition => Comparer.Equals(definition.Name, normalized))
+            ? string.Empty
+            : "Traffic type no longer exists. Choose a valid type.";
+    }
+
+    private void RaiseNodeTrafficRoleValidationStateChanged()
+    {
+        Raise(nameof(NodeTrafficRoleValidationText));
+        Raise(nameof(CanApplyInspectorEdits));
+        ApplyInspectorCommand.NotifyCanExecuteChanged();
     }
 
     private string GetNextTrafficName(int startIndex)

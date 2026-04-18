@@ -7,12 +7,14 @@ using MedWNetworkSim.Rendering;
 using MedWNetworkSim.UI;
 
 ScenarioCoordinateTransformPreservesLogicalInput();
+ScenarioCoordinateTransformClampsPointerOutsideCanvas();
 ScenarioAddNodePlacementMatchesClickedWorldPosition();
 ScenarioDragAndConnectUseRenderedCoordinates();
 ScenarioMultipleTrafficProfilesCanBeSwitched();
 ScenarioTrafficDefinitionRenameAndRemovalPropagate();
 ScenarioNodeEditsPersistThroughSaveLoad();
 ScenarioToolCommandsReflectRealModes();
+ScenarioEscapeReturnsSelectTool();
 
 Console.WriteLine("Avalonia verification passed.");
 
@@ -25,6 +27,15 @@ static void ScenarioCoordinateTransformPreservesLogicalInput()
     AssertNumberEqual(900d, transform.PixelViewport.Height, "coordinate transform height");
     AssertNumberEqual(400d, pointer.X, "coordinate transform pointer x");
     AssertNumberEqual(300d, pointer.Y, "coordinate transform pointer y");
+}
+
+static void ScenarioCoordinateTransformClampsPointerOutsideCanvas()
+{
+    var transform = GraphCanvasCoordinateTransform.Create(new Size(900d, 500d), 1.5d);
+    var pointer = transform.PointerToGraph(new Point(1250d, -20d));
+
+    AssertNumberEqual(900d, pointer.X, "coordinate clamp pointer x");
+    AssertNumberEqual(0d, pointer.Y, "coordinate clamp pointer y");
 }
 
 static void ScenarioAddNodePlacementMatchesClickedWorldPosition()
@@ -279,6 +290,20 @@ static void ScenarioToolCommandsReflectRealModes()
     AssertTrue(workspace.IsConnectToolActive, "connect tool active");
     workspace.SelectToolCommand.Execute(null);
     AssertTrue(workspace.IsSelectToolActive, "select tool active");
+}
+
+static void ScenarioEscapeReturnsSelectTool()
+{
+    var workspace = new WorkspaceViewModel();
+    workspace.ConnectToolCommand.Execute(null);
+    AssertTrue(workspace.IsConnectToolActive, "escape precondition connect mode");
+    var handled = workspace.InteractionController.OnKeyDown(
+        workspace.CreateInteractionContext(new GraphSize(1000d, 700d)),
+        "Escape",
+        false);
+
+    AssertTrue(handled, "escape key handled");
+    AssertTrue(workspace.IsSelectToolActive, "escape returns select mode");
 }
 
 static string WriteTempNetwork(NetworkModel network)

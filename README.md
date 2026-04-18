@@ -1,195 +1,186 @@
 # MedWNetworkSim
 
-MedWNetworkSim is a .NET desktop application for building, editing, importing, and simulating routed flow networks.
+MedWNetworkSim is a .NET network simulation and analysis tool for building, editing, importing, and testing routed flow networks.
 
-It is designed for graph-based scenarios where **nodes** produce, consume, store, transform, or transship **traffic types** across **edges** with time, cost, and capacity constraints. It supports both one-shot simulation and timeline-based analysis, making it useful for bottleneck analysis, route testing, network design, and period-based flow modelling.
+The primary desktop application is the **Avalonia UI** version. It is designed for visually modelling networks where nodes produce, consume, store, transform, and transship traffic types across constrained edges with time, cost, and capacity rules.
 
-## What the application does
+Use it to explore bottlenecks, unmet demand, congestion, route choice, supply distribution, and timeline-based network behaviour.
+
+## What the tool does
 
 MedWNetworkSim lets you:
 
-- build and edit networks visually in a Windows desktop UI
+- build and edit networks visually
+- create new blank networks
 - open and save network files as JSON
 - import and export GraphML
-- import OpenStreetMap road networks from both `*.osm` and `*.pbf`
-- simplify imported OSM networks while preserving reachability, key junctions, named-road transitions, and overall shape
-- calculate OSM edge metrics using collapsed path distance rather than only straight-line retention
-- assign traffic types with different routing strategies and flow split policies
-- control permissions on edges by traffic type
-- run both single-run and timeline simulations
-- model storage, transhipment, production, consumption, and recipe-style local input requirements
-- analyse demand backlog, route selection, utilisation, and edge pressure
-- work with hierarchical subnetworks through composite nodes and external interfaces
-- export reports from the desktop application
-- run the verification project to exercise regression and behaviour scenarios
+- import OpenStreetMap road networks
+- define custom traffic types
+- configure node production, consumption, storage, and transhipment
+- configure edge travel time, cost, capacity, and traffic permissions
+- run single-step and timeline-based simulations
+- inspect unmet need, edge pressure, utilisation, and route behaviour
+- export reports for analysis
+- test behaviour changes using the verification project
 
-## Current repository structure
+## Primary application
 
-The repository currently centres on two main projects:
+The main desktop app is:
 
-- [`src/MedWNetworkSim.App`](src/MedWNetworkSim.App) — the main WPF desktop application
-- [`src/MedWNetworkSim.App.Verification`](src/MedWNetworkSim.App.Verification) — a verification console project with scenario-based checks
+- `src/MedWNetworkSim.App.Avalonia`
 
-The verification project is useful when you want to confirm expected simulator behaviour after code changes.
+Supporting projects in the solution include:
 
-## Core model
+- `src/MedWNetworkSim.UI`
+- `src/MedWNetworkSim.Presentation`
+- `src/MedWNetworkSim.Rendering`
+- `src/MedWNetworkSim.Interaction`
+- `src/MedWNetworkSim.App.Verification`
+
+The Avalonia application uses a Fluent theme and serves as the main user-facing GUI.
+
+## Core concepts
 
 ### Nodes
 
-A node is a place in the network. Depending on configuration, a node can:
+A node represents a place in the network.
+
+Depending on configuration, a node can:
 
 - produce traffic
 - consume traffic
 - store traffic
 - transship traffic
 - transform local inputs into outputs
-- expose an external interface for hierarchical subnetworks
+- participate in hierarchical network structures
 
 ### Edges
 
-An edge is a route between nodes. Edges can carry:
+An edge represents a route between nodes.
+
+Edges can model:
 
 - travel time
-- cost
-- capacity
-- one-way or bidirectional movement
-- traffic-specific permission rules
+- monetary or abstract cost
+- limited capacity
+- one-way or bidirectional flow
+- traffic-type permissions or restrictions
 
 ### Traffic types
 
-A traffic type is a category of flow moving through the network. Different traffic types can use different route-choice settings and different flow-splitting behaviour.
+A traffic type is a named category of flow moving through the network.
 
-## Key simulation features
+Different traffic types can use different routing and allocation behaviour, allowing the same network to represent multiple classes of goods, services, or movement.
 
-### Routing and flow control
+## Simulation capabilities
 
-The simulator supports route-choice combinations including:
+### Routing and flow choice
 
-- fastest versus cheapest routing preferences
-- deterministic system-optimal routing
-- stochastic user-responsive routing
-- single-path and multi-path flow splitting
-- legacy allocation-mode compatibility for older JSON files
+The simulator supports a range of route-choice and allocation behaviours, including:
 
-This makes it possible to compare how different classes of flow behave under congestion, scarcity, and mixed priorities.
+- fastest versus cheapest preference
+- deterministic routing
+- responsive routing
+- single-path and split-flow behaviour
+- traffic-specific routing settings
+
+This makes it possible to compare how different traffic classes behave under scarcity, congestion, and competing priorities.
 
 ### Timeline simulation
 
-Timeline mode advances the model period by period. This allows you to test cases where:
+Timeline mode advances the network period by period.
 
-- supply starts later than demand
-- demand recurs over time
-- travel takes multiple periods
-- edge occupancy persists while traffic is in flight
-- storage is replenished over repeated cycles
-- production only occurs in specific windows
-- recipe outputs depend on local precursor availability
+This is useful when you need to model:
 
-### Production, storage, and recipes
+- delayed supply arrival
+- recurring demand
+- multi-period travel
+- persistent edge occupancy
+- repeated production and replenishment
+- staged transformation chains
+- backlog growth and recovery over time
 
-Traffic profiles can include:
+### Production, storage, and transformation
 
-- multiple production windows
-- multiple consumption windows
-- store replenishment behaviour
-- local precursor requirements
-- inherited landed-cost behaviour for transformed outputs
-- validation against cyclic recipe dependencies
+Traffic profiles can model:
 
-### Capacity and pressure behaviour
+- production
+- consumption
+- storage
+- transhipment
+- local input requirements
+- transformed outputs derived from precursor inputs
 
-The model includes:
+### Pressure, backlog, and bottlenecks
 
-- durable edge occupancy across periods
-- shared occupancy on bidirectional edges
-- waiting behaviour when downstream edges are blocked
-- transhipment-capacity blocking
-- demand backlog tracking for unserved demand
-- edge pressure and utilisation reporting in the UI
+The model can be used to analyse:
+
+- unmet demand
+- persistent shortages
+- edge pressure
+- utilisation
+- blocked downstream movement
+- transhipment constraints
+- route competition between traffic types
 
 ## OpenStreetMap import
 
-The application includes OpenStreetMap import support for:
+MedWNetworkSim supports OpenStreetMap import for road-based networks.
 
-- `*.osm` XML files
-- `*.pbf` files
+The importer is intended to make large source graphs more usable for simulation by simplifying them while preserving important structure.
 
-The OSM importer is designed to make large road extracts usable for simulation by simplifying the imported graph while preserving important network properties. Based on the current verification coverage, the importer includes checks for:
+This supports workflows such as:
 
-- parser selection by file extension
-- parity between OSM XML and PBF imports
-- rejection of invalid PBF input
-- rejection of files with no supported roads
-- retention of T-junctions, crossroads, dead ends, articulation points, mandatory nodes, and named-road transitions
-- reduction in node count without orphaning retained nodes
-- preservation of reachability, shape anchors, and collapsed-path distance
-- deterministic naming, including direct, derived, and fallback naming paths
-
-## Hierarchical subnetworks
-
-MedWNetworkSim supports hierarchical modelling through composite nodes and subnetworks. This allows a parent network to route into a child network through declared external interface nodes.
-
-This is useful when you want to:
-
-- keep a regional network readable while embedding detailed local networks
-- test alternative internal layouts behind the same external interface
-- validate that external interface selection changes routing outcomes
-
-## Desktop UI and analysis workflow
-
-The desktop application includes workflow surfaces for:
-
-- canvas editing
-- layers
-- inspector panels
-- reports drawer
-- legend
-- canvas-only mode
-
-The current verification suite also indicates support for:
-
-- route selection in reports highlighting the route on the canvas
-- empty-state messaging in reports
-- timeline reset clearing edge pressure visuals
-- opening and closing inspector, layers, reports, and legend panels independently
+- importing a real road network
+- simplifying it to key junctions
+- preserving meaningful route shape
+- deriving edge distances from collapsed road paths
+- using imported geography as a simulation network
 
 ## File formats
 
 ### JSON
 
-JSON is the main working format for MedWNetworkSim. It is the best choice when you want to preserve simulator behaviour and configuration.
+JSON is the main working format for MedWNetworkSim.
 
-Use JSON when you need to keep:
+Use JSON when you want to preserve simulation configuration such as:
 
 - traffic definitions
 - node traffic profiles
 - capacities
-- routing configuration
+- costs and times
+- routing settings
 - timeline windows
-- recipe inputs
-- layout and positions
-- hierarchical subnetwork references
+- permissions
+- layout positions
+- hierarchical network data
 
 ### GraphML
 
-GraphML is useful for structural interchange with other graph tools, but JSON is the better long-term working format for full simulator fidelity.
+GraphML is supported for graph interchange with external tools.
 
-## Reports and outputs
+Use GraphML when you need portability of network structure. Use JSON when you need full simulator fidelity.
 
-The current top-level README mentions report export from the desktop application, and the verification suite confirms report-oriented UI flows such as route selection, empty states, and routing summaries.
+## User workflow
 
-If you are updating reporting behaviour, the most relevant code areas are likely under:
+A typical workflow is:
 
-- [`src/MedWNetworkSim.App`](src/MedWNetworkSim.App)
-- [`src/MedWNetworkSim.App.Verification`](src/MedWNetworkSim.App.Verification)
+1. Create a new blank network or open an existing JSON file.
+2. Define the traffic types you want to simulate.
+3. Add or edit nodes and edges on the canvas.
+4. Configure node and edge behaviour in the UI.
+5. Run a simulation.
+6. Inspect pressure, unmet demand, route use, and utilisation.
+7. Export reports if needed.
+8. Switch to timeline mode when period-based behaviour matters.
+9. Import GraphML or OSM data when starting from external network sources.
 
-## Getting started
+## Build and run
 
 ### Prerequisites
 
-- .NET 7 SDK or later
-- Visual Studio 2022 or later
-- Windows for the WPF desktop application
+- .NET 8 SDK or later
+- Visual Studio 2022 or later, or another .NET-compatible IDE
 
 ### Build the solution
 
@@ -197,70 +188,83 @@ If you are updating reporting behaviour, the most relevant code areas are likely
 dotnet build MedWNetworkSim.slnx
 ```
 
-### Run the desktop application
+### Run the Avalonia application
 
 ```bash
-dotnet run --project .\src\MedWNetworkSim.App\MedWNetworkSim.App.csproj
+dotnet run --project ./src/MedWNetworkSim.App.Avalonia/MedWNetworkSim.App.Avalonia.csproj
 ```
 
 ### Run the verification project
 
 ```bash
-dotnet run --project .\src\MedWNetworkSim.App.Verification\MedWNetworkSim.App.Verification.csproj
+dotnet run --project ./src/MedWNetworkSim.App.Verification/MedWNetworkSim.App.Verification.csproj
 ```
 
-## Suggested first steps
+## Repository structure
 
-A practical way to explore the tool is:
+```text
+src/
+  MedWNetworkSim.App.Avalonia/      Primary Avalonia desktop app
+  MedWNetworkSim.UI/                Shared UI shell and views
+  MedWNetworkSim.Presentation/      View models and presentation logic
+  MedWNetworkSim.Rendering/         Rendering logic
+  MedWNetworkSim.Interaction/       Interaction and editing behaviour
+  MedWNetworkSim.App.Verification/  Scenario and regression verification
+```
 
-1. Open the desktop application.
-2. Load a sample network if one is bundled in your build, or create a new network.
-3. Define traffic types.
-4. Add nodes and edges.
-5. Configure capacities, costs, times, and permissions.
-6. Run a simulation.
-7. Review the reports and inspector output.
-8. Switch to timeline mode when period-by-period behaviour matters.
-9. Try OSM import if you want to create a road-based network quickly.
+## Who this tool is for
 
-## Documentation links
-
-The currently indexed repository contents do **not** show a populated `docs/` directory with stable end-user guides. The most useful linked entry points presently visible are:
-
-- [Main application project](src/MedWNetworkSim.App)
-- [Verification project](src/MedWNetworkSim.App.Verification)
-- [Issue tracker](https://github.com/wnj00524/MedWNetworkSim/issues)
-
-If additional documentation files are added later, this section should be expanded to link to them directly.
-
-## Who this is for
-
-MedWNetworkSim is a good fit for users who want to explore constrained movement through a graph without moving to a full agent-based world model.
+MedWNetworkSim is useful for users who want to model and test constrained movement through a graph without needing a full agent-based simulation.
 
 Typical uses include:
 
 - logistics and supply routing
-- bottleneck testing
+- bottleneck analysis
+- infrastructure modelling
+- service-flow scenarios
+- demand and replenishment analysis
+- route policy testing
 - network design exploration
-- infrastructure and service-flow scenarios
-- timeline-based demand and replenishment analysis
-- scenario prototyping before moving to more complex simulation systems
+- prototype scenario modelling
+
+## Current focus
+
+The current primary focus of the project is the Avalonia GUI experience and feature completeness of the editing and analysis workflow.
+
+That includes making sure users can:
+
+- create and edit networks entirely within the Avalonia app
+- inspect node and edge state clearly
+- define and edit traffic types directly in the UI
+- understand why shortages and pressure occur
+- use reports and canvas inspection together
+
+## Documentation
+
+Current key entry points:
+
+- `README.md`
+- `src/MedWNetworkSim.App.Avalonia`
+- `src/MedWNetworkSim.App.Verification`
+- `docs/`
+- GitHub Issues for bugs and feature requests
 
 ## Contributing
 
 When contributing:
 
-- keep README claims aligned with the codebase and verification coverage
-- prefer JSON examples that reflect the current model
-- add verification scenarios for new simulation behaviour
-- update this README when user-visible functionality changes
+- keep README claims aligned with actual implemented behaviour
+- prioritise Avalonia UI functionality and clarity
+- add verification coverage for simulation behaviour changes
+- update user-facing documentation when workflows change
+- prefer examples that reflect the current supported model
 
 ## License
 
-This repository currently presents itself as MIT-licensed in the existing top-level README.
+This repository is MIT licensed.
 
-## Support and feedback
+## Feedback and issues
 
-For bugs, gaps in documentation, or feature requests, use the repository issue tracker:
+For bugs, feature requests, or documentation gaps, use the GitHub issue tracker:
 
-- [Open an issue](https://github.com/wnj00524/MedWNetworkSim/issues)
+- https://github.com/wnj00524/MedWNetworkSim/issues

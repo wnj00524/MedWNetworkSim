@@ -421,10 +421,6 @@ public sealed class ShellWindow : Window
                 Title = viewModel.WindowTitle;
             }
         };
-        KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.S), Command = viewModel.SelectToolCommand });
-        KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.A), Command = viewModel.AddNodeToolCommand });
-        KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.C), Command = viewModel.ConnectToolCommand });
-        KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.Escape), Command = viewModel.SelectToolCommand });
 
         Content = BuildLayout(viewModel);
     }

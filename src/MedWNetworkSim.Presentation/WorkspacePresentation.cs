@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Globalization;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using MedWNetworkSim.App.Models;
@@ -84,6 +84,8 @@ public sealed class ReportMetricViewModel
 public sealed class WorkspaceViewModel : ObservableObject
 {
     private readonly NetworkFileService fileService = new();
+    private readonly GraphMlFileService graphMlFileService = new();
+    private readonly ReportExportService reportExportService = new();
     private readonly NetworkSimulationEngine simulationEngine = new();
     private readonly TemporalNetworkSimulationEngine temporalEngine = new();
     private readonly GraphInteractionController interactionController = new();
@@ -97,19 +99,17 @@ public sealed class WorkspaceViewModel : ObservableObject
     private int currentPeriod;
     private int timelineMaximum = 12;
     private int timelinePosition;
+    private string selectedTrafficType = string.Empty;
     private string inspectorName = string.Empty;
-    private string inspectorDescription = string.Empty;
-    private string inspectorTimelineLoopLengthText = "12";
-    private string inspectorNodePlaceType = string.Empty;
-    private string inspectorNodeTranshipmentCapacityText = string.Empty;
-    private string inspectorEdgeRouteType = string.Empty;
-    private string inspectorEdgeTimeText = "1.5";
-    private string inspectorEdgeCostText = "1.0";
-    private string inspectorEdgeCapacityText = "30";
-    private bool inspectorEdgeIsBidirectional;
-    private string inspectorBulkPlaceType = string.Empty;
-    private string inspectorBulkTranshipmentCapacityText = string.Empty;
-    private string inspectorValidationText = string.Empty;
+    private string inspectorType = string.Empty;
+    private string inspectorProduction = "0";
+    private string inspectorConsumption = "0";
+    private string inspectorCapacity = string.Empty;
+    private string inspectorTime = "1";
+    private string inspectorCost = "1";
+    private string inspectorBulkType = string.Empty;
+    private string inspectorValidationMessage = string.Empty;
+    private IReadOnlyList<TrafficSimulationOutcome> lastOutcomes = [];
 
     public WorkspaceViewModel()
     {
@@ -138,6 +138,9 @@ public sealed class WorkspaceViewModel : ObservableObject
             Scene.Simulation.ReducedMotion = ReducedMotion;
             Raise(nameof(ViewportVersion));
         });
+        ApplyInspectorCommand = new RelayCommand(ApplyInspectorEdits);
+        AddTrafficTypeCommand = new RelayCommand(AddTrafficType);
+        RemoveTrafficTypeCommand = new RelayCommand(RemoveSelectedTrafficType, () => !string.IsNullOrWhiteSpace(SelectedTrafficType));
 
         CreateBlankNetwork();
     }
@@ -158,8 +161,36 @@ public sealed class WorkspaceViewModel : ObservableObject
     public RelayCommand ResetTimelineCommand { get; }
     public RelayCommand FitCommand { get; }
     public RelayCommand ToggleMotionCommand { get; }
+    public RelayCommand ApplyInspectorCommand { get; }
+    public RelayCommand AddTrafficTypeCommand { get; }
+    public RelayCommand RemoveTrafficTypeCommand { get; }
     public InspectorSection Inspector { get; }
     public ObservableCollection<ReportMetricViewModel> ReportMetrics { get; }
+    public IReadOnlyList<TrafficTypeDefinition> TrafficTypes => network.TrafficTypes;
+    public bool IsNodeInspectorEditable => Scene.Selection.SelectedNodeIds.Count == 1 && Scene.Selection.SelectedEdgeIds.Count == 0;
+    public bool IsEdgeInspectorEditable => Scene.Selection.SelectedEdgeIds.Count == 1 && Scene.Selection.SelectedNodeIds.Count == 0;
+    public bool IsBulkInspectorEditable => Scene.Selection.SelectedNodeIds.Count + Scene.Selection.SelectedEdgeIds.Count > 1;
+    public bool IsNetworkInspectorEditable => Scene.Selection.SelectedNodeIds.Count == 0 && Scene.Selection.SelectedEdgeIds.Count == 0;
+    public string InspectorName { get => inspectorName; set => SetProperty(ref inspectorName, value); }
+    public string InspectorType { get => inspectorType; set => SetProperty(ref inspectorType, value); }
+    public string InspectorProduction { get => inspectorProduction; set => SetProperty(ref inspectorProduction, value); }
+    public string InspectorConsumption { get => inspectorConsumption; set => SetProperty(ref inspectorConsumption, value); }
+    public string InspectorCapacity { get => inspectorCapacity; set => SetProperty(ref inspectorCapacity, value); }
+    public string InspectorTime { get => inspectorTime; set => SetProperty(ref inspectorTime, value); }
+    public string InspectorCost { get => inspectorCost; set => SetProperty(ref inspectorCost, value); }
+    public string InspectorBulkType { get => inspectorBulkType; set => SetProperty(ref inspectorBulkType, value); }
+    public string InspectorValidationMessage { get => inspectorValidationMessage; set => SetProperty(ref inspectorValidationMessage, value); }
+    public string SelectedTrafficType
+    {
+        get => selectedTrafficType;
+        set
+        {
+            if (SetProperty(ref selectedTrafficType, value))
+            {
+                RemoveTrafficTypeCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
 
     public GraphInteractionContext CreateInteractionContext(GraphSize viewportSize)
     {
@@ -300,8 +331,133 @@ public sealed class WorkspaceViewModel : ObservableObject
         Viewport.Reset(Scene.GetContentBounds(), LastViewportSize);
         RefreshInspector();
         PopulateReportMetrics([]);
-        StatusText = statusMessage;
+        lastOutcomes = [];
+        StatusText = "Ready to edit your network.";
         NotifyVisualChanged();
+    }
+
+    public void OpenNetwork(string path)
+    {
+        network = fileService.Load(path);
+        ResetAfterNetworkLoad($"Opened '{Path.GetFileName(path)}'.");
+    }
+
+    public void SaveNetwork(string path)
+    {
+        fileService.Save(network, path);
+        StatusText = $"Saved '{Path.GetFileName(path)}'.";
+    }
+
+    public void ImportGraphMl(string path)
+    {
+        network = graphMlFileService.Load(path, new GraphMlTransferOptions(default, "transship", 25d));
+        ResetAfterNetworkLoad($"Imported GraphML file '{Path.GetFileName(path)}'.");
+    }
+
+    public void ExportGraphMl(string path)
+    {
+        graphMlFileService.Save(network, path, new GraphMlTransferOptions(network.TrafficTypes.FirstOrDefault()?.Name, "transship", 25d));
+        StatusText = $"Exported GraphML file '{Path.GetFileName(path)}'.";
+    }
+
+    public void ExportCurrentReport(string path, ReportExportFormat format)
+    {
+        reportExportService.SaveCurrentReport(network, lastOutcomes, [], path, format);
+        StatusText = $"Exported current report to '{Path.GetFileName(path)}'.";
+    }
+
+    public void ExportTimelineReport(string path, int periods, ReportExportFormat format)
+    {
+        var state = temporalEngine.Initialize(network);
+        var results = new List<TemporalNetworkSimulationEngine.TemporalSimulationStepResult>();
+        for (var index = 0; index < Math.Max(1, periods); index++)
+        {
+            results.Add(temporalEngine.Advance(network, state));
+        }
+
+        reportExportService.SaveTimelineReport(network, results, path, format);
+        StatusText = $"Exported timeline report ({results.Count} periods) to '{Path.GetFileName(path)}'.";
+    }
+
+    private static NetworkModel BuildDefaultNetwork()
+    {
+        return new NetworkModel
+        {
+            Name = "Avalonia Migration Pilot",
+            Description = "Cross-platform shell with render-driven graph canvas.",
+            TimelineLoopLength = 12,
+            TrafficTypes =
+            [
+                new TrafficTypeDefinition { Name = "grain", RoutingPreference = RoutingPreference.TotalCost, AllocationMode = AllocationMode.GreedyBestRoute },
+                new TrafficTypeDefinition { Name = "tools", RoutingPreference = RoutingPreference.Speed, AllocationMode = AllocationMode.GreedyBestRoute }
+            ],
+            Nodes =
+            [
+                new NodeModel
+                {
+                    Id = "granary",
+                    Name = "Granary",
+                    X = -420,
+                    Y = -120,
+                    PlaceType = "Storehouse",
+                    TranshipmentCapacity = 100,
+                    TrafficProfiles =
+                    [
+                        new NodeTrafficProfile { TrafficType = "grain", Production = 42, CanTransship = true, IsStore = true, StoreCapacity = 60 },
+                        new NodeTrafficProfile { TrafficType = "tools", Consumption = 6, CanTransship = true }
+                    ]
+                },
+                new NodeModel
+                {
+                    Id = "market",
+                    Name = "Market Hall",
+                    X = -60,
+                    Y = 40,
+                    PlaceType = "Exchange",
+                    TranshipmentCapacity = 80,
+                    TrafficProfiles =
+                    [
+                        new NodeTrafficProfile { TrafficType = "grain", Consumption = 24, CanTransship = true },
+                        new NodeTrafficProfile { TrafficType = "tools", Consumption = 10, CanTransship = true }
+                    ]
+                },
+                new NodeModel
+                {
+                    Id = "forge",
+                    Name = "Forge Quarter",
+                    X = 310,
+                    Y = -80,
+                    PlaceType = "Workshop",
+                    TranshipmentCapacity = 60,
+                    TrafficProfiles =
+                    [
+                        new NodeTrafficProfile { TrafficType = "grain", Consumption = 8, CanTransship = true },
+                        new NodeTrafficProfile { TrafficType = "tools", Production = 18, CanTransship = true }
+                    ]
+                },
+                new NodeModel
+                {
+                    Id = "harbor",
+                    Name = "Harbor Gate",
+                    X = 520,
+                    Y = 220,
+                    PlaceType = "Transit",
+                    TranshipmentCapacity = 120,
+                    TrafficProfiles =
+                    [
+                        new NodeTrafficProfile { TrafficType = "grain", Consumption = 16, CanTransship = true },
+                        new NodeTrafficProfile { TrafficType = "tools", Consumption = 4, CanTransship = true }
+                    ]
+                }
+            ],
+            Edges =
+            [
+                new EdgeModel { Id = "granary->market", FromNodeId = "granary", ToNodeId = "market", Time = 1.2, Cost = 1.1, Capacity = 40, IsBidirectional = true, RouteType = "Cart path" },
+                new EdgeModel { Id = "market->forge", FromNodeId = "market", ToNodeId = "forge", Time = 1.7, Cost = 1.4, Capacity = 26, IsBidirectional = true, RouteType = "Stone road" },
+                new EdgeModel { Id = "forge->harbor", FromNodeId = "forge", ToNodeId = "harbor", Time = 2.1, Cost = 2.4, Capacity = 28, IsBidirectional = false, RouteType = "River lane" },
+                new EdgeModel { Id = "market->harbor", FromNodeId = "market", ToNodeId = "harbor", Time = 2.6, Cost = 2.0, Capacity = 34, IsBidirectional = true, RouteType = "Merchant road" }
+            ]
+        };
     }
 
     private void BuildSceneFromNetwork()
@@ -506,6 +662,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     private void RunSimulation()
     {
         var outcomes = simulationEngine.Simulate(network);
+        lastOutcomes = outcomes;
         ApplySimulationOutcomes(outcomes.SelectMany(outcome => outcome.Allocations), null);
         StatusText = "Static simulation run complete.";
         ModeText = "Simulation snapshot";
@@ -620,6 +777,11 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     private void RefreshInspector()
     {
+        Raise(nameof(IsNodeInspectorEditable));
+        Raise(nameof(IsEdgeInspectorEditable));
+        Raise(nameof(IsBulkInspectorEditable));
+        Raise(nameof(IsNetworkInspectorEditable));
+        Raise(nameof(TrafficTypes));
         var selectedNodes = Scene.Selection.SelectedNodeIds.ToList();
         var selectedEdges = Scene.Selection.SelectedEdgeIds.ToList();
         if (selectedNodes.Count == 0 && selectedEdges.Count == 0)
@@ -633,7 +795,9 @@ public sealed class WorkspaceViewModel : ObservableObject
                 $"Edges: {network.Edges.Count}",
                 $"Reduced motion: {(ReducedMotion ? "On" : "Off")}"
             ];
-            PopulateInspectorEditor();
+            InspectorName = network.Name;
+            InspectorType = network.Description;
+            InspectorCapacity = network.TimelineLoopLength?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
             return;
         }
 
@@ -645,10 +809,10 @@ public sealed class WorkspaceViewModel : ObservableObject
             [
                 $"{selectedNodes.Count} nodes selected",
                 $"{selectedEdges.Count} edges selected",
-                "Delete removes the current selection.",
-                "Right-drag between nodes creates a route."
+                "Set a place type to update all selected nodes.",
+                "Delete removes the current selection."
             ];
-            PopulateInspectorEditor();
+            InspectorBulkType = "Updated place type";
             return;
         }
 
@@ -659,7 +823,13 @@ public sealed class WorkspaceViewModel : ObservableObject
             Inspector.Summary = string.IsNullOrWhiteSpace(node.PlaceType) ? "Node" : node.PlaceType!;
             Inspector.Details = node.TrafficProfiles.Select(profile =>
                 $"{profile.TrafficType}: prod {profile.Production:0.#}, cons {profile.Consumption:0.#}, tranship {(profile.CanTransship ? "yes" : "no")}").ToList();
-            PopulateInspectorEditor();
+            InspectorName = node.Name;
+            InspectorType = node.PlaceType ?? string.Empty;
+            var profile = node.TrafficProfiles.FirstOrDefault();
+            SelectedTrafficType = profile?.TrafficType ?? network.TrafficTypes.FirstOrDefault()?.Name ?? string.Empty;
+            InspectorProduction = profile?.Production.ToString(CultureInfo.InvariantCulture) ?? "0";
+            InspectorConsumption = profile?.Consumption.ToString(CultureInfo.InvariantCulture) ?? "0";
+            InspectorCapacity = node.TranshipmentCapacity?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
             return;
         }
 
@@ -673,105 +843,133 @@ public sealed class WorkspaceViewModel : ObservableObject
             $"Cost: {edgeModel.Cost:0.#}",
             $"Direction: {(edgeModel.IsBidirectional ? "Bidirectional" : "Forward only")}"
         ];
-        PopulateInspectorEditor();
+        InspectorType = edgeModel.RouteType ?? string.Empty;
+        InspectorCapacity = edgeModel.Capacity?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+        InspectorTime = edgeModel.Time.ToString(CultureInfo.InvariantCulture);
+        InspectorCost = edgeModel.Cost.ToString(CultureInfo.InvariantCulture);
+        InspectorName = edgeModel.Id;
     }
 
-    private void ShowSelectionHelp()
+    private void ResetAfterNetworkLoad(string status)
     {
-        StatusText = "Selection mode active. Left click to select, drag nodes to move, right-drag between nodes to connect, press N to add a node, and press Delete to remove the selection.";
+        temporalState = null;
+        CurrentPeriod = 0;
+        TimelinePosition = 0;
+        TimelineMaximum = Math.Max(8, network.TimelineLoopLength ?? 12);
+        BuildSceneFromNetwork();
+        Viewport.Reset(Scene.GetContentBounds(), LastViewportSize);
+        lastOutcomes = [];
+        PopulateReportMetrics([]);
+        RefreshInspector();
+        StatusText = status;
+        NotifyVisualChanged();
     }
 
-    private void AddNodeAtViewportCenter()
+    private void AddTrafficType()
     {
-        var nodeId = AddNodeAt(Viewport.Center);
-        SelectSingleNode(nodeId);
-        var node = network.Nodes.First(model => model.Id == nodeId);
-        StatusText = $"Added node '{node.Name}'.";
+        var index = network.TrafficTypes.Count + 1;
+        var name = $"traffic-{index}";
+        network.TrafficTypes.Add(new TrafficTypeDefinition { Name = name, RoutingPreference = RoutingPreference.TotalCost });
+        SelectedTrafficType = name;
+        StatusText = $"Added traffic type '{name}'.";
+        RefreshInspector();
     }
 
-    private void ConnectSelectedNodes()
+    private void RemoveSelectedTrafficType()
     {
-        var selectedNodes = Scene.Nodes
-            .Where(node => Scene.Selection.SelectedNodeIds.Contains(node.Id))
-            .Take(2)
-            .Select(node => node.Id)
-            .ToList();
-
-        if (selectedNodes.Count != 2)
+        if (string.IsNullOrWhiteSpace(SelectedTrafficType))
         {
-            StatusText = "Select two nodes to create a connection.";
             return;
         }
 
-        if (!CreateEdge(selectedNodes[0], selectedNodes[1]))
+        network.TrafficTypes.RemoveAll(type => string.Equals(type.Name, SelectedTrafficType, StringComparison.OrdinalIgnoreCase));
+        foreach (var node in network.Nodes)
         {
-            StatusText = "A connection between the selected nodes already exists.";
-            return;
+            node.TrafficProfiles.RemoveAll(profile => string.Equals(profile.TrafficType, SelectedTrafficType, StringComparison.OrdinalIgnoreCase));
         }
 
-        SelectSingleEdge($"{selectedNodes[0]}->{selectedNodes[1]}");
-        StatusText = $"Connected '{selectedNodes[0]}' to '{selectedNodes[1]}'.";
-    }
-
-    private void DeleteCurrentSelection()
-    {
-        if (!CanDeleteSelection)
-        {
-            StatusText = "Select an item to delete.";
-            return;
-        }
-
-        DeleteSelection();
-        StatusText = "Deleted current selection.";
+        SelectedTrafficType = network.TrafficTypes.FirstOrDefault()?.Name ?? string.Empty;
+        BuildSceneFromNetwork();
+        RefreshInspector();
+        NotifyVisualChanged();
     }
 
     private void ApplyInspectorEdits()
     {
-        InspectorValidationText = string.Empty;
-
+        InspectorValidationMessage = string.Empty;
         try
         {
-            switch (CurrentInspectorEditMode)
+            if (IsNetworkInspectorEditable)
             {
-                case InspectorEditMode.Node:
-                    ApplyNodeEdits();
-                    break;
-
-                case InspectorEditMode.Edge:
-                    ApplyEdgeEdits();
-                    break;
-
-                case InspectorEditMode.Selection:
-                    ApplyBulkEdits();
-                    break;
-
-                default:
-                    ApplyNetworkEdits();
-                    break;
+                network.Name = string.IsNullOrWhiteSpace(InspectorName) ? "Untitled Network" : InspectorName.Trim();
+                network.Description = InspectorType?.Trim() ?? string.Empty;
+                network.TimelineLoopLength = int.TryParse(InspectorCapacity, out var timeline) && timeline > 0 ? timeline : null;
+                StatusText = "Updated network settings.";
+                NotifyVisualChanged();
+                return;
             }
 
-            RefreshInspector();
-            NotifyVisualChanged();
-        }
-        catch (InvalidOperationException ex)
-        {
-            InspectorValidationText = ex.Message;
-            Raise(nameof(HasInspectorValidationText));
-        }
-    }
+            if (IsNodeInspectorEditable)
+            {
+                var nodeId = Scene.Selection.SelectedNodeIds.First();
+                var node = network.Nodes.First(model => model.Id == nodeId);
+                node.Name = string.IsNullOrWhiteSpace(InspectorName) ? node.Id : InspectorName.Trim();
+                node.PlaceType = string.IsNullOrWhiteSpace(InspectorType) ? null : InspectorType.Trim();
+                node.TranshipmentCapacity = double.TryParse(InspectorCapacity, out var capacity) ? Math.Max(0d, capacity) : null;
+                var trafficType = string.IsNullOrWhiteSpace(SelectedTrafficType) ? network.TrafficTypes.FirstOrDefault()?.Name ?? "goods" : SelectedTrafficType.Trim();
+                var profile = node.TrafficProfiles.FirstOrDefault(item => string.Equals(item.TrafficType, trafficType, StringComparison.OrdinalIgnoreCase));
+                if (profile is null)
+                {
+                    profile = new NodeTrafficProfile { TrafficType = trafficType, CanTransship = true };
+                    node.TrafficProfiles.Add(profile);
+                }
 
-    private void ApplyNetworkEdits()
-    {
-        if (!TryParsePositiveInt(InspectorTimelineLoopLengthText, out var loopLength))
-        {
-            throw new InvalidOperationException("Enter a timeline length of 1 or more.");
-        }
+                profile.Production = double.TryParse(InspectorProduction, out var production) ? Math.Max(0d, production) : 0d;
+                profile.Consumption = double.TryParse(InspectorConsumption, out var consumption) ? Math.Max(0d, consumption) : 0d;
+                BuildSceneFromNetwork();
+                RefreshInspector();
+                NotifyVisualChanged();
+                StatusText = $"Updated node '{node.Name}'.";
+                return;
+            }
 
-        network.Name = string.IsNullOrWhiteSpace(InspectorName) ? "Untitled Network" : InspectorName.Trim();
-        network.Description = InspectorDescription?.Trim() ?? string.Empty;
-        network.TimelineLoopLength = loopLength;
-        TimelineMaximum = Math.Max(8, loopLength);
-        StatusText = $"Updated network '{network.Name}'.";
+            if (IsEdgeInspectorEditable)
+            {
+                var edgeId = Scene.Selection.SelectedEdgeIds.First();
+                var edge = network.Edges.First(model => model.Id == edgeId);
+                edge.RouteType = string.IsNullOrWhiteSpace(InspectorType) ? null : InspectorType.Trim();
+                edge.Time = double.TryParse(InspectorTime, out var time) ? Math.Max(0d, time) : edge.Time;
+                edge.Cost = double.TryParse(InspectorCost, out var cost) ? Math.Max(0d, cost) : edge.Cost;
+                edge.Capacity = double.TryParse(InspectorCapacity, out var capacity) ? Math.Max(0d, capacity) : null;
+                BuildSceneFromNetwork();
+                RefreshInspector();
+                NotifyVisualChanged();
+                StatusText = $"Updated edge '{edge.Id}'.";
+                return;
+            }
+
+            if (IsBulkInspectorEditable)
+            {
+                var updatedType = string.IsNullOrWhiteSpace(InspectorBulkType) ? null : InspectorBulkType.Trim();
+                if (!string.IsNullOrWhiteSpace(updatedType))
+                {
+                    var selectedNodes = Scene.Selection.SelectedNodeIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    foreach (var node in network.Nodes.Where(node => selectedNodes.Contains(node.Id)))
+                    {
+                        node.PlaceType = updatedType;
+                    }
+                }
+
+                BuildSceneFromNetwork();
+                RefreshInspector();
+                NotifyVisualChanged();
+                StatusText = "Applied bulk edits to the current selection.";
+            }
+        }
+        catch (Exception ex)
+        {
+            InspectorValidationMessage = ex.Message;
+        }
     }
 
     private void ApplyNodeEdits()

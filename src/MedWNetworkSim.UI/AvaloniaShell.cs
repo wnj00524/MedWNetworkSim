@@ -11,7 +11,9 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using MedWNetworkSim.App.Models;
 using MedWNetworkSim.Interaction;
 using MedWNetworkSim.Presentation;
 using MedWNetworkSim.Rendering;
@@ -393,7 +395,7 @@ public sealed class ShellWindow : Window
         }
     }
 
-    private static Control BuildLayout(WorkspaceViewModel viewModel)
+    private Control BuildLayout(WorkspaceViewModel viewModel)
     {
         var root = new DockPanel
         {
@@ -431,7 +433,7 @@ public sealed class ShellWindow : Window
             Padding = new Thickness(18, 12),
             Child = new TextBlock
             {
-                Text = "Shell loaded. If the graph fails, a visible fallback panel should appear in the center region.",
+                Text = "Ready to edit your network. If the graph cannot be displayed, this workspace will show a visible recovery panel.",
                 FontSize = 18,
                 FontWeight = FontWeight.Bold,
                 Foreground = new SolidColorBrush(Color.Parse("#5E4300"))
@@ -469,7 +471,7 @@ public sealed class ShellWindow : Window
         return root;
     }
 
-    private static Control BuildTopBar(WorkspaceViewModel viewModel)
+    private Control BuildTopBar(WorkspaceViewModel viewModel)
     {
         var grid = new Grid
         {
@@ -490,10 +492,10 @@ public sealed class ShellWindow : Window
                 },
                 new TextBlock
                 {
-                    Text = "Shell loaded",
+                    Text = "Ready to edit your network",
                     FontSize = 16,
                     FontWeight = FontWeight.SemiBold,
-                    Foreground = new SolidColorBrush(Color.Parse("#9C6E00"))
+                    Foreground = new SolidColorBrush(Color.Parse("#546A7E"))
                 },
                 new TextBlock
                 {
@@ -513,6 +515,10 @@ public sealed class ShellWindow : Window
             Children =
             {
                 BuildButton("New", viewModel.NewCommand),
+                BuildButton("Open", new RelayCommand(() => _ = OpenNetworkFileAsync(viewModel))),
+                BuildButton("Save", new RelayCommand(() => _ = SaveNetworkFileAsync(viewModel))),
+                BuildButton("Import", new RelayCommand(() => _ = ImportGraphMlAsync(viewModel))),
+                BuildButton("Export", new RelayCommand(() => _ = ExportGraphMlAsync(viewModel))),
                 BuildButton("Run", viewModel.SimulateCommand),
                 BuildButton("Step", viewModel.StepCommand),
                 BuildButton("Reset", viewModel.ResetTimelineCommand),
@@ -557,7 +563,18 @@ public sealed class ShellWindow : Window
             BorderThickness = new Thickness(1),
             Padding = new Thickness(10),
             Margin = new Thickness(0, 0, 14, 0),
-            Child = stack
+            Child = new StackPanel
+            {
+                Spacing = 12,
+                Children =
+                {
+                    BuildRailButton("Select", "Select and inspect nodes and edges.", viewModel.FitCommand),
+                    BuildRailButton("Connect", "Connect two nodes using right-drag on the canvas.", viewModel.FitCommand),
+                    BuildRailButton("Add Node", "Press N on the canvas to add a new node.", viewModel.NewCommand),
+                    BuildRailButton("Run Sim", "Run static simulation and review report metrics.", viewModel.SimulateCommand),
+                    BuildRailButton("Reset", "Reset timeline playback to period 0.", viewModel.ResetTimelineCommand)
+                }
+            }
         };
         Grid.SetColumn(border, 0);
         return border;
@@ -592,64 +609,73 @@ public sealed class ShellWindow : Window
                     Spacing = 12,
                     Children =
                     {
-                        new TextBlock
-                        {
-                            Text = "Inspector",
-                            FontSize = 20,
-                            FontWeight = FontWeight.Bold,
-                            Foreground = new SolidColorBrush(Color.Parse("#16324C"))
-                        },
-                        new TextBlock
-                        {
-                            [!TextBlock.TextProperty] = new Binding("InspectorEditModeLabel"),
-                            FontSize = 16,
-                            FontWeight = FontWeight.SemiBold,
-                            Foreground = new SolidColorBrush(Color.Parse("#8C5A00"))
-                        },
-                        new TextBlock
-                        {
-                            [!TextBlock.TextProperty] = new Binding("InspectorEditModeHelp"),
-                            TextWrapping = TextWrapping.Wrap,
-                            Foreground = new SolidColorBrush(Color.Parse("#284A67"))
-                        },
-                        BuildInspectorHelpPanel(),
-                        new TextBlock
-                        {
-                            [!TextBlock.TextProperty] = new Binding("Inspector.Headline"),
-                            FontSize = 16,
-                            FontWeight = FontWeight.SemiBold,
-                            Foreground = new SolidColorBrush(Color.Parse("#17324B"))
-                        },
-                        new TextBlock
-                        {
-                            [!TextBlock.TextProperty] = new Binding("Inspector.Summary"),
-                            TextWrapping = TextWrapping.Wrap,
-                            Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
-                        },
-                        details,
-                        BuildNetworkEditor(),
-                        BuildNodeEditor(),
-                        BuildEdgeEditor(),
-                        BuildBulkEditor(),
-                        BuildValidationPanel(),
-                        new Button
-                        {
-                            [!Button.ContentProperty] = new Binding("ApplyInspectorLabel"),
-                            [!Button.CommandProperty] = new Binding("ApplyInspectorCommand"),
-                            HorizontalAlignment = HorizontalAlignment.Stretch,
-                            Padding = new Thickness(12, 10),
-                            Background = new SolidColorBrush(Color.Parse("#D9EAF8")),
-                            Foreground = new SolidColorBrush(Color.Parse("#17324B")),
-                            BorderBrush = new SolidColorBrush(Color.Parse("#7FA7C9")),
-                            BorderThickness = new Thickness(1),
-                            CornerRadius = new CornerRadius(12)
-                        }
-                    }
+                        [!TextBlock.TextProperty] = new Binding("Inspector.Summary"),
+                        TextWrapping = TextWrapping.Wrap,
+                        Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
+                    },
+                    details,
+                    BuildInspectorEditor()
                 }
             }
         };
         Grid.SetColumn(border, 2);
         return border;
+    }
+
+    private static Control BuildInspectorEditor()
+    {
+        var panel = new StackPanel
+        {
+            Spacing = 8,
+            Margin = new Thickness(0, 8, 0, 0),
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "Editing",
+                    FontWeight = FontWeight.Bold,
+                    Foreground = new SolidColorBrush(Color.Parse("#16324C"))
+                },
+                BuildLabeledTextBox("Name", "InspectorName"),
+                BuildLabeledTextBox("Type / Description", "InspectorType"),
+                BuildLabeledTextBox("Traffic Type", "SelectedTrafficType"),
+                BuildLabeledTextBox("Production", "InspectorProduction"),
+                BuildLabeledTextBox("Consumption", "InspectorConsumption"),
+                BuildLabeledTextBox("Capacity / Timeline", "InspectorCapacity"),
+                BuildLabeledTextBox("Time", "InspectorTime"),
+                BuildLabeledTextBox("Cost", "InspectorCost"),
+                BuildLabeledTextBox("Bulk place type", "InspectorBulkType"),
+                new TextBlock
+                {
+                    Text = "Use Apply to update network, selected node, selected edge, or bulk selection.",
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
+                },
+                new TextBlock
+                {
+                    [!TextBlock.TextProperty] = new Binding("InspectorValidationMessage"),
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = new SolidColorBrush(Color.Parse("#9D2E2E"))
+                },
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    Children =
+                    {
+                        BuildBoundButton("Apply", "ApplyInspectorCommand"),
+                        BuildBoundButton("Add Traffic", "AddTrafficTypeCommand"),
+                        BuildBoundButton("Remove Traffic", "RemoveTrafficTypeCommand")
+                    }
+                }
+            }
+        };
+
+        return new ScrollViewer
+        {
+            MaxHeight = 420,
+            Content = panel
+        };
     }
 
     private static Control BuildBottomStrip(WorkspaceViewModel viewModel)
@@ -707,9 +733,26 @@ public sealed class ShellWindow : Window
             new TabItem
             {
                 Header = "Reports",
-                Content = new ScrollViewer
+                Content = new StackPanel
                 {
-                    Content = metrics
+                    Spacing = 10,
+                    Children =
+                    {
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            Spacing = 8,
+                            Children =
+                            {
+                                BuildButton("Export Current (HTML)", new RelayCommand(() => _ = ExportCurrentReportAsync(viewModel, ReportExportFormat.Html))),
+                                BuildButton("Export Timeline (CSV)", new RelayCommand(() => _ = ExportTimelineReportAsync(viewModel, ReportExportFormat.Csv)))
+                            }
+                        },
+                        new ScrollViewer
+                        {
+                            Content = metrics
+                        }
+                    }
                 }
             });
 
@@ -765,25 +808,11 @@ public sealed class ShellWindow : Window
                 BorderThickness = new Thickness(1),
                 Child = new StackPanel
                 {
-                    Spacing = 6,
-                    Children =
-                    {
-                        new TextBlock
-                        {
-                            Text = "Selection actions",
-                            Foreground = new SolidColorBrush(Color.Parse("#17324B")),
-                            FontSize = 14,
-                            FontWeight = FontWeight.Bold
-                        },
-                        new TextBlock
-                        {
-                            Text = "Left click to select. Drag node to move. Right-drag from node to node to connect. Press N to add node. Press Delete to remove selection.",
-                            Foreground = new SolidColorBrush(Color.Parse("#284A67")),
-                            FontSize = 13,
-                            FontWeight = FontWeight.SemiBold,
-                            TextWrapping = TextWrapping.Wrap
-                        }
-                    }
+                    Text = "Canvas ready: select, pan, zoom, drag, marquee select, connect, and keyboard actions are available.",
+                    Foreground = new SolidColorBrush(Color.Parse("#284A67")),
+                    FontSize = 13,
+                    FontWeight = FontWeight.SemiBold,
+                    TextWrapping = TextWrapping.Wrap
                 }
             };
 
@@ -804,7 +833,7 @@ public sealed class ShellWindow : Window
             };
             var fallbackDetail = new TextBlock
             {
-                Text = "Waiting for graph canvas diagnostics.",
+                Text = "The graph could not be displayed. Try resetting the view or reopening the file.",
                 Margin = new Thickness(0, 8, 0, 0),
                 Foreground = new SolidColorBrush(Color.Parse("#934040")),
                 TextWrapping = TextWrapping.Wrap
@@ -968,230 +997,177 @@ public sealed class ShellWindow : Window
         return button;
     }
 
-    private static Button BuildRailButton(string label, ICommand command, string tooltip, int tabIndex)
+    private static Button BuildBoundButton(string label, string commandPropertyName)
     {
         var button = new Button
         {
             Content = label,
-            Command = command,
-            Height = 52,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            Padding = new Thickness(8),
-            Background = new SolidColorBrush(Color.Parse("#F8FCFF")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#93B7D7")),
+            Padding = new Thickness(12, 8),
+            Background = new SolidColorBrush(Color.Parse("#D9EAF8")),
+            Foreground = new SolidColorBrush(Color.Parse("#17324B")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#7FA7C9")),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(14),
-            Foreground = new SolidColorBrush(Color.Parse("#355777")),
-            FontWeight = FontWeight.Bold,
-            TabIndex = tabIndex
+            CornerRadius = new CornerRadius(12)
         };
-        ToolTip.SetTip(button, tooltip);
+        button.Bind(Button.CommandProperty, new Binding(commandPropertyName));
         return button;
     }
 
-    private static Border BuildInspectorHelpPanel()
+    private static Button BuildRailButton(string text, string toolTip, ICommand command)
     {
-        return new Border
+        var button = new Button
         {
-            Background = new SolidColorBrush(Color.Parse("#EEF5FB")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#B5CBE0")),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(14),
-            Padding = new Thickness(12),
-            Child = new StackPanel
+            Height = 52,
+            Content = new TextBlock
             {
-                Spacing = 4,
-                Children =
-                {
-                    new TextBlock
-                    {
-                        Text = "Selection actions",
-                        FontWeight = FontWeight.Bold,
-                        Foreground = new SolidColorBrush(Color.Parse("#16324C"))
-                    },
-                    BuildHelpText("Left click to select"),
-                    BuildHelpText("Drag node to move"),
-                    BuildHelpText("Right-drag from node to node to connect"),
-                    BuildHelpText("Press N to add node"),
-                    BuildHelpText("Press Delete to remove selection")
-                }
-            }
-        };
-    }
-
-    private static TextBlock BuildHelpText(string text)
-    {
-        return new TextBlock
-        {
-            Text = text,
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = new SolidColorBrush(Color.Parse("#31506B"))
-        };
-    }
-
-    private static Control BuildNetworkEditor()
-    {
-        var panel = new Border
-        {
-            [!IsVisibleProperty] = new Binding("IsEditingNetwork"),
-            Background = new SolidColorBrush(Color.Parse("#FBFDFF")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#D1E0EE")),
+                Text = text,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                FontWeight = FontWeight.Bold,
+                Foreground = new SolidColorBrush(Color.Parse("#355777"))
+            },
+            ToolTip = toolTip,
+            Command = command,
+            BorderBrush = new SolidColorBrush(Color.Parse("#93B7D7")),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(14),
-            Padding = new Thickness(12),
-            Child = new StackPanel
-            {
-                Spacing = 10,
-                Children =
-                {
-                    BuildSectionTitle("Network properties"),
-                    BuildTextEditor("Network name", "InspectorName"),
-                    BuildTextEditor("Description", "InspectorDescription", multiline: true),
-                    BuildTextEditor("Timeline loop length", "InspectorTimelineLoopLengthText")
-                }
-            }
+            Background = new SolidColorBrush(Color.Parse("#F8FCFF")),
+            CornerRadius = new CornerRadius(14)
         };
 
-        return panel;
+        button.Classes.Add("focusable-tool");
+        return button;
     }
 
-    private static Control BuildNodeEditor()
+    private static Control BuildLabeledTextBox(string label, string propertyName)
     {
-        return new Border
+        var textBox = new TextBox
         {
-            [!IsVisibleProperty] = new Binding("IsEditingNode"),
-            Background = new SolidColorBrush(Color.Parse("#FBFDFF")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#D1E0EE")),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(14),
-            Padding = new Thickness(12),
-            Child = new StackPanel
-            {
-                Spacing = 10,
-                Children =
-                {
-                    BuildSectionTitle("Node properties"),
-                    BuildTextEditor("Node name", "InspectorName"),
-                    BuildTextEditor("Place type", "InspectorNodePlaceType"),
-                    BuildTextEditor("Transhipment capacity", "InspectorNodeTranshipmentCapacityText")
-                }
-            }
+            Watermark = label
         };
-    }
-
-    private static Control BuildEdgeEditor()
-    {
-        var checkbox = new CheckBox
-        {
-            Content = "Bidirectional route"
-        };
-        checkbox.Bind(ToggleButton.IsCheckedProperty, new Binding("InspectorEdgeIsBidirectional", BindingMode.TwoWay));
-
-        return new Border
-        {
-            [!IsVisibleProperty] = new Binding("IsEditingEdge"),
-            Background = new SolidColorBrush(Color.Parse("#FBFDFF")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#D1E0EE")),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(14),
-            Padding = new Thickness(12),
-            Child = new StackPanel
-            {
-                Spacing = 10,
-                Children =
-                {
-                    BuildSectionTitle("Edge properties"),
-                    BuildTextEditor("Route type", "InspectorEdgeRouteType"),
-                    BuildTextEditor("Time", "InspectorEdgeTimeText"),
-                    BuildTextEditor("Cost", "InspectorEdgeCostText"),
-                    BuildTextEditor("Capacity", "InspectorEdgeCapacityText"),
-                    checkbox
-                }
-            }
-        };
-    }
-
-    private static Control BuildBulkEditor()
-    {
-        return new Border
-        {
-            [!IsVisibleProperty] = new Binding("IsEditingSelection"),
-            Background = new SolidColorBrush(Color.Parse("#FBFDFF")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#D1E0EE")),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(14),
-            Padding = new Thickness(12),
-            Child = new StackPanel
-            {
-                Spacing = 10,
-                Children =
-                {
-                    BuildSectionTitle("Bulk node properties"),
-                    new TextBlock
-                    {
-                        Text = "Bulk edit applies to the selected nodes.",
-                        TextWrapping = TextWrapping.Wrap,
-                        Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
-                    },
-                    BuildTextEditor("Place type", "InspectorBulkPlaceType"),
-                    BuildTextEditor("Transhipment capacity", "InspectorBulkTranshipmentCapacityText")
-                }
-            }
-        };
-    }
-
-    private static Control BuildValidationPanel()
-    {
-        return new Border
-        {
-            [!IsVisibleProperty] = new Binding("HasInspectorValidationText"),
-            Background = new SolidColorBrush(Color.Parse("#FFF2F2")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#D37474")),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(12),
-            Padding = new Thickness(10),
-            Child = new TextBlock
-            {
-                [!TextBlock.TextProperty] = new Binding("InspectorValidationText"),
-                Foreground = new SolidColorBrush(Color.Parse("#8F4040")),
-                TextWrapping = TextWrapping.Wrap
-            }
-        };
-    }
-
-    private static TextBlock BuildSectionTitle(string title)
-    {
-        return new TextBlock
-        {
-            Text = title,
-            FontWeight = FontWeight.Bold,
-            Foreground = new SolidColorBrush(Color.Parse("#17324B"))
-        };
-    }
-
-    private static Control BuildTextEditor(string label, string bindingPath, bool multiline = false)
-    {
-        var editor = new TextBox
-        {
-            Watermark = label,
-            AcceptsReturn = multiline,
-            TextWrapping = multiline ? TextWrapping.Wrap : TextWrapping.NoWrap,
-            MinHeight = multiline ? 72 : 36
-        };
-        editor.Bind(TextBox.TextProperty, new Binding(bindingPath, BindingMode.TwoWay));
-
+        textBox.Bind(TextBox.TextProperty, new Binding(propertyName, BindingMode.TwoWay));
         return new StackPanel
         {
-            Spacing = 4,
+            Spacing = 2,
             Children =
             {
                 new TextBlock
                 {
                     Text = label,
-                    Foreground = new SolidColorBrush(Color.Parse("#31506B"))
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
                 },
-                editor
+                textBox
             }
         };
+    }
+
+    private async Task OpenNetworkFileAsync(WorkspaceViewModel viewModel)
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            AllowMultiple = false,
+            Title = "Open network",
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Network JSON") { Patterns = ["*.json"] }
+            ]
+        });
+
+        var selected = files.FirstOrDefault();
+        if (selected is null)
+        {
+            return;
+        }
+
+        viewModel.OpenNetwork(selected.Path.LocalPath);
+    }
+
+    private async Task SaveNetworkFileAsync(WorkspaceViewModel viewModel)
+    {
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Save network",
+            DefaultExtension = "json",
+            FileTypeChoices =
+            [
+                new FilePickerFileType("Network JSON") { Patterns = ["*.json"] }
+            ]
+        });
+
+        if (file is null)
+        {
+            return;
+        }
+
+        viewModel.SaveNetwork(file.Path.LocalPath);
+    }
+
+    private async Task ImportGraphMlAsync(WorkspaceViewModel viewModel)
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            AllowMultiple = false,
+            Title = "Import GraphML",
+            FileTypeFilter =
+            [
+                new FilePickerFileType("GraphML") { Patterns = ["*.graphml", "*.xml"] }
+            ]
+        });
+        var selected = files.FirstOrDefault();
+        if (selected is null)
+        {
+            return;
+        }
+
+        viewModel.ImportGraphMl(selected.Path.LocalPath);
+    }
+
+    private async Task ExportGraphMlAsync(WorkspaceViewModel viewModel)
+    {
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export GraphML",
+            DefaultExtension = "graphml",
+            FileTypeChoices =
+            [
+                new FilePickerFileType("GraphML") { Patterns = ["*.graphml"] }
+            ]
+        });
+        if (file is null)
+        {
+            return;
+        }
+
+        viewModel.ExportGraphMl(file.Path.LocalPath);
+    }
+
+    private async Task ExportCurrentReportAsync(WorkspaceViewModel viewModel, ReportExportFormat format)
+    {
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export current report",
+            DefaultExtension = format == ReportExportFormat.Csv ? "csv" : format == ReportExportFormat.Json ? "json" : "html"
+        });
+        if (file is null)
+        {
+            return;
+        }
+
+        viewModel.ExportCurrentReport(file.Path.LocalPath, format);
+    }
+
+    private async Task ExportTimelineReportAsync(WorkspaceViewModel viewModel, ReportExportFormat format)
+    {
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export timeline report",
+            DefaultExtension = format == ReportExportFormat.Csv ? "csv" : format == ReportExportFormat.Json ? "json" : "html"
+        });
+        if (file is null)
+        {
+            return;
+        }
+
+        viewModel.ExportTimelineReport(file.Path.LocalPath, 12, format);
     }
 }

@@ -7,12 +7,14 @@ using MedWNetworkSim.App.Services;
 
 namespace MedWNetworkSim.App.ViewModels;
 
+public readonly record struct NodeCanvasRoleLine(string Text, bool IsEmphasized, bool IsWarning);
+
 public sealed class NodeViewModel : ObservableObject
 {
     private static readonly StringComparer TrafficComparer = StringComparer.OrdinalIgnoreCase;
 
     public const double DefaultWidth = 168d;
-    public const double DefaultHeight = 112d;
+    public const double DefaultHeight = 148d;
 
     private const double UtilizationTrackWidth = 92d;
     private const double DemandMeterTrackWidth = 116d;
@@ -629,6 +631,18 @@ public sealed class NodeViewModel : ObservableObject
     {
         get
         {
+            var pressureTooltip = BuildCanvasPressureTooltip();
+            if (!string.IsNullOrWhiteSpace(pressureTooltip))
+            {
+                return pressureTooltip;
+            }
+
+            var unmetNeed = BuildTooltipUnmetNeedLine();
+            if (!string.IsNullOrWhiteSpace(unmetNeed))
+            {
+                return unmetNeed;
+            }
+
             if (demandBadges.Count == 0)
             {
                 return "Node requires no backlog goods.";
@@ -639,6 +653,22 @@ public sealed class NodeViewModel : ObservableObject
             return string.Join(Environment.NewLine, lines);
         }
     }
+
+    public IReadOnlyList<NodeCanvasRoleLine> CanvasRoleLines => BuildCanvasRoleLines();
+
+    public bool HasCanvasRoleLines => CanvasRoleLines.Count > 0;
+
+    public string CanvasPressureLine => pressureScore > Epsilon
+        ? $"Pressure {pressureScore:0.##}"
+        : string.Empty;
+
+    public bool HasCanvasPressureLine => !string.IsNullOrWhiteSpace(CanvasPressureLine);
+
+    public string CanvasUnmetNeedLine => BuildCanvasUnmetNeedLine();
+
+    public bool HasCanvasUnmetNeedLine => !string.IsNullOrWhiteSpace(CanvasUnmetNeedLine);
+
+    public string CanvasPressureTooltip => BuildCanvasPressureTooltip();
 
     public Brush NodeBorderDisplayBrush => nodeBorderDisplayBrush;
 
@@ -664,10 +694,28 @@ public sealed class NodeViewModel : ObservableObject
     {
         get
         {
-            var lines = new List<string>
+            var lines = BuildCanvasRoleLines(includeOverflowSummary: false)
+                .Select(line => line.Text)
+                .ToList();
+
+            var unmetNeedLine = BuildTooltipUnmetNeedLine();
+            if (!string.IsNullOrWhiteSpace(unmetNeedLine))
             {
-                $"Transhipment Capacity: {(TranshipmentCapacity.HasValue ? TranshipmentCapacity.Value.ToString("0.##") : "Unlimited")}"
-            };
+                lines.Add(unmetNeedLine);
+            }
+
+            if (pressureScore > Epsilon)
+            {
+                lines.Add(CanvasPressureLine);
+
+                var likelyCause = BuildPressureCauseLine();
+                if (!string.IsNullOrWhiteSpace(likelyCause))
+                {
+                    lines.Add(likelyCause);
+                }
+            }
+
+            lines.Add($"Transhipment capacity: {(TranshipmentCapacity.HasValue ? TranshipmentCapacity.Value.ToString("0.##") : "Unlimited")}");
 
             if (IsCompositeSubnetwork)
             {
@@ -684,24 +732,24 @@ public sealed class NodeViewModel : ObservableObject
                 lines.Add($"Flow: {FlowSummaryLabel}");
             }
 
-            lines.Add($"Produced traffic: {producedTrafficDetails}");
-            lines.Add($"Transhipped traffic: {transhippedTrafficDetails}");
-            lines.Add($"Stored traffic: {storedTrafficDetails}");
-
             if (HasTimelineDetails)
             {
                 lines.Add($"Timeline: {TimelineSummaryLabel}");
-
-                if (demandBadges.Count > 0)
-                {
-                    lines.Add("Demand backlog by traffic type:");
-                    lines.AddRange(demandBadges.Select(badge => $"- {badge.TrafficType}: {badge.QuantityLabel} units"));
-                }
             }
 
-            if (pressureScore > Epsilon)
+            if (!string.Equals(producedTrafficDetails, "none visible", StringComparison.Ordinal))
             {
-                lines.Add($"Pressure: {PressureSummaryLabel}");
+                lines.Add($"Produced traffic: {producedTrafficDetails}");
+            }
+
+            if (!string.Equals(transhippedTrafficDetails, "none visible", StringComparison.Ordinal))
+            {
+                lines.Add($"Transhipped traffic: {transhippedTrafficDetails}");
+            }
+
+            if (!string.Equals(storedTrafficDetails, "none visible", StringComparison.Ordinal))
+            {
+                lines.Add($"Stored traffic: {storedTrafficDetails}");
             }
 
             if (HasTranshipmentUsageDetails)
@@ -709,7 +757,11 @@ public sealed class NodeViewModel : ObservableObject
                 lines.Add($"Utilization: {TranshipmentUsageLabel}");
             }
 
-            lines.AddRange(TrafficProfiles.Select(profile => $"{profile.TrafficType}: {profile.RoleSummary}"));
+            if (lines.Count == 0)
+            {
+                lines.Add("No traffic roles configured.");
+            }
+
             return string.Join(Environment.NewLine, lines);
         }
     }
@@ -987,14 +1039,14 @@ public sealed class NodeViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(TrafficProfileCountLabel));
-        OnPropertyChanged(nameof(FullTrafficSummary));
+        RefreshSimulationDerivedState();
         RaiseWorldbuilderSummaryPropertiesChanged();
         DefinitionChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void HandleTrafficProfilePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        OnPropertyChanged(nameof(FullTrafficSummary));
+        RefreshSimulationDerivedState();
         RaiseWorldbuilderSummaryPropertiesChanged();
         DefinitionChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -1024,6 +1076,13 @@ public sealed class NodeViewModel : ObservableObject
         OnPropertyChanged(nameof(DemandMeterRatio));
         OnPropertyChanged(nameof(DemandMeterSummary));
         OnPropertyChanged(nameof(DemandTooltipText));
+        OnPropertyChanged(nameof(CanvasRoleLines));
+        OnPropertyChanged(nameof(HasCanvasRoleLines));
+        OnPropertyChanged(nameof(CanvasPressureLine));
+        OnPropertyChanged(nameof(HasCanvasPressureLine));
+        OnPropertyChanged(nameof(CanvasUnmetNeedLine));
+        OnPropertyChanged(nameof(HasCanvasUnmetNeedLine));
+        OnPropertyChanged(nameof(CanvasPressureTooltip));
         OnPropertyChanged(nameof(HasUrgentBacklog));
         OnPropertyChanged(nameof(TranshipmentUsageVisibility));
         OnPropertyChanged(nameof(TranshipmentUsageBarVisibility));
@@ -1084,6 +1143,175 @@ public sealed class NodeViewModel : ObservableObject
         OnPropertyChanged(nameof(PlaceTypeLabel));
         OnPropertyChanged(nameof(RoleBadges));
         OnPropertyChanged(nameof(CompactFlowSummary));
+    }
+
+    private IReadOnlyList<NodeCanvasRoleLine> BuildCanvasRoleLines(bool includeOverflowSummary = true)
+    {
+        var lines = BuildAllCanvasRoleLines();
+        if (!includeOverflowSummary || lines.Count <= 4)
+        {
+            return lines;
+        }
+
+        var visible = lines.Take(3).ToList();
+        visible.Add(new NodeCanvasRoleLine($"+{lines.Count - 3} more roles", false, false));
+        return visible;
+    }
+
+    private List<NodeCanvasRoleLine> BuildAllCanvasRoleLines()
+    {
+        var lines = new List<(int Order, string TrafficType, NodeCanvasRoleLine Line)>();
+
+        foreach (var profile in TrafficProfiles)
+        {
+            var trafficType = NormalizeTrafficType(profile.TrafficType);
+            if (string.IsNullOrWhiteSpace(trafficType))
+            {
+                continue;
+            }
+
+            if (profile.Production > Epsilon)
+            {
+                lines.Add((0, trafficType, new NodeCanvasRoleLine($"Produces {profile.Production:0.##} {trafficType}", true, false)));
+            }
+
+            if (profile.Consumption > Epsilon)
+            {
+                lines.Add((1, trafficType, new NodeCanvasRoleLine($"Consumes {profile.Consumption:0.##} {trafficType}", true, false)));
+            }
+
+            if (profile.CanTransship)
+            {
+                lines.Add((2, trafficType, new NodeCanvasRoleLine(
+                    TranshipmentCapacity.HasValue
+                        ? $"Tranships up to {TranshipmentCapacity.Value:0.##} {trafficType}"
+                        : $"Tranships unlimited {trafficType}",
+                    true,
+                    false)));
+            }
+
+            if (profile.IsStore)
+            {
+                lines.Add((3, trafficType, new NodeCanvasRoleLine(
+                    profile.StoreCapacity.HasValue
+                        ? $"Stores up to {profile.StoreCapacity.Value:0.##} {trafficType}"
+                        : $"Stores unlimited {trafficType}",
+                    true,
+                    false)));
+            }
+        }
+
+        return lines
+            .OrderBy(item => item.Order)
+            .ThenBy(item => item.TrafficType, TrafficComparer)
+            .Select(item => item.Line)
+            .ToList();
+    }
+
+    private string BuildCanvasUnmetNeedLine()
+    {
+        if (demandBacklogQuantity <= Epsilon)
+        {
+            return string.Empty;
+        }
+
+        return TryGetDominantBacklogTraffic(out var dominantTraffic, out var dominantQuantity)
+            ? $"Unmet need {dominantQuantity:0.##} {dominantTraffic}"
+            : $"Unmet need {demandBacklogQuantity:0.##}";
+    }
+
+    private string BuildTooltipUnmetNeedLine()
+    {
+        if (demandBadges.Count == 0)
+        {
+            return demandBacklogQuantity > Epsilon ? $"Unmet need: {demandBacklogQuantity:0.##}" : string.Empty;
+        }
+
+        return $"Unmet demand: {string.Join(", ", demandBadges.Select(badge => $"{badge.TrafficType} {badge.QuantityLabel}"))}";
+    }
+
+    private string BuildCanvasPressureTooltip()
+    {
+        var lines = new List<string>();
+        if (pressureScore > Epsilon)
+        {
+            var pressureLine = CanvasPressureLine;
+            var likelyCause = FormatPressureCause(pressureTopCause);
+            lines.Add(string.IsNullOrWhiteSpace(likelyCause)
+                ? $"{pressureLine}."
+                : $"{pressureLine}. Likely cause: {likelyCause}.");
+        }
+
+        var unmetDemand = BuildTooltipUnmetNeedLine();
+        if (!string.IsNullOrWhiteSpace(unmetDemand))
+        {
+            lines.Add($"{unmetDemand}.");
+        }
+
+        return string.Join(" ", lines);
+    }
+
+    private string BuildPressureCauseLine()
+    {
+        var likelyCause = FormatPressureCause(pressureTopCause);
+        return string.IsNullOrWhiteSpace(likelyCause)
+            ? string.Empty
+            : $"Likely cause: {likelyCause}";
+    }
+
+    private bool TryGetDominantBacklogTraffic(out string trafficType, out double quantity)
+    {
+        trafficType = string.Empty;
+        quantity = 0d;
+
+        var backlog = demandBadges
+            .Where(badge => badge.Quantity > Epsilon && !string.IsNullOrWhiteSpace(badge.TrafficType))
+            .OrderByDescending(badge => badge.Quantity)
+            .ThenBy(badge => badge.TrafficType, TrafficComparer)
+            .ToList();
+        if (backlog.Count == 0)
+        {
+            return false;
+        }
+
+        if (backlog.Count > 1 && Math.Abs(backlog[0].Quantity - backlog[1].Quantity) <= Epsilon)
+        {
+            return false;
+        }
+
+        trafficType = backlog[0].TrafficType;
+        quantity = backlog[0].Quantity;
+        return true;
+    }
+
+    private static string NormalizeTrafficType(string? trafficType) =>
+        string.IsNullOrWhiteSpace(trafficType) ? string.Empty : trafficType.Trim();
+
+    private static string FormatPressureCause(string? cause)
+    {
+        if (string.IsNullOrWhiteSpace(cause))
+        {
+            return string.Empty;
+        }
+
+        var normalized = cause.Trim();
+        return normalized switch
+        {
+            "DemandBacklog" => "demand backlog",
+            "InputShortage" => "input shortage",
+            "StoreCapacitySaturation" => "store capacity saturation",
+            "EdgeCapacitySaturation" => "edge capacity saturation",
+            "TranshipmentCapacitySaturation" => "transhipment capacity saturation",
+            "RouteUnavailable" => "route unavailable",
+            "PerishedInNodeInventory" => "goods perished in storage",
+            "PerishedInTransit" => "goods perished in transit",
+            "TimelineShock" => "timeline shock",
+            _ => string.Concat(
+                normalized.Select((ch, index) =>
+                    index > 0 && char.IsUpper(ch) && !char.IsUpper(normalized[index - 1])
+                        ? $" {char.ToLowerInvariant(ch)}"
+                        : char.ToLowerInvariant(ch).ToString()))
+        };
     }
 
     private string GetPlaceIdentity()

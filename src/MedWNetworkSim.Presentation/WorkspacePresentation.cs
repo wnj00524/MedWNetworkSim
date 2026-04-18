@@ -289,7 +289,7 @@ public sealed class PermissionRuleEditorRow : ObservableObject
 public sealed class WorkspaceViewModel : ObservableObject
 {
     internal const double SceneNodeWidth = 168d;
-    internal const double SceneNodeHeight = 112d;
+    internal const double SceneNodeHeight = 148d;
 
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
 
@@ -770,7 +770,8 @@ public sealed class WorkspaceViewModel : ObservableObject
                 Id = node.Id,
                 Name = node.Name,
                 TypeLabel = string.IsNullOrWhiteSpace(node.PlaceType) ? "Node" : node.PlaceType!,
-                MetricsLabel = BuildNodeMetricsLabel(node),
+                MetricsLabel = string.Empty,
+                DetailLines = BuildNodeDetailLines(node, [], null),
                 Bounds = new GraphRect(centerX - (SceneNodeWidth / 2d), centerY - (SceneNodeHeight / 2d), SceneNodeWidth, SceneNodeHeight),
                 FillColor = SKColor.Parse("#163149"),
                 StrokeColor = SKColor.Parse("#6AAED6"),
@@ -967,7 +968,9 @@ public sealed class WorkspaceViewModel : ObservableObject
 
         foreach (var node in Scene.Nodes)
         {
-            node.MetricsLabel = BuildNodeMetricsLabel(network.Nodes.First(model => Comparer.Equals(model.Id, node.Id)));
+            var nodeModel = network.Nodes.First(model => Comparer.Equals(model.Id, node.Id));
+            node.MetricsLabel = string.Empty;
+            node.DetailLines = BuildNodeDetailLines(nodeModel, [], null);
             node.HasWarning = false;
         }
 
@@ -1000,21 +1003,29 @@ public sealed class WorkspaceViewModel : ObservableObject
         {
             foreach (var node in Scene.Nodes)
             {
+                var nodeModel = network.Nodes.First(model => Comparer.Equals(model.Id, node.Id));
                 var state = timeline.NodeStates
                     .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id))
                     .Select(pair => pair.Value)
                     .FirstOrDefault();
-                node.MetricsLabel = $"Supply {state.AvailableSupply:0.#} | Backlog {state.DemandBacklog:0.#}";
-                node.HasWarning = timeline.NodePressureById.TryGetValue(node.Id, out var pressure) && pressure.Score > 0d;
+                var backlogByTraffic = timeline.NodeStates
+                    .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id) && pair.Value.DemandBacklog > 0d)
+                    .GroupBy(pair => pair.Key.TrafficType, pair => pair.Value.DemandBacklog, Comparer)
+                    .Select(group => new KeyValuePair<string, double>(group.Key, group.Sum()))
+                    .ToList();
+                var pressure = timeline.NodePressureById.GetValueOrDefault(node.Id);
+                node.MetricsLabel = string.Empty;
+                node.DetailLines = BuildNodeDetailLines(nodeModel, backlogByTraffic, pressure.Score > 0d ? pressure : null);
+                node.HasWarning = pressure.Score > 0d || state.DemandBacklog > 0d;
             }
         }
         else
         {
             foreach (var node in Scene.Nodes)
             {
-                var inbound = allocations.Where(allocation => Comparer.Equals(allocation.ConsumerNodeId, node.Id)).Sum(allocation => allocation.Quantity);
-                var outbound = allocations.Where(allocation => Comparer.Equals(allocation.ProducerNodeId, node.Id)).Sum(allocation => allocation.Quantity);
-                node.MetricsLabel = $"Out {outbound:0.#} | In {inbound:0.#}";
+                var nodeModel = network.Nodes.First(model => Comparer.Equals(model.Id, node.Id));
+                node.MetricsLabel = string.Empty;
+                node.DetailLines = BuildNodeDetailLines(nodeModel, [], null);
                 node.HasWarning = false;
             }
         }
@@ -2022,8 +2033,95 @@ public sealed class WorkspaceViewModel : ObservableObject
             .ToList();
     }
 
-    private static string BuildNodeMetricsLabel(NodeModel node) =>
-        $"Tranship {(node.TranshipmentCapacity?.ToString("0.#", CultureInfo.InvariantCulture) ?? "open")}";
+    private IReadOnlyList<GraphNodeTextLine> BuildNodeDetailLines(
+        NodeModel node,
+        IReadOnlyList<KeyValuePair<string, double>> backlogByTraffic,
+        TemporalNetworkSimulationEngine.NodePressureSnapshot? pressure)
+    {
+        var lines = new List<(int Order, string TrafficType, GraphNodeTextLine Line)>();
+
+        foreach (var profile in node.TrafficProfiles)
+        {
+            var trafficType = string.IsNullOrWhiteSpace(profile.TrafficType) ? string.Empty : profile.TrafficType.Trim();
+            if (string.IsNullOrWhiteSpace(trafficType))
+            {
+                continue;
+            }
+
+            if (profile.Production > 0d)
+            {
+                lines.Add((0, trafficType, new GraphNodeTextLine($"Produces {profile.Production:0.##} {trafficType}", true, false)));
+            }
+
+            if (profile.Consumption > 0d)
+            {
+                lines.Add((1, trafficType, new GraphNodeTextLine($"Consumes {profile.Consumption:0.##} {trafficType}", true, false)));
+            }
+
+            if (profile.CanTransship)
+            {
+                lines.Add((2, trafficType, new GraphNodeTextLine(
+                    node.TranshipmentCapacity.HasValue
+                        ? $"Tranships up to {node.TranshipmentCapacity.Value:0.##} {trafficType}"
+                        : $"Tranships unlimited {trafficType}",
+                    true,
+                    false)));
+            }
+
+            if (profile.IsStore)
+            {
+                lines.Add((3, trafficType, new GraphNodeTextLine(
+                    profile.StoreCapacity.HasValue
+                        ? $"Stores up to {profile.StoreCapacity.Value:0.##} {trafficType}"
+                        : $"Stores unlimited {trafficType}",
+                    true,
+                    false)));
+            }
+        }
+
+        var ordered = lines
+            .OrderBy(item => item.Order)
+            .ThenBy(item => item.TrafficType, Comparer)
+            .Select(item => item.Line)
+            .ToList();
+
+        var visible = ordered.Count <= 4
+            ? ordered
+            : ordered.Take(3).Append(new GraphNodeTextLine($"+{ordered.Count - 3} more roles", false, false)).ToList();
+
+        var unmetNeedLine = BuildSceneUnmetNeedLine(backlogByTraffic);
+        if (!string.IsNullOrWhiteSpace(unmetNeedLine))
+        {
+            visible.Add(new GraphNodeTextLine(unmetNeedLine, true, true));
+        }
+
+        if (pressure is { Score: > 0d })
+        {
+            visible.Add(new GraphNodeTextLine($"Pressure {pressure.Value.Score:0.##}", true, true));
+        }
+
+        return visible;
+    }
+
+    private static string BuildSceneUnmetNeedLine(IReadOnlyList<KeyValuePair<string, double>> backlogByTraffic)
+    {
+        var backlog = backlogByTraffic
+            .Where(item => item.Value > 0d && !string.IsNullOrWhiteSpace(item.Key))
+            .OrderByDescending(item => item.Value)
+            .ThenBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (backlog.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        if (backlog.Count == 1 || (backlog.Count > 1 && Math.Abs(backlog[0].Value - backlog[1].Value) > 0.000001d))
+        {
+            return $"Unmet need {backlog[0].Value:0.##} {backlog[0].Key}";
+        }
+
+        return $"Unmet need {backlog.Sum(item => item.Value):0.##}";
+    }
 
     private static IReadOnlyList<string> BuildNodeBadges(NodeModel node)
     {

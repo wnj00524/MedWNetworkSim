@@ -546,22 +546,31 @@
 
                                                             <ItemsControl Grid.Row="2"
                                                                           Margin="0,8,0,0"
-                                                                          ItemsSource="{Binding RoleBadges}">
-                                                                <ItemsControl.ItemsPanel>
-                                                                    <ItemsPanelTemplate>
-                                                                        <WrapPanel />
-                                                                    </ItemsPanelTemplate>
-                                                                </ItemsControl.ItemsPanel>
+                                                                          Visibility="{Binding HasCanvasRoleLines, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                          ItemsSource="{Binding CanvasRoleLines}">
                                                                 <ItemsControl.ItemTemplate>
                                                                     <DataTemplate>
-                                                                        <Border Margin="0,0,5,5"
-                                                                                Padding="7,2"
-                                                                                Background="{DynamicResource CardAltBrush}"
-                                                                                CornerRadius="8">
-                                                                            <TextBlock FontSize="10"
-                                                                                       FontWeight="SemiBold"
-                                                                                       Text="{Binding}" />
-                                                                        </Border>
+                                                                        <TextBlock Margin="0,0,0,2"
+                                                                                   FontSize="9.5"
+                                                                                   Foreground="{DynamicResource ForegroundBrush}"
+                                                                                   Text="{Binding Text}"
+                                                                                   TextWrapping="Wrap"
+                                                                                   TextTrimming="CharacterEllipsis"
+                                                                                   MaxHeight="26">
+                                                                            <TextBlock.Style>
+                                                                                <Style TargetType="TextBlock">
+                                                                                    <Setter Property="FontWeight" Value="Normal" />
+                                                                                    <Style.Triggers>
+                                                                                        <DataTrigger Binding="{Binding IsEmphasized}" Value="True">
+                                                                                            <Setter Property="FontWeight" Value="Bold" />
+                                                                                        </DataTrigger>
+                                                                                        <DataTrigger Binding="{Binding IsWarning}" Value="True">
+                                                                                            <Setter Property="Foreground" Value="{DynamicResource AccentStrongBrush}" />
+                                                                                        </DataTrigger>
+                                                                                    </Style.Triggers>
+                                                                                </Style>
+                                                                            </TextBlock.Style>
+                                                                        </TextBlock>
                                                                     </DataTemplate>
                                                                 </ItemsControl.ItemTemplate>
                                                             </ItemsControl>
@@ -594,24 +603,21 @@
                                                                 </ItemsControl.ItemTemplate>
                                                             </ItemsControl>
 
-                                                            <StackPanel Grid.Row="3">
-                                                                <TextBlock FontSize="10"
-                                                                           Foreground="{DynamicResource MutedForegroundBrush}"
-                                                                           Text="{Binding CompactFlowSummary}"
-                                                                           TextTrimming="CharacterEllipsis" />
-                                                                <TextBlock Margin="0,4,0,0"
-                                                                           FontSize="10"
+                                                            <StackPanel Grid.Row="3"
+                                                                        Margin="0,4,0,0">
+                                                                <TextBlock FontSize="9.5"
                                                                            FontWeight="SemiBold"
-                                                                           Foreground="{Binding SimulationBrush}"
-                                                                           Text="{Binding FlowSummaryLabel}"
-                                                                           TextTrimming="CharacterEllipsis"
-                                                                           Visibility="{Binding SimulationPanelVisibility}" />
-                                                                <TextBlock Margin="0,4,0,0"
-                                                                           FontSize="10"
                                                                            Foreground="{DynamicResource AccentStrongBrush}"
-                                                                           Text="{Binding TimelineSummaryLabel}"
-                                                                           TextTrimming="CharacterEllipsis"
-                                                                           Visibility="{Binding TimelinePanelVisibility}" />
+                                                                           Text="{Binding CanvasUnmetNeedLine}"
+                                                                           TextWrapping="Wrap"
+                                                                           Visibility="{Binding HasCanvasUnmetNeedLine, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                                <TextBlock Margin="0,2,0,0"
+                                                                           FontSize="9.5"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="{DynamicResource AccentStrongBrush}"
+                                                                           Text="{Binding CanvasPressureLine}"
+                                                                           TextWrapping="Wrap"
+                                                                           Visibility="{Binding HasCanvasPressureLine, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                             </StackPanel>
 
                                                             <StackPanel Grid.Row="4"

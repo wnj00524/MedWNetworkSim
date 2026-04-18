@@ -92,12 +92,15 @@ public enum ZoomTier
     Near
 }
 
+public readonly record struct GraphNodeTextLine(string Text, bool IsEmphasized, bool IsWarning);
+
 public sealed class GraphNodeSceneItem
 {
     public required string Id { get; init; }
     public required string Name { get; set; }
     public required string TypeLabel { get; set; }
     public required string MetricsLabel { get; set; }
+    public required IReadOnlyList<GraphNodeTextLine> DetailLines { get; set; }
     public required GraphRect Bounds { get; set; }
     public required SKColor FillColor { get; set; }
     public required SKColor StrokeColor { get; set; }
@@ -384,7 +387,9 @@ public sealed class GraphRenderer
         var tier = GetZoomTier(viewport.Zoom);
         using var titlePaint = new SKPaint { Color = TextColor, TextSize = 14f, IsAntialias = true, Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold) };
         using var bodyPaint = new SKPaint { Color = MutedTextColor, TextSize = 11f, IsAntialias = true, Typeface = SKTypeface.FromFamilyName("Segoe UI") };
-        using var badgePaint = new SKPaint { Color = FocusColor, TextSize = 10f, IsAntialias = true, Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold) };
+        using var detailPaint = new SKPaint { Color = MutedTextColor, TextSize = 10f, IsAntialias = true, Typeface = SKTypeface.FromFamilyName("Segoe UI") };
+        using var emphasizedDetailPaint = new SKPaint { Color = TextColor, TextSize = 10f, IsAntialias = true, Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold) };
+        using var warningDetailPaint = new SKPaint { Color = WarningColor, TextSize = 10f, IsAntialias = true, Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold) };
 
         foreach (var node in scene.Nodes)
         {
@@ -397,13 +402,32 @@ public sealed class GraphRenderer
 
             if (tier == ZoomTier.Near)
             {
-                canvas.DrawText(node.MetricsLabel, (float)origin.X, (float)(origin.Y + 38f), bodyPaint);
-                var badgeY = (float)(origin.Y + 58f);
-                var badgeX = (float)origin.X;
-                foreach (var badge in node.Badges.Take(3))
+                var visibleLines = node.DetailLines.Take(6).ToList();
+                var lineY = (float)(origin.Y + 38f);
+                foreach (var line in visibleLines)
                 {
-                    canvas.DrawText(badge, badgeX, badgeY, badgePaint);
-                    badgeX += (badge.Length * 7f) + 18f;
+                    var paint = line.IsWarning
+                        ? warningDetailPaint
+                        : line.IsEmphasized
+                            ? emphasizedDetailPaint
+                            : detailPaint;
+                    canvas.DrawText(line.Text, (float)origin.X, lineY, paint);
+                    lineY += 14f;
+                }
+            }
+            else if (tier == ZoomTier.Medium)
+            {
+                var visibleLines = node.DetailLines.Take(3).ToList();
+                var lineY = (float)(origin.Y + 36f);
+                foreach (var line in visibleLines)
+                {
+                    var paint = line.IsWarning
+                        ? warningDetailPaint
+                        : line.IsEmphasized
+                            ? emphasizedDetailPaint
+                            : detailPaint;
+                    canvas.DrawText(line.Text, (float)origin.X, lineY, paint);
+                    lineY += 13f;
                 }
             }
         }

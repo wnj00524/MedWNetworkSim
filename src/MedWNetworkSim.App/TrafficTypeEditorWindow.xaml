@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="{Binding Terminology.TrafficTypeEditorTitle}"
+        Style="{StaticResource DialogChromeWindowStyle}"
         Width="980"
         Height="700"
         MinWidth="860"
@@ -35,12 +36,10 @@
                 BorderThickness="1"
                 CornerRadius="18">
             <StackPanel>
-                <TextBlock FontSize="18"
-                           FontWeight="SemiBold"
+                <TextBlock Style="{StaticResource DialogTitleTextStyle}"
                            Text="{Binding Terminology.TrafficTypeEditorTitle}" />
                 <TextBlock Margin="0,8,0,0"
-                           FontSize="12"
-                           Foreground="{DynamicResource MutedForegroundBrush}"
+                           Style="{StaticResource HelperTextStyle}"
                            Text="{Binding Terminology.TrafficTypeEditorIntro}"
                            TextWrapping="Wrap" />
             </StackPanel>
@@ -67,8 +66,7 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock FontSize="16"
-                               FontWeight="SemiBold"
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}"
                                Text="{Binding Terminology.TrafficTypes}" />
 
                     <WrapPanel Grid.Row="2">
@@ -185,8 +183,7 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock FontSize="16"
-                               FontWeight="SemiBold"
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}"
                                Text="{Binding Terminology.SelectedTrafficTypeHeader}" />
 
                     <Grid Grid.Row="2">
@@ -226,17 +223,13 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <TextBlock VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                        <TextBlock Style="{StaticResource FieldLabelTextStyle}"
                                    Text="{Binding Terminology.TrafficType}" />
                         <TextBox Grid.Column="1"
                                  Text="{Binding SelectedTrafficDefinition.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
                         <TextBlock Grid.Row="2"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Style="{StaticResource FieldLabelTextStyle}"
                                    Text="Preference" />
                         <ComboBox Grid.Row="2"
                                   Grid.Column="1"

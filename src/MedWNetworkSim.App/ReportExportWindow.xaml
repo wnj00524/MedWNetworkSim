@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Export Reports"
+        Style="{StaticResource DialogChromeWindowStyle}"
         Width="660"
         Height="500"
         MinWidth="600"
@@ -23,12 +24,10 @@
                 BorderThickness="1"
                 CornerRadius="18">
             <StackPanel>
-                <TextBlock FontSize="18"
-                           FontWeight="SemiBold"
+                <TextBlock Style="{StaticResource DialogTitleTextStyle}"
                            Text="Export Reports" />
                 <TextBlock Margin="0,8,0,0"
-                           FontSize="12"
-                           Foreground="{DynamicResource MutedForegroundBrush}"
+                           Style="{StaticResource HelperTextStyle}"
                            Text="Export a readable HTML report, a spreadsheet-friendly CSV report, or a structured JSON report for the current network. The current report captures the one-shot simulation outputs, and the timeline report simulates the network from period 1 for the number of periods you choose."
                            TextWrapping="Wrap" />
             </StackPanel>
@@ -66,8 +65,7 @@
 
                         <TextBlock VerticalAlignment="Center"
                                    Margin="0,0,12,0"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Style="{StaticResource FieldLabelTextStyle}"
                                    Text="Report File" />
                         <TextBox Grid.Column="1"
                                  MinWidth="300"
@@ -86,8 +84,7 @@
 
                         <TextBlock VerticalAlignment="Center"
                                    Margin="0,0,12,0"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Style="{StaticResource FieldLabelTextStyle}"
                                    Text="Report Format" />
                         <ComboBox Grid.Column="1"
                                   ItemsSource="{Binding FormatOptions}"
@@ -102,8 +99,7 @@
 
                         <TextBlock VerticalAlignment="Center"
                                    Margin="0,0,12,0"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
+                                   Style="{StaticResource FieldLabelTextStyle}"
                                    Text="Timeline Periods" />
                         <TextBox Grid.Column="1"
                                  Text="{Binding TimelinePeriodsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />

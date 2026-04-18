@@ -50,8 +50,8 @@
             </Grid.RowDefinitions>
 
             <DockPanel>
-                <TextBlock FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource AccentStrongBrush}" Text="Analysis drawer" />
-                <TextBlock DockPanel.Dock="Right" Foreground="{DynamicResource MutedForegroundBrush}" Text="Understand outcomes first, then inspect rows." />
+                <TextBlock Style="{StaticResource DialogTitleTextStyle}" Foreground="{DynamicResource AccentStrongBrush}" Text="Analysis drawer" />
+                <TextBlock DockPanel.Dock="Right" Style="{StaticResource HelperTextStyle}" Text="Understand outcomes first, then inspect rows." />
             </DockPanel>
 
             <UniformGrid Grid.Row="2" Columns="3">

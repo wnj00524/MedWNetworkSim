@@ -2257,91 +2257,157 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
             .ToList();
     }
 
+    public IReadOnlyList<NodeViewModel> GetBulkEditTargetNodes()
+    {
+        return HasBulkNodeSelection
+            ? bulkSelectedNodes.ToList()
+            : Nodes.ToList();
+    }
+
+    public string GetBulkEditScopeSummary()
+    {
+        var targets = GetBulkEditTargetNodes();
+        if (targets.Count == 0)
+        {
+            return "No places are available to edit yet.";
+        }
+
+        if (HasBulkNodeSelection)
+        {
+            return $"{targets.Count} selected place(s) will be updated.";
+        }
+
+        return $"{targets.Count} place(s) in the current network will be updated.";
+    }
+
     public void ApplyTrafficRoleToAllNodes(BulkApplyTrafficRoleOptions options)
     {
+        ApplyBulkNodeEdits(options, Nodes.ToList());
+    }
+
+    public void ApplyBulkNodeEdits(BulkApplyTrafficRoleOptions options, IReadOnlyList<NodeViewModel> targetNodes)
+    {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(targetNodes);
 
         EnsureNetworkExists();
-        if (Nodes.Count == 0)
+        if (targetNodes.Count == 0)
         {
-            throw new InvalidOperationException("Add at least one node before applying a traffic role to all nodes.");
+            throw new InvalidOperationException("Add or select at least one place before running a bulk edit.");
         }
 
-        var normalizedTrafficType = options.TrafficType.Trim();
-        var normalizedRoleName = string.IsNullOrWhiteSpace(options.RoleName)
-            ? NodeTrafficRoleCatalog.NoTrafficRole
-            : options.RoleName.Trim();
-        var hasRoleFlags = NodeTrafficRoleCatalog.TryParseFlags(normalizedRoleName, out var roleFlags);
-        var clearsTrafficRole = !hasRoleFlags || (!roleFlags.IsProducer && !roleFlags.IsConsumer && !roleFlags.CanTransship);
+        var statusParts = new List<string>();
 
-        if (!clearsTrafficRole)
+        if (options.ApplyPlaceType)
         {
-            EnsureTrafficDefinition(normalizedTrafficType);
-        }
-
-        isBulkUpdatingTrafficProfiles = true;
-
-        try
-        {
-            foreach (var node in Nodes)
+            var normalizedPlaceType = string.IsNullOrWhiteSpace(options.PlaceType) ? null : options.PlaceType.Trim();
+            foreach (var node in targetNodes)
             {
-                var matchingProfiles = node.TrafficProfiles
-                    .Where(profile => Comparer.Equals(profile.TrafficType, normalizedTrafficType))
-                    .ToList();
+                node.PlaceType = normalizedPlaceType;
+            }
 
-                if (clearsTrafficRole)
+            statusParts.Add(string.IsNullOrWhiteSpace(normalizedPlaceType)
+                ? "cleared place type"
+                : $"set place type to '{normalizedPlaceType}'");
+        }
+
+        if (options.ApplyTranshipmentCapacity)
+        {
+            foreach (var node in targetNodes)
+            {
+                node.TranshipmentCapacity = options.TranshipmentCapacity;
+            }
+
+            statusParts.Add(options.TranshipmentCapacity.HasValue
+                ? $"set shared transhipment capacity to {options.TranshipmentCapacity.Value:0.##}"
+                : "cleared shared transhipment capacity");
+        }
+
+        if (options.ApplyTrafficRole)
+        {
+            var normalizedTrafficType = options.TrafficType?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedTrafficType))
+            {
+                throw new InvalidOperationException("Choose a traffic type before applying a bulk traffic role.");
+            }
+
+            var normalizedRoleName = string.IsNullOrWhiteSpace(options.RoleName)
+                ? NodeTrafficRoleCatalog.NoTrafficRole
+                : options.RoleName.Trim();
+            var hasRoleFlags = NodeTrafficRoleCatalog.TryParseFlags(normalizedRoleName, out var roleFlags);
+            var clearsTrafficRole = !hasRoleFlags || (!roleFlags.IsProducer && !roleFlags.IsConsumer && !roleFlags.CanTransship);
+
+            if (!clearsTrafficRole)
+            {
+                EnsureTrafficDefinition(normalizedTrafficType);
+            }
+
+            isBulkUpdatingTrafficProfiles = true;
+
+            try
+            {
+                foreach (var node in targetNodes)
                 {
-                    foreach (var matchingProfile in matchingProfiles)
+                    var matchingProfiles = node.TrafficProfiles
+                        .Where(profile => Comparer.Equals(profile.TrafficType, normalizedTrafficType))
+                        .ToList();
+
+                    if (clearsTrafficRole)
                     {
-                        if (ReferenceEquals(SelectedNode, node) && ReferenceEquals(SelectedNodeTrafficProfile, matchingProfile))
+                        foreach (var matchingProfile in matchingProfiles)
                         {
-                            SelectedNodeTrafficProfile = null;
+                            if (ReferenceEquals(SelectedNode, node) && ReferenceEquals(SelectedNodeTrafficProfile, matchingProfile))
+                            {
+                                SelectedNodeTrafficProfile = null;
+                            }
+
+                            node.RemoveTrafficProfile(matchingProfile);
                         }
 
-                        node.RemoveTrafficProfile(matchingProfile);
+                        continue;
                     }
 
-                    continue;
-                }
-
-                var profile = matchingProfiles.FirstOrDefault();
-                if (profile is null)
-                {
-                    profile = new NodeTrafficProfileViewModel(new NodeTrafficProfile
+                    var profile = matchingProfiles.FirstOrDefault();
+                    if (profile is null)
                     {
-                        TrafficType = normalizedTrafficType
-                    });
-                    node.AddTrafficProfile(profile);
+                        profile = new NodeTrafficProfileViewModel(new NodeTrafficProfile
+                        {
+                            TrafficType = normalizedTrafficType
+                        });
+                        node.AddTrafficProfile(profile);
+                    }
+
+                    profile.TrafficType = normalizedTrafficType;
+                    profile.Production = roleFlags.IsProducer ? options.ProductionAmount ?? 0d : 0d;
+                    profile.Consumption = roleFlags.IsConsumer ? options.ConsumptionAmount ?? 0d : 0d;
+                    profile.CanTransship = roleFlags.CanTransship;
+
+                    NormalizeNodeTrafficProfiles(node);
                 }
-
-                profile.TrafficType = normalizedTrafficType;
-                profile.Production = roleFlags.IsProducer ? options.ProductionAmount : 0d;
-                profile.Consumption = roleFlags.IsConsumer ? options.ConsumptionAmount : 0d;
-                profile.CanTransship = roleFlags.CanTransship;
-
-                if (options.ApplyTranshipmentCapacity && roleFlags.CanTransship)
-                {
-                    node.TranshipmentCapacity = options.TranshipmentCapacity;
-                }
-
-                NormalizeNodeTrafficProfiles(node);
             }
-        }
-        finally
-        {
-            isBulkUpdatingTrafficProfiles = false;
+            finally
+            {
+                isBulkUpdatingTrafficProfiles = false;
+            }
+
+            if (SelectedNode is not null)
+            {
+                SelectedNodeTrafficProfile = SelectedNode.TrafficProfiles
+                    .FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, normalizedTrafficType))
+                    ?? SelectedNode.TrafficProfiles.FirstOrDefault();
+            }
+
+            statusParts.Add(clearsTrafficRole
+                ? $"removed traffic type '{normalizedTrafficType}'"
+                : $"applied role '{normalizedRoleName}' for traffic type '{normalizedTrafficType}'");
         }
 
-        if (SelectedNode is not null)
+        if (statusParts.Count == 0)
         {
-            SelectedNodeTrafficProfile = SelectedNode.TrafficProfiles
-                .FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, normalizedTrafficType))
-                ?? SelectedNode.TrafficProfiles.FirstOrDefault();
+            throw new InvalidOperationException("Choose at least one shared change before applying the bulk edit.");
         }
 
-        var statusMessage = clearsTrafficRole
-            ? $"Removed traffic type '{normalizedTrafficType}' from all {Nodes.Count} node(s)."
-            : $"Applied role '{normalizedRoleName}' for traffic type '{normalizedTrafficType}' to all {Nodes.Count} node(s).";
+        var statusMessage = $"Updated {targetNodes.Count} place(s): {string.Join("; ", statusParts)}.";
         RefreshDerivedStateAfterStructureChange(statusMessage);
     }
 

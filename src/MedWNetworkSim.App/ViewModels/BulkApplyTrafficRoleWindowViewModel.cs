@@ -8,6 +8,10 @@ public sealed class BulkApplyTrafficRoleWindowViewModel : ObservableObject
 {
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
 
+    private string scopeSummary;
+    private bool applyPlaceType;
+    private string placeTypeText;
+    private bool applyTrafficRole;
     private string trafficTypeText;
     private string selectedRoleName;
     private string productionAmountText;
@@ -17,6 +21,8 @@ public sealed class BulkApplyTrafficRoleWindowViewModel : ObservableObject
 
     public BulkApplyTrafficRoleWindowViewModel(
         IEnumerable<string> trafficTypeNames,
+        string scopeSummary,
+        string? initialPlaceType,
         string? initialTrafficType,
         string? initialRoleName,
         double? initialProductionAmount,
@@ -24,6 +30,8 @@ public sealed class BulkApplyTrafficRoleWindowViewModel : ObservableObject
         double? initialTranshipmentCapacity)
     {
         ArgumentNullException.ThrowIfNull(trafficTypeNames);
+
+        this.scopeSummary = scopeSummary;
 
         foreach (var trafficTypeName in trafficTypeNames
                      .Where(name => !string.IsNullOrWhiteSpace(name))
@@ -33,6 +41,9 @@ public sealed class BulkApplyTrafficRoleWindowViewModel : ObservableObject
             TrafficTypeOptions.Add(trafficTypeName);
         }
 
+        placeTypeText = initialPlaceType?.Trim() ?? string.Empty;
+        applyPlaceType = false;
+        applyTrafficRole = true;
         trafficTypeText = string.IsNullOrWhiteSpace(initialTrafficType)
             ? TrafficTypeOptions.FirstOrDefault() ?? string.Empty
             : initialTrafficType.Trim();
@@ -51,6 +62,54 @@ public sealed class BulkApplyTrafficRoleWindowViewModel : ObservableObject
 
     public IReadOnlyList<string> RoleOptions => NodeTrafficRoleCatalog.RoleOptions;
 
+    public string ScopeSummary
+    {
+        get => scopeSummary;
+        set => SetProperty(ref scopeSummary, value);
+    }
+
+    public bool ApplyPlaceType
+    {
+        get => applyPlaceType;
+        set
+        {
+            if (!SetProperty(ref applyPlaceType, value))
+            {
+                return;
+            }
+
+            RaiseStatePropertiesChanged();
+        }
+    }
+
+    public string PlaceTypeText
+    {
+        get => placeTypeText;
+        set
+        {
+            if (!SetProperty(ref placeTypeText, value))
+            {
+                return;
+            }
+
+            RaiseStatePropertiesChanged();
+        }
+    }
+
+    public bool ApplyTrafficRole
+    {
+        get => applyTrafficRole;
+        set
+        {
+            if (!SetProperty(ref applyTrafficRole, value))
+            {
+                return;
+            }
+
+            RaiseStatePropertiesChanged();
+        }
+    }
+
     public string TrafficTypeText
     {
         get => trafficTypeText;
@@ -61,7 +120,7 @@ public sealed class BulkApplyTrafficRoleWindowViewModel : ObservableObject
                 return;
             }
 
-            OnPropertyChanged(nameof(CanApply));
+            RaiseStatePropertiesChanged();
         }
     }
 
@@ -79,29 +138,36 @@ public sealed class BulkApplyTrafficRoleWindowViewModel : ObservableObject
                 return;
             }
 
-            if (!IsTransshipRoleSelected && ApplyTranshipmentCapacity)
-            {
-                ApplyTranshipmentCapacity = false;
-            }
-
-            OnPropertyChanged(nameof(IsProducerRoleSelected));
-            OnPropertyChanged(nameof(IsConsumerRoleSelected));
-            OnPropertyChanged(nameof(IsTransshipRoleSelected));
-            OnPropertyChanged(nameof(CanEditTranshipmentCapacity));
-            OnPropertyChanged(nameof(ApplySummary));
+            RaiseStatePropertiesChanged();
         }
     }
 
     public string ProductionAmountText
     {
         get => productionAmountText;
-        set => SetProperty(ref productionAmountText, value);
+        set
+        {
+            if (!SetProperty(ref productionAmountText, value))
+            {
+                return;
+            }
+
+            RaiseStatePropertiesChanged();
+        }
     }
 
     public string ConsumptionAmountText
     {
         get => consumptionAmountText;
-        set => SetProperty(ref consumptionAmountText, value);
+        set
+        {
+            if (!SetProperty(ref consumptionAmountText, value))
+            {
+                return;
+            }
+
+            RaiseStatePropertiesChanged();
+        }
     }
 
     public bool ApplyTranshipmentCapacity
@@ -114,15 +180,22 @@ public sealed class BulkApplyTrafficRoleWindowViewModel : ObservableObject
                 return;
             }
 
-            OnPropertyChanged(nameof(CanEditTranshipmentCapacity));
-            OnPropertyChanged(nameof(ApplySummary));
+            RaiseStatePropertiesChanged();
         }
     }
 
     public string TranshipmentCapacityText
     {
         get => transhipmentCapacityText;
-        set => SetProperty(ref transhipmentCapacityText, value);
+        set
+        {
+            if (!SetProperty(ref transhipmentCapacityText, value))
+            {
+                return;
+            }
+
+            RaiseStatePropertiesChanged();
+        }
     }
 
     public bool IsProducerRoleSelected => TryGetRoleFlags(out var flags) && flags.IsProducer;
@@ -131,63 +204,132 @@ public sealed class BulkApplyTrafficRoleWindowViewModel : ObservableObject
 
     public bool IsTransshipRoleSelected => TryGetRoleFlags(out var flags) && flags.CanTransship;
 
-    public bool CanEditTranshipmentCapacity => IsTransshipRoleSelected && ApplyTranshipmentCapacity;
+    public bool HasAnyChangeSelected => ApplyPlaceType || ApplyTrafficRole || ApplyTranshipmentCapacity;
 
-    public bool CanApply => !string.IsNullOrWhiteSpace(TrafficTypeText);
+    public bool CanApply => HasAnyChangeSelected && string.IsNullOrWhiteSpace(ValidationText);
 
-    public string ApplySummary
+    public string ChangePreview
     {
         get
         {
-            if (!TryGetRoleFlags(out var flags) || (!flags.IsProducer && !flags.IsConsumer && !flags.CanTransship))
+            var parts = new List<string>();
+
+            if (ApplyPlaceType)
             {
-                return "Choosing No Traffic Role removes the selected traffic type from every node.";
+                parts.Add(string.IsNullOrWhiteSpace(PlaceTypeText)
+                    ? "Clear place type"
+                    : $"Set place type to '{PlaceTypeText.Trim()}'");
             }
 
-            if (flags.CanTransship && ApplyTranshipmentCapacity)
+            if (ApplyTrafficRole)
             {
-                return "This updates or creates the selected traffic-role entry on every node and also updates each node's shared transhipment capacity.";
+                if (!TryGetRoleFlags(out var flags) || (!flags.IsProducer && !flags.IsConsumer && !flags.CanTransship))
+                {
+                    parts.Add($"Remove traffic type '{TrafficTypeText.Trim()}'");
+                }
+                else
+                {
+                    parts.Add($"Apply role '{SelectedRoleName}' for traffic type '{TrafficTypeText.Trim()}'");
+                }
             }
 
-            return "This updates or creates the selected traffic-role entry on every node. Shared transhipment capacity is left alone unless you explicitly opt in below.";
+            if (ApplyTranshipmentCapacity)
+            {
+                parts.Add(string.IsNullOrWhiteSpace(TranshipmentCapacityText)
+                    ? "Clear shared transhipment capacity"
+                    : $"Set shared transhipment capacity to {TranshipmentCapacityText.Trim()}");
+            }
+
+            return parts.Count == 0
+                ? "Choose one or more shared edits before applying."
+                : string.Join(". ", parts) + ".";
+        }
+    }
+
+    public string ValidationText
+    {
+        get
+        {
+            if (!HasAnyChangeSelected)
+            {
+                return "Choose at least one shared edit before applying.";
+            }
+
+            if (ApplyTrafficRole)
+            {
+                if (string.IsNullOrWhiteSpace(TrafficTypeText))
+                {
+                    return "Traffic type is required when traffic role changes are enabled.";
+                }
+
+                if (!TryGetRoleFlags(out var flags))
+                {
+                    return "Choose a valid traffic role.";
+                }
+
+                if (flags.IsProducer)
+                {
+                    ParseRequiredPositiveAmount(ProductionAmountText, "Production amount");
+                }
+
+                if (flags.IsConsumer)
+                {
+                    ParseRequiredPositiveAmount(ConsumptionAmountText, "Consumption amount");
+                }
+            }
+
+            if (ApplyTranshipmentCapacity)
+            {
+                ParseOptionalNonNegativeAmount(TranshipmentCapacityText, "Shared transhipment capacity");
+            }
+
+            return string.Empty;
         }
     }
 
     public BulkApplyTrafficRoleOptions BuildOptions()
     {
-        var normalizedTrafficType = TrafficTypeText?.Trim();
-        if (string.IsNullOrWhiteSpace(normalizedTrafficType))
+        var validationText = ValidationText;
+        if (!string.IsNullOrWhiteSpace(validationText))
         {
-            throw new InvalidOperationException("Choose or type a traffic type before applying a role to all nodes.");
+            throw new InvalidOperationException(validationText);
         }
 
-        var normalizedRoleName = string.IsNullOrWhiteSpace(SelectedRoleName)
-            ? NodeTrafficRoleCatalog.NoTrafficRole
-            : SelectedRoleName.Trim();
-
-        if (!NodeTrafficRoleCatalog.TryParseFlags(normalizedRoleName, out var flags))
+        double? productionAmount = null;
+        double? consumptionAmount = null;
+        if (ApplyTrafficRole && TryGetRoleFlags(out var roleFlags))
         {
-            throw new InvalidOperationException("Choose a valid role to apply.");
+            productionAmount = roleFlags.IsProducer
+                ? ParseRequiredPositiveAmount(ProductionAmountText, "Production amount")
+                : null;
+            consumptionAmount = roleFlags.IsConsumer
+                ? ParseRequiredPositiveAmount(ConsumptionAmountText, "Consumption amount")
+                : null;
         }
-
-        var productionAmount = flags.IsProducer
-            ? ParseRequiredPositiveAmount(ProductionAmountText, "Production amount")
-            : 0d;
-        var consumptionAmount = flags.IsConsumer
-            ? ParseRequiredPositiveAmount(ConsumptionAmountText, "Consumption amount")
-            : 0d;
-        var applyTranshipmentCapacity = flags.CanTransship && ApplyTranshipmentCapacity;
-        var transhipmentCapacity = applyTranshipmentCapacity
-            ? ParseOptionalNonNegativeAmount(TranshipmentCapacityText, "Transhipment capacity")
-            : null;
 
         return new BulkApplyTrafficRoleOptions(
-            normalizedTrafficType,
-            normalizedRoleName,
+            ApplyPlaceType,
+            string.IsNullOrWhiteSpace(PlaceTypeText) ? null : PlaceTypeText.Trim(),
+            ApplyTrafficRole,
+            string.IsNullOrWhiteSpace(TrafficTypeText) ? null : TrafficTypeText.Trim(),
+            SelectedRoleName,
             productionAmount,
             consumptionAmount,
-            applyTranshipmentCapacity,
-            transhipmentCapacity);
+            ApplyTranshipmentCapacity,
+            ApplyTranshipmentCapacity
+                ? ParseOptionalNonNegativeAmount(TranshipmentCapacityText, "Shared transhipment capacity")
+                : null);
+    }
+
+    private void RaiseStatePropertiesChanged()
+    {
+        OnPropertyChanged(nameof(IsProducerRoleSelected));
+        OnPropertyChanged(nameof(IsConsumerRoleSelected));
+        OnPropertyChanged(nameof(IsTransshipRoleSelected));
+        OnPropertyChanged(nameof(HasAnyChangeSelected));
+        OnPropertyChanged(nameof(CanApply));
+        OnPropertyChanged(nameof(ChangePreview));
+        OnPropertyChanged(nameof(ValidationText));
     }
 
     private bool TryGetRoleFlags(out NodeTrafficRoleCatalog.NodeTrafficRoleFlags flags)
@@ -223,7 +365,7 @@ public sealed class BulkApplyTrafficRoleWindowViewModel : ObservableObject
         {
             if (invariantValue < 0d)
             {
-                throw new InvalidOperationException($"{fieldName} must be a number >= 0 when provided.");
+                throw new InvalidOperationException($"{fieldName} must be a number greater than or equal to 0.");
             }
 
             return invariantValue;
@@ -233,7 +375,7 @@ public sealed class BulkApplyTrafficRoleWindowViewModel : ObservableObject
         {
             if (currentCultureValue < 0d)
             {
-                throw new InvalidOperationException($"{fieldName} must be a number >= 0 when provided.");
+                throw new InvalidOperationException($"{fieldName} must be a number greater than or equal to 0.");
             }
 
             return currentCultureValue;

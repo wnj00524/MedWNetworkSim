@@ -8,13 +8,17 @@ public sealed class ReportExportWindowViewModel : ObservableObject
     private string reportPath;
     private string timelinePeriodsText = "12";
     private ReportExportFormat selectedFormat = ReportExportFormat.Html;
+    private ReportExportKind selectedExportKind;
 
-    public ReportExportWindowViewModel(string suggestedReportPath)
+    public ReportExportWindowViewModel(string suggestedReportPath, ReportExportKind initialExportKind = ReportExportKind.Current)
     {
         reportPath = suggestedReportPath;
+        selectedExportKind = initialExportKind;
     }
 
     public Array FormatOptions { get; } = Enum.GetValues(typeof(ReportExportFormat));
+
+    public Array ExportKindOptions { get; } = Enum.GetValues(typeof(ReportExportKind));
 
     public string ReportPath
     {
@@ -49,6 +53,30 @@ public sealed class ReportExportWindowViewModel : ObservableObject
             ReportPath = ApplyFormatExtension(ReportPath, value);
         }
     }
+
+    public ReportExportKind SelectedExportKind
+    {
+        get => selectedExportKind;
+        set
+        {
+            if (!SetProperty(ref selectedExportKind, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(IsTimelineExport));
+            OnPropertyChanged(nameof(ExportDescription));
+            OnPropertyChanged(nameof(ExportButtonText));
+        }
+    }
+
+    public bool IsTimelineExport => SelectedExportKind == ReportExportKind.Timeline;
+
+    public string ExportDescription => IsTimelineExport
+        ? "Timeline report exports per-period route movements, edge usage, node activity, and overall totals across the number of periods you choose."
+        : "Current report exports the latest one-shot network overview, traffic definitions, places, routes, traffic outcomes, consumer costs, and routed movements.";
+
+    public string ExportButtonText => IsTimelineExport ? "Export timeline report" : "Export current report";
 
     public bool CanExport => !string.IsNullOrWhiteSpace(ReportPath);
 

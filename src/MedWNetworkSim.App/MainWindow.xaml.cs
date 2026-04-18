@@ -9,6 +9,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using MedWNetworkSim.App.Import;
+using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.ViewModels;
 
 namespace MedWNetworkSim.App;
@@ -124,13 +125,20 @@ public partial class MainWindow : Window
                 FitCanvasToNetwork();
                 SetCanvasHint("OpenStreetMap import complete. Network auto-fit to canvas.");
             });
+
+            MessageBox.Show(
+                this,
+                $"Imported '{Path.GetFileName(dialog.FileName)}' as a network with {ViewModel.Nodes.Count} place(s) and {ViewModel.Edges.Count} route(s).",
+                "OpenStreetMap import complete",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
             MessageBox.Show(
                 this,
-                ex.Message,
-                "MedW Network Simulator",
+                $"Could not import '{Path.GetFileName(dialog.FileName)}'.{Environment.NewLine}{Environment.NewLine}{ex.Message}{Environment.NewLine}{Environment.NewLine}Check that the file is a valid .osm or .pbf extract. If the map is large, try a lower retention target and import again.",
+                "OpenStreetMap import failed",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
@@ -181,6 +189,26 @@ public partial class MainWindow : Window
     private void Reports_Click(object sender, RoutedEventArgs e)
     {
         var window = new ReportExportWindow(ViewModel)
+        {
+            Owner = this
+        };
+
+        window.ShowDialog();
+    }
+
+    private void ExportCurrentReportShell_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new ReportExportWindow(ViewModel, ReportExportKind.Current)
+        {
+            Owner = this
+        };
+
+        window.ShowDialog();
+    }
+
+    private void ExportTimelineReportShell_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new ReportExportWindow(ViewModel, ReportExportKind.Timeline)
         {
             Owner = this
         };
@@ -366,6 +394,14 @@ public partial class MainWindow : Window
     {
         if (sender is Thumb { DataContext: NodeViewModel node })
         {
+            if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt))
+            {
+                ViewModel.ToggleBulkNodeSelection(node);
+                SetCanvasHint("Bulk selection updated. Open the inspector to review shared edits or launch bulk edit.");
+                e.Handled = true;
+                return;
+            }
+
             ViewModel.SelectedNode = node;
             FocusKeyboardNode(node);
             SetCanvasHint("Place selected. Enter edits. Ctrl+Arrow moves. E starts a route. Shift+F10 opens actions.");
@@ -421,6 +457,14 @@ public partial class MainWindow : Window
         if (e.Key == Key.Enter)
         {
             OpenNodeEditorWindow();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Space && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            ViewModel.ToggleBulkNodeSelection(node);
+            SetCanvasHint("Bulk selection updated for the focused place.");
             e.Handled = true;
             return;
         }

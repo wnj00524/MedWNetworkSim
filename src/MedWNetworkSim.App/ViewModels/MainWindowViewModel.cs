@@ -56,6 +56,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly EdgeTrafficPermissionResolver edgeTrafficPermissionResolver = new();
     private readonly NetworkSimulationEngine simulationEngine = new();
     private readonly TemporalNetworkSimulationEngine temporalSimulationEngine = new();
+    private readonly ObservableCollection<NodeViewModel> bulkSelectedNodes = [];
     private readonly List<RouteAllocation> allAllocationModels = [];
     private readonly List<RouteAllocationRowViewModel> allAllocations = [];
     private readonly List<ConsumerCostSummaryRowViewModel> allConsumerCostSummaries = [];
@@ -119,6 +120,7 @@ public sealed class MainWindowViewModel : ObservableObject
          InspectorPanel = new InspectorPanelViewModel(
         GetCompositeInterfaceSummaries,
         GetCompositeInterfaceSummary);
+    BulkSelectedNodes = new ReadOnlyObservableCollection<NodeViewModel>(bulkSelectedNodes);
 
     AppThemeManager.ApplyTheme(selectedTheme);
     Terminology.IsWorldbuilderMode = isWorldbuilderMode;
@@ -131,6 +133,8 @@ public sealed class MainWindowViewModel : ObservableObject
     }
 
     public ObservableCollection<NodeViewModel> Nodes { get; } = [];
+
+    public ReadOnlyObservableCollection<NodeViewModel> BulkSelectedNodes { get; }
 
     public ObservableCollection<EdgeViewModel> Edges { get; } = [];
 
@@ -757,8 +761,11 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
             OnPropertyChanged(nameof(VisibleConsumerCostHeadline));
             if (value is not null)
             {
+                ApplyNodeSelection([], null, updateInspector: false);
+                SelectedEdge = null;
                 InspectorPanel.InspectTraffic(value, ShouldOpenInspectorForSelection());
                 RaiseOptionalSurfacePropertiesChanged();
+                RaiseInspectorSelectionPropertiesChanged();
             }
         }
     }
@@ -768,33 +775,7 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
         get => selectedNode;
         set
         {
-            if (ReferenceEquals(selectedNode, value))
-            {
-                return;
-            }
-
-            if (selectedNode is not null)
-            {
-                selectedNode.IsSelected = false;
-            }
-
-            SetProperty(ref selectedNode, value);
-
-            if (value is not null)
-            {
-                value.IsSelected = true;
-            }
-
-            SelectedNodeTrafficProfile = value?.TrafficProfiles.FirstOrDefault();
-            if (value is not null)
-            {
-                InspectorPanel.InspectNode(value, ShouldOpenInspectorForSelection());
-                RaiseOptionalSurfacePropertiesChanged();
-            }
-
-            OnPropertyChanged(nameof(SelectedNodeTrafficRoleHeadline));
-            OnPropertyChanged(nameof(SelectedNodeShapeOptions));
-            OnPropertyChanged(nameof(SelectedNodeShape));
+            ApplyNodeSelection(value is null ? [] : [value], value);
         }
     }
 
@@ -1093,6 +1074,12 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
                 selectedEdge.IsSelected = false;
             }
 
+            if (value is not null)
+            {
+                ApplyNodeSelection([], null, updateInspector: false);
+                SelectedTraffic = null;
+            }
+
             SetProperty(ref selectedEdge, value);
 
             if (value is not null)
@@ -1105,6 +1092,188 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
                 InspectorPanel.InspectEdge(value, ShouldOpenInspectorForSelection());
                 RaiseOptionalSurfacePropertiesChanged();
             }
+            else if (!HasBulkNodeSelection && SelectedNode is null)
+            {
+                InspectorPanel.ClearSelection();
+                RaiseOptionalSurfacePropertiesChanged();
+            }
+
+            RaiseInspectorSelectionPropertiesChanged();
+        }
+    }
+
+    public bool HasBulkNodeSelection => bulkSelectedNodes.Count > 1;
+
+    public bool InspectorShowsSelectedNode => SelectedNode is not null && !HasBulkNodeSelection;
+
+    public bool InspectorShowsSelectedEdge => SelectedEdge is not null;
+
+    public bool InspectorShowsBulkSelection => HasBulkNodeSelection;
+
+    public bool InspectorShowsNetworkProperties => HasNetwork &&
+        !HasBulkNodeSelection &&
+        SelectedNode is null &&
+        SelectedEdge is null &&
+        InspectorPanel.SelectedObject is null;
+
+    public bool InspectorShowsFallbackSummary => !InspectorShowsNetworkProperties &&
+        !InspectorShowsSelectedNode &&
+        !InspectorShowsSelectedEdge &&
+        !InspectorShowsBulkSelection;
+
+    public string BulkSelectionHeadline => bulkSelectedNodes.Count switch
+    {
+        0 => "No items selected",
+        1 => $"1 place selected: {bulkSelectedNodes[0].Name}",
+        _ => $"{bulkSelectedNodes.Count} places selected"
+    };
+
+    public string BulkSelectionSummary
+    {
+        get
+        {
+            if (bulkSelectedNodes.Count == 0)
+            {
+                return "Choose multiple places to apply safe shared edits and open batch tools.";
+            }
+
+            var names = bulkSelectedNodes
+                .Select(node => string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name)
+                .Take(4)
+                .ToList();
+            var suffix = bulkSelectedNodes.Count > names.Count ? $" +{bulkSelectedNodes.Count - names.Count} more" : string.Empty;
+            return $"Selected places: {string.Join(", ", names)}{suffix}.";
+        }
+    }
+
+    public string BulkSelectedPlaceType
+    {
+        get
+        {
+            if (bulkSelectedNodes.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var distinctValues = bulkSelectedNodes
+                .Select(node => node.PlaceType?.Trim() ?? string.Empty)
+                .Distinct(Comparer)
+                .ToList();
+            return distinctValues.Count == 1 ? distinctValues[0] : string.Empty;
+        }
+        set
+        {
+            if (bulkSelectedNodes.Count == 0)
+            {
+                return;
+            }
+
+            var normalized = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            foreach (var node in bulkSelectedNodes)
+            {
+                node.PlaceType = normalized;
+            }
+
+            MarkDirty($"Updated place type for {bulkSelectedNodes.Count} selected place(s).");
+            RaiseInspectorSelectionPropertiesChanged();
+        }
+    }
+
+    public string BulkSelectedTranshipmentCapacityText
+    {
+        get
+        {
+            if (bulkSelectedNodes.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var distinctValues = bulkSelectedNodes
+                .Select(node => node.TranshipmentCapacity)
+                .Distinct()
+                .ToList();
+            return distinctValues.Count == 1 && distinctValues[0].HasValue
+                ? distinctValues[0]!.Value.ToString("0.##")
+                : string.Empty;
+        }
+        set
+        {
+            if (bulkSelectedNodes.Count == 0)
+            {
+                return;
+            }
+
+            var normalized = string.IsNullOrWhiteSpace(value)
+                ? (double?)null
+                : ParseNonNegativeDouble(value, "Shared transhipment capacity");
+            foreach (var node in bulkSelectedNodes)
+            {
+                node.TranshipmentCapacity = normalized;
+            }
+
+            MarkDirty($"Updated transhipment capacity for {bulkSelectedNodes.Count} selected place(s).");
+            RaiseInspectorSelectionPropertiesChanged();
+        }
+    }
+
+    public string BulkSelectionValidationText
+    {
+        get
+        {
+            if (!HasBulkNodeSelection)
+            {
+                return string.Empty;
+            }
+
+            return bulkSelectedNodes.Any(node => node.TranshipmentCapacity is < 0d)
+                ? "Shared transhipment capacity must be zero or greater."
+                : "Shared edits apply only to the selected places shown above.";
+        }
+    }
+
+    public string SelectedNodeValidationText
+    {
+        get
+        {
+            if (SelectedNode is null)
+            {
+                return string.Empty;
+            }
+
+            if (string.IsNullOrWhiteSpace(SelectedNode.Name))
+            {
+                return "Place name is recommended so the inspector, reports, and dialogs stay clear.";
+            }
+
+            if (SelectedNode.TranshipmentCapacity is < 0d)
+            {
+                return "Transhipment capacity must be zero or greater when it is set.";
+            }
+
+            return "Advanced traffic settings stay in sync with the selected place.";
+        }
+    }
+
+    public string SelectedEdgeValidationText
+    {
+        get
+        {
+            if (SelectedEdge is null)
+            {
+                return string.Empty;
+            }
+
+            if (SelectedEdge.Time < 0d || SelectedEdge.Cost < 0d)
+            {
+                return "Time and cost must both be zero or greater.";
+            }
+
+            if (SelectedEdge.Capacity is < 0d)
+            {
+                return "Capacity must be zero or greater when it is set.";
+            }
+
+            return "Open the full edge editor for traffic permissions and detailed route notes.";
         }
     }
 
@@ -1116,6 +1285,36 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
         }
 
         StatusMessage = message.Trim();
+    }
+
+    public void ToggleBulkNodeSelection(NodeViewModel node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+
+        var nextSelection = bulkSelectedNodes.ToList();
+        if (!nextSelection.Remove(node))
+        {
+            nextSelection.Add(node);
+        }
+
+        var nextPrimary = nextSelection.Count switch
+        {
+            0 => null,
+            1 => nextSelection[0],
+            _ => node
+        };
+
+        ApplyNodeSelection(nextSelection, nextPrimary);
+    }
+
+    public void ClearGraphSelection()
+    {
+        ApplyNodeSelection([], null, updateInspector: false);
+        SelectedEdge = null;
+        SelectedTraffic = null;
+        InspectorPanel.ClearSelection();
+        RaiseOptionalSurfacePropertiesChanged();
+        RaiseInspectorSelectionPropertiesChanged();
     }
 
     public TrafficTypeDefinitionEditorViewModel? SelectedTrafficDefinition
@@ -2058,91 +2257,157 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
             .ToList();
     }
 
+    public IReadOnlyList<NodeViewModel> GetBulkEditTargetNodes()
+    {
+        return HasBulkNodeSelection
+            ? bulkSelectedNodes.ToList()
+            : Nodes.ToList();
+    }
+
+    public string GetBulkEditScopeSummary()
+    {
+        var targets = GetBulkEditTargetNodes();
+        if (targets.Count == 0)
+        {
+            return "No places are available to edit yet.";
+        }
+
+        if (HasBulkNodeSelection)
+        {
+            return $"{targets.Count} selected place(s) will be updated.";
+        }
+
+        return $"{targets.Count} place(s) in the current network will be updated.";
+    }
+
     public void ApplyTrafficRoleToAllNodes(BulkApplyTrafficRoleOptions options)
     {
+        ApplyBulkNodeEdits(options, Nodes.ToList());
+    }
+
+    public void ApplyBulkNodeEdits(BulkApplyTrafficRoleOptions options, IReadOnlyList<NodeViewModel> targetNodes)
+    {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(targetNodes);
 
         EnsureNetworkExists();
-        if (Nodes.Count == 0)
+        if (targetNodes.Count == 0)
         {
-            throw new InvalidOperationException("Add at least one node before applying a traffic role to all nodes.");
+            throw new InvalidOperationException("Add or select at least one place before running a bulk edit.");
         }
 
-        var normalizedTrafficType = options.TrafficType.Trim();
-        var normalizedRoleName = string.IsNullOrWhiteSpace(options.RoleName)
-            ? NodeTrafficRoleCatalog.NoTrafficRole
-            : options.RoleName.Trim();
-        var hasRoleFlags = NodeTrafficRoleCatalog.TryParseFlags(normalizedRoleName, out var roleFlags);
-        var clearsTrafficRole = !hasRoleFlags || (!roleFlags.IsProducer && !roleFlags.IsConsumer && !roleFlags.CanTransship);
+        var statusParts = new List<string>();
 
-        if (!clearsTrafficRole)
+        if (options.ApplyPlaceType)
         {
-            EnsureTrafficDefinition(normalizedTrafficType);
-        }
-
-        isBulkUpdatingTrafficProfiles = true;
-
-        try
-        {
-            foreach (var node in Nodes)
+            var normalizedPlaceType = string.IsNullOrWhiteSpace(options.PlaceType) ? null : options.PlaceType.Trim();
+            foreach (var node in targetNodes)
             {
-                var matchingProfiles = node.TrafficProfiles
-                    .Where(profile => Comparer.Equals(profile.TrafficType, normalizedTrafficType))
-                    .ToList();
+                node.PlaceType = normalizedPlaceType;
+            }
 
-                if (clearsTrafficRole)
+            statusParts.Add(string.IsNullOrWhiteSpace(normalizedPlaceType)
+                ? "cleared place type"
+                : $"set place type to '{normalizedPlaceType}'");
+        }
+
+        if (options.ApplyTranshipmentCapacity)
+        {
+            foreach (var node in targetNodes)
+            {
+                node.TranshipmentCapacity = options.TranshipmentCapacity;
+            }
+
+            statusParts.Add(options.TranshipmentCapacity.HasValue
+                ? $"set shared transhipment capacity to {options.TranshipmentCapacity.Value:0.##}"
+                : "cleared shared transhipment capacity");
+        }
+
+        if (options.ApplyTrafficRole)
+        {
+            var normalizedTrafficType = options.TrafficType?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedTrafficType))
+            {
+                throw new InvalidOperationException("Choose a traffic type before applying a bulk traffic role.");
+            }
+
+            var normalizedRoleName = string.IsNullOrWhiteSpace(options.RoleName)
+                ? NodeTrafficRoleCatalog.NoTrafficRole
+                : options.RoleName.Trim();
+            var hasRoleFlags = NodeTrafficRoleCatalog.TryParseFlags(normalizedRoleName, out var roleFlags);
+            var clearsTrafficRole = !hasRoleFlags || (!roleFlags.IsProducer && !roleFlags.IsConsumer && !roleFlags.CanTransship);
+
+            if (!clearsTrafficRole)
+            {
+                EnsureTrafficDefinition(normalizedTrafficType);
+            }
+
+            isBulkUpdatingTrafficProfiles = true;
+
+            try
+            {
+                foreach (var node in targetNodes)
                 {
-                    foreach (var matchingProfile in matchingProfiles)
+                    var matchingProfiles = node.TrafficProfiles
+                        .Where(profile => Comparer.Equals(profile.TrafficType, normalizedTrafficType))
+                        .ToList();
+
+                    if (clearsTrafficRole)
                     {
-                        if (ReferenceEquals(SelectedNode, node) && ReferenceEquals(SelectedNodeTrafficProfile, matchingProfile))
+                        foreach (var matchingProfile in matchingProfiles)
                         {
-                            SelectedNodeTrafficProfile = null;
+                            if (ReferenceEquals(SelectedNode, node) && ReferenceEquals(SelectedNodeTrafficProfile, matchingProfile))
+                            {
+                                SelectedNodeTrafficProfile = null;
+                            }
+
+                            node.RemoveTrafficProfile(matchingProfile);
                         }
 
-                        node.RemoveTrafficProfile(matchingProfile);
+                        continue;
                     }
 
-                    continue;
-                }
-
-                var profile = matchingProfiles.FirstOrDefault();
-                if (profile is null)
-                {
-                    profile = new NodeTrafficProfileViewModel(new NodeTrafficProfile
+                    var profile = matchingProfiles.FirstOrDefault();
+                    if (profile is null)
                     {
-                        TrafficType = normalizedTrafficType
-                    });
-                    node.AddTrafficProfile(profile);
+                        profile = new NodeTrafficProfileViewModel(new NodeTrafficProfile
+                        {
+                            TrafficType = normalizedTrafficType
+                        });
+                        node.AddTrafficProfile(profile);
+                    }
+
+                    profile.TrafficType = normalizedTrafficType;
+                    profile.Production = roleFlags.IsProducer ? options.ProductionAmount ?? 0d : 0d;
+                    profile.Consumption = roleFlags.IsConsumer ? options.ConsumptionAmount ?? 0d : 0d;
+                    profile.CanTransship = roleFlags.CanTransship;
+
+                    NormalizeNodeTrafficProfiles(node);
                 }
-
-                profile.TrafficType = normalizedTrafficType;
-                profile.Production = roleFlags.IsProducer ? options.ProductionAmount : 0d;
-                profile.Consumption = roleFlags.IsConsumer ? options.ConsumptionAmount : 0d;
-                profile.CanTransship = roleFlags.CanTransship;
-
-                if (options.ApplyTranshipmentCapacity && roleFlags.CanTransship)
-                {
-                    node.TranshipmentCapacity = options.TranshipmentCapacity;
-                }
-
-                NormalizeNodeTrafficProfiles(node);
             }
-        }
-        finally
-        {
-            isBulkUpdatingTrafficProfiles = false;
+            finally
+            {
+                isBulkUpdatingTrafficProfiles = false;
+            }
+
+            if (SelectedNode is not null)
+            {
+                SelectedNodeTrafficProfile = SelectedNode.TrafficProfiles
+                    .FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, normalizedTrafficType))
+                    ?? SelectedNode.TrafficProfiles.FirstOrDefault();
+            }
+
+            statusParts.Add(clearsTrafficRole
+                ? $"removed traffic type '{normalizedTrafficType}'"
+                : $"applied role '{normalizedRoleName}' for traffic type '{normalizedTrafficType}'");
         }
 
-        if (SelectedNode is not null)
+        if (statusParts.Count == 0)
         {
-            SelectedNodeTrafficProfile = SelectedNode.TrafficProfiles
-                .FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, normalizedTrafficType))
-                ?? SelectedNode.TrafficProfiles.FirstOrDefault();
+            throw new InvalidOperationException("Choose at least one shared change before applying the bulk edit.");
         }
 
-        var statusMessage = clearsTrafficRole
-            ? $"Removed traffic type '{normalizedTrafficType}' from all {Nodes.Count} node(s)."
-            : $"Applied role '{normalizedRoleName}' for traffic type '{normalizedTrafficType}' to all {Nodes.Count} node(s).";
+        var statusMessage = $"Updated {targetNodes.Count} place(s): {string.Join("; ", statusParts)}.";
         RefreshDerivedStateAfterStructureChange(statusMessage);
     }
 
@@ -3399,6 +3664,100 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
         {
             RaiseOptionalSurfacePropertiesChanged();
         }
+
+        if (e.PropertyName is nameof(InspectorPanelViewModel.SelectedObject) or
+            nameof(InspectorPanelViewModel.Title) or
+            nameof(InspectorPanelViewModel.SummaryText) or
+            nameof(InspectorPanelViewModel.FlowsText) or
+            nameof(InspectorPanelViewModel.CapacityText) or
+            nameof(InspectorPanelViewModel.RoutingText) or
+            nameof(InspectorPanelViewModel.TimelineText))
+        {
+            RaiseInspectorSelectionPropertiesChanged();
+        }
+    }
+
+    private void ApplyNodeSelection(
+        IEnumerable<NodeViewModel> nodes,
+        NodeViewModel? primaryNode,
+        bool updateInspector = true)
+    {
+        var nextSelection = nodes
+            .Where(node => node is not null)
+            .Distinct()
+            .ToList();
+
+        foreach (var node in Nodes)
+        {
+            node.IsSelected = nextSelection.Contains(node);
+        }
+
+        if (nextSelection.Count > 0 && selectedEdge is not null)
+        {
+            selectedEdge.IsSelected = false;
+            SetProperty(ref selectedEdge, null);
+        }
+
+        bulkSelectedNodes.Clear();
+        foreach (var node in nextSelection)
+        {
+            bulkSelectedNodes.Add(node);
+        }
+
+        if (selectedNode is not null && !nextSelection.Contains(selectedNode))
+        {
+            selectedNode.IsSelected = false;
+        }
+
+        SetProperty(ref selectedNode, primaryNode);
+        if (selectedNode is not null)
+        {
+            selectedNode.IsSelected = true;
+        }
+
+        SelectedNodeTrafficProfile = selectedNode?.TrafficProfiles.FirstOrDefault();
+
+        if (updateInspector)
+        {
+            if (HasBulkNodeSelection)
+            {
+                InspectorPanel.ClearSelection();
+            }
+            else if (selectedNode is not null)
+            {
+                InspectorPanel.InspectNode(selectedNode, ShouldOpenInspectorForSelection());
+            }
+            else if (SelectedEdge is null)
+            {
+                InspectorPanel.ClearSelection();
+            }
+
+            RaiseOptionalSurfacePropertiesChanged();
+        }
+
+        OnPropertyChanged(nameof(SelectedNodeTrafficRoleHeadline));
+        OnPropertyChanged(nameof(SelectedNodeShapeOptions));
+        OnPropertyChanged(nameof(SelectedNodeShape));
+        OnPropertyChanged(nameof(SelectedNodeKindOptions));
+        OnPropertyChanged(nameof(SelectedNodeKind));
+        RaiseInspectorSelectionPropertiesChanged();
+    }
+
+    private void RaiseInspectorSelectionPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(HasBulkNodeSelection));
+        OnPropertyChanged(nameof(InspectorShowsSelectedNode));
+        OnPropertyChanged(nameof(InspectorShowsSelectedEdge));
+        OnPropertyChanged(nameof(InspectorShowsBulkSelection));
+        OnPropertyChanged(nameof(InspectorShowsNetworkProperties));
+        OnPropertyChanged(nameof(InspectorShowsFallbackSummary));
+        OnPropertyChanged(nameof(BulkSelectionHeadline));
+        OnPropertyChanged(nameof(BulkSelectionSummary));
+        OnPropertyChanged(nameof(BulkSelectedPlaceType));
+        OnPropertyChanged(nameof(BulkSelectedTranshipmentCapacityText));
+        OnPropertyChanged(nameof(BulkSelectionValidationText));
+        OnPropertyChanged(nameof(SelectedNodeValidationText));
+        OnPropertyChanged(nameof(SelectedEdgeValidationText));
     }
 
     private void RaiseOptionalSurfacePropertiesChanged()
@@ -3413,6 +3772,16 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
         OnPropertyChanged(nameof(BottomWorkspaceVisibility));
         OnPropertyChanged(nameof(LayersPanelVisibility));
         OnPropertyChanged(nameof(LegendPanelVisibility));
+    }
+
+    private static double ParseNonNegativeDouble(string value, string fieldName)
+    {
+        if (!double.TryParse(value.Trim(), out var parsedValue) || parsedValue < 0d)
+        {
+            throw new InvalidOperationException($"{fieldName} must be a number greater than or equal to 0.");
+        }
+
+        return parsedValue;
     }
 
     private void RaiseReportStatePropertiesChanged()

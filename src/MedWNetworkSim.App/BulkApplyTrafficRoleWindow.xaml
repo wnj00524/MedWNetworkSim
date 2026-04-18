@@ -4,11 +4,12 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="Apply Traffic Role To All Nodes"
-        Width="720"
-        Height="620"
-        MinWidth="680"
-        MinHeight="560"
+        Title="Bulk Edit Selected Places"
+        Style="{StaticResource DialogChromeWindowStyle}"
+        Width="820"
+        Height="760"
+        MinWidth="760"
+        MinHeight="680"
         WindowStartupLocation="CenterOwner">
     <Grid Margin="18">
         <Grid.RowDefinitions>
@@ -20,160 +21,143 @@
         </Grid.RowDefinitions>
 
         <Border Padding="16"
-                Background="{DynamicResource PanelBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="1"
-                CornerRadius="18">
+                Style="{StaticResource SectionCardBorderStyle}">
             <StackPanel>
-                <TextBlock FontSize="18"
-                           FontWeight="SemiBold"
-                           Text="Apply Traffic Role To All Nodes" />
+                <TextBlock Style="{StaticResource DialogTitleTextStyle}"
+                           Text="Bulk edit selected places" />
                 <TextBlock Margin="0,8,0,0"
-                           FontSize="12"
-                           Foreground="{DynamicResource MutedForegroundBrush}"
-                           Text="Stamp the same traffic role onto every node in the current network. You can create or update one traffic-role entry per node in a single step."
-                           TextWrapping="Wrap" />
+                           Style="{StaticResource HelperTextStyle}"
+                           Text="Apply safe shared changes to the current bulk-edit scope. Review the scope and preview before you commit the batch update." />
             </StackPanel>
         </Border>
 
-        <Border Grid.Row="2"
-                Padding="16"
-                Background="{DynamicResource PanelBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="1"
-                CornerRadius="18">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="16" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="12" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="12" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="12" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="12" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="16" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="10" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="190" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-
-                <TextBlock Grid.ColumnSpan="2"
-                           FontSize="16"
-                           FontWeight="SemiBold"
-                           Text="Bulk Role Details" />
-
-                <TextBlock Grid.Row="2"
-                           VerticalAlignment="Center"
-                           FontSize="12"
-                           Foreground="{DynamicResource MutedForegroundBrush}"
-                           Text="Traffic Type" />
-                <ComboBox Grid.Row="2"
-                          Grid.Column="1"
-                          IsEditable="True"
-                          IsTextSearchEnabled="False"
-                          ItemsSource="{Binding TrafficTypeOptions}"
-                          Text="{Binding TrafficTypeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-
-                <TextBlock Grid.Row="4"
-                           VerticalAlignment="Center"
-                           FontSize="12"
-                           Foreground="{DynamicResource MutedForegroundBrush}"
-                           Text="Role" />
-                <ComboBox Grid.Row="4"
-                          Grid.Column="1"
-                          ItemsSource="{Binding RoleOptions}"
-                          SelectedItem="{Binding SelectedRoleName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-
-                <TextBlock Grid.Row="6"
-                           VerticalAlignment="Center"
-                           FontSize="12"
-                           Foreground="{DynamicResource MutedForegroundBrush}"
-                           Text="Production Amount" />
-                <TextBox Grid.Row="6"
-                         Grid.Column="1"
-                         IsEnabled="{Binding IsProducerRoleSelected}"
-                         Text="{Binding ProductionAmountText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-
-                <TextBlock Grid.Row="8"
-                           VerticalAlignment="Center"
-                           FontSize="12"
-                           Foreground="{DynamicResource MutedForegroundBrush}"
-                           Text="Consumption Amount" />
-                <TextBox Grid.Row="8"
-                         Grid.Column="1"
-                         IsEnabled="{Binding IsConsumerRoleSelected}"
-                         Text="{Binding ConsumptionAmountText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-
-                <TextBlock Grid.Row="10"
-                           VerticalAlignment="Center"
-                           FontSize="12"
-                           Foreground="{DynamicResource MutedForegroundBrush}"
-                           Text="Transhipment Capacity" />
-                <StackPanel Grid.Row="10"
-                            Grid.Column="1">
-                    <CheckBox Content="Set shared transhipment capacity on every node"
-                              IsChecked="{Binding ApplyTranshipmentCapacity, Mode=TwoWay}"
-                              IsEnabled="{Binding IsTransshipRoleSelected}" />
-                    <TextBox Margin="0,10,0,0"
-                             IsEnabled="{Binding CanEditTranshipmentCapacity}"
-                             Text="{Binding TranshipmentCapacityText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBlock Margin="0,6,0,0"
-                               FontSize="11"
-                               Foreground="{DynamicResource MutedForegroundBrush}"
-                               Text="Leave the capacity box blank to clear any existing shared transhipment limit when the checkbox is enabled."
-                               TextWrapping="Wrap" />
-                </StackPanel>
-
-                <Border Grid.Row="12"
-                        Grid.ColumnSpan="2"
-                        Padding="12"
-                        Background="{DynamicResource InfoPanelBrush}"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="12">
+        <ScrollViewer Grid.Row="2"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+                <Border Style="{StaticResource InsetCardBorderStyle}">
                     <StackPanel>
-                        <TextBlock FontSize="12"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource AccentStrongBrush}"
-                                   Text="What happens when you apply" />
+                        <TextBlock Style="{StaticResource SectionHeaderTextStyle}"
+                                   Text="Scope" />
                         <TextBlock Margin="0,8,0,0"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="{Binding ApplySummary}"
-                                   TextWrapping="Wrap" />
+                                   Style="{StaticResource HelperTextStyle}"
+                                   Text="{Binding ScopeSummary}" />
                     </StackPanel>
                 </Border>
 
-                <TextBlock Grid.Row="14"
-                           Grid.ColumnSpan="2"
-                           FontSize="11"
-                           Foreground="{DynamicResource MutedForegroundBrush}"
-                           Text="Traffic type is required. Producer and consumer roles need positive amounts. Shared transhipment capacity is only updated when the checkbox above is enabled."
-                           TextWrapping="Wrap" />
-            </Grid>
-        </Border>
+                <Border Margin="0,12,0,0"
+                        Style="{StaticResource InsetCardBorderStyle}">
+                    <StackPanel>
+                        <CheckBox Content="Update place type"
+                                  FontWeight="SemiBold"
+                                  IsChecked="{Binding ApplyPlaceType, Mode=TwoWay}" />
+                        <TextBlock Margin="0,8,0,0"
+                                   Style="{StaticResource HelperTextStyle}"
+                                   Text="Use this for a shared worldbuilding label such as village, market, depot, or port." />
+                        <TextBlock Margin="0,12,0,0"
+                                   Style="{StaticResource FieldLabelTextStyle}"
+                                   Text="Place type" />
+                        <TextBox Margin="0,6,0,0"
+                                 IsEnabled="{Binding ApplyPlaceType}"
+                                 Text="{Binding PlaceTypeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Margin="0,12,0,0"
+                        Style="{StaticResource InsetCardBorderStyle}">
+                    <StackPanel>
+                        <CheckBox Content="Update traffic role and profile"
+                                  FontWeight="SemiBold"
+                                  IsChecked="{Binding ApplyTrafficRole, Mode=TwoWay}" />
+                        <TextBlock Margin="0,8,0,0"
+                                   Style="{StaticResource HelperTextStyle}"
+                                   Text="Assign, replace, or remove one traffic role for the chosen traffic type across the current scope." />
+
+                        <TextBlock Margin="0,12,0,0"
+                                   Style="{StaticResource FieldLabelTextStyle}"
+                                   Text="Traffic type" />
+                        <ComboBox Margin="0,6,0,0"
+                                  IsEditable="True"
+                                  IsEnabled="{Binding ApplyTrafficRole}"
+                                  IsTextSearchEnabled="False"
+                                  ItemsSource="{Binding TrafficTypeOptions}"
+                                  Text="{Binding TrafficTypeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Margin="0,12,0,0"
+                                   Style="{StaticResource FieldLabelTextStyle}"
+                                   Text="Role" />
+                        <ComboBox Margin="0,6,0,0"
+                                  IsEnabled="{Binding ApplyTrafficRole}"
+                                  ItemsSource="{Binding RoleOptions}"
+                                  SelectedItem="{Binding SelectedRoleName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <UniformGrid Margin="0,12,0,0"
+                                     Columns="2">
+                            <StackPanel Margin="0,0,6,0">
+                                <TextBlock Style="{StaticResource FieldLabelTextStyle}"
+                                           Text="Production amount" />
+                                <TextBox Margin="0,6,0,0"
+                                         IsEnabled="{Binding IsProducerRoleSelected}"
+                                         Text="{Binding ProductionAmountText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Margin="6,0,0,0">
+                                <TextBlock Style="{StaticResource FieldLabelTextStyle}"
+                                           Text="Consumption amount" />
+                                <TextBox Margin="0,6,0,0"
+                                         IsEnabled="{Binding IsConsumerRoleSelected}"
+                                         Text="{Binding ConsumptionAmountText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </UniformGrid>
+                    </StackPanel>
+                </Border>
+
+                <Border Margin="0,12,0,0"
+                        Style="{StaticResource InsetCardBorderStyle}">
+                    <StackPanel>
+                        <CheckBox Content="Update shared transhipment capacity"
+                                  FontWeight="SemiBold"
+                                  IsChecked="{Binding ApplyTranshipmentCapacity, Mode=TwoWay}" />
+                        <TextBlock Margin="0,8,0,0"
+                                   Style="{StaticResource HelperTextStyle}"
+                                   Text="Leave the value blank to clear the shared capacity from every place in scope." />
+                        <TextBlock Margin="0,12,0,0"
+                                   Style="{StaticResource FieldLabelTextStyle}"
+                                   Text="Shared transhipment capacity" />
+                        <TextBox Margin="0,6,0,0"
+                                 IsEnabled="{Binding ApplyTranshipmentCapacity}"
+                                 Text="{Binding TranshipmentCapacityText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Margin="0,12,0,0"
+                        Style="{StaticResource InfoCardBorderStyle}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionHeaderTextStyle}"
+                                   Foreground="{DynamicResource AccentStrongBrush}"
+                                   Text="Change preview" />
+                        <TextBlock Margin="0,8,0,0"
+                                   Style="{StaticResource HelperTextStyle}"
+                                   Text="{Binding ChangePreview}" />
+                        <TextBlock Margin="0,8,0,0"
+                                   Style="{StaticResource ValidationTextStyle}"
+                                   Text="{Binding ValidationText}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
 
         <DockPanel Grid.Row="4">
             <TextBlock VerticalAlignment="Center"
-                       FontSize="12"
-                       Foreground="{DynamicResource MutedForegroundBrush}"
-                       Text="This updates every node in the currently loaded network." />
+                       Style="{StaticResource HelperTextStyle}"
+                       Text="Bulk changes apply immediately to the chosen scope and may affect later simulation results." />
             <WrapPanel DockPanel.Dock="Right"
                        Margin="12,0,0,0">
-                <Button Content="Apply To All Nodes"
+                <Button Style="{StaticResource SecondaryButtonStyle}"
+                        Content="Close"
+                        Click="Close_Click" />
+                <Button Content="Apply bulk edit"
                         Click="Apply_Click"
                         IsEnabled="{Binding CanApply}" />
-                <Button Content="Close"
-                        Click="Close_Click" />
             </WrapPanel>
         </DockPanel>
     </Grid>

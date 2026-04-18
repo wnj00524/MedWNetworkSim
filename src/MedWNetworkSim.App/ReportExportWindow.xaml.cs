@@ -10,11 +10,11 @@ public partial class ReportExportWindow : Window
 {
     private readonly MainWindowViewModel mainWindowViewModel;
 
-    public ReportExportWindow(MainWindowViewModel mainWindowViewModel)
+    public ReportExportWindow(MainWindowViewModel mainWindowViewModel, ReportExportKind initialExportKind = ReportExportKind.Current)
     {
         InitializeComponent();
         this.mainWindowViewModel = mainWindowViewModel;
-        ViewModel = new ReportExportWindowViewModel(mainWindowViewModel.SuggestedReportFilePath);
+        ViewModel = new ReportExportWindowViewModel(mainWindowViewModel.SuggestedReportFilePath, initialExportKind);
         DataContext = ViewModel;
     }
 
@@ -53,22 +53,20 @@ public partial class ReportExportWindow : Window
         }
     }
 
-    private void ExportCurrentReport_Click(object sender, RoutedEventArgs e)
+    private void ExportReport_Click(object sender, RoutedEventArgs e)
     {
         ExecuteWithErrorHandling(() =>
         {
             var path = NormalizeReportPath(ViewModel.ReportPath, ViewModel.SelectedFormat);
-            mainWindowViewModel.ExportCurrentReport(path, ViewModel.SelectedFormat);
-            ViewModel.ReportPath = path;
-        });
-    }
+            if (ViewModel.IsTimelineExport)
+            {
+                mainWindowViewModel.ExportTimelineReport(path, ViewModel.GetTimelinePeriods(), ViewModel.SelectedFormat);
+            }
+            else
+            {
+                mainWindowViewModel.ExportCurrentReport(path, ViewModel.SelectedFormat);
+            }
 
-    private void ExportTimelineReport_Click(object sender, RoutedEventArgs e)
-    {
-        ExecuteWithErrorHandling(() =>
-        {
-            var path = NormalizeReportPath(ViewModel.ReportPath, ViewModel.SelectedFormat);
-            mainWindowViewModel.ExportTimelineReport(path, ViewModel.GetTimelinePeriods(), ViewModel.SelectedFormat);
             ViewModel.ReportPath = path;
         });
     }

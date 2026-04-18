@@ -6,13 +6,17 @@ namespace MedWNetworkSim.App;
 public partial class BulkApplyTrafficRoleWindow : Window
 {
     private readonly MainWindowViewModel mainWindowViewModel;
+    private readonly IReadOnlyList<NodeViewModel> targetNodes;
 
     public BulkApplyTrafficRoleWindow(MainWindowViewModel mainWindowViewModel)
     {
         InitializeComponent();
         this.mainWindowViewModel = mainWindowViewModel;
+        targetNodes = mainWindowViewModel.GetBulkEditTargetNodes();
         ViewModel = new BulkApplyTrafficRoleWindowViewModel(
             mainWindowViewModel.GetAvailableTrafficTypeNames(),
+            mainWindowViewModel.GetBulkEditScopeSummary(),
+            mainWindowViewModel.SelectedNode?.PlaceType,
             mainWindowViewModel.SelectedNodeTrafficType,
             mainWindowViewModel.SelectedNodeRoleName,
             mainWindowViewModel.SelectedNodeTrafficProfile?.Production,
@@ -28,7 +32,7 @@ public partial class BulkApplyTrafficRoleWindow : Window
         ExecuteWithErrorHandling(() =>
         {
             var options = ViewModel.BuildOptions();
-            mainWindowViewModel.ApplyTrafficRoleToAllNodes(options);
+            mainWindowViewModel.ApplyBulkNodeEdits(options, targetNodes);
             Close();
         });
     }

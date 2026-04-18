@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="{Binding Terminology.TrafficTypeEditorTitle}"
+        Style="{StaticResource DialogChromeWindowStyle}"
         Width="980"
         Height="700"
         MinWidth="860"
@@ -35,12 +36,10 @@
                 BorderThickness="1"
                 CornerRadius="18">
             <StackPanel>
-                <TextBlock FontSize="18"
-                           FontWeight="SemiBold"
+                <TextBlock Style="{StaticResource DialogTitleTextStyle}"
                            Text="{Binding Terminology.TrafficTypeEditorTitle}" />
                 <TextBlock Margin="0,8,0,0"
-                           FontSize="12"
-                           Foreground="{DynamicResource MutedForegroundBrush}"
+                           Style="{StaticResource HelperTextStyle}"
                            Text="{Binding Terminology.TrafficTypeEditorIntro}"
                            TextWrapping="Wrap" />
             </StackPanel>
@@ -67,8 +66,7 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock FontSize="16"
-                               FontWeight="SemiBold"
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}"
                                Text="{Binding Terminology.TrafficTypes}" />
 
                     <WrapPanel Grid.Row="2">
@@ -76,9 +74,9 @@
                                 Click="AddTrafficType_Click"
                                 Style="{StaticResource AccessibleEditorButtonStyle}"
                                 ToolTip="Add a new traffic type" />
-                        <Button Content="Remove Selected Traffic Type"
+                        <Button Content="Remove selected traffic type"
                                 Click="RemoveTrafficType_Click"
-                                Style="{StaticResource AccessibleEditorButtonStyle}"
+                                Style="{StaticResource SecondaryButtonStyle}"
                                 ToolTip="Remove the selected traffic type" />
                     </WrapPanel>
 
@@ -174,6 +172,8 @@
                     BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1"
                     CornerRadius="18">
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -185,179 +185,174 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock FontSize="16"
-                               FontWeight="SemiBold"
+                    <TextBlock Style="{StaticResource SectionHeaderTextStyle}"
                                Text="{Binding Terminology.SelectedTrafficTypeHeader}" />
 
-                    <Grid Grid.Row="2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="10" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="2">
+                        <Border Style="{StaticResource InsetCardBorderStyle}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource FieldLabelTextStyle}"
+                                           Text="{Binding Terminology.TrafficType}" />
+                                <TextBox Margin="0,6,0,0"
+                                         Text="{Binding SelectedTrafficDefinition.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Margin="0,12,0,0"
+                                           Style="{StaticResource FieldLabelTextStyle}"
+                                           Text="Description" />
+                                <TextBox Margin="0,6,0,0"
+                                         MinHeight="90"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Text="{Binding SelectedTrafficDefinition.Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </Border>
 
-                        <TextBlock VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="{Binding Terminology.TrafficType}" />
-                        <TextBox Grid.Column="1"
-                                 Text="{Binding SelectedTrafficDefinition.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <Border Margin="0,12,0,0"
+                                Style="{StaticResource InsetCardBorderStyle}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource SectionHeaderTextStyle}"
+                                           Text="Network flow" />
+                                <TextBlock Margin="0,6,0,0"
+                                           Style="{StaticResource HelperTextStyle}"
+                                           Text="Set how this traffic values routes, how it allocates flow, and whether it competes for capacity." />
 
-                        <TextBlock Grid.Row="2"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Preference" />
-                        <ComboBox Grid.Row="2"
-                                  Grid.Column="1"
-                                  ItemsSource="{Binding RoutingPreferences}"
-                                  SelectedItem="{Binding SelectedTrafficDefinition.RoutingPreference, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Margin="0,12,0,0"
+                                           Style="{StaticResource FieldLabelTextStyle}"
+                                           Text="Preference" />
+                                <ComboBox Margin="0,6,0,0"
+                                          ItemsSource="{Binding RoutingPreferences}"
+                                          SelectedItem="{Binding SelectedTrafficDefinition.RoutingPreference, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
-                        <TextBlock Grid.Row="4"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Allocation Mode" />
-                        <ComboBox Grid.Row="4"
-                                  Grid.Column="1"
-                                  DisplayMemberPath="Label"
-                                  SelectedValuePath="Value"
-                                  ItemsSource="{Binding AllocationModeOptions}"
-                                  SelectedValue="{Binding SelectedTrafficDefinition.AllocationMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Margin="0,12,0,0"
+                                           Style="{StaticResource FieldLabelTextStyle}"
+                                           Text="Allocation mode" />
+                                <ComboBox Margin="0,6,0,0"
+                                          DisplayMemberPath="Label"
+                                          SelectedValuePath="Value"
+                                          ItemsSource="{Binding AllocationModeOptions}"
+                                          SelectedValue="{Binding SelectedTrafficDefinition.AllocationMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Margin="0,6,0,0"
+                                           Style="{StaticResource HelperTextStyle}"
+                                           Text="{Binding SelectedTrafficDefinition.AllocationModeHelpText}" />
 
-                        <TextBlock Grid.Row="6"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Bid / Unit" />
-                        <TextBox Grid.Row="6"
-                                 Grid.Column="1"
-                                 Text="{Binding SelectedTrafficDefinition.CapacityBidPerUnit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <UniformGrid Margin="0,12,0,0"
+                                             Columns="2">
+                                    <StackPanel Margin="0,0,6,0">
+                                        <TextBlock Style="{StaticResource FieldLabelTextStyle}"
+                                                   Text="Bid per unit" />
+                                        <TextBox Margin="0,6,0,0"
+                                                 Text="{Binding SelectedTrafficDefinition.CapacityBidPerUnit, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Margin="6,0,0,0">
+                                        <TextBlock Style="{StaticResource FieldLabelTextStyle}"
+                                                   Text="Perishability (periods)" />
+                                        <TextBox Margin="0,6,0,0"
+                                                 Text="{Binding SelectedTrafficDefinition.PerishabilityPeriods, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                </UniformGrid>
+                            </StackPanel>
+                        </Border>
 
-                        <TextBlock Grid.Row="8"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Perishability (Periods)" />
-                        <TextBox Grid.Row="8"
-                                 Grid.Column="1"
-                                 Text="{Binding SelectedTrafficDefinition.PerishabilityPeriods, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <Border Margin="0,12,0,0"
+                                Style="{StaticResource InsetCardBorderStyle}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource SectionHeaderTextStyle}"
+                                           Text="Route choice" />
 
-                        <TextBlock Grid.Row="10"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Route Model" />
-                        <ComboBox Grid.Row="10"
-                                  Grid.Column="1"
-                                  ItemsSource="{Binding RouteChoiceModels}"
-                                  SelectedItem="{Binding SelectedTrafficDefinition.RouteChoiceModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Margin="0,12,0,0"
+                                           Style="{StaticResource FieldLabelTextStyle}"
+                                           Text="Route model" />
+                                <ComboBox Margin="0,6,0,0"
+                                          ItemsSource="{Binding RouteChoiceModels}"
+                                          SelectedItem="{Binding SelectedTrafficDefinition.RouteChoiceModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Margin="0,6,0,0"
+                                           Style="{StaticResource HelperTextStyle}"
+                                           Text="{Binding SelectedTrafficDefinition.RouteChoiceModelHelpText}" />
 
-                        <TextBlock Grid.Row="12"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Flow Split" />
-                        <ComboBox Grid.Row="12"
-                                  Grid.Column="1"
-                                  ItemsSource="{Binding FlowSplitPolicies}"
-                                  SelectedItem="{Binding SelectedTrafficDefinition.FlowSplitPolicy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Margin="0,12,0,0"
+                                           Style="{StaticResource FieldLabelTextStyle}"
+                                           Text="Flow split" />
+                                <ComboBox Margin="0,6,0,0"
+                                          ItemsSource="{Binding FlowSplitPolicies}"
+                                          SelectedItem="{Binding SelectedTrafficDefinition.FlowSplitPolicy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Margin="0,6,0,0"
+                                           Style="{StaticResource HelperTextStyle}"
+                                           Text="{Binding SelectedTrafficDefinition.FlowSplitPolicyHelpText}" />
 
-                        <TextBlock Grid.Row="14"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Candidate Routes" />
-                        <TextBox Grid.Row="14"
-                                 Grid.Column="1"
-                                 Text="{Binding SelectedTrafficDefinition.MaxCandidateRoutes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <UniformGrid Margin="0,12,0,0"
+                                             Columns="2">
+                                    <StackPanel Margin="0,0,6,0">
+                                        <TextBlock Style="{StaticResource FieldLabelTextStyle}"
+                                                   Text="Candidate routes" />
+                                        <TextBox Margin="0,6,0,0"
+                                                 Text="{Binding SelectedTrafficDefinition.MaxCandidateRoutes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Margin="6,0,0,0">
+                                        <TextBlock Style="{StaticResource FieldLabelTextStyle}"
+                                                   Text="Priority" />
+                                        <TextBox Margin="0,6,0,0"
+                                                 Text="{Binding SelectedTrafficDefinition.Priority, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                </UniformGrid>
 
-                        <TextBlock Grid.Row="16"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Priority" />
-                        <TextBox Grid.Row="16"
-                                 Grid.Column="1"
-                                 Text="{Binding SelectedTrafficDefinition.Priority, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Margin="0,12,0,0"
+                                           Style="{StaticResource FieldLabelTextStyle}"
+                                           Text="Congestion sensitivity" />
+                                <TextBox Margin="0,6,0,0"
+                                         Text="{Binding SelectedTrafficDefinition.CongestionSensitivity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </Border>
 
-                        <TextBlock Grid.Row="18"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Congestion Sensitivity" />
-                        <TextBox Grid.Row="18"
-                                 Grid.Column="1"
-                                 Text="{Binding SelectedTrafficDefinition.CongestionSensitivity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <Border Margin="0,12,0,0"
+                                Style="{StaticResource InsetCardBorderStyle}">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource SectionHeaderTextStyle}"
+                                           Text="Advanced behaviour" />
+                                <TextBlock Margin="0,6,0,0"
+                                           Style="{StaticResource HelperTextStyle}"
+                                           Text="These settings matter most for adaptive or centrally managed traffic types." />
 
-                        <StackPanel Grid.Row="20"
-                                    Grid.ColumnSpan="2"
-                                    Visibility="{Binding SelectedTrafficDefinition.IsStochasticUserResponsive, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <TextBlock FontSize="11"
-                                       Foreground="{DynamicResource MutedForegroundBrush}"
-                                       Text="Stochastic Settings" />
-                            <UniformGrid Margin="0,6,0,0"
-                                         Columns="2">
-                                <TextBox ToolTip="Information Accuracy"
-                                         Text="{Binding SelectedTrafficDefinition.InformationAccuracy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBox ToolTip="Route Diversity"
-                                         Text="{Binding SelectedTrafficDefinition.RouteDiversity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBox ToolTip="Reroute Threshold"
-                                         Text="{Binding SelectedTrafficDefinition.RerouteThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBox ToolTip="Stickiness"
-                                         Text="{Binding SelectedTrafficDefinition.Stickiness, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            </UniformGrid>
-                        </StackPanel>
+                                <StackPanel Visibility="{Binding SelectedTrafficDefinition.IsStochasticUserResponsive, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <UniformGrid Margin="0,12,0,0"
+                                                 Columns="2">
+                                        <StackPanel Margin="0,0,6,0">
+                                            <TextBlock Style="{StaticResource FieldLabelTextStyle}"
+                                                       Text="Information accuracy" />
+                                            <TextBox Margin="0,6,0,0"
+                                                     Text="{Binding SelectedTrafficDefinition.InformationAccuracy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Margin="6,0,0,0">
+                                            <TextBlock Style="{StaticResource FieldLabelTextStyle}"
+                                                       Text="Route diversity" />
+                                            <TextBox Margin="0,6,0,0"
+                                                     Text="{Binding SelectedTrafficDefinition.RouteDiversity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </UniformGrid>
 
-                        <CheckBox Grid.Row="22"
-                                  Grid.ColumnSpan="2"
-                                  Content="Internalize congestion"
-                                  IsChecked="{Binding SelectedTrafficDefinition.InternalizeCongestion, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                  Visibility="{Binding SelectedTrafficDefinition.IsSystemOptimal, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <UniformGrid Margin="0,12,0,0"
+                                                 Columns="2">
+                                        <StackPanel Margin="0,0,6,0">
+                                            <TextBlock Style="{StaticResource FieldLabelTextStyle}"
+                                                       Text="Reroute threshold" />
+                                            <TextBox Margin="0,6,0,0"
+                                                     Text="{Binding SelectedTrafficDefinition.RerouteThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Margin="6,0,0,0">
+                                            <TextBlock Style="{StaticResource FieldLabelTextStyle}"
+                                                       Text="Stickiness" />
+                                            <TextBox Margin="0,6,0,0"
+                                                     Text="{Binding SelectedTrafficDefinition.Stickiness, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </UniformGrid>
+                                </StackPanel>
 
-                        <TextBlock Grid.Row="24"
-                                   VerticalAlignment="Top"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="Description" />
-                        <TextBox Grid.Row="24"
-                                 Grid.Column="1"
-                                 MinHeight="120"
-                                 AcceptsReturn="True"
-                                 TextWrapping="Wrap"
-                                 VerticalScrollBarVisibility="Auto"
-                                 Text="{Binding SelectedTrafficDefinition.Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    </Grid>
+                                <CheckBox Margin="0,12,0,0"
+                                          Content="Internalize congestion"
+                                          IsChecked="{Binding SelectedTrafficDefinition.InternalizeCongestion, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          Visibility="{Binding SelectedTrafficDefinition.IsSystemOptimal, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
 
                     <Border Grid.Row="4"
                             Padding="12"
@@ -365,9 +360,8 @@
                             BorderBrush="{DynamicResource BorderBrush}"
                             BorderThickness="1"
                             CornerRadius="12">
-                        <TextBlock FontSize="12"
-                                   Foreground="{DynamicResource MutedForegroundBrush}"
-                                   Text="{Binding SelectedTrafficDefinition.AllocationModeHelpText}"
+                        <TextBlock Style="{StaticResource ValidationTextStyle}"
+                                   Text="{Binding SelectedTrafficDefinition.ValidationText}"
                                    TextWrapping="Wrap" />
                     </Border>
 
@@ -383,6 +377,7 @@
                                    TextWrapping="Wrap" />
                     </Border>
                 </Grid>
+                </ScrollViewer>
             </Border>
         </Grid>
 

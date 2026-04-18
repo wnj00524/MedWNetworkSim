@@ -11,7 +11,9 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using MedWNetworkSim.App.Models;
 using MedWNetworkSim.Interaction;
 using MedWNetworkSim.Presentation;
 using MedWNetworkSim.Rendering;
@@ -393,7 +395,7 @@ public sealed class ShellWindow : Window
         }
     }
 
-    private static Control BuildLayout(WorkspaceViewModel viewModel)
+    private Control BuildLayout(WorkspaceViewModel viewModel)
     {
         var root = new DockPanel
         {
@@ -431,7 +433,7 @@ public sealed class ShellWindow : Window
             Padding = new Thickness(18, 12),
             Child = new TextBlock
             {
-                Text = "Shell loaded. If the graph fails, a visible fallback panel should appear in the center region.",
+                Text = "Ready to edit your network. If the graph cannot be displayed, this workspace will show a visible recovery panel.",
                 FontSize = 18,
                 FontWeight = FontWeight.Bold,
                 Foreground = new SolidColorBrush(Color.Parse("#5E4300"))
@@ -460,7 +462,7 @@ public sealed class ShellWindow : Window
             RowDefinitions = new RowDefinitions("*,250")
         };
 
-        centerGrid.Children.Add(BuildToolRail());
+        centerGrid.Children.Add(BuildToolRail(viewModel));
         centerGrid.Children.Add(BuildCanvasArea(viewModel));
         centerGrid.Children.Add(BuildInspector());
         centerGrid.Children.Add(BuildBottomStrip(viewModel));
@@ -469,7 +471,7 @@ public sealed class ShellWindow : Window
         return root;
     }
 
-    private static Control BuildTopBar(WorkspaceViewModel viewModel)
+    private Control BuildTopBar(WorkspaceViewModel viewModel)
     {
         var grid = new Grid
         {
@@ -490,10 +492,10 @@ public sealed class ShellWindow : Window
                 },
                 new TextBlock
                 {
-                    Text = "Shell loaded",
+                    Text = "Ready to edit your network",
                     FontSize = 16,
                     FontWeight = FontWeight.SemiBold,
-                    Foreground = new SolidColorBrush(Color.Parse("#9C6E00"))
+                    Foreground = new SolidColorBrush(Color.Parse("#546A7E"))
                 },
                 new TextBlock
                 {
@@ -513,6 +515,10 @@ public sealed class ShellWindow : Window
             Children =
             {
                 BuildButton("New", viewModel.NewCommand),
+                BuildButton("Open", new RelayCommand(() => _ = OpenNetworkFileAsync(viewModel))),
+                BuildButton("Save", new RelayCommand(() => _ = SaveNetworkFileAsync(viewModel))),
+                BuildButton("Import", new RelayCommand(() => _ = ImportGraphMlAsync(viewModel))),
+                BuildButton("Export", new RelayCommand(() => _ = ExportGraphMlAsync(viewModel))),
                 BuildButton("Run", viewModel.SimulateCommand),
                 BuildButton("Step", viewModel.StepCommand),
                 BuildButton("Reset", viewModel.ResetTimelineCommand),
@@ -525,7 +531,7 @@ public sealed class ShellWindow : Window
         return grid;
     }
 
-    private static Control BuildToolRail()
+    private static Control BuildToolRail(WorkspaceViewModel viewModel)
     {
         var border = new Border
         {
@@ -540,11 +546,11 @@ public sealed class ShellWindow : Window
                 Spacing = 12,
                 Children =
                 {
-                    BuildRailBadge("SHELL"),
-                    BuildRailBadge("TOOLS"),
-                    BuildRailBadge("FLOW"),
-                    BuildRailBadge("VIEW"),
-                    BuildRailBadge("SIM")
+                    BuildRailButton("Select", "Select and inspect nodes and edges.", viewModel.FitCommand),
+                    BuildRailButton("Connect", "Connect two nodes using right-drag on the canvas.", viewModel.FitCommand),
+                    BuildRailButton("Add Node", "Press N on the canvas to add a new node.", viewModel.NewCommand),
+                    BuildRailButton("Run Sim", "Run static simulation and review report metrics.", viewModel.SimulateCommand),
+                    BuildRailButton("Reset", "Reset timeline playback to period 0.", viewModel.ResetTimelineCommand)
                 }
             }
         };
@@ -599,12 +605,69 @@ public sealed class ShellWindow : Window
                         TextWrapping = TextWrapping.Wrap,
                         Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
                     },
-                    details
+                    details,
+                    BuildInspectorEditor()
                 }
             }
         };
         Grid.SetColumn(border, 2);
         return border;
+    }
+
+    private static Control BuildInspectorEditor()
+    {
+        var panel = new StackPanel
+        {
+            Spacing = 8,
+            Margin = new Thickness(0, 8, 0, 0),
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "Editing",
+                    FontWeight = FontWeight.Bold,
+                    Foreground = new SolidColorBrush(Color.Parse("#16324C"))
+                },
+                BuildLabeledTextBox("Name", "InspectorName"),
+                BuildLabeledTextBox("Type / Description", "InspectorType"),
+                BuildLabeledTextBox("Traffic Type", "SelectedTrafficType"),
+                BuildLabeledTextBox("Production", "InspectorProduction"),
+                BuildLabeledTextBox("Consumption", "InspectorConsumption"),
+                BuildLabeledTextBox("Capacity / Timeline", "InspectorCapacity"),
+                BuildLabeledTextBox("Time", "InspectorTime"),
+                BuildLabeledTextBox("Cost", "InspectorCost"),
+                BuildLabeledTextBox("Bulk place type", "InspectorBulkType"),
+                new TextBlock
+                {
+                    Text = "Use Apply to update network, selected node, selected edge, or bulk selection.",
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
+                },
+                new TextBlock
+                {
+                    [!TextBlock.TextProperty] = new Binding("InspectorValidationMessage"),
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = new SolidColorBrush(Color.Parse("#9D2E2E"))
+                },
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    Children =
+                    {
+                        BuildBoundButton("Apply", "ApplyInspectorCommand"),
+                        BuildBoundButton("Add Traffic", "AddTrafficTypeCommand"),
+                        BuildBoundButton("Remove Traffic", "RemoveTrafficTypeCommand")
+                    }
+                }
+            }
+        };
+
+        return new ScrollViewer
+        {
+            MaxHeight = 420,
+            Content = panel
+        };
     }
 
     private static Control BuildBottomStrip(WorkspaceViewModel viewModel)
@@ -662,9 +725,26 @@ public sealed class ShellWindow : Window
             new TabItem
             {
                 Header = "Reports",
-                Content = new ScrollViewer
+                Content = new StackPanel
                 {
-                    Content = metrics
+                    Spacing = 10,
+                    Children =
+                    {
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            Spacing = 8,
+                            Children =
+                            {
+                                BuildButton("Export Current (HTML)", new RelayCommand(() => _ = ExportCurrentReportAsync(viewModel, ReportExportFormat.Html))),
+                                BuildButton("Export Timeline (CSV)", new RelayCommand(() => _ = ExportTimelineReportAsync(viewModel, ReportExportFormat.Csv)))
+                            }
+                        },
+                        new ScrollViewer
+                        {
+                            Content = metrics
+                        }
+                    }
                 }
             });
 
@@ -720,7 +800,7 @@ public sealed class ShellWindow : Window
                 BorderThickness = new Thickness(1),
                 Child = new TextBlock
                 {
-                    Text = "Shell loaded | Live graph canvas active. If rendering fails, a fallback panel will appear here instead of a silent black surface.",
+                    Text = "Canvas ready: select, pan, zoom, drag, marquee select, connect, and keyboard actions are available.",
                     Foreground = new SolidColorBrush(Color.Parse("#284A67")),
                     FontSize = 13,
                     FontWeight = FontWeight.SemiBold,
@@ -745,7 +825,7 @@ public sealed class ShellWindow : Window
             };
             var fallbackDetail = new TextBlock
             {
-                Text = "Waiting for graph canvas diagnostics.",
+                Text = "The graph could not be displayed. Try resetting the view or reopening the file.",
                 Margin = new Thickness(0, 8, 0, 0),
                 Foreground = new SolidColorBrush(Color.Parse("#934040")),
                 TextWrapping = TextWrapping.Wrap
@@ -909,23 +989,177 @@ public sealed class ShellWindow : Window
         return button;
     }
 
-    private static Border BuildRailBadge(string text)
+    private static Button BuildBoundButton(string label, string commandPropertyName)
     {
-        return new Border
+        var button = new Button
+        {
+            Content = label,
+            Padding = new Thickness(12, 8),
+            Background = new SolidColorBrush(Color.Parse("#D9EAF8")),
+            Foreground = new SolidColorBrush(Color.Parse("#17324B")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#7FA7C9")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12)
+        };
+        button.Bind(Button.CommandProperty, new Binding(commandPropertyName));
+        return button;
+    }
+
+    private static Button BuildRailButton(string text, string toolTip, ICommand command)
+    {
+        var button = new Button
         {
             Height = 52,
-            Background = new SolidColorBrush(Color.Parse("#F8FCFF")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#93B7D7")),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(14),
-            Child = new TextBlock
+            Content = new TextBlock
             {
                 Text = text,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
                 FontWeight = FontWeight.Bold,
                 Foreground = new SolidColorBrush(Color.Parse("#355777"))
+            },
+            ToolTip = toolTip,
+            Command = command,
+            BorderBrush = new SolidColorBrush(Color.Parse("#93B7D7")),
+            BorderThickness = new Thickness(1),
+            Background = new SolidColorBrush(Color.Parse("#F8FCFF")),
+            CornerRadius = new CornerRadius(14)
+        };
+
+        button.Classes.Add("focusable-tool");
+        return button;
+    }
+
+    private static Control BuildLabeledTextBox(string label, string propertyName)
+    {
+        var textBox = new TextBox
+        {
+            Watermark = label
+        };
+        textBox.Bind(TextBox.TextProperty, new Binding(propertyName, BindingMode.TwoWay));
+        return new StackPanel
+        {
+            Spacing = 2,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = label,
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
+                },
+                textBox
             }
         };
+    }
+
+    private async Task OpenNetworkFileAsync(WorkspaceViewModel viewModel)
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            AllowMultiple = false,
+            Title = "Open network",
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Network JSON") { Patterns = ["*.json"] }
+            ]
+        });
+
+        var selected = files.FirstOrDefault();
+        if (selected is null)
+        {
+            return;
+        }
+
+        viewModel.OpenNetwork(selected.Path.LocalPath);
+    }
+
+    private async Task SaveNetworkFileAsync(WorkspaceViewModel viewModel)
+    {
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Save network",
+            DefaultExtension = "json",
+            FileTypeChoices =
+            [
+                new FilePickerFileType("Network JSON") { Patterns = ["*.json"] }
+            ]
+        });
+
+        if (file is null)
+        {
+            return;
+        }
+
+        viewModel.SaveNetwork(file.Path.LocalPath);
+    }
+
+    private async Task ImportGraphMlAsync(WorkspaceViewModel viewModel)
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            AllowMultiple = false,
+            Title = "Import GraphML",
+            FileTypeFilter =
+            [
+                new FilePickerFileType("GraphML") { Patterns = ["*.graphml", "*.xml"] }
+            ]
+        });
+        var selected = files.FirstOrDefault();
+        if (selected is null)
+        {
+            return;
+        }
+
+        viewModel.ImportGraphMl(selected.Path.LocalPath);
+    }
+
+    private async Task ExportGraphMlAsync(WorkspaceViewModel viewModel)
+    {
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export GraphML",
+            DefaultExtension = "graphml",
+            FileTypeChoices =
+            [
+                new FilePickerFileType("GraphML") { Patterns = ["*.graphml"] }
+            ]
+        });
+        if (file is null)
+        {
+            return;
+        }
+
+        viewModel.ExportGraphMl(file.Path.LocalPath);
+    }
+
+    private async Task ExportCurrentReportAsync(WorkspaceViewModel viewModel, ReportExportFormat format)
+    {
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export current report",
+            DefaultExtension = format == ReportExportFormat.Csv ? "csv" : format == ReportExportFormat.Json ? "json" : "html"
+        });
+        if (file is null)
+        {
+            return;
+        }
+
+        viewModel.ExportCurrentReport(file.Path.LocalPath, format);
+    }
+
+    private async Task ExportTimelineReportAsync(WorkspaceViewModel viewModel, ReportExportFormat format)
+    {
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export timeline report",
+            DefaultExtension = format == ReportExportFormat.Csv ? "csv" : format == ReportExportFormat.Json ? "json" : "html"
+        });
+        if (file is null)
+        {
+            return;
+        }
+
+        viewModel.ExportTimelineReport(file.Path.LocalPath, 12, format);
     }
 }

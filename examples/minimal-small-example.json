@@ -1,0 +1,54 @@
+{
+  "name": "Minimal Small Example",
+  "description": "A tiny starter network with two nodes and one connection.",
+  "timelineLoopLength": 12,
+  "trafficTypes": [
+    {
+      "name": "general",
+      "routingPreference": "totalCost",
+      "allocationMode": "greedyBestRoute"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "producer",
+      "name": "Producer",
+      "x": -180,
+      "y": 0,
+      "placeType": "Source",
+      "transhipmentCapacity": 30,
+      "trafficProfiles": [
+        {
+          "trafficType": "general",
+          "production": 10
+        }
+      ]
+    },
+    {
+      "id": "consumer",
+      "name": "Consumer",
+      "x": 180,
+      "y": 0,
+      "placeType": "Sink",
+      "transhipmentCapacity": 30,
+      "trafficProfiles": [
+        {
+          "trafficType": "general",
+          "consumption": 10
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "producer->consumer",
+      "fromNodeId": "producer",
+      "toNodeId": "consumer",
+      "time": 1.0,
+      "cost": 1.0,
+      "capacity": 12,
+      "isBidirectional": false,
+      "routeType": "Road"
+    }
+  ]
+}

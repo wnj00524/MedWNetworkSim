@@ -533,6 +533,28 @@ public sealed class ShellWindow : Window
 
     private static Control BuildToolRail(WorkspaceViewModel viewModel)
     {
+        var stack = new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "Actions",
+                    FontSize = 16,
+                    FontWeight = FontWeight.Bold,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Foreground = new SolidColorBrush(Color.Parse("#16324C"))
+                },
+                BuildRailButton("Select", viewModel.SelectInteractionHelpCommand, "Show selection, keyboard, and connection help.", 0),
+                BuildRailButton("Add Node", viewModel.AddNodeCommand, "Add a node at the current viewport center.", 1),
+                BuildRailButton("Connect", viewModel.ConnectSelectedNodesCommand, "Create a connection from the two selected nodes, or explain how to do it.", 2),
+                BuildRailButton("Delete", viewModel.DeleteSelectionCommand, "Delete the current selection.", 3),
+                BuildRailButton("Fit", viewModel.FitCommand, "Fit the graph content into view.", 4),
+                BuildRailButton("Run", viewModel.SimulateCommand, "Run a static simulation.", 5)
+            }
+        };
+
         var border = new Border
         {
             Background = new SolidColorBrush(Color.Parse("#E8F0F8")),
@@ -580,26 +602,12 @@ public sealed class ShellWindow : Window
             BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
             BorderThickness = new Thickness(1),
             Padding = new Thickness(18),
-            Child = new StackPanel
+            Child = new ScrollViewer
             {
-                Spacing = 12,
-                Children =
+                Content = new StackPanel
                 {
-                    new TextBlock
-                    {
-                        Text = "Inspector",
-                        FontSize = 20,
-                        FontWeight = FontWeight.Bold,
-                        Foreground = new SolidColorBrush(Color.Parse("#16324C"))
-                    },
-                    new TextBlock
-                    {
-                        [!TextBlock.TextProperty] = new Binding("Inspector.Headline"),
-                        FontSize = 16,
-                        FontWeight = FontWeight.SemiBold,
-                        Foreground = new SolidColorBrush(Color.Parse("#8C5A00"))
-                    },
-                    new TextBlock
+                    Spacing = 12,
+                    Children =
                     {
                         [!TextBlock.TextProperty] = new Binding("Inspector.Summary"),
                         TextWrapping = TextWrapping.Wrap,
@@ -793,12 +801,12 @@ public sealed class ShellWindow : Window
             var canvasHeader = new Border
             {
                 Margin = new Thickness(8, 8, 8, 10),
-                Padding = new Thickness(12, 8),
+                Padding = new Thickness(12, 10),
                 Background = new SolidColorBrush(Color.Parse("#F8FCFF")),
                 CornerRadius = new CornerRadius(12),
                 BorderBrush = new SolidColorBrush(Color.Parse("#93B7D7")),
                 BorderThickness = new Thickness(1),
-                Child = new TextBlock
+                Child = new StackPanel
                 {
                     Text = "Canvas ready: select, pan, zoom, drag, marquee select, connect, and keyboard actions are available.",
                     Foreground = new SolidColorBrush(Color.Parse("#284A67")),

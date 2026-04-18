@@ -1,0 +1,143 @@
+{
+  "name": "Avalonia Migration Pilot",
+  "description": "Cross-platform shell with render-driven graph canvas.",
+  "timelineLoopLength": 12,
+  "trafficTypes": [
+    {
+      "name": "grain",
+      "routingPreference": "totalCost",
+      "allocationMode": "greedyBestRoute"
+    },
+    {
+      "name": "tools",
+      "routingPreference": "speed",
+      "allocationMode": "greedyBestRoute"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "granary",
+      "name": "Granary",
+      "x": -420,
+      "y": -120,
+      "placeType": "Storehouse",
+      "transhipmentCapacity": 100,
+      "trafficProfiles": [
+        {
+          "trafficType": "grain",
+          "production": 42,
+          "canTransship": true,
+          "isStore": true,
+          "storeCapacity": 60
+        },
+        {
+          "trafficType": "tools",
+          "consumption": 6,
+          "canTransship": true
+        }
+      ]
+    },
+    {
+      "id": "market",
+      "name": "Market Hall",
+      "x": -60,
+      "y": 40,
+      "placeType": "Exchange",
+      "transhipmentCapacity": 80,
+      "trafficProfiles": [
+        {
+          "trafficType": "grain",
+          "consumption": 24,
+          "canTransship": true
+        },
+        {
+          "trafficType": "tools",
+          "consumption": 10,
+          "canTransship": true
+        }
+      ]
+    },
+    {
+      "id": "forge",
+      "name": "Forge Quarter",
+      "x": 310,
+      "y": -80,
+      "placeType": "Workshop",
+      "transhipmentCapacity": 60,
+      "trafficProfiles": [
+        {
+          "trafficType": "grain",
+          "consumption": 8,
+          "canTransship": true
+        },
+        {
+          "trafficType": "tools",
+          "production": 18,
+          "canTransship": true
+        }
+      ]
+    },
+    {
+      "id": "harbor",
+      "name": "Harbor Gate",
+      "x": 520,
+      "y": 220,
+      "placeType": "Transit",
+      "transhipmentCapacity": 120,
+      "trafficProfiles": [
+        {
+          "trafficType": "grain",
+          "consumption": 16,
+          "canTransship": true
+        },
+        {
+          "trafficType": "tools",
+          "consumption": 4,
+          "canTransship": true
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "granary->market",
+      "fromNodeId": "granary",
+      "toNodeId": "market",
+      "time": 1.2,
+      "cost": 1.1,
+      "capacity": 40,
+      "isBidirectional": true,
+      "routeType": "Cart path"
+    },
+    {
+      "id": "market->forge",
+      "fromNodeId": "market",
+      "toNodeId": "forge",
+      "time": 1.7,
+      "cost": 1.4,
+      "capacity": 26,
+      "isBidirectional": true,
+      "routeType": "Stone road"
+    },
+    {
+      "id": "forge->harbor",
+      "fromNodeId": "forge",
+      "toNodeId": "harbor",
+      "time": 2.1,
+      "cost": 2.4,
+      "capacity": 28,
+      "isBidirectional": false,
+      "routeType": "River lane"
+    },
+    {
+      "id": "market->harbor",
+      "fromNodeId": "market",
+      "toNodeId": "harbor",
+      "time": 2.6,
+      "cost": 2.0,
+      "capacity": 34,
+      "isBidirectional": true,
+      "routeType": "Merchant road"
+    }
+  ]
+}

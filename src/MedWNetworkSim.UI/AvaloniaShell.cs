@@ -179,7 +179,7 @@ public sealed class GraphCanvasControl : Control
 
         if (button == GraphPointerButton.Right)
         {
-            ShowContextMenu(ViewModel, interactionContext, point, e.GetPosition(this));
+            ShowContextMenu(ViewModel, interactionContext, point);
             e.Handled = true;
             return;
         }
@@ -197,10 +197,16 @@ public sealed class GraphCanvasControl : Control
         e.Handled = true;
     }
 
-    private void ShowContextMenu(WorkspaceViewModel viewModel, GraphInteractionContext interactionContext, GraphPoint screenPoint, Point localPoint)
+    private void ShowContextMenu(WorkspaceViewModel viewModel, GraphInteractionContext interactionContext, GraphPoint screenPoint)
     {
         var worldPoint = interactionContext.Viewport.ScreenToWorld(screenPoint, interactionContext.ViewportSize);
         var hit = new GraphHitTester().HitTest(interactionContext.Scene, worldPoint);
+        if (ContextMenu is { } existingMenu)
+        {
+            existingMenu.Close();
+            ContextMenu = null;
+        }
+
         var menu = new ContextMenu();
         var items = new List<MenuItem>();
 
@@ -232,8 +238,6 @@ public sealed class GraphCanvasControl : Control
         menu.ItemsSource = items;
         menu.Placement = PlacementMode.Pointer;
         menu.PlacementTarget = this;
-        menu.HorizontalOffset = localPoint.X;
-        menu.VerticalOffset = localPoint.Y;
         ContextMenu = menu;
         menu.Open(this);
     }
@@ -1015,7 +1019,7 @@ public sealed class ShellWindow : Window
         profileList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedNodeTrafficProfileItem), BindingMode.TwoWay));
         ApplyFocusVisual(profileList);
 
-        var trafficRoleEditor = BuildTrafficRoleEditor();
+        var trafficRoleEditor = BuildTrafficRoleEditor(out var trafficRoleEditorFocusTarget);
 
         var panel = new StackPanel
         {
@@ -1030,7 +1034,7 @@ public sealed class ShellWindow : Window
                 BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.NodeTranshipmentCapacityText)),
                 BuildLabeledComboBox("Node shape", nameof(WorkspaceViewModel.NodeShapeOptions), nameof(WorkspaceViewModel.NodeShape)),
                 BuildLabeledComboBox("Node kind", nameof(WorkspaceViewModel.NodeKindOptions), nameof(WorkspaceViewModel.NodeKind)),
-                BuildSectionTitle("Traffic Roles", "Select a role, then edit traffic, supply, demand, storage, and timing."),
+                BuildSectionTitle("Traffic Roles", "Select a role, then edit traffic, supply, demand, storage, and timing right below."),
                 profileList,
                 new StackPanel
                 {
@@ -1049,7 +1053,7 @@ public sealed class ShellWindow : Window
             }
         };
         panel.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNode)));
-        HookInspectorSectionFocus(viewModel, panel, trafficRoleEditor, null);
+        HookInspectorSectionFocus(viewModel, panel, trafficRoleEditor, trafficRoleEditorFocusTarget, null, null);
         return panel;
     }
 
@@ -1075,7 +1079,7 @@ public sealed class ShellWindow : Window
             }
         };
         panel.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingEdge)));
-        HookInspectorSectionFocus(viewModel, panel, null, panel);
+        HookInspectorSectionFocus(viewModel, panel, null, null, panel, panel);
         return panel;
     }
 
@@ -1201,16 +1205,26 @@ public sealed class ShellWindow : Window
         };
     }
 
-    private static Control BuildTrafficRoleEditor()
+    private static Control BuildTrafficRoleEditor(out Control focusTarget)
     {
+        var trafficTypeBox = BuildComboBox();
+        trafficTypeBox.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.TrafficTypeNameOptions)));
+        trafficTypeBox.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.NodeTrafficTypeText), BindingMode.TwoWay));
+        focusTarget = trafficTypeBox;
+
+        var roleBox = BuildComboBox();
+        roleBox.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.NodeRoleOptions)));
+        roleBox.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.NodeTrafficRoleText), BindingMode.TwoWay));
+
         var stack = new StackPanel
         {
             Spacing = 8,
             Children =
             {
+                BuildSectionTitle("Role Details", "Edit traffic, supply, demand, storage, and timing for the selected role."),
                 BuildSectionTitle("Identity", "Type and role"),
-                BuildLabeledComboBox("Traffic", nameof(WorkspaceViewModel.TrafficTypeNameOptions), nameof(WorkspaceViewModel.NodeTrafficTypeText)),
-                BuildLabeledComboBox("Role", nameof(WorkspaceViewModel.NodeRoleOptions), nameof(WorkspaceViewModel.NodeTrafficRoleText)),
+                BuildLabeledRow("Traffic", trafficTypeBox),
+                BuildLabeledRow("Role", roleBox),
                 BuildSectionTitle("Flow", "Supply and demand"),
                 BuildLabeledTextBox("Production", nameof(WorkspaceViewModel.NodeProductionText)),
                 BuildLabeledTextBox("Consumption", nameof(WorkspaceViewModel.NodeConsumptionText)),
@@ -1226,8 +1240,17 @@ public sealed class ShellWindow : Window
                 BuildLabeledTextBox("Store capacity", nameof(WorkspaceViewModel.NodeStoreCapacityText), nameof(WorkspaceViewModel.IsNodeStoreCapacityEnabled))
             }
         };
-        stack.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsNodeTrafficRoleSelected)));
-        return stack;
+        var card = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#ECF4FC")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(12),
+            Child = stack
+        };
+        card.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsNodeTrafficRoleSelected)));
+        return card;
     }
 
     private static Control BuildTrafficRoleEmptyState(WorkspaceViewModel viewModel)
@@ -1256,7 +1279,13 @@ public sealed class ShellWindow : Window
         return panel;
     }
 
-    private static void HookInspectorSectionFocus(WorkspaceViewModel viewModel, Control nodeContainer, Control? roleTarget, Control? routeTarget)
+    private static void HookInspectorSectionFocus(
+        WorkspaceViewModel viewModel,
+        Control nodeContainer,
+        Control? roleTarget,
+        Control? roleFocusTarget,
+        Control? routeTarget,
+        Control? routeFocusTarget)
     {
         viewModel.PropertyChanged += (_, e) =>
         {
@@ -1265,7 +1294,7 @@ public sealed class ShellWindow : Window
                 viewModel.IsEditingNode &&
                 viewModel.SelectedNodeTrafficProfileItem is not null)
             {
-                roleTarget.BringIntoView();
+                BringIntoViewAndFocus(roleTarget, roleFocusTarget);
                 return;
             }
 
@@ -1276,19 +1305,29 @@ public sealed class ShellWindow : Window
 
             if (viewModel.SelectedInspectorSection == InspectorSectionTarget.TrafficRoles && roleTarget is not null)
             {
-                roleTarget.BringIntoView();
-                roleTarget.Focus();
+                BringIntoViewAndFocus(roleTarget, roleFocusTarget);
             }
             else if (viewModel.SelectedInspectorSection == InspectorSectionTarget.Node)
             {
-                nodeContainer.BringIntoView();
+                BringIntoViewAndFocus(nodeContainer, null);
             }
             else if (viewModel.SelectedInspectorSection == InspectorSectionTarget.Route && routeTarget is not null)
             {
-                routeTarget.BringIntoView();
-                routeTarget.Focus();
+                BringIntoViewAndFocus(routeTarget, routeFocusTarget);
             }
         };
+    }
+
+    private static void BringIntoViewAndFocus(Control container, Control? focusTarget)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            container.BringIntoView();
+            if (focusTarget is not null && focusTarget.IsVisible && focusTarget.IsEnabled)
+            {
+                focusTarget.Focus();
+            }
+        }, DispatcherPriority.Background);
     }
 
     private static TextBlock BuildBoundText(string propertyName, int column)

@@ -509,7 +509,13 @@ public sealed class WorkspaceViewModel : ObservableObject
             if (SetProperty(ref selectedNodeTrafficProfileItem, value))
             {
                 PopulateSelectedNodeTrafficEditor();
+                Raise(nameof(IsNodeTrafficRoleSelected));
+                Raise(nameof(IsNodeStoreCapacityEnabled));
+                Raise(nameof(NodeTrafficRoleValidationText));
+                Raise(nameof(CanApplyInspectorEdits));
+                DuplicateSelectedNodeTrafficProfileCommand.NotifyCanExecuteChanged();
                 RemoveSelectedNodeTrafficProfileCommand.NotifyCanExecuteChanged();
+                ApplyInspectorCommand.NotifyCanExecuteChanged();
             }
         }
     }

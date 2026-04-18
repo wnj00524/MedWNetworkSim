@@ -1008,12 +1008,14 @@ public sealed class ShellWindow : Window
     {
         var profileList = new ListBox
         {
-            Height = 132,
+            Height = 88,
             SelectionMode = SelectionMode.Single
         };
         profileList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.SelectedNodeTrafficProfiles)));
         profileList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedNodeTrafficProfileItem), BindingMode.TwoWay));
         ApplyFocusVisual(profileList);
+
+        var trafficRoleEditor = BuildTrafficRoleEditor();
 
         var panel = new StackPanel
         {
@@ -1043,11 +1045,11 @@ public sealed class ShellWindow : Window
                 },
                 BuildValidationBlock(nameof(WorkspaceViewModel.NodeTrafficRoleValidationText)),
                 BuildTrafficRoleEmptyState(viewModel),
-                BuildTrafficRoleEditor()
+                trafficRoleEditor
             }
         };
         panel.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNode)));
-        HookInspectorSectionFocus(viewModel, panel, profileList, null);
+        HookInspectorSectionFocus(viewModel, panel, trafficRoleEditor, null);
         return panel;
     }
 
@@ -1258,6 +1260,15 @@ public sealed class ShellWindow : Window
     {
         viewModel.PropertyChanged += (_, e) =>
         {
+            if (e.PropertyName == nameof(WorkspaceViewModel.SelectedNodeTrafficProfileItem) &&
+                roleTarget is not null &&
+                viewModel.IsEditingNode &&
+                viewModel.SelectedNodeTrafficProfileItem is not null)
+            {
+                roleTarget.BringIntoView();
+                return;
+            }
+
             if (e.PropertyName != nameof(WorkspaceViewModel.SelectedInspectorSection))
             {
                 return;

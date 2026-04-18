@@ -324,6 +324,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     private NodeVisualShape nodeShape = NodeVisualShape.Square;
     private NodeKind nodeKind = NodeKind.Ordinary;
     private NodeTrafficProfileListItem? selectedNodeTrafficProfileItem;
+    private bool isPopulatingNodeTrafficEditor;
     private string nodeTrafficTypeText = string.Empty;
     private string nodeTrafficRoleText = NodeTrafficRoleCatalog.RoleOptions[0];
     private string nodeProductionText = "0";
@@ -527,7 +528,23 @@ public sealed class WorkspaceViewModel : ObservableObject
             }
         }
     }
-    public string NodeTrafficRoleText { get => nodeTrafficRoleText; set => SetProperty(ref nodeTrafficRoleText, value); }
+    public string NodeTrafficRoleText
+    {
+        get => nodeTrafficRoleText;
+        set
+        {
+            if (!SetProperty(ref nodeTrafficRoleText, value))
+            {
+                return;
+            }
+
+            if (!isPopulatingNodeTrafficEditor)
+            {
+                ApplySelectedNodeTrafficRoleToEditor();
+                RaiseNodeTrafficRoleValidationStateChanged();
+            }
+        }
+    }
     public string NodeProductionText { get => nodeProductionText; set => SetProperty(ref nodeProductionText, value); }
     public string NodeConsumptionText { get => nodeConsumptionText; set => SetProperty(ref nodeConsumptionText, value); }
     public string NodeConsumerPremiumText { get => nodeConsumerPremiumText; set => SetProperty(ref nodeConsumerPremiumText, value); }
@@ -1151,6 +1168,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     private void PopulateSelectedNodeTrafficEditor()
     {
         var profile = SelectedNodeTrafficProfileItem?.Model;
+        isPopulatingNodeTrafficEditor = true;
         if (profile is null)
         {
             NodeTrafficTypeText = string.Empty;
@@ -1165,6 +1183,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             NodeCanTransship = true;
             NodeStoreEnabled = false;
             NodeStoreCapacityText = string.Empty;
+            isPopulatingNodeTrafficEditor = false;
             RaiseNodeTrafficRoleValidationStateChanged();
             return;
         }
@@ -1181,7 +1200,28 @@ public sealed class WorkspaceViewModel : ObservableObject
         NodeCanTransship = profile.CanTransship;
         NodeStoreEnabled = profile.IsStore;
         NodeStoreCapacityText = profile.StoreCapacity?.ToString("0.##", CultureInfo.InvariantCulture) ?? string.Empty;
+        isPopulatingNodeTrafficEditor = false;
         RaiseNodeTrafficRoleValidationStateChanged();
+    }
+
+    private void ApplySelectedNodeTrafficRoleToEditor()
+    {
+        if (!NodeTrafficRoleCatalog.TryParseFlags(NodeTrafficRoleText, out var flags))
+        {
+            return;
+        }
+
+        var production = TryParseRoleQuantity(NodeProductionText);
+        var consumption = TryParseRoleQuantity(NodeConsumptionText);
+        var fallbackQuantity = Math.Max(Math.Max(production, consumption), 1d);
+
+        NodeProductionText = flags.IsProducer
+            ? FormatRoleQuantity(production > 0d ? production : fallbackQuantity)
+            : "0";
+        NodeConsumptionText = flags.IsConsumer
+            ? FormatRoleQuantity(consumption > 0d ? consumption : fallbackQuantity)
+            : "0";
+        NodeCanTransship = flags.CanTransship;
     }
 
     private void PopulateEdgeEditor(EdgeModel edge)
@@ -2044,6 +2084,15 @@ public sealed class WorkspaceViewModel : ObservableObject
 
         return value;
     }
+
+    private static double TryParseRoleQuantity(string text)
+    {
+        return double.TryParse(text, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var value) && value > 0d
+            ? value
+            : 0d;
+    }
+
+    private static string FormatRoleQuantity(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 
     private sealed class NodeTrafficRoleAdapter(NodeTrafficProfile profile) : NodeTrafficRoleCatalog.NodeTrafficProfileViewModelAdapter
     {

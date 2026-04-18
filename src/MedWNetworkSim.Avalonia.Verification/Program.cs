@@ -11,6 +11,7 @@ ScenarioCoordinateTransformClampsPointerOutsideCanvas();
 ScenarioAddNodePlacementMatchesClickedWorldPosition();
 ScenarioDragAndConnectUseRenderedCoordinates();
 ScenarioMultipleTrafficProfilesCanBeSwitched();
+ScenarioNodeTrafficRoleCanBeEditedInInspector();
 ScenarioTrafficDefinitionRenameAndRemovalPropagate();
 ScenarioNodeEditsPersistThroughSaveLoad();
 ScenarioToolCommandsReflectRealModes();
@@ -127,6 +128,55 @@ static void ScenarioMultipleTrafficProfilesCanBeSwitched()
         workspace.SelectedNodeTrafficProfileItem = workspace.SelectedNodeTrafficProfiles[1];
         AssertTextEqual("tools", workspace.NodeTrafficTypeText, "second profile traffic");
         AssertTextEqual("7", workspace.NodeConsumptionText, "second profile consumption");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioNodeTrafficRoleCanBeEditedInInspector()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Role Edit",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "grain" }],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "granary",
+                Name = "Granary",
+                X = 0d,
+                Y = 0d,
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile { TrafficType = "grain", Production = 4d, CanTransship = true }
+                ]
+            }
+        ],
+        Edges = []
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        SelectFirstNode(workspace, new GraphSize(1000d, 700d));
+
+        workspace.NodeTrafficRoleText = NodeTrafficRoleCatalog.ConsumerRole;
+
+        AssertTextEqual("0", workspace.NodeProductionText, "role edit clears production");
+        AssertTextEqual("4", workspace.NodeConsumptionText, "role edit preserves quantity");
+        AssertTrue(!workspace.NodeCanTransship, "role edit updates transshipment flag");
+
+        workspace.ApplyInspectorCommand.Execute(null);
+
+        var saved = SaveAndReload(workspace);
+        var profile = saved.Nodes.Single().TrafficProfiles.Single();
+        AssertNumberEqual(0d, profile.Production, "saved edited role production");
+        AssertNumberEqual(4d, profile.Consumption, "saved edited role consumption");
+        AssertTrue(!profile.CanTransship, "saved edited role transshipment");
     }
     finally
     {

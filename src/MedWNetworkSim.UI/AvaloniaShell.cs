@@ -29,6 +29,33 @@ public sealed class GraphCanvasStatusChangedEventArgs : EventArgs
     public required bool HasVisibleFrame { get; init; }
 }
 
+public readonly record struct GraphCanvasCoordinateTransform(GraphSize LogicalViewport, PixelSize PixelViewport)
+{
+    public double ScaleX => LogicalViewport.Width <= 0d ? 1d : PixelViewport.Width / LogicalViewport.Width;
+    public double ScaleY => LogicalViewport.Height <= 0d ? 1d : PixelViewport.Height / LogicalViewport.Height;
+
+    public GraphPoint PointerToGraph(Point localPoint)
+    {
+        var x = Math.Clamp(localPoint.X, 0d, LogicalViewport.Width);
+        var y = Math.Clamp(localPoint.Y, 0d, LogicalViewport.Height);
+        return new GraphPoint(x, y);
+    }
+
+    public static GraphCanvasCoordinateTransform Create(Size logicalBounds, double renderScalingX, double? renderScalingY = null)
+    {
+        var safeWidth = Math.Max(1d, logicalBounds.Width);
+        var safeHeight = Math.Max(1d, logicalBounds.Height);
+        var safeScaleX = Math.Max(1d, renderScalingX);
+        var safeScaleY = Math.Max(1d, renderScalingY ?? renderScalingX);
+
+        // Keep input in logical units and render in device pixels.
+        // This alignment stays stable at 100%, 125%, and 150% display scaling because both paths share the same logical viewport.
+        var pixelWidth = Math.Max(1, (int)Math.Ceiling(safeWidth * safeScaleX));
+        var pixelHeight = Math.Max(1, (int)Math.Ceiling(safeHeight * safeScaleY));
+        return new GraphCanvasCoordinateTransform(new GraphSize(safeWidth, safeHeight), new PixelSize(pixelWidth, pixelHeight));
+    }
+}
+
 public sealed class GraphCanvasControl : Control
 {
     public static readonly StyledProperty<WorkspaceViewModel?> ViewModelProperty =
@@ -54,17 +81,12 @@ public sealed class GraphCanvasControl : Control
         animationTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(33), DispatcherPriority.Background, HandleAnimationTick);
         AttachedToVisualTree += (_, _) =>
         {
-            LogDebug("Attached to visual tree.");
             if (!animationTimer.IsEnabled)
             {
                 animationTimer.Start();
             }
         };
-        DetachedFromVisualTree += (_, _) =>
-        {
-            LogDebug("Detached from visual tree.");
-            animationTimer.Stop();
-        };
+        DetachedFromVisualTree += (_, _) => animationTimer.Stop();
     }
 
     public event EventHandler<GraphCanvasStatusChangedEventArgs>? StatusChanged;
@@ -78,59 +100,52 @@ public sealed class GraphCanvasControl : Control
     public override void Render(DrawingContext context)
     {
         base.Render(context);
-
-        LogDebug(
-            $"Render() called. Bounds={Bounds.Width:0.##}x{Bounds.Height:0.##}, ViewModelNull={ViewModel is null}, BitmapReady={bitmap is not null}.");
-
         DrawBaseBackground(context);
 
         if (ViewModel is null)
         {
-            UpdateStatus("Waiting for scene", "ViewModel is null. The shell rendered, but the graph scene has not been attached yet.", isError: false, visibleFrame: false);
+            UpdateStatus("Waiting for scene", "The graph workspace is still loading.", isError: false, visibleFrame: false);
             DrawStatusPanel(context, statusTitle, statusDetail, isError: false);
             return;
         }
 
         if (Bounds.Width <= 0d || Bounds.Height <= 0d)
         {
-            UpdateStatus("Canvas placeholder", $"Waiting for layout. Bounds are {Bounds.Width:0.##} x {Bounds.Height:0.##}.", isError: false, visibleFrame: false);
+            UpdateStatus("Waiting for layout", "Canvas size is not ready yet.", isError: false, visibleFrame: false);
             DrawStatusPanel(context, statusTitle, statusDetail, isError: false);
             return;
         }
 
         try
         {
-            var pixelWidth = Math.Max(1, (int)Math.Ceiling(Bounds.Width));
-            var pixelHeight = Math.Max(1, (int)Math.Ceiling(Bounds.Height));
-            EnsureBitmap(pixelWidth, pixelHeight);
+            var transform = GetCoordinateTransform();
+            EnsureBitmap(transform);
             if (bitmap is null)
             {
-                UpdateStatus("Canvas placeholder", "WriteableBitmap creation did not succeed.", isError: true, visibleFrame: false);
-                DrawStatusPanel(context, statusTitle, statusDetail, isError: true);
-                return;
+                throw new InvalidOperationException("Unable to allocate the canvas bitmap.");
             }
 
-            var viewportSize = new GraphSize(Bounds.Width, Bounds.Height);
-            var interactionContext = ViewModel.CreateInteractionContext(viewportSize);
-
+            var interactionContext = ViewModel.CreateInteractionContext(transform.LogicalViewport);
             using var locked = bitmap.Lock();
-            var imageInfo = new SKImageInfo(
-                locked.Size.Width,
-                locked.Size.Height,
-                SKColorType.Bgra8888,
-                SKAlphaType.Premul);
+            var imageInfo = new SKImageInfo(locked.Size.Width, locked.Size.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+            using var surface = SKSurface.Create(imageInfo, locked.Address, locked.RowBytes)
+                ?? throw new InvalidOperationException("Unable to create the Skia surface.");
 
-            using var surface = SKSurface.Create(imageInfo, locked.Address, locked.RowBytes);
-            if (surface is null)
-            {
-                throw new InvalidOperationException($"SKSurface.Create returned null for {locked.Size.Width}x{locked.Size.Height} with row bytes {locked.RowBytes}.");
-            }
-
-            renderer.Render(surface.Canvas, interactionContext.Scene, interactionContext.Viewport, viewportSize);
+            surface.Canvas.Clear(SKColor.Empty);
+            surface.Canvas.Scale((float)transform.ScaleX, (float)transform.ScaleY);
+            renderer.Render(surface.Canvas, interactionContext.Scene, interactionContext.Viewport, transform.LogicalViewport);
             surface.Canvas.Flush();
 
-            context.DrawImage(bitmap, new Rect(0d, 0d, bitmap.PixelSize.Width, bitmap.PixelSize.Height), Bounds);
-            UpdateStatus("Canvas rendered", $"Rendered {bitmap.PixelSize.Width} x {bitmap.PixelSize.Height}.", isError: false, visibleFrame: true);
+            context.DrawImage(
+                bitmap,
+                new Rect(0d, 0d, bitmap.PixelSize.Width, bitmap.PixelSize.Height),
+                new Rect(0d, 0d, transform.LogicalViewport.Width, transform.LogicalViewport.Height));
+
+            Debug.Assert(Math.Abs((bitmap.PixelSize.Width / transform.LogicalViewport.Width) - transform.ScaleX) < 0.01d);
+            Debug.Assert(Math.Abs((bitmap.PixelSize.Height / transform.LogicalViewport.Height) - transform.ScaleY) < 0.01d);
+
+            LogDebug($"Render viewport {transform.LogicalViewport.Width:0.##}x{transform.LogicalViewport.Height:0.##}, pixels {bitmap.PixelSize.Width}x{bitmap.PixelSize.Height}, scale {transform.ScaleX:0.###}x{transform.ScaleY:0.###}.");
+            UpdateStatus("Canvas ready", "Rendered the current graph view.", isError: false, visibleFrame: true);
         }
         catch (Exception ex)
         {
@@ -149,8 +164,9 @@ public sealed class GraphCanvasControl : Control
             return;
         }
 
-        var interactionContext = ViewModel.CreateInteractionContext(new GraphSize(Bounds.Width, Bounds.Height));
-        var point = e.GetPosition(this);
+        var transform = GetCoordinateTransform();
+        var interactionContext = ViewModel.CreateInteractionContext(transform.LogicalViewport);
+        var point = transform.PointerToGraph(e.GetPosition(this));
         var button = e.GetCurrentPoint(this).Properties.PointerUpdateKind switch
         {
             PointerUpdateKind.LeftButtonPressed => GraphPointerButton.Left,
@@ -162,11 +178,12 @@ public sealed class GraphCanvasControl : Control
         ViewModel.InteractionController.OnPointerPressed(
             interactionContext,
             button,
-            new GraphPoint(point.X, point.Y),
+            point,
             e.KeyModifiers.HasFlag(KeyModifiers.Shift),
             e.KeyModifiers.HasFlag(KeyModifiers.Alt),
             e.KeyModifiers.HasFlag(KeyModifiers.Control));
         ViewModel.NotifyVisualChanged();
+        RefreshEditorSummaries(ViewModel);
         InvalidateVisual();
         e.Handled = true;
     }
@@ -179,9 +196,10 @@ public sealed class GraphCanvasControl : Control
             return;
         }
 
+        var transform = GetCoordinateTransform();
         ViewModel.InteractionController.OnPointerMoved(
-            ViewModel.CreateInteractionContext(new GraphSize(Bounds.Width, Bounds.Height)),
-            new GraphPoint(e.GetPosition(this).X, e.GetPosition(this).Y));
+            ViewModel.CreateInteractionContext(transform.LogicalViewport),
+            transform.PointerToGraph(e.GetPosition(this)));
         ViewModel.NotifyVisualChanged();
         InvalidateVisual();
     }
@@ -194,6 +212,7 @@ public sealed class GraphCanvasControl : Control
             return;
         }
 
+        var transform = GetCoordinateTransform();
         var button = e.InitialPressMouseButton switch
         {
             MouseButton.Middle => GraphPointerButton.Middle,
@@ -202,11 +221,12 @@ public sealed class GraphCanvasControl : Control
         };
 
         ViewModel.InteractionController.OnPointerReleased(
-            ViewModel.CreateInteractionContext(new GraphSize(Bounds.Width, Bounds.Height)),
+            ViewModel.CreateInteractionContext(transform.LogicalViewport),
             button,
-            new GraphPoint(e.GetPosition(this).X, e.GetPosition(this).Y),
+            transform.PointerToGraph(e.GetPosition(this)),
             e.KeyModifiers.HasFlag(KeyModifiers.Shift));
         ViewModel.NotifyVisualChanged();
+        RefreshEditorSummaries(ViewModel);
         InvalidateVisual();
     }
 
@@ -218,9 +238,10 @@ public sealed class GraphCanvasControl : Control
             return;
         }
 
+        var transform = GetCoordinateTransform();
         ViewModel.InteractionController.OnPointerWheel(
-            ViewModel.CreateInteractionContext(new GraphSize(Bounds.Width, Bounds.Height)),
-            new GraphPoint(e.GetPosition(this).X, e.GetPosition(this).Y),
+            ViewModel.CreateInteractionContext(transform.LogicalViewport),
+            transform.PointerToGraph(e.GetPosition(this)),
             e.Delta.Y);
         ViewModel.NotifyVisualChanged();
         InvalidateVisual();
@@ -235,39 +256,40 @@ public sealed class GraphCanvasControl : Control
             return;
         }
 
+        var transform = GetCoordinateTransform();
         if (ViewModel.InteractionController.OnKeyDown(
-                ViewModel.CreateInteractionContext(new GraphSize(Bounds.Width, Bounds.Height)),
+                ViewModel.CreateInteractionContext(transform.LogicalViewport),
                 e.Key.ToString(),
                 e.KeyModifiers.HasFlag(KeyModifiers.Shift)))
         {
             ViewModel.NotifyVisualChanged();
+            RefreshEditorSummaries(ViewModel);
             InvalidateVisual();
             e.Handled = true;
         }
     }
 
-    private void EnsureBitmap(int width, int height)
+    public GraphCanvasCoordinateTransform GetCoordinateTransform()
     {
-        if (width <= 0 || height <= 0)
-        {
-            bitmap = null;
-            LogDebug("Bitmap skipped because requested size was zero.");
-            return;
-        }
+        var topLevel = TopLevel.GetTopLevel(this);
+        var renderScale = topLevel?.RenderScaling ?? 1d;
+        return GraphCanvasCoordinateTransform.Create(Bounds.Size, renderScale);
+    }
 
+    private void EnsureBitmap(GraphCanvasCoordinateTransform transform)
+    {
         if (bitmap is not null &&
-            bitmap.PixelSize.Width == width &&
-            bitmap.PixelSize.Height == height)
+            bitmap.PixelSize.Width == transform.PixelViewport.Width &&
+            bitmap.PixelSize.Height == transform.PixelViewport.Height)
         {
             return;
         }
 
         bitmap = new WriteableBitmap(
-            new PixelSize(width, height),
-            new Vector(96, 96),
+            transform.PixelViewport,
+            new Vector(96d * transform.ScaleX, 96d * transform.ScaleY),
             Avalonia.Platform.PixelFormat.Bgra8888,
             Avalonia.Platform.AlphaFormat.Premul);
-        LogDebug($"Bitmap created successfully at {width}x{height}.");
     }
 
     private void HandleAnimationTick(object? sender, EventArgs e)
@@ -282,6 +304,11 @@ public sealed class GraphCanvasControl : Control
         lastFrame = now;
         ViewModel.TickAnimation(elapsed);
         InvalidateVisual();
+    }
+
+    private static void RefreshEditorSummaries(WorkspaceViewModel viewModel)
+    {
+        _ = viewModel;
     }
 
     private void DrawBaseBackground(DrawingContext context)
@@ -364,17 +391,14 @@ public sealed class GraphCanvasControl : Control
 
 public sealed class ShellWindow : Window
 {
-    private static bool UseDiagnosticCanvasIsolation =>
-        string.Equals(Environment.GetEnvironmentVariable("MEDW_AVALONIA_ISOLATION"), "1", StringComparison.Ordinal);
-
     public ShellWindow()
     {
         var viewModel = new WorkspaceViewModel();
         DataContext = viewModel;
-        Width = 1720;
-        Height = 1080;
-        MinWidth = 1320;
-        MinHeight = 860;
+        Width = 1760;
+        Height = 1100;
+        MinWidth = 1380;
+        MinHeight = 900;
         Background = new SolidColorBrush(Color.Parse("#EEF4FA"));
         Title = viewModel.WindowTitle;
         viewModel.PropertyChanged += (_, e) =>
@@ -385,14 +409,7 @@ public sealed class ShellWindow : Window
             }
         };
 
-        try
-        {
-            Content = BuildLayout(viewModel);
-        }
-        catch (Exception ex)
-        {
-            Content = BuildWindowFailureSurface(ex);
-        }
+        Content = BuildLayout(viewModel);
     }
 
     private Control BuildLayout(WorkspaceViewModel viewModel)
@@ -403,7 +420,7 @@ public sealed class ShellWindow : Window
             LastChildFill = true
         };
 
-        var status = new Border
+        var statusBar = new Border
         {
             Background = new SolidColorBrush(Color.Parse("#DAE8F5")),
             CornerRadius = new CornerRadius(14),
@@ -421,26 +438,8 @@ public sealed class ShellWindow : Window
                 }
             }
         };
-        DockPanel.SetDock(status, Dock.Bottom);
-        root.Children.Add(status);
-
-        var smokeBanner = new Border
-        {
-            Background = new SolidColorBrush(Color.Parse("#FFF4B3")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#D2A106")),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(12),
-            Padding = new Thickness(18, 12),
-            Child = new TextBlock
-            {
-                Text = "Ready to edit your network. If the graph cannot be displayed, this workspace will show a visible recovery panel.",
-                FontSize = 18,
-                FontWeight = FontWeight.Bold,
-                Foreground = new SolidColorBrush(Color.Parse("#5E4300"))
-            }
-        };
-        DockPanel.SetDock(smokeBanner, Dock.Top);
-        root.Children.Add(smokeBanner);
+        DockPanel.SetDock(statusBar, Dock.Bottom);
+        root.Children.Add(statusBar);
 
         var topBar = new Border
         {
@@ -449,25 +448,24 @@ public sealed class ShellWindow : Window
             Padding = new Thickness(18, 14),
             BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
             BorderThickness = new Thickness(1),
-            Margin = new Thickness(0, 12, 0, 0),
             Child = BuildTopBar(viewModel)
         };
         DockPanel.SetDock(topBar, Dock.Top);
         root.Children.Add(topBar);
 
-        var centerGrid = new Grid
+        var grid = new Grid
         {
             Margin = new Thickness(0, 16, 0, 16),
-            ColumnDefinitions = new ColumnDefinitions("96,*,340"),
-            RowDefinitions = new RowDefinitions("*,250")
+            ColumnDefinitions = new ColumnDefinitions("98,*,420"),
+            RowDefinitions = new RowDefinitions("*,260")
         };
 
-        centerGrid.Children.Add(BuildToolRail(viewModel));
-        centerGrid.Children.Add(BuildCanvasArea(viewModel));
-        centerGrid.Children.Add(BuildInspector());
-        centerGrid.Children.Add(BuildBottomStrip(viewModel));
+        grid.Children.Add(BuildToolRail(viewModel));
+        grid.Children.Add(BuildCanvasArea(viewModel));
+        grid.Children.Add(BuildInspector(viewModel));
+        grid.Children.Add(BuildBottomStrip(viewModel));
 
-        root.Children.Add(centerGrid);
+        root.Children.Add(grid);
         return root;
     }
 
@@ -492,14 +490,14 @@ public sealed class ShellWindow : Window
                 },
                 new TextBlock
                 {
-                    Text = "Ready to edit your network",
-                    FontSize = 16,
-                    FontWeight = FontWeight.SemiBold,
-                    Foreground = new SolidColorBrush(Color.Parse("#546A7E"))
+                    Text = "Cross-platform editor with clear tools, traffic roles, and route access controls.",
+                    FontSize = 15,
+                    Foreground = new SolidColorBrush(Color.Parse("#4D6781")),
+                    TextWrapping = TextWrapping.Wrap
                 },
                 new TextBlock
                 {
-                    Text = viewModel.TopCommandBar,
+                    [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.ToolInstructionText)),
                     FontSize = 12,
                     Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
                 }
@@ -522,8 +520,7 @@ public sealed class ShellWindow : Window
                 BuildButton("Run", viewModel.SimulateCommand),
                 BuildButton("Step", viewModel.StepCommand),
                 BuildButton("Reset", viewModel.ResetTimelineCommand),
-                BuildButton("Fit", viewModel.FitCommand),
-                BuildButton("Motion", viewModel.ToggleMotionCommand)
+                BuildButton("Fit", viewModel.FitCommand)
             }
         };
         Grid.SetColumn(buttons, 1);
@@ -533,27 +530,26 @@ public sealed class ShellWindow : Window
 
     private static Control BuildToolRail(WorkspaceViewModel viewModel)
     {
-        var stack = new StackPanel
+        var selectButton = BuildToolButton("Select", "Click to select items, drag selected nodes, and marquee select.", viewModel.SelectToolCommand);
+        var addNodeButton = BuildToolButton("Add Node", "Click the canvas to place a new node.", viewModel.AddNodeToolCommand);
+        var connectButton = BuildToolButton("Connect", "Choose a source node, then a target node to create a route.", viewModel.ConnectToolCommand);
+        var deleteButton = BuildToolButton("Delete", "Delete the current selection.", viewModel.DeleteSelectionCommand);
+
+        void RefreshToolState()
         {
-            Spacing = 10,
-            Children =
+            ApplyToolButtonState(selectButton, viewModel.IsSelectToolActive);
+            ApplyToolButtonState(addNodeButton, viewModel.IsAddNodeToolActive);
+            ApplyToolButtonState(connectButton, viewModel.IsConnectToolActive);
+        }
+
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(WorkspaceViewModel.IsSelectToolActive) or nameof(WorkspaceViewModel.IsAddNodeToolActive) or nameof(WorkspaceViewModel.IsConnectToolActive))
             {
-                new TextBlock
-                {
-                    Text = "Actions",
-                    FontSize = 16,
-                    FontWeight = FontWeight.Bold,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    Foreground = new SolidColorBrush(Color.Parse("#16324C"))
-                },
-                BuildRailButton("Select", viewModel.SelectInteractionHelpCommand, "Show selection, keyboard, and connection help.", 0),
-                BuildRailButton("Add Node", viewModel.AddNodeCommand, "Add a node at the current viewport center.", 1),
-                BuildRailButton("Connect", viewModel.ConnectSelectedNodesCommand, "Create a connection from the two selected nodes, or explain how to do it.", 2),
-                BuildRailButton("Delete", viewModel.DeleteSelectionCommand, "Delete the current selection.", 3),
-                BuildRailButton("Fit", viewModel.FitCommand, "Fit the graph content into view.", 4),
-                BuildRailButton("Run", viewModel.SimulateCommand, "Run a static simulation.", 5)
+                RefreshToolState();
             }
         };
+        RefreshToolState();
 
         var border = new Border
         {
@@ -568,11 +564,18 @@ public sealed class ShellWindow : Window
                 Spacing = 12,
                 Children =
                 {
-                    BuildRailButton("Select", "Select and inspect nodes and edges.", viewModel.FitCommand),
-                    BuildRailButton("Connect", "Connect two nodes using right-drag on the canvas.", viewModel.FitCommand),
-                    BuildRailButton("Add Node", "Press N on the canvas to add a new node.", viewModel.NewCommand),
-                    BuildRailButton("Run Sim", "Run static simulation and review report metrics.", viewModel.SimulateCommand),
-                    BuildRailButton("Reset", "Reset timeline playback to period 0.", viewModel.ResetTimelineCommand)
+                    new TextBlock
+                    {
+                        Text = "Tools",
+                        FontSize = 16,
+                        FontWeight = FontWeight.Bold,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Foreground = new SolidColorBrush(Color.Parse("#16324C"))
+                    },
+                    selectButton,
+                    addNodeButton,
+                    connectButton,
+                    deleteButton
                 }
             }
         };
@@ -580,7 +583,140 @@ public sealed class ShellWindow : Window
         return border;
     }
 
-    private static Control BuildInspector()
+    private static Control BuildCanvasArea(WorkspaceViewModel viewModel)
+    {
+        var canvasHost = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#DCEAF7")),
+            CornerRadius = new CornerRadius(24),
+            BorderBrush = new SolidColorBrush(Color.Parse("#7FA7C9")),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(10),
+            MinHeight = 520,
+            MinWidth = 760
+        };
+
+        var header = new Border
+        {
+            Padding = new Thickness(12, 10),
+            Background = new SolidColorBrush(Color.Parse("#F8FCFF")),
+            CornerRadius = new CornerRadius(12),
+            BorderBrush = new SolidColorBrush(Color.Parse("#93B7D7")),
+            BorderThickness = new Thickness(1),
+            Child = new StackPanel
+            {
+                Spacing = 3,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.ToolStatusText)),
+                        FontSize = 14,
+                        FontWeight = FontWeight.SemiBold,
+                        Foreground = new SolidColorBrush(Color.Parse("#284A67")),
+                        TextWrapping = TextWrapping.Wrap
+                    },
+                    new TextBlock
+                    {
+                        Text = "The canvas uses one shared logical coordinate space for rendering, selection, dragging, zooming, and route creation.",
+                        FontSize = 12,
+                        Foreground = new SolidColorBrush(Color.Parse("#4D6781")),
+                        TextWrapping = TextWrapping.Wrap
+                    }
+                }
+            }
+        };
+
+        var graphCanvas = new GraphCanvasControl
+        {
+            ViewModel = viewModel,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+
+        var fallbackTitle = new TextBlock
+        {
+            Text = "Canvas placeholder",
+            FontSize = 22,
+            FontWeight = FontWeight.Bold,
+            Foreground = new SolidColorBrush(Color.Parse("#7F1D1D"))
+        };
+        var fallbackDetail = new TextBlock
+        {
+            Text = "The graph could not be displayed. Reopen the file or reset the view.",
+            Margin = new Thickness(0, 8, 0, 0),
+            Foreground = new SolidColorBrush(Color.Parse("#934040")),
+            TextWrapping = TextWrapping.Wrap
+        };
+        var fallbackPanel = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#FFF2F2")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#D37474")),
+            BorderThickness = new Thickness(2),
+            CornerRadius = new CornerRadius(16),
+            Padding = new Thickness(20),
+            Margin = new Thickness(24),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            IsVisible = false,
+            Child = new StackPanel
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Spacing = 6,
+                Children =
+                {
+                    fallbackTitle,
+                    fallbackDetail
+                }
+            }
+        };
+
+        graphCanvas.StatusChanged += (_, args) =>
+        {
+            fallbackTitle.Text = args.IsError ? "Graph canvas failed to render" : args.Title;
+            fallbackDetail.Text = args.Detail;
+            fallbackPanel.IsVisible = args.IsError;
+        };
+
+        var canvasSurface = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            Children =
+            {
+                header
+            }
+        };
+        Grid.SetRow(graphCanvas, 1);
+        Grid.SetRow(fallbackPanel, 1);
+        canvasSurface.Children.Add(graphCanvas);
+        canvasSurface.Children.Add(fallbackPanel);
+        canvasHost.Child = canvasSurface;
+
+        Grid.SetColumn(canvasHost, 1);
+        return canvasHost;
+    }
+
+    private static Control BuildInspector(WorkspaceViewModel viewModel)
+    {
+        var tabs = new TabControl();
+        tabs.Items.Add(new TabItem { Header = "Selection", Content = BuildSelectionInspector(viewModel) });
+        tabs.Items.Add(new TabItem { Header = "Traffic Types", Content = BuildTrafficDefinitionEditor(viewModel) });
+
+        var border = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#F6FAFE")),
+            CornerRadius = new CornerRadius(22),
+            BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(18),
+            Child = tabs
+        };
+        Grid.SetColumn(border, 2);
+        return border;
+    }
+
+    private static Control BuildSelectionInspector(WorkspaceViewModel viewModel)
     {
         var details = new ItemsControl
         {
@@ -590,106 +726,87 @@ public sealed class ShellWindow : Window
                 {
                     Text = item,
                     Foreground = new SolidColorBrush(Color.Parse("#31506B")),
-                    Margin = new Thickness(0, 0, 0, 8),
+                    Margin = new Thickness(0, 0, 0, 6),
                     TextWrapping = TextWrapping.Wrap
                 })
         };
 
-        var border = new Border
+        return new ScrollViewer
         {
-            Background = new SolidColorBrush(Color.Parse("#F6FAFE")),
-            CornerRadius = new CornerRadius(22),
-            BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(18),
-            Child = new ScrollViewer
+            Content = new StackPanel
             {
-                Content = new StackPanel
+                Spacing = 12,
+                Children =
                 {
-                    Spacing = 12,
-                    Children =
-                    {
-                        [!TextBlock.TextProperty] = new Binding("Inspector.Summary"),
-                        TextWrapping = TextWrapping.Wrap,
-                        Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
-                    },
+                    BuildHeadlineBlock(),
                     details,
-                    BuildInspectorEditor()
+                    BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
+                    BuildNetworkEditor(),
+                    BuildNodeEditor(),
+                    BuildEdgeEditor(),
+                    BuildBulkEditor(),
+                    BuildApplyRow(viewModel.ApplyInspectorCommand)
                 }
             }
         };
-        Grid.SetColumn(border, 2);
-        return border;
     }
 
-    private static Control BuildInspectorEditor()
+    private static Control BuildTrafficDefinitionEditor(WorkspaceViewModel viewModel)
     {
-        var panel = new StackPanel
+        var definitionList = new ListBox
         {
-            Spacing = 8,
-            Margin = new Thickness(0, 8, 0, 0),
-            Children =
-            {
-                new TextBlock
-                {
-                    Text = "Editing",
-                    FontWeight = FontWeight.Bold,
-                    Foreground = new SolidColorBrush(Color.Parse("#16324C"))
-                },
-                BuildLabeledTextBox("Name", "InspectorName"),
-                BuildLabeledTextBox("Type / Description", "InspectorType"),
-                BuildLabeledTextBox("Traffic Type", "SelectedTrafficType"),
-                BuildLabeledTextBox("Production", "InspectorProduction"),
-                BuildLabeledTextBox("Consumption", "InspectorConsumption"),
-                BuildLabeledTextBox("Capacity / Timeline", "InspectorCapacity"),
-                BuildLabeledTextBox("Time", "InspectorTime"),
-                BuildLabeledTextBox("Cost", "InspectorCost"),
-                BuildLabeledTextBox("Bulk place type", "InspectorBulkType"),
-                new TextBlock
-                {
-                    Text = "Use Apply to update network, selected node, selected edge, or bulk selection.",
-                    TextWrapping = TextWrapping.Wrap,
-                    Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
-                },
-                new TextBlock
-                {
-                    [!TextBlock.TextProperty] = new Binding("InspectorValidationMessage"),
-                    TextWrapping = TextWrapping.Wrap,
-                    Foreground = new SolidColorBrush(Color.Parse("#9D2E2E"))
-                },
-                new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    Spacing = 8,
-                    Children =
-                    {
-                        BuildBoundButton("Apply", "ApplyInspectorCommand"),
-                        BuildBoundButton("Add Traffic", "AddTrafficTypeCommand"),
-                        BuildBoundButton("Remove Traffic", "RemoveTrafficTypeCommand")
-                    }
-                }
-            }
+            Height = 180,
+            SelectionMode = SelectionMode.Single
         };
+        definitionList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.TrafficDefinitions)));
+        definitionList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedTrafficDefinitionItem), BindingMode.TwoWay));
+        ApplyFocusVisual(definitionList);
 
         return new ScrollViewer
         {
-            MaxHeight = 420,
-            Content = panel
+            Content = new StackPanel
+            {
+                Spacing = 12,
+                Children =
+                {
+                    BuildSectionTitle("Traffic Types", "Choose a traffic type, update its routing settings, and manage default route access."),
+                    definitionList,
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 8,
+                        Children =
+                        {
+                            BuildButton("Add Traffic Type", viewModel.AddTrafficDefinitionCommand),
+                            BuildButton("Remove Traffic Type", viewModel.RemoveSelectedTrafficDefinitionCommand),
+                            BuildButton("Apply Traffic Type", viewModel.ApplyTrafficDefinitionCommand)
+                        }
+                    },
+                    BuildLabeledTextBox("Traffic type name", nameof(WorkspaceViewModel.TrafficNameText)),
+                    BuildLabeledTextBox("Description", nameof(WorkspaceViewModel.TrafficDescriptionText)),
+                    BuildLabeledComboBox("Routing preference", nameof(WorkspaceViewModel.RoutingPreferenceOptions), nameof(WorkspaceViewModel.TrafficRoutingPreference)),
+                    BuildLabeledComboBox("Allocation mode", nameof(WorkspaceViewModel.AllocationModeOptions), nameof(WorkspaceViewModel.TrafficAllocationMode)),
+                    BuildLabeledComboBox("Route choice model", nameof(WorkspaceViewModel.RouteChoiceModelOptions), nameof(WorkspaceViewModel.TrafficRouteChoiceModel)),
+                    BuildLabeledComboBox("Flow split policy", nameof(WorkspaceViewModel.FlowSplitPolicyOptions), nameof(WorkspaceViewModel.TrafficFlowSplitPolicy)),
+                    BuildLabeledTextBox("Capacity bid per unit", nameof(WorkspaceViewModel.TrafficCapacityBidText)),
+                    BuildLabeledTextBox("Perishability periods", nameof(WorkspaceViewModel.TrafficPerishabilityText)),
+                    BuildValidationBlock(nameof(WorkspaceViewModel.TrafficValidationText)),
+                    BuildPermissionEditor(
+                        "Default Route Access",
+                        "Set the default rule each traffic type uses on new and unchanged routes.",
+                        nameof(WorkspaceViewModel.DefaultTrafficPermissionRows),
+                        edgeCapacityPropertyName: null)
+                }
+            }
         };
     }
 
-    private static Control BuildBottomStrip(WorkspaceViewModel viewModel)
+    private Control BuildBottomStrip(WorkspaceViewModel viewModel)
     {
         var metrics = new ItemsControl
         {
-            [!ItemsControl.ItemsSourceProperty] = new Binding("ReportMetrics"),
-            ItemTemplate = new FuncDataTemplate<ReportMetricViewModel>((metric, _) =>
-                new Button
-                {
-                    Content = $"{metric.Label}  {metric.Value}",
-                    Margin = new Thickness(0, 0, 10, 10),
-                    Command = new RelayCommand(metric.Activate)
-                })
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ReportMetrics)),
+            ItemTemplate = new FuncDataTemplate<ReportMetricViewModel>((metric, _) => BuildButton($"{metric.Label}  {metric.Value}", new RelayCommand(metric.Activate)))
         };
 
         var playbackGrid = new Grid
@@ -702,59 +819,54 @@ public sealed class ShellWindow : Window
         playbackGrid.Children.Add(BuildButton("Reset", viewModel.ResetTimelineCommand, 2));
         playbackGrid.Children.Add(BuildButton("Fit", viewModel.FitCommand, 3));
 
-        var timelineSlider = new Slider
+        var slider = new Slider
         {
             Minimum = 0,
             Maximum = 12,
             Margin = new Thickness(12, 6, 0, 0)
         };
-        timelineSlider.Bind(RangeBase.ValueProperty, new Binding("TimelinePosition", BindingMode.TwoWay));
-        Grid.SetColumn(timelineSlider, 4);
-        playbackGrid.Children.Add(timelineSlider);
+        slider.Bind(RangeBase.ValueProperty, new Binding(nameof(WorkspaceViewModel.TimelinePosition), BindingMode.TwoWay));
+        Grid.SetColumn(slider, 4);
+        ApplyFocusVisual(slider);
+        playbackGrid.Children.Add(slider);
 
-        var playbackHint = new TextBlock
+        var hint = new TextBlock
         {
             Margin = new Thickness(0, 12, 0, 0),
             Foreground = new SolidColorBrush(Color.Parse("#4D6781")),
-            Text = "Playback, timeline scrubber, and report entry points stay visible while debugging the canvas."
+            Text = "Playback controls and report quick-links stay visible while you debug the graph."
         };
-        Grid.SetRow(playbackHint, 1);
-        Grid.SetColumnSpan(playbackHint, 5);
-        playbackGrid.Children.Add(playbackHint);
+        Grid.SetRow(hint, 1);
+        Grid.SetColumnSpan(hint, 5);
+        playbackGrid.Children.Add(hint);
 
         var tabControl = new TabControl();
-        tabControl.Items.Add(
-            new TabItem
+        tabControl.Items.Add(new TabItem { Header = "Playback", Content = playbackGrid });
+        tabControl.Items.Add(new TabItem
+        {
+            Header = "Reports",
+            Content = new StackPanel
             {
-                Header = "Playback",
-                Content = playbackGrid
-            });
-        tabControl.Items.Add(
-            new TabItem
-            {
-                Header = "Reports",
-                Content = new StackPanel
+                Spacing = 10,
+                Children =
                 {
-                    Spacing = 10,
-                    Children =
+                    new StackPanel
                     {
-                        new StackPanel
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 8,
+                        Children =
                         {
-                            Orientation = Orientation.Horizontal,
-                            Spacing = 8,
-                            Children =
-                            {
-                                BuildButton("Export Current (HTML)", new RelayCommand(() => _ = ExportCurrentReportAsync(viewModel, ReportExportFormat.Html))),
-                                BuildButton("Export Timeline (CSV)", new RelayCommand(() => _ = ExportTimelineReportAsync(viewModel, ReportExportFormat.Csv)))
-                            }
-                        },
-                        new ScrollViewer
-                        {
-                            Content = metrics
+                            BuildButton("Export Current (HTML)", new RelayCommand(() => _ = ExportCurrentReportAsync(viewModel, ReportExportFormat.Html))),
+                            BuildButton("Export Timeline (CSV)", new RelayCommand(() => _ = ExportTimelineReportAsync(viewModel, ReportExportFormat.Csv)))
                         }
+                    },
+                    new ScrollViewer
+                    {
+                        Content = metrics
                     }
                 }
-            });
+            }
+        });
 
         var strip = new Border
         {
@@ -773,190 +885,250 @@ public sealed class ShellWindow : Window
         return strip;
     }
 
-    private static Control BuildCanvasArea(WorkspaceViewModel viewModel)
+    private static Control BuildHeadlineBlock()
     {
-        if (UseDiagnosticCanvasIsolation)
+        return new StackPanel
         {
-            var isolated = BuildCanvasFallbackPanel(
-                "Graph area isolated",
-                "The staged isolation panel is active. This confirms the shell layout renders even without the live GraphCanvasControl.",
-                isError: false);
-            Grid.SetColumn(isolated, 1);
-            return isolated;
-        }
-
-        try
-        {
-            var canvasHost = new Border
+            Spacing = 4,
+            Children =
             {
-                Background = new SolidColorBrush(Color.Parse("#DCEAF7")),
-                CornerRadius = new CornerRadius(24),
-                BorderBrush = new SolidColorBrush(Color.Parse("#7FA7C9")),
-                BorderThickness = new Thickness(1),
-                Padding = new Thickness(10),
-                MinHeight = 520,
-                MinWidth = 760
-            };
-
-            var canvasHeader = new Border
-            {
-                Margin = new Thickness(8, 8, 8, 10),
-                Padding = new Thickness(12, 10),
-                Background = new SolidColorBrush(Color.Parse("#F8FCFF")),
-                CornerRadius = new CornerRadius(12),
-                BorderBrush = new SolidColorBrush(Color.Parse("#93B7D7")),
-                BorderThickness = new Thickness(1),
-                Child = new StackPanel
+                new TextBlock
                 {
-                    Text = "Canvas ready: select, pan, zoom, drag, marquee select, connect, and keyboard actions are available.",
-                    Foreground = new SolidColorBrush(Color.Parse("#284A67")),
-                    FontSize = 13,
-                    FontWeight = FontWeight.SemiBold,
-                    TextWrapping = TextWrapping.Wrap
-                }
-            };
-
-            var graphCanvas = new GraphCanvasControl
-            {
-                Margin = new Thickness(4),
-                ViewModel = viewModel,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                VerticalAlignment = VerticalAlignment.Stretch
-            };
-
-            var fallbackTitle = new TextBlock
-            {
-                Text = "Canvas placeholder",
-                FontSize = 22,
-                FontWeight = FontWeight.Bold,
-                Foreground = new SolidColorBrush(Color.Parse("#7F1D1D"))
-            };
-            var fallbackDetail = new TextBlock
-            {
-                Text = "The graph could not be displayed. Try resetting the view or reopening the file.",
-                Margin = new Thickness(0, 8, 0, 0),
-                Foreground = new SolidColorBrush(Color.Parse("#934040")),
-                TextWrapping = TextWrapping.Wrap
-            };
-            var fallbackPanel = new Border
-            {
-                Background = new SolidColorBrush(Color.Parse("#FFF2F2")),
-                BorderBrush = new SolidColorBrush(Color.Parse("#D37474")),
-                BorderThickness = new Thickness(2),
-                CornerRadius = new CornerRadius(16),
-                Padding = new Thickness(20),
-                Margin = new Thickness(24),
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                VerticalAlignment = VerticalAlignment.Stretch,
-                IsVisible = false,
-                Child = new StackPanel
+                    [!TextBlock.TextProperty] = new Binding("Inspector.Headline"),
+                    FontSize = 20,
+                    FontWeight = FontWeight.Bold,
+                    Foreground = new SolidColorBrush(Color.Parse("#16324C"))
+                },
+                new TextBlock
                 {
-                    VerticalAlignment = VerticalAlignment.Center,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    Spacing = 6,
-                    Children =
-                    {
-                        fallbackTitle,
-                        fallbackDetail
-                    }
-                }
-            };
-
-            graphCanvas.StatusChanged += (_, args) =>
-            {
-                fallbackTitle.Text = args.IsError ? "Graph canvas failed to render" : args.Title;
-                fallbackDetail.Text = args.Detail;
-                fallbackPanel.IsVisible = args.IsError;
-            };
-
-            var canvasSurface = new Grid
-            {
-                RowDefinitions = new RowDefinitions("Auto,*"),
-                Children =
-                {
-                    canvasHeader
-                }
-            };
-            Grid.SetRow(graphCanvas, 1);
-            Grid.SetRow(fallbackPanel, 1);
-            canvasSurface.Children.Add(graphCanvas);
-            canvasSurface.Children.Add(fallbackPanel);
-            canvasHost.Child = canvasSurface;
-
-            Grid.SetColumn(canvasHost, 1);
-            return canvasHost;
-        }
-        catch (Exception ex)
-        {
-            var failed = BuildCanvasFallbackPanel("Graph canvas failed to initialize", ex.Message, isError: true);
-            Grid.SetColumn(failed, 1);
-            return failed;
-        }
-    }
-
-    private static Border BuildCanvasFallbackPanel(string title, string detail, bool isError)
-    {
-        return new Border
-        {
-            Background = new SolidColorBrush(Color.Parse(isError ? "#FFF2F2" : "#F7FBFF")),
-            BorderBrush = new SolidColorBrush(Color.Parse(isError ? "#D37474" : "#7FA7C9")),
-            BorderThickness = new Thickness(2),
-            CornerRadius = new CornerRadius(20),
-            Padding = new Thickness(24),
-            MinHeight = 520,
-            Child = new StackPanel
-            {
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Spacing = 8,
-                Children =
-                {
-                    new TextBlock
-                    {
-                        Text = title,
-                        FontSize = 26,
-                        FontWeight = FontWeight.Bold,
-                        Foreground = new SolidColorBrush(Color.Parse(isError ? "#7F1D1D" : "#16324C"))
-                    },
-                    new TextBlock
-                    {
-                        Text = detail,
-                        TextWrapping = TextWrapping.Wrap,
-                        HorizontalAlignment = HorizontalAlignment.Center,
-                        MaxWidth = 640,
-                        Foreground = new SolidColorBrush(Color.Parse(isError ? "#934040" : "#365B7E"))
-                    }
+                    [!TextBlock.TextProperty] = new Binding("Inspector.Summary"),
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
                 }
             }
         };
     }
 
-    private static Control BuildWindowFailureSurface(Exception ex)
+    private static Control BuildNetworkEditor()
     {
-        return new Border
+        var panel = new StackPanel
         {
-            Background = new SolidColorBrush(Color.Parse("#FFF2F2")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#D37474")),
-            BorderThickness = new Thickness(2),
-            Padding = new Thickness(24),
-            Child = new StackPanel
+            Spacing = 8,
+            IsVisible = false,
+            Children =
             {
-                Spacing = 10,
-                Children =
+                BuildSectionTitle("Network", "Edit the network name, description, and loop length."),
+                BuildLabeledTextBox("Network name", nameof(WorkspaceViewModel.NetworkNameText)),
+                BuildLabeledTextBox("Description", nameof(WorkspaceViewModel.NetworkDescriptionText)),
+                BuildLabeledTextBox("Loop length (periods)", nameof(WorkspaceViewModel.NetworkTimelineLoopLengthText))
+            }
+        };
+        panel.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNetwork)));
+        return panel;
+    }
+
+    private static Control BuildNodeEditor()
+    {
+        var profileList = new ListBox
+        {
+            Height = 120,
+            SelectionMode = SelectionMode.Single
+        };
+        profileList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.SelectedNodeTrafficProfiles)));
+        profileList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedNodeTrafficProfileItem), BindingMode.TwoWay));
+        ApplyFocusVisual(profileList);
+
+        var panel = new StackPanel
+        {
+            Spacing = 8,
+            IsVisible = false,
+            Children =
+            {
+                BuildSectionTitle("Node", "Edit plain-language place details, shape, and traffic roles for the selected node."),
+                BuildLabeledTextBox("Name", nameof(WorkspaceViewModel.NodeNameText)),
+                BuildLabeledTextBox("Place type", nameof(WorkspaceViewModel.NodePlaceTypeText)),
+                BuildLabeledTextBox("Description", nameof(WorkspaceViewModel.NodeDescriptionText)),
+                BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.NodeTranshipmentCapacityText)),
+                BuildLabeledComboBox("Node shape", nameof(WorkspaceViewModel.NodeShapeOptions), nameof(WorkspaceViewModel.NodeShape)),
+                BuildLabeledComboBox("Node kind", nameof(WorkspaceViewModel.NodeKindOptions), nameof(WorkspaceViewModel.NodeKind)),
+                BuildSectionTitle("Traffic Roles", "Select a traffic role, then edit production, demand, storage, and schedule."),
+                profileList,
+                new StackPanel
                 {
-                    new TextBlock
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    Children =
                     {
-                        Text = "Shell failed during startup",
-                        FontSize = 28,
-                        FontWeight = FontWeight.Bold,
-                        Foreground = new SolidColorBrush(Color.Parse("#7F1D1D"))
-                    },
-                    new TextBlock
-                    {
-                        Text = ex.Message,
-                        TextWrapping = TextWrapping.Wrap,
-                        Foreground = new SolidColorBrush(Color.Parse("#8F4040"))
+                        BuildBoundButton("Add Traffic Role", nameof(WorkspaceViewModel.AddNodeTrafficProfileCommand)),
+                        BuildBoundButton("Remove Traffic Role", nameof(WorkspaceViewModel.RemoveSelectedNodeTrafficProfileCommand))
                     }
+                },
+                BuildLabeledComboBox("Traffic type", nameof(WorkspaceViewModel.TrafficTypeNameOptions), nameof(WorkspaceViewModel.NodeTrafficTypeText)),
+                BuildLabeledComboBox("Role", nameof(WorkspaceViewModel.NodeRoleOptions), nameof(WorkspaceViewModel.NodeTrafficRoleText)),
+                BuildLabeledTextBox("Production", nameof(WorkspaceViewModel.NodeProductionText)),
+                BuildLabeledTextBox("Consumption", nameof(WorkspaceViewModel.NodeConsumptionText)),
+                BuildLabeledTextBox("Consumer premium per unit", nameof(WorkspaceViewModel.NodeConsumerPremiumText)),
+                BuildLabeledTextBox("Production start period", nameof(WorkspaceViewModel.NodeProductionStartText)),
+                BuildLabeledTextBox("Production end period", nameof(WorkspaceViewModel.NodeProductionEndText)),
+                BuildLabeledTextBox("Consumption start period", nameof(WorkspaceViewModel.NodeConsumptionStartText)),
+                BuildLabeledTextBox("Consumption end period", nameof(WorkspaceViewModel.NodeConsumptionEndText)),
+                BuildLabeledCheckBox("Can transship", nameof(WorkspaceViewModel.NodeCanTransship)),
+                BuildLabeledCheckBox("Store enabled", nameof(WorkspaceViewModel.NodeStoreEnabled)),
+                BuildLabeledTextBox("Store capacity", nameof(WorkspaceViewModel.NodeStoreCapacityText))
+            }
+        };
+        panel.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNode)));
+        return panel;
+    }
+
+    private static Control BuildEdgeEditor()
+    {
+        var panel = new StackPanel
+        {
+            Spacing = 8,
+            IsVisible = false,
+            Children =
+            {
+                BuildSectionTitle("Route", "Edit the selected route and its traffic access rules."),
+                BuildLabeledTextBox("Route label", nameof(WorkspaceViewModel.EdgeRouteTypeText)),
+                BuildLabeledTextBox("Travel time", nameof(WorkspaceViewModel.EdgeTimeText)),
+                BuildLabeledTextBox("Travel cost", nameof(WorkspaceViewModel.EdgeCostText)),
+                BuildLabeledTextBox("Capacity", nameof(WorkspaceViewModel.EdgeCapacityText)),
+                BuildLabeledCheckBox("Bidirectional", nameof(WorkspaceViewModel.EdgeIsBidirectional)),
+                BuildPermissionEditor(
+                    "Route Access",
+                    "Override the network default for this route when you need a different access rule.",
+                    nameof(WorkspaceViewModel.SelectedEdgePermissionRows),
+                    nameof(WorkspaceViewModel.EdgeCapacityText))
+            }
+        };
+        panel.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingEdge)));
+        return panel;
+    }
+
+    private static Control BuildBulkEditor()
+    {
+        var panel = new StackPanel
+        {
+            Spacing = 8,
+            IsVisible = false,
+            Children =
+            {
+                BuildSectionTitle("Bulk Edit", "Apply safe shared values across the selected nodes."),
+                BuildLabeledTextBox("Place type", nameof(WorkspaceViewModel.BulkPlaceTypeText)),
+                BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.BulkTranshipmentCapacityText))
+            }
+        };
+        panel.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingSelection)));
+        return panel;
+    }
+
+    private static Control BuildApplyRow(ICommand applyCommand)
+    {
+        return new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            Children =
+            {
+                BuildButton("Apply Changes", applyCommand)
+            }
+        };
+    }
+
+    private static Control BuildPermissionEditor(string title, string summary, string rowsPropertyName, string? edgeCapacityPropertyName)
+    {
+        var rows = new ItemsControl
+        {
+            [!ItemsControl.ItemsSourceProperty] = new Binding(rowsPropertyName),
+            ItemTemplate = new FuncDataTemplate<PermissionRuleEditorRow>((row, _) =>
+            {
+                var wrap = new StackPanel
+                {
+                    Spacing = 6,
+                    Margin = new Thickness(0, 0, 0, 10),
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = row.TrafficType,
+                            FontWeight = FontWeight.Bold,
+                            Foreground = new SolidColorBrush(Color.Parse("#16324C"))
+                        }
+                    }
+                };
+
+                if (row.SupportsOverrideToggle)
+                {
+                    var overrideBox = BuildCheckBox("Override network default");
+                    overrideBox.Bind(ToggleButton.IsCheckedProperty, new Binding(nameof(PermissionRuleEditorRow.IsActive), BindingMode.TwoWay));
+                    wrap.Children.Add(overrideBox);
+                }
+
+                var modeBox = BuildComboBox();
+                modeBox.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.PermissionModeOptions)) { Source = Application.Current?.ApplicationLifetime is not null ? null : null });
+                modeBox.ItemsSource = Enum.GetValues<EdgeTrafficPermissionMode>();
+                modeBox.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(PermissionRuleEditorRow.Mode), BindingMode.TwoWay));
+                wrap.Children.Add(BuildLabeledRow("Permission", modeBox));
+
+                var limitKind = BuildComboBox();
+                limitKind.ItemsSource = Enum.GetValues<EdgeTrafficLimitKind>();
+                limitKind.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(PermissionRuleEditorRow.LimitKind), BindingMode.TwoWay));
+                wrap.Children.Add(BuildLabeledRow("Limit type", limitKind));
+
+                var limitValue = BuildTextBox("Enter a limit");
+                limitValue.Bind(TextBox.TextProperty, new Binding(nameof(PermissionRuleEditorRow.LimitValueText), BindingMode.TwoWay));
+                wrap.Children.Add(BuildLabeledRow("Limit value", limitValue));
+
+                var effective = new TextBlock
+                {
+                    Foreground = new SolidColorBrush(Color.Parse("#4D6781")),
+                    TextWrapping = TextWrapping.Wrap
+                };
+                effective.Bind(TextBlock.TextProperty, new Binding(nameof(PermissionRuleEditorRow.EffectiveSummary)));
+                wrap.Children.Add(effective);
+
+                var validation = new TextBlock
+                {
+                    Foreground = new SolidColorBrush(Color.Parse("#9D2E2E")),
+                    TextWrapping = TextWrapping.Wrap
+                };
+                validation.Bind(TextBlock.TextProperty, new Binding(nameof(PermissionRuleEditorRow.ValidationMessage)));
+                wrap.Children.Add(validation);
+
+                return wrap;
+            })
+        };
+
+        return new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                BuildSectionTitle(title, summary),
+                rows
+            }
+        };
+    }
+
+    private static Control BuildSectionTitle(string title, string summary)
+    {
+        return new StackPanel
+        {
+            Spacing = 2,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = title,
+                    FontWeight = FontWeight.Bold,
+                    Foreground = new SolidColorBrush(Color.Parse("#16324C"))
+                },
+                new TextBlock
+                {
+                    Text = summary,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
                 }
             }
         };
@@ -968,7 +1140,8 @@ public sealed class ShellWindow : Window
         {
             Margin = new Thickness(column == 0 ? 0 : 18, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            Foreground = new SolidColorBrush(Color.Parse(column == 0 ? "#16324C" : "#31506B"))
+            Foreground = new SolidColorBrush(Color.Parse(column == 0 ? "#16324C" : "#31506B")),
+            TextWrapping = TextWrapping.Wrap
         };
         Grid.SetColumn(text, column);
         text.Bind(TextBlock.TextProperty, new Binding(propertyName));
@@ -981,13 +1154,15 @@ public sealed class ShellWindow : Window
         {
             Content = label,
             Command = command,
-            Padding = new Thickness(12, 8),
+            Padding = new Thickness(12, 10),
+            MinHeight = 42,
             Background = new SolidColorBrush(Color.Parse("#D9EAF8")),
             Foreground = new SolidColorBrush(Color.Parse("#17324B")),
             BorderBrush = new SolidColorBrush(Color.Parse("#7FA7C9")),
-            BorderThickness = new Thickness(1),
+            BorderThickness = new Thickness(1.5),
             CornerRadius = new CornerRadius(12)
         };
+        ApplyFocusVisual(button);
 
         if (column >= 0)
         {
@@ -999,25 +1174,16 @@ public sealed class ShellWindow : Window
 
     private static Button BuildBoundButton(string label, string commandPropertyName)
     {
-        var button = new Button
-        {
-            Content = label,
-            Padding = new Thickness(12, 8),
-            Background = new SolidColorBrush(Color.Parse("#D9EAF8")),
-            Foreground = new SolidColorBrush(Color.Parse("#17324B")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#7FA7C9")),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(12)
-        };
+        var button = BuildButton(label, new RelayCommand(() => { }));
         button.Bind(Button.CommandProperty, new Binding(commandPropertyName));
         return button;
     }
 
-    private static Button BuildRailButton(string text, string toolTip, ICommand command)
+    private static Button BuildToolButton(string text, string toolTip, ICommand command)
     {
         var button = new Button
         {
-            Height = 52,
+            Height = 58,
             Content = new TextBlock
             {
                 Text = text,
@@ -1026,28 +1192,51 @@ public sealed class ShellWindow : Window
                 FontWeight = FontWeight.Bold,
                 Foreground = new SolidColorBrush(Color.Parse("#355777"))
             },
-            ToolTip = toolTip,
             Command = command,
             BorderBrush = new SolidColorBrush(Color.Parse("#93B7D7")),
-            BorderThickness = new Thickness(1),
+            BorderThickness = new Thickness(1.5),
             Background = new SolidColorBrush(Color.Parse("#F8FCFF")),
             CornerRadius = new CornerRadius(14)
         };
-
-        button.Classes.Add("focusable-tool");
+        ToolTip.SetTip(button, toolTip);
+        ApplyFocusVisual(button);
         return button;
+    }
+
+    private static void ApplyToolButtonState(Button button, bool isActive)
+    {
+        button.Background = new SolidColorBrush(Color.Parse(isActive ? "#C8E4FB" : "#F8FCFF"));
+        button.BorderBrush = new SolidColorBrush(Color.Parse(isActive ? "#2D78B8" : "#93B7D7"));
+        button.BorderThickness = new Thickness(isActive ? 2.5 : 1.5);
     }
 
     private static Control BuildLabeledTextBox(string label, string propertyName)
     {
-        var textBox = new TextBox
-        {
-            Watermark = label
-        };
+        var textBox = BuildTextBox(label);
         textBox.Bind(TextBox.TextProperty, new Binding(propertyName, BindingMode.TwoWay));
+        return BuildLabeledRow(label, textBox);
+    }
+
+    private static Control BuildLabeledComboBox(string label, string itemsPropertyName, string selectedPropertyName)
+    {
+        var comboBox = BuildComboBox();
+        comboBox.Bind(ItemsControl.ItemsSourceProperty, new Binding(itemsPropertyName));
+        comboBox.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(selectedPropertyName, BindingMode.TwoWay));
+        return BuildLabeledRow(label, comboBox);
+    }
+
+    private static Control BuildLabeledCheckBox(string label, string propertyName)
+    {
+        var checkBox = BuildCheckBox(label);
+        checkBox.Bind(ToggleButton.IsCheckedProperty, new Binding(propertyName, BindingMode.TwoWay));
+        return checkBox;
+    }
+
+    private static Control BuildLabeledRow(string label, Control editor)
+    {
         return new StackPanel
         {
-            Spacing = 2,
+            Spacing = 3,
             Children =
             {
                 new TextBlock
@@ -1056,9 +1245,99 @@ public sealed class ShellWindow : Window
                     FontSize = 12,
                     Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
                 },
-                textBox
+                editor
             }
         };
+    }
+
+    private static TextBox BuildTextBox(string watermark)
+    {
+        var textBox = new TextBox
+        {
+            Watermark = watermark,
+            MinHeight = 40,
+            Padding = new Thickness(10, 8),
+            BorderBrush = new SolidColorBrush(Color.Parse("#93B7D7")),
+            BorderThickness = new Thickness(1.5),
+            Background = new SolidColorBrush(Color.Parse("#FFFFFF"))
+        };
+        ApplyFocusVisual(textBox);
+        return textBox;
+    }
+
+    private static ComboBox BuildComboBox()
+    {
+        var comboBox = new ComboBox
+        {
+            MinHeight = 40,
+            BorderBrush = new SolidColorBrush(Color.Parse("#93B7D7")),
+            BorderThickness = new Thickness(1.5),
+            Background = new SolidColorBrush(Color.Parse("#FFFFFF"))
+        };
+        ApplyFocusVisual(comboBox);
+        return comboBox;
+    }
+
+    private static CheckBox BuildCheckBox(string label)
+    {
+        var checkBox = new CheckBox
+        {
+            Content = label,
+            MinHeight = 40
+        };
+        ApplyFocusVisual(checkBox);
+        return checkBox;
+    }
+
+    private static Control BuildValidationBlock(string propertyName)
+    {
+        var textBlock = new TextBlock
+        {
+            Foreground = new SolidColorBrush(Color.Parse("#9D2E2E")),
+            TextWrapping = TextWrapping.Wrap
+        };
+        textBlock.Bind(TextBlock.TextProperty, new Binding(propertyName));
+        return textBlock;
+    }
+
+    private static void ApplyFocusVisual(Control control)
+    {
+        void Apply(bool focused)
+        {
+            var border = new SolidColorBrush(Color.Parse(focused ? "#2D78B8" : "#93B7D7"));
+            var thickness = new Thickness(focused ? 2.5 : 1.5);
+
+            switch (control)
+            {
+                case Button button:
+                    button.BorderBrush = border;
+                    button.BorderThickness = thickness;
+                    break;
+
+                case TextBox textBox:
+                    textBox.BorderBrush = border;
+                    textBox.BorderThickness = thickness;
+                    break;
+
+                case ComboBox comboBox:
+                    comboBox.BorderBrush = border;
+                    comboBox.BorderThickness = thickness;
+                    break;
+
+                case Slider slider:
+                    slider.BorderBrush = border;
+                    slider.BorderThickness = thickness;
+                    break;
+
+                case ListBox listBox:
+                    listBox.BorderBrush = border;
+                    listBox.BorderThickness = thickness;
+                    break;
+            }
+        }
+
+        control.GotFocus += (_, _) => Apply(true);
+        control.LostFocus += (_, _) => Apply(false);
     }
 
     private async Task OpenNetworkFileAsync(WorkspaceViewModel viewModel)

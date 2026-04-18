@@ -9,6 +9,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using MedWNetworkSim.App.Import;
+using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.ViewModels;
 
 namespace MedWNetworkSim.App;
@@ -188,6 +189,26 @@ public partial class MainWindow : Window
     private void Reports_Click(object sender, RoutedEventArgs e)
     {
         var window = new ReportExportWindow(ViewModel)
+        {
+            Owner = this
+        };
+
+        window.ShowDialog();
+    }
+
+    private void ExportCurrentReportShell_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new ReportExportWindow(ViewModel, ReportExportKind.Current)
+        {
+            Owner = this
+        };
+
+        window.ShowDialog();
+    }
+
+    private void ExportTimelineReportShell_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new ReportExportWindow(ViewModel, ReportExportKind.Timeline)
         {
             Owner = this
         };

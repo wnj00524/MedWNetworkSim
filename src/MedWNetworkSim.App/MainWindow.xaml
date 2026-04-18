@@ -137,7 +137,8 @@
                                 <Button Content="Next period" Click="NextTimelinePeriod_Click" IsEnabled="{Binding HasNetwork}" />
                                 <Button Content="Reset timeline" Click="ResetTimeline_Click" IsEnabled="{Binding HasNetwork}" />
                                 <ToggleButton Content="Analysis drawer" Click="ToggleReportsDrawer_Click" IsChecked="{Binding ReportsDrawer.IsOpen, Mode=OneWay}" IsEnabled="{Binding HasNetwork}" />
-                                <Button Content="Export reports..." Click="Reports_Click" IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="Export current report..." Click="ExportCurrentReportShell_Click" IsEnabled="{Binding HasNetwork}" />
+                                <Button Content="Export timeline report..." Click="ExportTimelineReportShell_Click" IsEnabled="{Binding HasNetwork}" />
                             </WrapPanel>
                         </StackPanel>
                     </Border>

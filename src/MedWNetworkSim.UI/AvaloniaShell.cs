@@ -166,7 +166,7 @@ public sealed class GraphCanvasControl : Control
 
         var transform = GetCoordinateTransform();
         var interactionContext = ViewModel.CreateInteractionContext(transform.LogicalViewport);
-        var point = transform.PointerToGraph(e.GetPosition(this));
+        var point = PointerToGraph(e, transform);
         var button = e.GetCurrentPoint(this).Properties.PointerUpdateKind switch
         {
             PointerUpdateKind.LeftButtonPressed => GraphPointerButton.Left,
@@ -199,7 +199,7 @@ public sealed class GraphCanvasControl : Control
         var transform = GetCoordinateTransform();
         ViewModel.InteractionController.OnPointerMoved(
             ViewModel.CreateInteractionContext(transform.LogicalViewport),
-            transform.PointerToGraph(e.GetPosition(this)));
+            PointerToGraph(e, transform));
         ViewModel.NotifyVisualChanged();
         InvalidateVisual();
     }
@@ -223,7 +223,7 @@ public sealed class GraphCanvasControl : Control
         ViewModel.InteractionController.OnPointerReleased(
             ViewModel.CreateInteractionContext(transform.LogicalViewport),
             button,
-            transform.PointerToGraph(e.GetPosition(this)),
+            PointerToGraph(e, transform),
             e.KeyModifiers.HasFlag(KeyModifiers.Shift));
         ViewModel.NotifyVisualChanged();
         RefreshEditorSummaries(ViewModel);
@@ -241,7 +241,7 @@ public sealed class GraphCanvasControl : Control
         var transform = GetCoordinateTransform();
         ViewModel.InteractionController.OnPointerWheel(
             ViewModel.CreateInteractionContext(transform.LogicalViewport),
-            transform.PointerToGraph(e.GetPosition(this)),
+            PointerToGraph(e, transform),
             e.Delta.Y);
         ViewModel.NotifyVisualChanged();
         InvalidateVisual();
@@ -274,6 +274,19 @@ public sealed class GraphCanvasControl : Control
         var topLevel = TopLevel.GetTopLevel(this);
         var renderScale = topLevel?.RenderScaling ?? 1d;
         return GraphCanvasCoordinateTransform.Create(Bounds.Size, renderScale);
+    }
+
+    private GraphPoint PointerToGraph(PointerEventArgs e, GraphCanvasCoordinateTransform transform)
+    {
+        var local = e.GetPosition(this);
+        var graphPoint = transform.PointerToGraph(local);
+
+        if (local.X < 0d || local.Y < 0d || local.X > Bounds.Width || local.Y > Bounds.Height)
+        {
+            LogDebug($"Pointer clamped from ({local.X:0.##},{local.Y:0.##}) to ({graphPoint.X:0.##},{graphPoint.Y:0.##}) within {transform.LogicalViewport.Width:0.##}x{transform.LogicalViewport.Height:0.##}.");
+        }
+
+        return graphPoint;
     }
 
     private void EnsureBitmap(GraphCanvasCoordinateTransform transform)
@@ -408,6 +421,10 @@ public sealed class ShellWindow : Window
                 Title = viewModel.WindowTitle;
             }
         };
+        KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.S), Command = viewModel.SelectToolCommand });
+        KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.A), Command = viewModel.AddNodeToolCommand });
+        KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.C), Command = viewModel.ConnectToolCommand });
+        KeyBindings.Add(new KeyBinding { Gesture = new KeyGesture(Key.Escape), Command = viewModel.SelectToolCommand });
 
         Content = BuildLayout(viewModel);
     }

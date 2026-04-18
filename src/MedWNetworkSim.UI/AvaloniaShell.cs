@@ -72,6 +72,7 @@ public sealed class GraphCanvasControl : Control
     private bool hasVisibleFrame;
     private bool hasError;
     private int statusNotificationVersion;
+    private string? hoveredNodeId;
 
     public GraphCanvasControl()
     {
@@ -263,6 +264,7 @@ public sealed class GraphCanvasControl : Control
         ViewModel.InteractionController.OnPointerMoved(
             ViewModel.CreateInteractionContext(transform.LogicalViewport),
             PointerToGraph(e, transform));
+        UpdateHoveredNodeToolTip(ViewModel, transform, e);
         ViewModel.NotifyVisualChanged();
         InvalidateVisual();
     }
@@ -311,6 +313,13 @@ public sealed class GraphCanvasControl : Control
         e.Handled = true;
     }
 
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        hoveredNodeId = null;
+        ToolTip.SetTip(this, null);
+    }
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
@@ -350,6 +359,21 @@ public sealed class GraphCanvasControl : Control
         }
 
         return graphPoint;
+    }
+
+    private void UpdateHoveredNodeToolTip(WorkspaceViewModel viewModel, GraphCanvasCoordinateTransform transform, PointerEventArgs e)
+    {
+        var interactionContext = viewModel.CreateInteractionContext(transform.LogicalViewport);
+        var worldPoint = interactionContext.Viewport.ScreenToWorld(PointerToGraph(e, transform), interactionContext.ViewportSize);
+        var hit = new GraphHitTester().HitTest(interactionContext.Scene, worldPoint);
+        if (string.Equals(hoveredNodeId, hit.NodeId, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        hoveredNodeId = hit.NodeId;
+        var tooltipText = interactionContext.Scene.FindNode(hit.NodeId)?.ToolTipText;
+        ToolTip.SetTip(this, string.IsNullOrWhiteSpace(tooltipText) ? null : tooltipText);
     }
 
     private void EnsureBitmap(GraphCanvasCoordinateTransform transform)

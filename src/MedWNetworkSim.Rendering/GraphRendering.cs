@@ -105,6 +105,7 @@ public sealed class GraphNodeSceneItem
     public required SKColor FillColor { get; set; }
     public required SKColor StrokeColor { get; set; }
     public required IReadOnlyList<string> Badges { get; set; }
+    public string ToolTipText { get; set; } = string.Empty;
     public required bool HasWarning { get; set; }
 }
 
@@ -393,17 +394,30 @@ public sealed class GraphRenderer
 
         foreach (var node in scene.Nodes)
         {
-            var origin = viewport.WorldToScreen(new GraphPoint(node.Bounds.Left + 18d, node.Bounds.Top + 30d), viewportSize);
-            canvas.DrawText(node.Name, (float)origin.X, (float)origin.Y, titlePaint);
+            var leftPadding = 14d;
+            var topPadding = 18d;
+            var contentWidth = Math.Max(48d, node.Bounds.Width - (leftPadding * 2d));
+            var origin = viewport.WorldToScreen(new GraphPoint(node.Bounds.Left + leftPadding, node.Bounds.Top + topPadding), viewportSize);
+            var maxTextWidth = (float)(contentWidth * viewport.Zoom);
+            var y = (float)origin.Y;
+            foreach (var line in WrapText(node.Name, titlePaint, maxTextWidth))
+            {
+                y += 16f;
+                canvas.DrawText(line, (float)origin.X, y, titlePaint);
+            }
+
             if (tier >= ZoomTier.Medium)
             {
-                canvas.DrawText(node.TypeLabel, (float)origin.X, (float)(origin.Y + 18f), bodyPaint);
+                foreach (var line in WrapText(node.TypeLabel, bodyPaint, maxTextWidth))
+                {
+                    y += 14f;
+                    canvas.DrawText(line, (float)origin.X, y, bodyPaint);
+                }
             }
 
             if (tier == ZoomTier.Near)
             {
                 var visibleLines = node.DetailLines.Take(6).ToList();
-                var lineY = (float)(origin.Y + 38f);
                 foreach (var line in visibleLines)
                 {
                     var paint = line.IsWarning
@@ -411,14 +425,16 @@ public sealed class GraphRenderer
                         : line.IsEmphasized
                             ? emphasizedDetailPaint
                             : detailPaint;
-                    canvas.DrawText(line.Text, (float)origin.X, lineY, paint);
-                    lineY += 14f;
+                    foreach (var wrapped in WrapText(line.Text, paint, maxTextWidth))
+                    {
+                        y += 14f;
+                        canvas.DrawText(wrapped, (float)origin.X, y, paint);
+                    }
                 }
             }
             else if (tier == ZoomTier.Medium)
             {
                 var visibleLines = node.DetailLines.Take(3).ToList();
-                var lineY = (float)(origin.Y + 36f);
                 foreach (var line in visibleLines)
                 {
                     var paint = line.IsWarning
@@ -426,11 +442,46 @@ public sealed class GraphRenderer
                         : line.IsEmphasized
                             ? emphasizedDetailPaint
                             : detailPaint;
-                    canvas.DrawText(line.Text, (float)origin.X, lineY, paint);
-                    lineY += 13f;
+                    foreach (var wrapped in WrapText(line.Text, paint, maxTextWidth))
+                    {
+                        y += 13f;
+                        canvas.DrawText(wrapped, (float)origin.X, y, paint);
+                    }
                 }
             }
         }
+    }
+
+    private static IReadOnlyList<string> WrapText(string? text, SKPaint paint, float maxWidth)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return [];
+        }
+
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0)
+        {
+            return [text.Trim()];
+        }
+
+        var lines = new List<string>();
+        var current = words[0];
+        for (var i = 1; i < words.Length; i++)
+        {
+            var candidate = $"{current} {words[i]}";
+            if (paint.MeasureText(candidate) <= maxWidth)
+            {
+                current = candidate;
+                continue;
+            }
+
+            lines.Add(current);
+            current = words[i];
+        }
+
+        lines.Add(current);
+        return lines;
     }
 
     private static void DrawSelection(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize)

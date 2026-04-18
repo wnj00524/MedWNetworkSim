@@ -288,8 +288,10 @@ public sealed class PermissionRuleEditorRow : ObservableObject
 
 public sealed class WorkspaceViewModel : ObservableObject
 {
-    internal const double SceneNodeWidth = 168d;
-    internal const double SceneNodeHeight = 148d;
+    internal const double SceneNodeMinWidth = 132d;
+    internal const double SceneNodeMaxWidth = 248d;
+    internal const double SceneNodeDefaultWidth = 168d;
+    internal const double SceneNodeMinHeight = 118d;
 
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
 
@@ -765,17 +767,21 @@ public sealed class WorkspaceViewModel : ObservableObject
         {
             var centerX = node.X ?? 0d;
             var centerY = node.Y ?? 0d;
+            var detailLines = BuildNodeDetailLines(node, [], null);
+            var nodeWidth = ComputeSceneNodeWidth(node, detailLines);
+            var nodeHeight = ComputeSceneNodeHeight(node, nodeWidth, detailLines);
             Scene.Nodes.Add(new GraphNodeSceneItem
             {
                 Id = node.Id,
                 Name = node.Name,
                 TypeLabel = string.IsNullOrWhiteSpace(node.PlaceType) ? "Node" : node.PlaceType!,
                 MetricsLabel = string.Empty,
-                DetailLines = BuildNodeDetailLines(node, [], null),
-                Bounds = new GraphRect(centerX - (SceneNodeWidth / 2d), centerY - (SceneNodeHeight / 2d), SceneNodeWidth, SceneNodeHeight),
+                DetailLines = detailLines,
+                Bounds = new GraphRect(centerX - (nodeWidth / 2d), centerY - (nodeHeight / 2d), nodeWidth, nodeHeight),
                 FillColor = SKColor.Parse("#163149"),
                 StrokeColor = SKColor.Parse("#6AAED6"),
                 Badges = BuildNodeBadges(node),
+                ToolTipText = BuildNodeToolTipText(node, detailLines),
                 HasWarning = false
             });
         }
@@ -971,6 +977,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             var nodeModel = network.Nodes.First(model => Comparer.Equals(model.Id, node.Id));
             node.MetricsLabel = string.Empty;
             node.DetailLines = BuildNodeDetailLines(nodeModel, [], null);
+            UpdateSceneNodeLayout(node, nodeModel);
             node.HasWarning = false;
         }
 
@@ -1016,6 +1023,7 @@ public sealed class WorkspaceViewModel : ObservableObject
                 var pressure = timeline.NodePressureById.GetValueOrDefault(node.Id);
                 node.MetricsLabel = string.Empty;
                 node.DetailLines = BuildNodeDetailLines(nodeModel, backlogByTraffic, pressure.Score > 0d ? pressure : null);
+                UpdateSceneNodeLayout(node, nodeModel);
                 node.HasWarning = pressure.Score > 0d || state.DemandBacklog > 0d;
             }
         }
@@ -1026,6 +1034,7 @@ public sealed class WorkspaceViewModel : ObservableObject
                 var nodeModel = network.Nodes.First(model => Comparer.Equals(model.Id, node.Id));
                 node.MetricsLabel = string.Empty;
                 node.DetailLines = BuildNodeDetailLines(nodeModel, [], null);
+                UpdateSceneNodeLayout(node, nodeModel);
                 node.HasWarning = false;
             }
         }
@@ -2149,6 +2158,67 @@ public sealed class WorkspaceViewModel : ObservableObject
         }
 
         return badges;
+    }
+
+    private static void UpdateSceneNodeLayout(GraphNodeSceneItem sceneNode, NodeModel nodeModel)
+    {
+        var centerX = sceneNode.Bounds.CenterX;
+        var centerY = sceneNode.Bounds.CenterY;
+        var width = ComputeSceneNodeWidth(nodeModel, sceneNode.DetailLines);
+        var height = ComputeSceneNodeHeight(nodeModel, width, sceneNode.DetailLines);
+        sceneNode.Bounds = new GraphRect(centerX - (width / 2d), centerY - (height / 2d), width, height);
+        sceneNode.ToolTipText = BuildNodeToolTipText(nodeModel, sceneNode.DetailLines);
+    }
+
+    private static double ComputeSceneNodeWidth(NodeModel node, IReadOnlyList<GraphNodeTextLine> detailLines)
+    {
+        var textSamples = new List<string>
+        {
+            node.Name ?? string.Empty,
+            string.IsNullOrWhiteSpace(node.PlaceType) ? "Node" : node.PlaceType!,
+            $"{detailLines.Count} details"
+        };
+        textSamples.AddRange(detailLines.Select(line => line.Text));
+        var widest = textSamples
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .Select(text => text.Trim().Length)
+            .DefaultIfEmpty(0)
+            .Max();
+        var estimated = SceneNodeMinWidth + (widest * 3.2d);
+        return Math.Clamp(estimated, SceneNodeMinWidth, SceneNodeMaxWidth);
+    }
+
+    private static double ComputeSceneNodeHeight(NodeModel node, double nodeWidth, IReadOnlyList<GraphNodeTextLine> detailLines)
+    {
+        var contentWidth = Math.Max(88d, nodeWidth - 32d);
+        var titleLines = EstimateWrappedLineCount(node.Name, contentWidth, 7.5d);
+        var typeLines = EstimateWrappedLineCount(string.IsNullOrWhiteSpace(node.PlaceType) ? "Node" : node.PlaceType!, contentWidth, 6.1d);
+        var detailLineCount = detailLines.Sum(line => EstimateWrappedLineCount(line.Text, contentWidth, 5.9d));
+        var detailBlock = detailLineCount > 0 ? (detailLineCount * 14d) + 8d : 0d;
+        var baseHeight = 26d + (titleLines * 18d) + (typeLines * 14d) + detailBlock + 20d;
+        return Math.Max(SceneNodeMinHeight, baseHeight);
+    }
+
+    private static int EstimateWrappedLineCount(string? text, double availableWidth, double averageCharWidth)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return 0;
+        }
+
+        var charsPerLine = Math.Max(8, (int)Math.Floor(availableWidth / Math.Max(1d, averageCharWidth)));
+        return Math.Max(1, (int)Math.Ceiling(text.Trim().Length / (double)charsPerLine));
+    }
+
+    private static string BuildNodeToolTipText(NodeModel node, IReadOnlyList<GraphNodeTextLine> detailLines)
+    {
+        var lines = new List<string>
+        {
+            string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name,
+            string.IsNullOrWhiteSpace(node.PlaceType) ? "Node" : node.PlaceType!
+        };
+        lines.AddRange(detailLines.Select(line => line.Text));
+        return string.Join(Environment.NewLine, lines.Where(line => !string.IsNullOrWhiteSpace(line)));
     }
 
     private static string? NormalizeOptionalText(string? value) =>

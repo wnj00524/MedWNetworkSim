@@ -236,7 +236,7 @@ public sealed class NodeViewModel : ObservableObject
             }
 
             OnPropertyChanged(nameof(TranshipmentCapacityLabel));
-            OnPropertyChanged(nameof(FullTrafficSummary));
+            RaiseNodeTooltipSummaryChanged();
             RaiseWorldbuilderSummaryPropertiesChanged();
             RefreshSimulationDerivedState();
             DefinitionChanged?.Invoke(this, EventArgs.Empty);
@@ -766,6 +766,11 @@ public sealed class NodeViewModel : ObservableObject
         }
     }
 
+
+    public string NodeToolTipText => FullTrafficSummary;
+
+    public bool HasNodeToolTipText => !string.IsNullOrWhiteSpace(NodeToolTipText);
+
     public string WorldbuilderSummary
     {
         get
@@ -933,7 +938,7 @@ public sealed class NodeViewModel : ObservableObject
         producedTrafficDetails = FormatTrafficDetails(producedByTraffic);
         storedTrafficDetails = FormatTrafficDetails(storedByTraffic);
         transhippedTrafficDetails = FormatTrafficDetails(transhippedByTraffic);
-        OnPropertyChanged(nameof(FullTrafficSummary));
+        RaiseNodeTooltipSummaryChanged();
     }
 
     public void ApplyTimelineVisuals(double availableSupply, double demandBacklog, double storeInventory)
@@ -1092,7 +1097,15 @@ public sealed class NodeViewModel : ObservableObject
         OnPropertyChanged(nameof(HasSimulationDetails));
         OnPropertyChanged(nameof(TimelineSummaryLabel));
         OnPropertyChanged(nameof(PressureSummaryLabel));
+        RaiseNodeTooltipSummaryChanged();
+    }
+
+
+    private void RaiseNodeTooltipSummaryChanged()
+    {
         OnPropertyChanged(nameof(FullTrafficSummary));
+        OnPropertyChanged(nameof(NodeToolTipText));
+        OnPropertyChanged(nameof(HasNodeToolTipText));
     }
 
     private void UpdateDemandBadges(IReadOnlyList<KeyValuePair<string, double>> backlogByTraffic)

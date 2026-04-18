@@ -661,7 +661,7 @@
                     <local:LayersPanelControl DataContext="{Binding LayersPanel}"
                                               Visibility="{Binding LayersPanelVisibility}" />
                     <local:InspectorPanelControl Margin="0,14,0,0"
-                                                 DataContext="{Binding InspectorPanel}"
+                                                 DataContext="{Binding}"
                                                  Visibility="{Binding InspectorPanel.Visibility}" />
                     <local:LegendPanelControl Margin="0,14,0,0"
                                               Visibility="{Binding LegendPanelVisibility}" />

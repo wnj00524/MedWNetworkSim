@@ -366,6 +366,14 @@ public partial class MainWindow : Window
     {
         if (sender is Thumb { DataContext: NodeViewModel node })
         {
+            if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt))
+            {
+                ViewModel.ToggleBulkNodeSelection(node);
+                SetCanvasHint("Bulk selection updated. Open the inspector to review shared edits or launch bulk edit.");
+                e.Handled = true;
+                return;
+            }
+
             ViewModel.SelectedNode = node;
             FocusKeyboardNode(node);
             SetCanvasHint("Place selected. Enter edits. Ctrl+Arrow moves. E starts a route. Shift+F10 opens actions.");
@@ -421,6 +429,14 @@ public partial class MainWindow : Window
         if (e.Key == Key.Enter)
         {
             OpenNodeEditorWindow();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Space && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            ViewModel.ToggleBulkNodeSelection(node);
+            SetCanvasHint("Bulk selection updated for the focused place.");
             e.Handled = true;
             return;
         }

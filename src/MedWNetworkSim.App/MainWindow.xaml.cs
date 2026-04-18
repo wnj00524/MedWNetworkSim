@@ -124,13 +124,20 @@ public partial class MainWindow : Window
                 FitCanvasToNetwork();
                 SetCanvasHint("OpenStreetMap import complete. Network auto-fit to canvas.");
             });
+
+            MessageBox.Show(
+                this,
+                $"Imported '{Path.GetFileName(dialog.FileName)}' as a network with {ViewModel.Nodes.Count} place(s) and {ViewModel.Edges.Count} route(s).",
+                "OpenStreetMap import complete",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
             MessageBox.Show(
                 this,
-                ex.Message,
-                "MedW Network Simulator",
+                $"Could not import '{Path.GetFileName(dialog.FileName)}'.{Environment.NewLine}{Environment.NewLine}{ex.Message}{Environment.NewLine}{Environment.NewLine}Check that the file is a valid .osm or .pbf extract. If the map is large, try a lower retention target and import again.",
+                "OpenStreetMap import failed",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }

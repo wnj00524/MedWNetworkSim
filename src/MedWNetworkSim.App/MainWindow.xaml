@@ -14,6 +14,9 @@
         MinHeight="900"
         WindowState="Maximized"
         WindowStartupLocation="CenterScreen">
+        <Window.Resources>
+            <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        </Window.Resources>
         <Grid Margin="22">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -76,6 +79,24 @@
                                 <Button Content="Export GraphML..." Click="GraphMl_Click" IsEnabled="{Binding HasNetwork}" />
                                 <Button Content="Import OSM..." Click="ImportOsm_Click" />
                             </WrapPanel>
+                            <Border Margin="0,12,0,0"
+                                    Style="{StaticResource InfoCardBorderStyle}"
+                                    Visibility="{Binding IsImportingOsm, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource FieldLabelTextStyle}"
+                                               Foreground="{DynamicResource AccentStrongBrush}"
+                                               Text="OSM import in progress" />
+                                    <TextBlock Margin="0,6,0,0"
+                                               Style="{StaticResource HelperTextStyle}"
+                                               Text="{Binding OsmImportStatus}" />
+                                    <ProgressBar Margin="0,8,0,0"
+                                                 Height="14"
+                                                 Minimum="0"
+                                                 Maximum="1"
+                                                 IsIndeterminate="{Binding IsOsmImportProgressIndeterminate}"
+                                                 Value="{Binding OsmImportProgress}" />
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </Border>
 

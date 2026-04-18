@@ -26,6 +26,7 @@ public partial class OsmImportOptionsWindow : Window
         StrategyComboBox.IsEnabled = enabled;
         AlwaysKeepNamedTransitionsCheckBox.IsEnabled = enabled;
         PreserveShapeOnLongSegmentsCheckBox.IsEnabled = enabled;
+        UpdateImportSummary();
     }
 
     private void RetentionValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -96,5 +97,26 @@ public partial class OsmImportOptionsWindow : Window
         }
 
         EstimatedCountText.Text = $"Estimated retained node count: approximately {percentage}% of parsed OSM road nodes (final exact count shown after parsing).";
+        UpdateImportSummary();
+    }
+
+    private void UpdateImportSummary()
+    {
+        if (ImportSummaryText is null)
+        {
+            return;
+        }
+
+        if (EnableRetentionCheckBox.IsChecked != true)
+        {
+            ImportSummaryText.Text = "The importer will keep all parsed road nodes and use the full road detail available in the file.";
+            return;
+        }
+
+        var strategyLabel = StrategyComboBox.SelectedItem is ComboBoxItem item
+            ? item.Content?.ToString() ?? "Balanced"
+            : "Balanced";
+        var percentage = (int)Math.Round(RetentionSlider.Value, MidpointRounding.AwayFromZero);
+        ImportSummaryText.Text = $"The importer will target roughly {percentage}% retention using the {strategyLabel} strategy.";
     }
 }

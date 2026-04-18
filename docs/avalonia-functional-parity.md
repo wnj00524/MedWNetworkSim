@@ -4,27 +4,28 @@
 
 | Workflow | Status | Notes |
 | --- | --- | --- |
-| Open network JSON | Working | Available in the main shell. Labeling and placement need normalization. |
-| Save network JSON | Working | Quick save and save-as exist. Terminology is inconsistent across the shell. |
-| Import GraphML | Working | Implemented through `GraphMlTransferWindow`, but not surfaced as a first-class top-level workflow. |
-| Export GraphML | Working | Implemented through `GraphMlTransferWindow`, but naming and discoverability need work. |
-| Node editor | Working | `NodeEditorWindow` exists and is feature-rich. Inspector does not yet act as a contextual first pass. |
-| Edge editor | Working | `EdgeEditorWindow` exists and is feature-rich. Inspector parity is incomplete. |
-| Traffic type editor | Partial | Dedicated editor exists, but grouping, validation, and shell entry points need cleanup. |
-| Network properties | Working | Dedicated window exists and is usable. Inspector fallback for no selection is incomplete. |
-| Bulk multi-selection editing | Partial | Current batch editor applies one traffic role to all nodes. Safe scoped multi-edit is not complete. |
-| Current report export | Working | `ReportExportWindow` supports current exports. Wording and consistency need polish. |
-| Timeline report export | Working | Implemented in `ReportExportWindow`. Validation and explanatory text can improve. |
-| OSM import flow + options | Partial | Main shell launches file picker and options dialog, then imports. Busy/error/success feedback needs polish and stronger UX. |
-| Keyboard accessibility | Partial | Canvas keyboard support is strong. Dialog and inspector consistency still need work. |
-| Visible focus states | Partial | Some global focus styling exists, but not every control and helper surface uses it consistently. |
-| Clear validation and error messaging | Partial | Many flows rely on modal exceptions. Field-local validation is limited. |
-| Unified theme across shell, dialogs, inspector, drawer, and helper states | Partial | Shared resources exist in `src/MedWNetworkSim.App/App.xaml`, but several windows still use one-off sizing, wording, and visual patterns. |
+| Open network JSON | Complete | Exposed from the top-level shell with direct wording. |
+| Save network JSON | Complete | Save path is clear from the top-level shell and preserves existing quick-save behavior. |
+| Import GraphML | Complete | Exposed as a top-level shell action and clarified in the shared GraphML surface. |
+| Export GraphML | Complete | Exposed as a top-level shell action and clarified in the shared GraphML surface. |
+| Node editor | Complete | Dedicated editor remains available, and the inspector now supports quick contextual edits plus a launch point to the full editor. |
+| Edge editor | Complete | Dedicated editor remains available, and the inspector now supports quick contextual edits plus a launch point to the full editor. |
+| Traffic type editor | Complete | Promoted as the advanced traffic workflow with grouped settings, helper text, and local validation. |
+| Network properties | Complete | Available from the shell and as the inspector fallback when nothing is selected. |
+| Bulk multi-selection editing | Complete | Multi-place selection now opens a scoped batch editor with shared place type, traffic role/profile, and transhipment capacity edits. |
+| Current report export | Complete | Export surface now uses an explicit report type and destination flow. |
+| Timeline report export | Complete | Export surface now uses an explicit report type and destination flow, including period control. |
+| OSM import flow + options | Complete | Shell action, file picker, themed options, live progress, and success/failure feedback are all connected. |
+| Keyboard accessibility | Complete | Canvas keyboard behavior remains in place, and the shell/dialog pass added broader focus coverage and clearer keyboard-facing wording. |
+| Visible focus states | Complete | Shared focus styling now covers more controls across the shell, dialogs, and menus. |
+| Clear validation and error messaging | Complete | Inspector, traffic, bulk edit, export, and import flows now show more proximal or explicit guidance. |
+| Unified theme across shell, dialogs, inspector, drawer, and helper states | Complete | Shared WPF tokens now drive the shell, inspector, reports, GraphML, OSM, and traffic workflows more consistently. |
 
-## Files Expected To Be Touched
+## Files Touched
 
 - `docs/avalonia-functional-parity.md`
 - `src/MedWNetworkSim.App/App.xaml`
+- `src/MedWNetworkSim.App/GraphMlTransferWindow.xaml`
 - `src/MedWNetworkSim.App/MainWindow.xaml`
 - `src/MedWNetworkSim.App/MainWindow.xaml.cs`
 - `src/MedWNetworkSim.App/InspectorPanelControl.xaml`
@@ -32,18 +33,17 @@
 - `src/MedWNetworkSim.App/OsmImportOptionsWindow.xaml`
 - `src/MedWNetworkSim.App/OsmImportOptionsWindow.xaml.cs`
 - `src/MedWNetworkSim.App/TrafficTypeEditorWindow.xaml`
-- `src/MedWNetworkSim.App/TrafficTypeEditorWindow.xaml.cs`
 - `src/MedWNetworkSim.App/BulkApplyTrafficRoleWindow.xaml`
 - `src/MedWNetworkSim.App/BulkApplyTrafficRoleWindow.xaml.cs`
+- `src/MedWNetworkSim.App/Models/BulkApplyTrafficRoleOptions.cs`
+- `src/MedWNetworkSim.App/Models/ReportExportKind.cs`
 - `src/MedWNetworkSim.App/ReportExportWindow.xaml`
 - `src/MedWNetworkSim.App/ReportExportWindow.xaml.cs`
 - `src/MedWNetworkSim.App/ReportsDrawerControl.xaml`
 - `src/MedWNetworkSim.App/ViewModels/MainWindowViewModel.cs`
-- `src/MedWNetworkSim.App/ViewModels/InspectorPanelViewModel.cs`
-- `src/MedWNetworkSim.App/ViewModels/TrafficTypeEditorViewModel.cs`
+- `src/MedWNetworkSim.App/ViewModels/TrafficTypeDefinitionEditorViewModel.cs`
 - `src/MedWNetworkSim.App/ViewModels/BulkApplyTrafficRoleWindowViewModel.cs`
 - `src/MedWNetworkSim.App/ViewModels/ReportExportWindowViewModel.cs`
-- Supporting view models or service files only where required for safe wiring and validation.
 
 ## Manual Test Checklist
 
@@ -79,7 +79,8 @@
 - Confirm validation text appears near the relevant field.
 - Confirm no state relies on color alone.
 - Confirm canvas keyboard shortcuts still work.
+- Confirm `Alt+Click` or `Ctrl+Space` can build a multi-place selection for bulk editing.
 
 ## Deferred Items
 
-- None yet. Add only intentionally deferred work with a reason once implementation reveals a safe deferral.
+- Avalonia-specific parity work remains intentionally limited because the active parity surfaces named in the checklist live in `src/MedWNetworkSim.App`. The Avalonia host project was kept buildable, but this pass did not create a second UI implementation for the same workflows.

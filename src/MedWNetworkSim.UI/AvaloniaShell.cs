@@ -826,8 +826,8 @@ public sealed class ShellWindow : Window
                     details,
                     BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
                     BuildNetworkEditor(),
-                    BuildNodeEditor(),
-                    BuildEdgeEditor(),
+                    BuildNodeEditor(viewModel),
+                    BuildEdgeEditor(viewModel),
                     BuildBulkEditor(),
                     BuildApplyRow(viewModel.ApplyInspectorCommand)
                 }
@@ -1004,7 +1004,7 @@ public sealed class ShellWindow : Window
         return panel;
     }
 
-    private static Control BuildNodeEditor()
+    private static Control BuildNodeEditor(WorkspaceViewModel viewModel)
     {
         var profileList = new ListBox
         {
@@ -1051,7 +1051,7 @@ public sealed class ShellWindow : Window
         return panel;
     }
 
-    private static Control BuildEdgeEditor()
+    private static Control BuildEdgeEditor(WorkspaceViewModel viewModel)
     {
         var panel = new StackPanel
         {

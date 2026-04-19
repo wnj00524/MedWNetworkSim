@@ -89,6 +89,33 @@ public sealed class ReportMetricViewModel
     public required Action Activate { get; init; }
 }
 
+public sealed class TrafficReportRowViewModel
+{
+    public required string TrafficType { get; init; }
+    public required string PlannedQuantity { get; init; }
+    public required string DeliveredQuantity { get; init; }
+    public required string UnmetDemand { get; init; }
+    public required string Backlog { get; init; }
+}
+
+public sealed class RouteReportRowViewModel
+{
+    public required string RouteId { get; init; }
+    public required string FromTo { get; init; }
+    public required string CurrentFlow { get; init; }
+    public required string Capacity { get; init; }
+    public required string Utilisation { get; init; }
+    public required string Pressure { get; init; }
+}
+
+public sealed class NodePressureReportRowViewModel
+{
+    public required string Node { get; init; }
+    public required string PressureScore { get; init; }
+    public required string TopCause { get; init; }
+    public required string UnmetNeed { get; init; }
+}
+
 public sealed class TrafficDefinitionListItem(TrafficTypeDefinition model)
 {
     public TrafficTypeDefinition Model { get; } = model;
@@ -305,7 +332,9 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     private NetworkModel network = new();
     private TemporalNetworkSimulationEngine.TemporalSimulationState? temporalState;
+    private TemporalNetworkSimulationEngine.TemporalSimulationStepResult? lastTimelineStepResult;
     private IReadOnlyList<TrafficSimulationOutcome> lastOutcomes = [];
+    private IReadOnlyList<ConsumerCostSummary> lastConsumerCosts = [];
     private string statusText = "Select a tool and start editing.";
     private string toolStatusText = "Select mode: select, drag, or marquee.";
     private string toolInstructionText = "Shortcuts: S Select, A Add node, C Connect, Ctrl-drag creates a route.";
@@ -365,6 +394,9 @@ public sealed class WorkspaceViewModel : ObservableObject
         Viewport = new GraphViewport();
         Inspector = new InspectorSection();
         ReportMetrics = [];
+        TrafficReports = [];
+        RouteReports = [];
+        NodePressureReports = [];
         SelectedNodeTrafficProfiles = [];
         SelectedEdgePermissionRows = [];
         TrafficDefinitions = [];
@@ -408,6 +440,9 @@ public sealed class WorkspaceViewModel : ObservableObject
     public int ViewportVersion { get; private set; }
     public InspectorSection Inspector { get; }
     public ObservableCollection<ReportMetricViewModel> ReportMetrics { get; }
+    public ObservableCollection<TrafficReportRowViewModel> TrafficReports { get; }
+    public ObservableCollection<RouteReportRowViewModel> RouteReports { get; }
+    public ObservableCollection<NodePressureReportRowViewModel> NodePressureReports { get; }
     public ObservableCollection<NodeTrafficProfileListItem> SelectedNodeTrafficProfiles { get; }
     public ObservableCollection<PermissionRuleEditorRow> SelectedEdgePermissionRows { get; }
     public ObservableCollection<TrafficDefinitionListItem> TrafficDefinitions { get; }
@@ -668,7 +703,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     public void ExportCurrentReport(string path, ReportExportFormat format)
     {
         CommitTransientEditorsToModel();
-        reportExportService.SaveCurrentReport(network, lastOutcomes, [], path, format);
+        reportExportService.SaveCurrentReport(network, lastOutcomes, lastConsumerCosts, path, format);
         StatusText = $"Exported the current report to '{Path.GetFileName(path)}'.";
     }
 
@@ -735,7 +770,9 @@ public sealed class WorkspaceViewModel : ObservableObject
     {
         network = fileService.NormalizeAndValidate(source);
         temporalState = null;
+        lastTimelineStepResult = null;
         lastOutcomes = [];
+        lastConsumerCosts = [];
         CurrentPeriod = 0;
         TimelineMaximum = Math.Max(8, network.TimelineLoopLength ?? 12);
         TimelinePosition = 0;
@@ -754,7 +791,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         Scene.Transient.DragStartWorld = null;
         Scene.Simulation.ShowAnimatedFlows = true;
         Scene.Simulation.ReducedMotion = ReducedMotion;
-        PopulateReportMetrics([]);
+        ClearDynamicReports();
         RefreshInspector();
         StatusText = status;
         NotifyVisualChanged();
@@ -770,20 +807,21 @@ public sealed class WorkspaceViewModel : ObservableObject
             var centerX = node.X ?? 0d;
             var centerY = node.Y ?? 0d;
             var detailLines = BuildNodeDetailLines(node, [], null);
-            var nodeWidth = ComputeSceneNodeWidth(node, detailLines);
-            var nodeHeight = ComputeSceneNodeHeight(node, nodeWidth, detailLines);
+            var typeLabel = string.IsNullOrWhiteSpace(node.PlaceType) ? "Node" : node.PlaceType!;
+            var nodeWidth = GraphNodeTextLayout.ComputeNodeWidth(node.Name, typeLabel, detailLines);
+            var nodeHeight = GraphNodeTextLayout.BuildLayout(node.Name, typeLabel, detailLines, nodeWidth).Height;
             Scene.Nodes.Add(new GraphNodeSceneItem
             {
                 Id = node.Id,
                 Name = node.Name,
-                TypeLabel = string.IsNullOrWhiteSpace(node.PlaceType) ? "Node" : node.PlaceType!,
+                TypeLabel = typeLabel,
                 MetricsLabel = string.Empty,
                 DetailLines = detailLines,
                 Bounds = new GraphRect(centerX - (nodeWidth / 2d), centerY - (nodeHeight / 2d), nodeWidth, nodeHeight),
                 FillColor = SKColor.Parse("#163149"),
                 StrokeColor = SKColor.Parse("#6AAED6"),
                 Badges = BuildNodeBadges(node),
-                ToolTipText = BuildNodeToolTipText(node, detailLines),
+                ToolTipText = BuildNodeToolTipText(node, detailLines, null),
                 HasWarning = false
             });
         }
@@ -802,6 +840,7 @@ public sealed class WorkspaceViewModel : ObservableObject
                 Time = edge.Time,
                 LoadRatio = 0d,
                 FlowRate = 0d,
+                ToolTipText = BuildEdgeToolTipText(edge, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty, 0d, null),
                 HasWarning = false
             });
         }
@@ -947,6 +986,8 @@ public sealed class WorkspaceViewModel : ObservableObject
         CommitTransientEditorsToModel();
         var outcomes = simulationEngine.Simulate(fileService.NormalizeAndValidate(network));
         lastOutcomes = outcomes;
+        lastConsumerCosts = simulationEngine.SummarizeConsumerCosts(outcomes);
+        lastTimelineStepResult = null;
         ApplySimulationOutcomes(outcomes.SelectMany(outcome => outcome.Allocations), null);
         StatusText = "Simulation finished.";
     }
@@ -956,6 +997,8 @@ public sealed class WorkspaceViewModel : ObservableObject
         CommitTransientEditorsToModel();
         temporalState ??= temporalEngine.Initialize(fileService.NormalizeAndValidate(network));
         var result = temporalEngine.Advance(network, temporalState);
+        lastTimelineStepResult = result;
+        lastConsumerCosts = simulationEngine.SummarizeConsumerCosts(result.Allocations);
         CurrentPeriod = result.Period;
         TimelinePosition = result.EffectivePeriod;
         ApplySimulationOutcomes(result.Allocations, result);
@@ -965,6 +1008,9 @@ public sealed class WorkspaceViewModel : ObservableObject
     private void ResetTimeline()
     {
         temporalState = null;
+        lastTimelineStepResult = null;
+        lastOutcomes = [];
+        lastConsumerCosts = [];
         CurrentPeriod = 0;
         TimelinePosition = 0;
         foreach (var edge in Scene.Edges)
@@ -979,19 +1025,21 @@ public sealed class WorkspaceViewModel : ObservableObject
             var nodeModel = network.Nodes.First(model => Comparer.Equals(model.Id, node.Id));
             node.MetricsLabel = string.Empty;
             node.DetailLines = BuildNodeDetailLines(nodeModel, [], null);
-            UpdateSceneNodeLayout(node, nodeModel);
+            UpdateSceneNodeLayout(node, nodeModel, null);
             node.HasWarning = false;
         }
 
-        PopulateReportMetrics([]);
+        ClearDynamicReports();
+        RefreshInspector();
         NotifyVisualChanged();
         StatusText = "Reset the timeline to period 0.";
     }
 
     private void ApplySimulationOutcomes(IEnumerable<RouteAllocation> allocations, TemporalNetworkSimulationEngine.TemporalSimulationStepResult? timeline)
     {
+        var allocationList = allocations.ToList();
         var edgeLoads = Scene.Edges.ToDictionary(edge => edge.Id, _ => 0d, Comparer);
-        foreach (var allocation in allocations)
+        foreach (var allocation in allocationList)
         {
             foreach (var edgeId in allocation.PathEdgeIds)
             {
@@ -1006,6 +1054,12 @@ public sealed class WorkspaceViewModel : ObservableObject
             edge.LoadRatio = load / maxLoad;
             edge.FlowRate = load / maxLoad;
             edge.HasWarning = edge.Capacity > 0d && load >= edge.Capacity * 0.8d;
+            var edgeModel = network.Edges.First(model => Comparer.Equals(model.Id, edge.Id));
+            var edgeFlow = timeline?.EdgeFlows.GetValueOrDefault(edge.Id, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty)
+                ?? new TemporalNetworkSimulationEngine.EdgeFlowVisualSummary(load, 0d);
+            var edgeOccupancy = timeline?.EdgeOccupancy.GetValueOrDefault(edge.Id, load) ?? load;
+            var edgePressure = timeline?.EdgePressureById.GetValueOrDefault(edge.Id);
+            edge.ToolTipText = BuildEdgeToolTipText(edgeModel, edgeFlow, edgeOccupancy, edgePressure);
         }
 
         if (timeline is not null)
@@ -1025,7 +1079,7 @@ public sealed class WorkspaceViewModel : ObservableObject
                 var pressure = timeline.NodePressureById.GetValueOrDefault(node.Id);
                 node.MetricsLabel = string.Empty;
                 node.DetailLines = BuildNodeDetailLines(nodeModel, backlogByTraffic, pressure.Score > 0d ? pressure : null);
-                UpdateSceneNodeLayout(node, nodeModel);
+                UpdateSceneNodeLayout(node, nodeModel, pressure.Score > 0d ? pressure : null);
                 node.HasWarning = pressure.Score > 0d || state.DemandBacklog > 0d;
             }
         }
@@ -1036,27 +1090,15 @@ public sealed class WorkspaceViewModel : ObservableObject
                 var nodeModel = network.Nodes.First(model => Comparer.Equals(model.Id, node.Id));
                 node.MetricsLabel = string.Empty;
                 node.DetailLines = BuildNodeDetailLines(nodeModel, [], null);
-                UpdateSceneNodeLayout(node, nodeModel);
+                UpdateSceneNodeLayout(node, nodeModel, null);
                 node.HasWarning = false;
             }
         }
 
-        PopulateReportMetrics(edgeLoads
-            .OrderByDescending(pair => pair.Value)
-            .Take(4)
-            .Select(pair => new ReportMetricViewModel
-            {
-                Label = pair.Key,
-                Value = $"{pair.Value:0.#} load",
-                Activate = () =>
-                {
-                    Scene.Selection.SelectedEdgeIds.Clear();
-                    Scene.Selection.SelectedNodeIds.Clear();
-                    Scene.Selection.SelectedEdgeIds.Add(pair.Key);
-                    RefreshInspector();
-                    NotifyVisualChanged();
-                }
-            }));
+        PopulateTrafficReports(timeline, allocationList);
+        PopulateRouteReports(timeline, edgeLoads);
+        PopulateNodePressureReports(timeline);
+        PopulateQuickMetrics(timeline, edgeLoads);
         RefreshInspector();
         NotifyVisualChanged();
     }
@@ -1068,6 +1110,197 @@ public sealed class WorkspaceViewModel : ObservableObject
         {
             ReportMetrics.Add(metric);
         }
+    }
+
+    private void PopulateTrafficReports(
+        TemporalNetworkSimulationEngine.TemporalSimulationStepResult? timeline,
+        IReadOnlyList<RouteAllocation> allocations)
+    {
+        TrafficReports.Clear();
+        var trafficTypes = network.TrafficTypes
+            .Select(definition => definition.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(Comparer)
+            .OrderBy(name => name, Comparer)
+            .ToList();
+
+        foreach (var trafficType in trafficTypes)
+        {
+            var outcome = lastOutcomes.FirstOrDefault(item => Comparer.Equals(item.TrafficType, trafficType));
+            var backlog = timeline is null
+                ? outcome?.UnmetDemand ?? 0d
+                : timeline.NodeStates
+                    .Where(pair => Comparer.Equals(pair.Key.TrafficType, trafficType))
+                    .Sum(pair => pair.Value.DemandBacklog);
+            var planned = timeline is null
+                ? outcome?.TotalProduction ?? allocations.Where(item => Comparer.Equals(item.TrafficType, trafficType)).Sum(item => item.Quantity)
+                : allocations.Where(item => Comparer.Equals(item.TrafficType, trafficType)).Sum(item => item.Quantity);
+            var delivered = timeline is null
+                ? outcome?.TotalDelivered ?? allocations.Where(item => Comparer.Equals(item.TrafficType, trafficType)).Sum(item => item.Quantity)
+                : allocations.Where(item => Comparer.Equals(item.TrafficType, trafficType)).Sum(item => item.Quantity);
+            var unmetDemand = timeline is null ? outcome?.UnmetDemand ?? 0d : backlog;
+
+            TrafficReports.Add(new TrafficReportRowViewModel
+            {
+                TrafficType = trafficType,
+                PlannedQuantity = ReportExportService.FormatNumber(planned),
+                DeliveredQuantity = ReportExportService.FormatNumber(delivered),
+                UnmetDemand = ReportExportService.FormatNumber(unmetDemand),
+                Backlog = ReportExportService.FormatNumber(backlog)
+            });
+        }
+    }
+
+    private void PopulateRouteReports(
+        TemporalNetworkSimulationEngine.TemporalSimulationStepResult? timeline,
+        IReadOnlyDictionary<string, double> edgeLoads)
+    {
+        RouteReports.Clear();
+        foreach (var edge in network.Edges.OrderBy(item => item.RouteType ?? item.Id, Comparer))
+        {
+            var flowSummary = timeline?.EdgeFlows.GetValueOrDefault(edge.Id, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty)
+                ?? TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty;
+            var totalFlow = timeline is null
+                ? edgeLoads.GetValueOrDefault(edge.Id, 0d)
+                : flowSummary.ForwardQuantity + flowSummary.ReverseQuantity;
+            var occupancy = timeline?.EdgeOccupancy.GetValueOrDefault(edge.Id, totalFlow) ?? totalFlow;
+            var pressure = timeline?.EdgePressureById.GetValueOrDefault(edge.Id);
+            var source = ResolveNodeName(edge.FromNodeId);
+            var target = ResolveNodeName(edge.ToNodeId);
+            var pressureLabel = pressure is { Score: > 0d }
+                ? $"{ReportExportService.FormatNumber(pressure.Value.Score)} | {BuildTopCauseText(pressure.Value.TopCause)}"
+                : "None";
+
+            RouteReports.Add(new RouteReportRowViewModel
+            {
+                RouteId = string.IsNullOrWhiteSpace(edge.RouteType) ? edge.Id : edge.RouteType!,
+                FromTo = $"{source} -> {target}",
+                CurrentFlow = timeline is not null && edge.IsBidirectional
+                    ? $"{ReportExportService.FormatNumber(flowSummary.ForwardQuantity)} / {ReportExportService.FormatNumber(flowSummary.ReverseQuantity)}"
+                    : ReportExportService.FormatNumber(totalFlow),
+                Capacity = ReportExportService.FormatNumber(edge.Capacity),
+                Utilisation = ReportExportService.FormatUtilisation(occupancy, edge.Capacity),
+                Pressure = pressureLabel
+            });
+        }
+    }
+
+    private void PopulateNodePressureReports(TemporalNetworkSimulationEngine.TemporalSimulationStepResult? timeline)
+    {
+        NodePressureReports.Clear();
+        if (timeline is null)
+        {
+            return;
+        }
+
+        foreach (var node in network.Nodes.OrderBy(item => item.Name, Comparer))
+        {
+            var pressure = timeline.NodePressureById.GetValueOrDefault(node.Id);
+            var backlog = timeline.NodeStates
+                .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id) && pair.Value.DemandBacklog > 0d)
+                .OrderByDescending(pair => pair.Value.DemandBacklog)
+                .ThenBy(pair => pair.Key.TrafficType, Comparer)
+                .FirstOrDefault();
+            var unmetNeed = backlog.Value.DemandBacklog > 0d
+                ? $"{ReportExportService.FormatNumber(backlog.Value.DemandBacklog)} {backlog.Key.TrafficType}"
+                : "None";
+
+            NodePressureReports.Add(new NodePressureReportRowViewModel
+            {
+                Node = ResolveNodeName(node.Id),
+                PressureScore = pressure.Score > 0d ? ReportExportService.FormatNumber(pressure.Score) : "None",
+                TopCause = pressure.Score > 0d ? BuildTopCauseText(pressure.TopCause) : "None",
+                UnmetNeed = unmetNeed
+            });
+        }
+    }
+
+    private void PopulateQuickMetrics(
+        TemporalNetworkSimulationEngine.TemporalSimulationStepResult? timeline,
+        IReadOnlyDictionary<string, double> edgeLoads)
+    {
+        var metrics = new List<ReportMetricViewModel>();
+        var mostLoadedRoute = network.Edges
+            .Select(edge => new
+            {
+                Edge = edge,
+                Occupancy = timeline?.EdgeOccupancy.GetValueOrDefault(edge.Id, edgeLoads.GetValueOrDefault(edge.Id, 0d)) ?? edgeLoads.GetValueOrDefault(edge.Id, 0d)
+            })
+            .OrderByDescending(item => item.Occupancy)
+            .FirstOrDefault(item => item.Occupancy > 0d);
+        if (mostLoadedRoute is not null)
+        {
+            metrics.Add(new ReportMetricViewModel
+            {
+                Label = "Most loaded route",
+                Value = $"{ResolveEdgeLabel(mostLoadedRoute.Edge.Id)} {ReportExportService.FormatUtilisation(mostLoadedRoute.Occupancy, mostLoadedRoute.Edge.Capacity)}",
+                Activate = () => SelectRouteForEdit(mostLoadedRoute.Edge.Id)
+            });
+        }
+
+        if (timeline is not null)
+        {
+            var mostPressuredNode = network.Nodes
+                .Select(node => new { Node = node, Pressure = timeline.NodePressureById.GetValueOrDefault(node.Id) })
+                .OrderByDescending(item => item.Pressure.Score)
+                .FirstOrDefault(item => item.Pressure.Score > 0d);
+            if (mostPressuredNode is not null)
+            {
+                metrics.Add(new ReportMetricViewModel
+                {
+                    Label = "Most pressured node",
+                    Value = $"{ResolveNodeName(mostPressuredNode.Node.Id)} {ReportExportService.FormatNumber(mostPressuredNode.Pressure.Score)}",
+                    Activate = () => SelectNodeForEdit(mostPressuredNode.Node.Id)
+                });
+            }
+
+            var topUnmetNode = timeline.NodeStates
+                .Where(pair => pair.Value.DemandBacklog > 0d)
+                .GroupBy(pair => pair.Key.NodeId, pair => pair.Value.DemandBacklog, Comparer)
+                .Select(group => new { NodeId = group.Key, Backlog = group.Sum() })
+                .OrderByDescending(item => item.Backlog)
+                .FirstOrDefault();
+            if (topUnmetNode is not null)
+            {
+                metrics.Add(new ReportMetricViewModel
+                {
+                    Label = "Top unmet-need node",
+                    Value = $"{ResolveNodeName(topUnmetNode.NodeId)} {ReportExportService.FormatNumber(topUnmetNode.Backlog)}",
+                    Activate = () => SelectNodeForEdit(topUnmetNode.NodeId)
+                });
+            }
+
+            var topTrafficBacklog = timeline.NodeStates
+                .Where(pair => pair.Value.DemandBacklog > 0d)
+                .GroupBy(pair => pair.Key.TrafficType, pair => pair.Value.DemandBacklog, Comparer)
+                .Select(group => new { TrafficType = group.Key, Backlog = group.Sum() })
+                .OrderByDescending(item => item.Backlog)
+                .FirstOrDefault();
+            if (topTrafficBacklog is not null)
+            {
+                metrics.Add(new ReportMetricViewModel
+                {
+                    Label = "Top traffic backlog",
+                    Value = $"{topTrafficBacklog.TrafficType} {ReportExportService.FormatNumber(topTrafficBacklog.Backlog)}",
+                    Activate = () =>
+                    {
+                        SelectedInspectorTab = InspectorTabTarget.TrafficTypes;
+                        SelectedTrafficDefinitionItem = TrafficDefinitions.FirstOrDefault(item => Comparer.Equals(item.Name, topTrafficBacklog.TrafficType));
+                        NotifyVisualChanged();
+                    }
+                });
+            }
+        }
+
+        PopulateReportMetrics(metrics.Take(4));
+    }
+
+    private void ClearDynamicReports()
+    {
+        PopulateReportMetrics([]);
+        TrafficReports.Clear();
+        RouteReports.Clear();
+        NodePressureReports.Clear();
     }
 
     private void RefreshInspector()
@@ -2076,7 +2309,7 @@ public sealed class WorkspaceViewModel : ObservableObject
                     node.TranshipmentCapacity.HasValue
                         ? $"Tranships up to {node.TranshipmentCapacity.Value:0.##} {trafficType}"
                         : $"Tranships unlimited {trafficType}",
-                    true,
+                    false,
                     false)));
             }
 
@@ -2086,7 +2319,7 @@ public sealed class WorkspaceViewModel : ObservableObject
                     profile.StoreCapacity.HasValue
                         ? $"Stores up to {profile.StoreCapacity.Value:0.##} {trafficType}"
                         : $"Stores unlimited {trafficType}",
-                    true,
+                    false,
                     false)));
             }
         }
@@ -2110,6 +2343,11 @@ public sealed class WorkspaceViewModel : ObservableObject
         if (pressure is { Score: > 0d })
         {
             visible.Add(new GraphNodeTextLine($"Pressure {pressure.Value.Score:0.##}", true, true));
+            var topCause = BuildTopCauseText(pressure.Value.TopCause);
+            if (!string.IsNullOrWhiteSpace(topCause))
+            {
+                visible.Add(new GraphNodeTextLine($"Cause: {topCause}", false, true));
+            }
         }
 
         return visible;
@@ -2163,57 +2401,23 @@ public sealed class WorkspaceViewModel : ObservableObject
         return badges;
     }
 
-    private static void UpdateSceneNodeLayout(GraphNodeSceneItem sceneNode, NodeModel nodeModel)
+    private static void UpdateSceneNodeLayout(
+        GraphNodeSceneItem sceneNode,
+        NodeModel nodeModel,
+        TemporalNetworkSimulationEngine.NodePressureSnapshot? pressure)
     {
         var centerX = sceneNode.Bounds.CenterX;
         var centerY = sceneNode.Bounds.CenterY;
-        var width = ComputeSceneNodeWidth(nodeModel, sceneNode.DetailLines);
-        var height = ComputeSceneNodeHeight(nodeModel, width, sceneNode.DetailLines);
+        var width = GraphNodeTextLayout.ComputeNodeWidth(sceneNode.Name, sceneNode.TypeLabel, sceneNode.DetailLines);
+        var height = GraphNodeTextLayout.BuildLayout(sceneNode.Name, sceneNode.TypeLabel, sceneNode.DetailLines, width).Height;
         sceneNode.Bounds = new GraphRect(centerX - (width / 2d), centerY - (height / 2d), width, height);
-        sceneNode.ToolTipText = BuildNodeToolTipText(nodeModel, sceneNode.DetailLines);
+        sceneNode.ToolTipText = BuildNodeToolTipText(nodeModel, sceneNode.DetailLines, pressure);
     }
 
-    private static double ComputeSceneNodeWidth(NodeModel node, IReadOnlyList<GraphNodeTextLine> detailLines)
-    {
-        var textSamples = new List<string>
-        {
-            node.Name ?? string.Empty,
-            string.IsNullOrWhiteSpace(node.PlaceType) ? "Node" : node.PlaceType!,
-            $"{detailLines.Count} details"
-        };
-        textSamples.AddRange(detailLines.Select(line => line.Text));
-        var widest = textSamples
-            .Where(text => !string.IsNullOrWhiteSpace(text))
-            .Select(text => text.Trim().Length)
-            .DefaultIfEmpty(0)
-            .Max();
-        var estimated = SceneNodeMinWidth + (widest * 3.2d);
-        return Math.Clamp(estimated, SceneNodeMinWidth, SceneNodeMaxWidth);
-    }
-
-    private static double ComputeSceneNodeHeight(NodeModel node, double nodeWidth, IReadOnlyList<GraphNodeTextLine> detailLines)
-    {
-        var contentWidth = Math.Max(88d, nodeWidth - 32d);
-        var titleLines = EstimateWrappedLineCount(node.Name, contentWidth, 7.5d);
-        var typeLines = EstimateWrappedLineCount(string.IsNullOrWhiteSpace(node.PlaceType) ? "Node" : node.PlaceType!, contentWidth, 6.1d);
-        var detailLineCount = detailLines.Sum(line => EstimateWrappedLineCount(line.Text, contentWidth, 5.9d));
-        var detailBlock = detailLineCount > 0 ? (detailLineCount * 14d) + 8d : 0d;
-        var baseHeight = 26d + (titleLines * 18d) + (typeLines * 14d) + detailBlock + 20d;
-        return Math.Max(SceneNodeMinHeight, baseHeight);
-    }
-
-    private static int EstimateWrappedLineCount(string? text, double availableWidth, double averageCharWidth)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return 0;
-        }
-
-        var charsPerLine = Math.Max(8, (int)Math.Floor(availableWidth / Math.Max(1d, averageCharWidth)));
-        return Math.Max(1, (int)Math.Ceiling(text.Trim().Length / (double)charsPerLine));
-    }
-
-    private static string BuildNodeToolTipText(NodeModel node, IReadOnlyList<GraphNodeTextLine> detailLines)
+    private static string BuildNodeToolTipText(
+        NodeModel node,
+        IReadOnlyList<GraphNodeTextLine> detailLines,
+        TemporalNetworkSimulationEngine.NodePressureSnapshot? pressure)
     {
         var lines = new List<string>
         {
@@ -2221,7 +2425,76 @@ public sealed class WorkspaceViewModel : ObservableObject
             string.IsNullOrWhiteSpace(node.PlaceType) ? "Node" : node.PlaceType!
         };
         lines.AddRange(detailLines.Select(line => line.Text));
+        if (pressure is { Score: > 0d })
+        {
+            var breakdown = ReportExportService.FormatCauseBreakdown(pressure.Value.CauseWeights);
+            if (!string.IsNullOrWhiteSpace(breakdown) && !string.Equals(breakdown, "None", StringComparison.Ordinal))
+            {
+                lines.Add($"Cause breakdown: {breakdown}");
+            }
+        }
+
         return string.Join(Environment.NewLine, lines.Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
+    private string BuildEdgeToolTipText(
+        EdgeModel edge,
+        TemporalNetworkSimulationEngine.EdgeFlowVisualSummary flow,
+        double occupancy,
+        TemporalNetworkSimulationEngine.EdgePressureSnapshot? pressure)
+    {
+        var label = ResolveEdgeLabel(edge.Id);
+        var source = ResolveNodeName(edge.FromNodeId);
+        var target = ResolveNodeName(edge.ToNodeId);
+        var flowSummary = edge.IsBidirectional
+            ? $"{ReportExportService.FormatNumber(flow.ForwardQuantity)} / {ReportExportService.FormatNumber(flow.ReverseQuantity)}"
+            : ReportExportService.FormatNumber(flow.ForwardQuantity + flow.ReverseQuantity);
+        var lines = new List<string>
+        {
+            $"Route {label}",
+            $"{source} -> {target}",
+            $"Time {ReportExportService.FormatNumber(edge.Time)} | Cost {ReportExportService.FormatNumber(edge.Cost)}",
+            $"Capacity {ReportExportService.FormatNumber(edge.Capacity)} | Flow {flowSummary}",
+            $"Utilisation {ReportExportService.FormatUtilisation(occupancy, edge.Capacity)}",
+            edge.IsBidirectional ? "Bidirectional" : "One-way",
+            $"Traffic {ReportExportService.FormatEdgeTrafficPermissions(network, edge)}"
+        };
+
+        if (pressure is { Score: > 0d })
+        {
+            lines.Add($"Pressure {ReportExportService.FormatNumber(pressure.Value.Score)}");
+            var topCause = BuildTopCauseText(pressure.Value.TopCause);
+            if (!string.IsNullOrWhiteSpace(topCause))
+            {
+                lines.Add($"Top cause: {topCause}");
+            }
+
+            var breakdown = ReportExportService.FormatCauseBreakdown(pressure.Value.CauseWeights);
+            if (!string.Equals(breakdown, "None", StringComparison.Ordinal))
+            {
+                lines.Add($"Cause breakdown: {breakdown}");
+            }
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private string ResolveNodeName(string nodeId)
+    {
+        var node = network.Nodes.FirstOrDefault(model => Comparer.Equals(model.Id, nodeId));
+        return node is null || string.IsNullOrWhiteSpace(node.Name) ? nodeId : node.Name;
+    }
+
+    private string ResolveEdgeLabel(string edgeId)
+    {
+        var edge = network.Edges.FirstOrDefault(model => Comparer.Equals(model.Id, edgeId));
+        return edge is null || string.IsNullOrWhiteSpace(edge.RouteType) ? edgeId : edge.RouteType!;
+    }
+
+    private static string BuildTopCauseText(string? rawCause)
+    {
+        var formatted = ReportExportService.FormatPressureCause(rawCause);
+        return string.IsNullOrWhiteSpace(formatted) ? string.Empty : formatted;
     }
 
     private static string? NormalizeOptionalText(string? value) =>

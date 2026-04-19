@@ -756,7 +756,7 @@ public sealed class ReportExportService
         return JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
     }
 
-    private static string FormatEdgeTrafficPermissions(NetworkModel network, EdgeModel edge)
+    public static string FormatEdgeTrafficPermissions(NetworkModel network, EdgeModel edge)
     {
         var resolver = new EdgeTrafficPermissionResolver();
         var trafficTypes = network.TrafficTypes
@@ -1193,7 +1193,7 @@ public sealed class ReportExportService
         return $"{start?.ToString(CultureInfo.InvariantCulture) ?? "0"}-{end?.ToString(CultureInfo.InvariantCulture) ?? "inf"}";
     }
 
-    private static string FormatRoutingPreference(RoutingPreference routingPreference)
+    public static string FormatRoutingPreference(RoutingPreference routingPreference)
     {
         return routingPreference switch
         {
@@ -1215,7 +1215,7 @@ public sealed class ReportExportService
         return $"Period {result.Period}";
     }
 
-    private static string FormatNumber(double? value)
+    public static string FormatNumber(double? value)
     {
         if (!value.HasValue)
         {
@@ -1230,7 +1230,7 @@ public sealed class ReportExportService
         return value.Value.ToString("0.##", CultureInfo.InvariantCulture);
     }
 
-    private static string FormatCauseBreakdown(
+    public static string FormatCauseBreakdown(
         IReadOnlyDictionary<TemporalNetworkSimulationEngine.PressureCauseKind, double> causeWeights)
     {
         if (causeWeights.Count == 0)
@@ -1243,10 +1243,10 @@ public sealed class ReportExportService
             causeWeights
                 .Where(pair => pair.Value > 0)
                 .OrderByDescending(pair => pair.Value)
-                .Select(pair => $"{pair.Key} {FormatNumber(pair.Value)}"));
+                .Select(pair => $"{FormatPressureCause(pair.Key.ToString())} {FormatNumber(pair.Value)}"));
     }
 
-    private static string FormatUtilisation(double flow, double? capacity)
+    public static string FormatUtilisation(double flow, double? capacity)
     {
         if (!capacity.HasValue || capacity.Value <= 0)
         {
@@ -1256,6 +1256,33 @@ public sealed class ReportExportService
         }
 
         return $"{(flow / capacity.Value):0%}";
+    }
+
+    public static string FormatPressureCause(string? cause)
+    {
+        if (string.IsNullOrWhiteSpace(cause))
+        {
+            return string.Empty;
+        }
+
+        var normalized = cause.Trim();
+        return normalized switch
+        {
+            "DemandBacklog" => "unmet demand",
+            "InputShortage" => "input shortage",
+            "StoreCapacitySaturation" => "store capacity saturation",
+            "EdgeCapacitySaturation" => "route capacity saturation",
+            "TranshipmentCapacitySaturation" => "transhipment saturation",
+            "RouteUnavailable" => "route unavailable",
+            "PerishedInNodeInventory" => "goods perished in storage",
+            "PerishedInTransit" => "goods perished in transit",
+            "TimelineShock" => "timeline shock",
+            _ => string.Concat(
+                normalized.Select((ch, index) =>
+                    index > 0 && char.IsUpper(ch) && !char.IsUpper(normalized[index - 1])
+                        ? $" {char.ToLowerInvariant(ch)}"
+                        : char.ToLowerInvariant(ch).ToString()))
+        };
     }
 
     private static double TotalEdgeFlow(TemporalNetworkSimulationEngine.EdgeFlowVisualSummary summary)

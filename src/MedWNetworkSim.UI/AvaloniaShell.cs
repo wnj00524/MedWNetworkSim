@@ -524,9 +524,30 @@ public sealed class ShellWindow : Window
     private const double BottomStripHeight = 300d;
     private const double BottomStripMinHeight = 220d;
     private const double BottomStripMaxHeight = 360d;
+    private const double BottomStripCollapsedHeight = 86d;
+    private const double ExpandedCanvasPreviewHeight = 156d;
 
     private readonly WorkspaceViewModel viewModel;
     private bool allowConfirmedClose;
+    private Grid? workspaceGrid;
+    private Border? toolRailHost;
+    private Border? canvasHost;
+    private Border? inspectorHost;
+    private Border? dashboardStripHost;
+    private Grid? dashboardStripContentGrid;
+    private Control? dashboardStripBody;
+    private Grid? overlayLayer;
+    private Border? overlayBackdrop;
+    private Border? fullNodeEditorDrawer;
+    private DashboardLayoutState dashboardLayoutState = DashboardLayoutState.Normal;
+    private DashboardLayoutState previousDashboardLayoutState = DashboardLayoutState.Normal;
+
+    private enum DashboardLayoutState
+    {
+        Collapsed,
+        Normal,
+        Expanded
+    }
 
     private enum UnsavedChangesChoice
     {
@@ -567,15 +588,21 @@ public sealed class ShellWindow : Window
             {
                 Title = viewModel.WindowTitle;
             }
+
+            if (e.PropertyName == nameof(WorkspaceViewModel.IsEditingNode) && !viewModel.IsEditingNode)
+            {
+                CloseFullNodeEditor();
+            }
         };
 
         Closing += HandleWindowClosing;
+        KeyDown += HandleShellWindowKeyDown;
         Content = BuildLayout(viewModel);
     }
 
     private Control BuildLayout(WorkspaceViewModel viewModel)
     {
-        var root = new DockPanel
+        var dockRoot = new DockPanel
         {
             Margin = new Thickness(14),
             LastChildFill = true
@@ -585,9 +612,9 @@ public sealed class ShellWindow : Window
         var topBar = BuildDashboardPanel(topBarContent, includeHeader: false, padding: new Thickness(16, 12), radius: new CornerRadius(14));
         topBar.PointerPressed += HandleTopBarPointerPressed;
         DockPanel.SetDock(topBar, Dock.Top);
-        root.Children.Add(topBar);
+        dockRoot.Children.Add(topBar);
 
-        var grid = new Grid
+        workspaceGrid = new Grid
         {
             Margin = new Thickness(0, 12, 0, 0),
             ColumnDefinitions = new ColumnDefinitions("240,*,460"),
@@ -602,12 +629,36 @@ public sealed class ShellWindow : Window
             }
         };
 
-        grid.Children.Add(BuildToolRail(viewModel));
-        grid.Children.Add(BuildCanvasArea(viewModel));
-        grid.Children.Add(BuildInspector(viewModel));
-        grid.Children.Add(BuildBottomStrip(viewModel));
+        toolRailHost = (Border)BuildToolRail(viewModel);
+        canvasHost = (Border)BuildCanvasArea(viewModel);
+        inspectorHost = BuildCompactInspector(viewModel);
+        dashboardStripHost = BuildDashboardStrip(viewModel);
 
-        root.Children.Add(grid);
+        workspaceGrid.Children.Add(toolRailHost);
+        workspaceGrid.Children.Add(canvasHost);
+        workspaceGrid.Children.Add(inspectorHost);
+        workspaceGrid.Children.Add(dashboardStripHost);
+
+        dockRoot.Children.Add(workspaceGrid);
+
+        overlayLayer = new Grid
+        {
+            IsHitTestVisible = false
+        };
+        overlayBackdrop = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(150, 20, 18, 15)),
+            IsVisible = false
+        };
+        overlayBackdrop.PointerPressed += (_, _) => CloseFullNodeEditor();
+        overlayLayer.Children.Add(overlayBackdrop);
+        fullNodeEditorDrawer = BuildFullNodeEditorDrawer(viewModel);
+        overlayLayer.Children.Add(fullNodeEditorDrawer);
+
+        var root = new Grid();
+        root.Children.Add(dockRoot);
+        root.Children.Add(overlayLayer);
+        UpdateDashboardLayout();
         return root;
     }
 
@@ -887,6 +938,934 @@ public sealed class ShellWindow : Window
         Grid.SetColumn(canvasHost, 1);
         Grid.SetRow(canvasHost, 0);
         return canvasHost;
+    }
+
+    private Border BuildCompactInspector(WorkspaceViewModel viewModel)
+    {
+        var scrollViewer = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = new StackPanel
+            {
+                Spacing = 12,
+                Children =
+                {
+                    BuildHeadlineBlock(),
+                    BuildInspectorDetails(),
+                    BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
+                    BuildCompactNodeInspector(viewModel),
+                    BuildCompactEdgeInspector(),
+                    BuildCompactBulkInspector(),
+                    BuildCompactNetworkSummary()
+                }
+            }
+        };
+
+        var border = BuildDashboardPanel(scrollViewer, header: "Intelligence Rail", padding: new Thickness(14));
+        border.HorizontalAlignment = HorizontalAlignment.Stretch;
+        border.VerticalAlignment = VerticalAlignment.Stretch;
+        Grid.SetColumn(border, 2);
+        Grid.SetRow(border, 0);
+        return border;
+    }
+
+    private static Control BuildInspectorDetails()
+    {
+        return new ItemsControl
+        {
+            [!ItemsControl.ItemsSourceProperty] = new Binding("Inspector.Details"),
+            ItemTemplate = new FuncDataTemplate<string>((item, _) =>
+                new TextBlock
+                {
+                    Text = item,
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                    Margin = new Thickness(0, 0, 0, 4),
+                    TextWrapping = TextWrapping.Wrap
+                })
+        };
+    }
+
+    private Control BuildCompactNodeInspector(WorkspaceViewModel viewModel)
+    {
+        var openFullEditorButton = BuildButton("Open full editor", new RelayCommand(OpenFullNodeEditor), isPrimary: true, toolTip: "Open the full node editor drawer.");
+        openFullEditorButton.Bind(IsEnabledProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNode)));
+
+        var card = new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+            Padding = new Thickness(12),
+            Child = new StackPanel
+            {
+                Spacing = 10,
+                Children =
+                {
+                    BuildSectionTitle("Quick Edit", "Keep fast access to the common node fields here, then open the full editor for schedules, recipes, and diagnostics."),
+                    BuildLabeledTextBox("Name", nameof(WorkspaceViewModel.NodeNameText)),
+                    BuildLabeledTextBox("Place type", nameof(WorkspaceViewModel.NodePlaceTypeText)),
+                    BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.NodeTranshipmentCapacityText)),
+                    BuildLabeledComboBox("Node shape", nameof(WorkspaceViewModel.NodeShapeOptions), nameof(WorkspaceViewModel.NodeShape)),
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 8,
+                        Children =
+                        {
+                            openFullEditorButton,
+                            BuildBoundButton("Apply quick changes", nameof(WorkspaceViewModel.ApplyInspectorCommand))
+                        }
+                    }
+                }
+            }
+        };
+        card.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNode)));
+        return card;
+    }
+
+    private static Control BuildCompactEdgeInspector()
+    {
+        var card = new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+            Padding = new Thickness(12),
+            Child = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    BuildSectionTitle("Route Summary", "Route editing stays compact in the rail."),
+                    BuildLabeledTextBox("Route label", nameof(WorkspaceViewModel.EdgeRouteTypeText)),
+                    BuildLabeledTextBox("Travel time", nameof(WorkspaceViewModel.EdgeTimeText)),
+                    BuildLabeledTextBox("Travel cost", nameof(WorkspaceViewModel.EdgeCostText)),
+                    BuildLabeledTextBox("Capacity", nameof(WorkspaceViewModel.EdgeCapacityText)),
+                    BuildLabeledCheckBox("Bidirectional", nameof(WorkspaceViewModel.EdgeIsBidirectional)),
+                    BuildBoundButton("Apply route changes", nameof(WorkspaceViewModel.ApplyInspectorCommand))
+                }
+            }
+        };
+        card.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingEdge)));
+        return card;
+    }
+
+    private static Control BuildCompactBulkInspector()
+    {
+        var card = new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+            Padding = new Thickness(12),
+            Child = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    BuildSectionTitle("Bulk Edit", "Shared values for multi-node selections."),
+                    BuildLabeledTextBox("Place type", nameof(WorkspaceViewModel.BulkPlaceTypeText)),
+                    BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.BulkTranshipmentCapacityText)),
+                    BuildBoundButton("Apply bulk changes", nameof(WorkspaceViewModel.ApplyInspectorCommand))
+                }
+            }
+        };
+        card.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingSelection)));
+        return card;
+    }
+
+    private static Control BuildCompactNetworkSummary()
+    {
+        var card = new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+            Padding = new Thickness(12),
+            Child = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    BuildSectionTitle("Network", "No node or route is selected."),
+                    BuildQuickStat("Status", nameof(WorkspaceViewModel.StatusText)),
+                    BuildQuickStat("Selection", nameof(WorkspaceViewModel.SelectionSummary)),
+                    BuildQuickStat("Simulation", nameof(WorkspaceViewModel.SimulationSummary))
+                }
+            }
+        };
+        card.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNetwork)));
+        return card;
+    }
+
+    private Border BuildDashboardStrip(WorkspaceViewModel viewModel)
+    {
+        var collapseButton = BuildButton("Collapse", new RelayCommand(ToggleDashboardCollapsed), toolTip: "Collapse the dashboard strip.");
+        var expandButton = BuildButton("Expand reports", new RelayCommand(ToggleDashboardExpanded), isPrimary: true, toolTip: "Expand the reports into the main workspace.");
+        var restoreHint = new TextBlock
+        {
+            Text = "Esc restores the previous workspace layout.",
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
+        };
+
+        dashboardStripContentGrid = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            RowSpacing = 10
+        };
+
+        var headerGrid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto"),
+            ColumnSpacing = 8
+        };
+        headerGrid.Children.Add(new StackPanel
+        {
+            Spacing = 2,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "Dashboard Strip",
+                    FontSize = 16,
+                    FontWeight = FontWeight.Bold,
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                },
+                new TextBlock
+                {
+                    Text = "Reports, exports, and playback stay in reach as the layout changes.",
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                    FontSize = 12,
+                    TextWrapping = TextWrapping.Wrap
+                }
+            }
+        });
+        Grid.SetColumn(restoreHint, 1);
+        Grid.SetColumn(collapseButton, 2);
+        Grid.SetColumn(expandButton, 3);
+        headerGrid.Children.Add(restoreHint);
+        headerGrid.Children.Add(collapseButton);
+        headerGrid.Children.Add(expandButton);
+        dashboardStripContentGrid.Children.Add(headerGrid);
+
+        dashboardStripBody = BuildDashboardStripTabs(viewModel);
+        var body = dashboardStripBody;
+        Grid.SetRow(body, 1);
+        dashboardStripContentGrid.Children.Add(body);
+
+        var strip = BuildDashboardPanel(dashboardStripContentGrid, includeHeader: false, padding: new Thickness(14, 12), radius: new CornerRadius(14));
+        strip.Margin = new Thickness(12, 10, 0, 0);
+        Grid.SetColumn(strip, 1);
+        Grid.SetColumnSpan(strip, 2);
+        Grid.SetRow(strip, 1);
+        return strip;
+    }
+
+    private Border BuildFullNodeEditorDrawer(WorkspaceViewModel viewModel)
+    {
+        var header = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+            ColumnSpacing = 12,
+            Children =
+            {
+                new StackPanel
+                {
+                    Spacing = 2,
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = "Full Node Editor",
+                            FontSize = 20,
+                            FontWeight = FontWeight.Bold,
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                        },
+                        new TextBlock
+                        {
+                            Text = "All node attributes stay within the viewport. Only the editor body scrolls.",
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                            TextWrapping = TextWrapping.Wrap
+                        }
+                    }
+                }
+            }
+        };
+        var closeButton = BuildButton("Close", new RelayCommand(CloseFullNodeEditor));
+        Grid.SetColumn(closeButton, 1);
+        header.Children.Add(closeButton);
+
+        var footer = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"),
+            ColumnSpacing = 8,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "Tab through sections, then press Esc to dismiss the drawer.",
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                    FontSize = 12
+                }
+            }
+        };
+        var applyButton = BuildBoundButton("Apply node changes", nameof(WorkspaceViewModel.ApplyInspectorCommand));
+        var closeFooterButton = BuildButton("Done", new RelayCommand(CloseFullNodeEditor), isPrimary: true);
+        Grid.SetColumn(applyButton, 1);
+        Grid.SetColumn(closeFooterButton, 2);
+        footer.Children.Add(applyButton);
+        footer.Children.Add(closeFooterButton);
+
+        var bodyScroll = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = BuildFullNodeEditorBody(viewModel)
+        };
+        Grid.SetRow(bodyScroll, 1);
+        Grid.SetRow(footer, 2);
+
+        var drawer = new Border
+        {
+            Width = 640,
+            MaxWidth = 720,
+            MinWidth = 460,
+            Margin = new Thickness(0),
+            Padding = new Thickness(18),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
+            BorderThickness = new Thickness(1, 0, 0, 0),
+            BoxShadow = new BoxShadows(new BoxShadow
+            {
+                Blur = 28,
+                Color = AvaloniaDashboardTheme.PanelBorderStrong,
+                OffsetX = -8,
+                OffsetY = 0,
+                Spread = 0
+            }),
+            Focusable = true,
+            IsVisible = false,
+            Child = new Grid
+            {
+                RowDefinitions = new RowDefinitions("Auto,*,Auto"),
+                RowSpacing = 12,
+                Children =
+                {
+                    header,
+                    bodyScroll,
+                    footer
+                }
+            }
+        };
+        return drawer;
+    }
+
+    private Control BuildFullNodeEditorBody(WorkspaceViewModel viewModel)
+    {
+        var roleSelector = BuildComboBox();
+        roleSelector.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.SelectedNodeTrafficProfiles)));
+        roleSelector.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedNodeTrafficProfileItem), BindingMode.TwoWay));
+
+        return new StackPanel
+        {
+            Spacing = 14,
+            Children =
+            {
+                BuildEditorSection(
+                    "General",
+                    "Identity, placement, and worldbuilding context.",
+                    BuildLabeledTextBox("Node id", nameof(WorkspaceViewModel.NodeIdText)),
+                    BuildLabeledTextBox("Name", nameof(WorkspaceViewModel.NodeNameText)),
+                    BuildCoordinateEditors(),
+                    BuildLabeledTextBox("Place type", nameof(WorkspaceViewModel.NodePlaceTypeText)),
+                    BuildLabeledTextBox("Description", nameof(WorkspaceViewModel.NodeDescriptionText)),
+                    BuildLabeledTextBox("Controlling actor", nameof(WorkspaceViewModel.NodeControllingActorText)),
+                    BuildLabeledTextBox("Tags", nameof(WorkspaceViewModel.NodeTagsText)),
+                    BuildReadOnlyRow("Template id", nameof(WorkspaceViewModel.NodeTemplateIdText))),
+                BuildEditorSection(
+                    "Capabilities",
+                    "Node shape, relay capacity, and child-network exposure.",
+                    BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.NodeTranshipmentCapacityText)),
+                    BuildLabeledComboBox("Node shape", nameof(WorkspaceViewModel.NodeShapeOptions), nameof(WorkspaceViewModel.NodeShape)),
+                    BuildLabeledComboBox("Node kind", nameof(WorkspaceViewModel.NodeKindOptions), nameof(WorkspaceViewModel.NodeKind)),
+                    BuildLabeledTextBox("Child network", nameof(WorkspaceViewModel.NodeReferencedSubnetworkIdText)),
+                    BuildLabeledCheckBox("External-facing interface", nameof(WorkspaceViewModel.NodeIsExternalInterface)),
+                    BuildLabeledTextBox("Interface name", nameof(WorkspaceViewModel.NodeInterfaceNameText))),
+                BuildEditorSection(
+                    "Traffic roles",
+                    "Manage the selected role and its core quantities.",
+                    BuildLabeledRow("Selected role", roleSelector),
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 8,
+                        Children =
+                        {
+                            BuildBoundButton("Add role", nameof(WorkspaceViewModel.AddNodeTrafficProfileCommand)),
+                            BuildBoundButton("Duplicate role", nameof(WorkspaceViewModel.DuplicateSelectedNodeTrafficProfileCommand)),
+                            BuildBoundButton("Delete role", nameof(WorkspaceViewModel.RemoveSelectedNodeTrafficProfileCommand))
+                        }
+                    },
+                    BuildLabeledRow("Traffic type", BuildBoundComboBox(nameof(WorkspaceViewModel.TrafficTypeNameOptions), nameof(WorkspaceViewModel.NodeTrafficTypeText))),
+                    BuildLabeledRow("Role", BuildBoundComboBox(nameof(WorkspaceViewModel.NodeRoleOptions), nameof(WorkspaceViewModel.NodeTrafficRoleText))),
+                    BuildLabeledTextBox("Production", nameof(WorkspaceViewModel.NodeProductionText)),
+                    BuildLabeledTextBox("Consumption", nameof(WorkspaceViewModel.NodeConsumptionText)),
+                    BuildLabeledTextBox("Consumer premium", nameof(WorkspaceViewModel.NodeConsumerPremiumText)),
+                    BuildLabeledCheckBox("Can transship", nameof(WorkspaceViewModel.NodeCanTransship)),
+                    BuildLabeledCheckBox("Store enabled", nameof(WorkspaceViewModel.NodeStoreEnabled)),
+                    BuildLabeledTextBox("Store capacity", nameof(WorkspaceViewModel.NodeStoreCapacityText), nameof(WorkspaceViewModel.IsNodeStoreCapacityEnabled))),
+                BuildEditorSection(
+                    "Schedules",
+                    "Legacy start/end fields plus explicit production and consumption windows.",
+                    BuildScheduleFields(),
+                    BuildWindowEditor(
+                        "Production windows",
+                        nameof(WorkspaceViewModel.SelectedNodeProductionWindows),
+                        nameof(WorkspaceViewModel.SelectedNodeProductionWindowItem),
+                        nameof(WorkspaceViewModel.AddNodeProductionWindowCommand),
+                        nameof(WorkspaceViewModel.RemoveSelectedNodeProductionWindowCommand)),
+                    BuildWindowEditor(
+                        "Consumption windows",
+                        nameof(WorkspaceViewModel.SelectedNodeConsumptionWindows),
+                        nameof(WorkspaceViewModel.SelectedNodeConsumptionWindowItem),
+                        nameof(WorkspaceViewModel.AddNodeConsumptionWindowCommand),
+                        nameof(WorkspaceViewModel.RemoveSelectedNodeConsumptionWindowCommand))),
+                BuildEditorSection(
+                    "Transformation / local inputs",
+                    "Define local precursor recipes for the active traffic role.",
+                    BuildInputRequirementEditor()),
+                BuildEditorSection(
+                    "Diagnostics",
+                    "Validation and live workspace context.",
+                    BuildValidationBlock(nameof(WorkspaceViewModel.NodeTrafficRoleValidationText)),
+                    BuildQuickStat("Selection", nameof(WorkspaceViewModel.SelectionSummary)),
+                    BuildQuickStat("Status", nameof(WorkspaceViewModel.StatusText)),
+                    BuildQuickStat("Simulation", nameof(WorkspaceViewModel.SimulationSummary)))
+            }
+        };
+    }
+
+    private static Control BuildEditorSection(string title, string summary, params Control[] content)
+    {
+        var stack = new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                BuildSectionTitle(title, summary)
+            }
+        };
+
+        foreach (var control in content)
+        {
+            stack.Children.Add(control);
+        }
+
+        return new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(12),
+            Child = stack
+        };
+    }
+
+    private static Control BuildCoordinateEditors()
+    {
+        var xEditor = BuildLabeledTextBox("X", nameof(WorkspaceViewModel.NodeXText));
+        var yEditor = BuildLabeledTextBox("Y", nameof(WorkspaceViewModel.NodeYText));
+        Grid.SetColumn(yEditor, 2);
+        return new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,12,*"),
+            Children =
+            {
+                xEditor,
+                yEditor
+            }
+        };
+    }
+
+    private static ComboBox BuildBoundComboBox(string itemsPropertyName, string selectedPropertyName)
+    {
+        var comboBox = BuildComboBox();
+        comboBox.Bind(ItemsControl.ItemsSourceProperty, new Binding(itemsPropertyName));
+        comboBox.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(selectedPropertyName, BindingMode.TwoWay));
+        return comboBox;
+    }
+
+    private static Control BuildScheduleFields()
+    {
+        var prodStart = BuildLabeledTextBox("Prod start", nameof(WorkspaceViewModel.NodeProductionStartText));
+        var prodEnd = BuildLabeledTextBox("Prod end", nameof(WorkspaceViewModel.NodeProductionEndText));
+        var consStart = BuildLabeledTextBox("Cons start", nameof(WorkspaceViewModel.NodeConsumptionStartText));
+        var consEnd = BuildLabeledTextBox("Cons end", nameof(WorkspaceViewModel.NodeConsumptionEndText));
+        Grid.SetColumn(prodEnd, 2);
+        Grid.SetRow(consStart, 2);
+        Grid.SetRow(consEnd, 2);
+        Grid.SetColumn(consEnd, 2);
+        var grid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,12,*"),
+            RowDefinitions = new RowDefinitions("Auto,10,Auto")
+        };
+        grid.Children.Add(prodStart);
+        grid.Children.Add(prodEnd);
+        grid.Children.Add(consStart);
+        grid.Children.Add(consEnd);
+        return grid;
+    }
+
+    private static Control BuildWindowEditor(string title, string itemsPropertyName, string selectedPropertyName, string addCommandPropertyName, string removeCommandPropertyName)
+    {
+        var listBox = new ListBox
+        {
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.InputBackground),
+            ItemTemplate = new FuncDataTemplate<PeriodWindowEditorRow>((row, _) =>
+            {
+                var start = BuildTextBox("Start");
+                start.Bind(TextBox.TextProperty, new Binding(nameof(PeriodWindowEditorRow.StartText), BindingMode.TwoWay));
+                var end = BuildTextBox("End");
+                end.Bind(TextBox.TextProperty, new Binding(nameof(PeriodWindowEditorRow.EndText), BindingMode.TwoWay));
+                var startRow = BuildLabeledRow("Start", start);
+                var endRow = BuildLabeledRow("End", end);
+                Grid.SetColumn(endRow, 2);
+
+                return new Grid
+                {
+                    ColumnDefinitions = new ColumnDefinitions("*,8,*"),
+                    Margin = new Thickness(0, 0, 0, 8),
+                    Children =
+                    {
+                        startRow,
+                        endRow
+                    }
+                };
+            })
+        };
+        listBox.Bind(ItemsControl.ItemsSourceProperty, new Binding(itemsPropertyName));
+        listBox.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(selectedPropertyName, BindingMode.TwoWay));
+        ApplyFocusVisual(listBox);
+
+        return new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = title,
+                    FontWeight = FontWeight.SemiBold,
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                },
+                listBox,
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    Children =
+                    {
+                        BuildBoundButton("Add window", addCommandPropertyName),
+                        BuildBoundButton("Remove selected", removeCommandPropertyName)
+                    }
+                }
+            }
+        };
+    }
+
+    private static Control BuildInputRequirementEditor()
+    {
+        var listBox = new ListBox
+        {
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.InputBackground),
+            ItemTemplate = new FuncDataTemplate<InputRequirementEditorRow>((row, _) =>
+            {
+                var traffic = BuildTextBox("Traffic");
+                traffic.Bind(TextBox.TextProperty, new Binding(nameof(InputRequirementEditorRow.TrafficType), BindingMode.TwoWay));
+                var input = BuildTextBox("Input");
+                input.Bind(TextBox.TextProperty, new Binding(nameof(InputRequirementEditorRow.InputQuantityText), BindingMode.TwoWay));
+                var output = BuildTextBox("Output");
+                output.Bind(TextBox.TextProperty, new Binding(nameof(InputRequirementEditorRow.OutputQuantityText), BindingMode.TwoWay));
+                var trafficRow = BuildLabeledRow("Traffic type", traffic);
+                var inputRow = BuildLabeledRow("Input", input);
+                var outputRow = BuildLabeledRow("Output", output);
+                Grid.SetColumn(inputRow, 2);
+                Grid.SetColumn(outputRow, 4);
+
+                return new Grid
+                {
+                    ColumnDefinitions = new ColumnDefinitions("2*,8,*,8,*"),
+                    Margin = new Thickness(0, 0, 0, 8),
+                    Children =
+                    {
+                        trafficRow,
+                        inputRow,
+                        outputRow
+                    }
+                };
+            })
+        };
+        listBox.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.SelectedNodeInputRequirements)));
+        listBox.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedNodeInputRequirementItem), BindingMode.TwoWay));
+        ApplyFocusVisual(listBox);
+
+        return new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                listBox,
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    Children =
+                    {
+                        BuildBoundButton("Add input", nameof(WorkspaceViewModel.AddNodeInputRequirementCommand)),
+                        BuildBoundButton("Remove selected", nameof(WorkspaceViewModel.RemoveSelectedNodeInputRequirementCommand))
+                    }
+                }
+            }
+        };
+    }
+
+    private static Control BuildReadOnlyRow(string label, string propertyName)
+    {
+        var value = new TextBlock
+        {
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            TextWrapping = TextWrapping.Wrap
+        };
+        value.Bind(TextBlock.TextProperty, new Binding(propertyName));
+        return BuildLabeledRow(label, value);
+    }
+
+    private Control BuildDashboardStripTabs(WorkspaceViewModel viewModel)
+    {
+        var metrics = new ItemsControl
+        {
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ReportMetrics)),
+            ItemTemplate = new FuncDataTemplate<ReportMetricViewModel>((metric, _) => BuildButton($"{metric.Label}  {metric.Value}", new RelayCommand(metric.Activate), toolTip: $"Open {metric.Label} report details."))
+        };
+
+        var playbackGrid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,*"),
+            RowDefinitions = new RowDefinitions("Auto")
+        };
+        playbackGrid.Children.Add(BuildButton("Run", viewModel.SimulateCommand, isPrimary: true, toolTip: "Run timeline simulation."));
+        playbackGrid.Children.Add(BuildButton("Step", viewModel.StepCommand, 1, isPrimary: true, toolTip: "Advance one period."));
+        playbackGrid.Children.Add(BuildButton("Reset", viewModel.ResetTimelineCommand, 2, toolTip: "Reset timeline to start."));
+        playbackGrid.Children.Add(BuildButton("Fit", viewModel.FitCommand, 3, toolTip: "Fit graph on canvas."));
+
+        var slider = new Slider
+        {
+            Minimum = 0,
+            Maximum = 12,
+            Margin = new Thickness(12, 6, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        slider.Bind(RangeBase.ValueProperty, new Binding(nameof(WorkspaceViewModel.TimelinePosition), BindingMode.TwoWay));
+        Grid.SetColumn(slider, 4);
+        ApplyFocusVisual(slider);
+        playbackGrid.Children.Add(slider);
+
+        var tabControl = new TabControl
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelBackground),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(4),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+        tabControl.Items.Add(new TabItem
+        {
+            Header = "Playback",
+            Content = new ScrollViewer
+            {
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = playbackGrid
+            }
+        });
+
+        var reportsGrid = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            RowSpacing = 10
+        };
+        reportsGrid.Children.Add(new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    Children =
+                    {
+                        BuildButton("Export Current (HTML)", new RelayCommand(() => _ = ExportCurrentReportAsync(viewModel, ReportExportFormat.Html))),
+                        BuildButton("Export Timeline (CSV)", new RelayCommand(() => _ = ExportTimelineReportAsync(viewModel, ReportExportFormat.Csv)))
+                    }
+                },
+                new ScrollViewer
+                {
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    Content = metrics
+                }
+            }
+        });
+        var reportsScroll = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = new StackPanel
+            {
+                Spacing = 10,
+                Children =
+                {
+                    BuildReportSection<TrafficReportRowViewModel>(
+                        "Traffic Summary",
+                        new[]
+                        {
+                            ("Traffic", 1.2),
+                            ("Planned / moved", 1.1),
+                            ("Delivered", 1.0),
+                            ("Unmet demand", 1.0),
+                            ("Backlog", 1.0)
+                        },
+                        nameof(WorkspaceViewModel.TrafficReports),
+                        static row => new[]
+                        {
+                            row.TrafficType,
+                            row.PlannedQuantity,
+                            row.DeliveredQuantity,
+                            row.UnmetDemand,
+                            row.Backlog
+                        }),
+                    BuildReportSection<RouteReportRowViewModel>(
+                        "Route Summary",
+                        new[]
+                        {
+                            ("Route", 1.0),
+                            ("From -> to", 1.5),
+                            ("Flow", 1.0),
+                            ("Capacity", 0.9),
+                            ("Utilisation", 0.9),
+                            ("Pressure", 1.2)
+                        },
+                        nameof(WorkspaceViewModel.RouteReports),
+                        static row => new[]
+                        {
+                            row.RouteId,
+                            row.FromTo,
+                            row.CurrentFlow,
+                            row.Capacity,
+                            row.Utilisation,
+                            row.Pressure
+                        }),
+                    BuildReportSection<NodePressureReportRowViewModel>(
+                        "Node Pressure Summary",
+                        new[]
+                        {
+                            ("Node", 1.3),
+                            ("Pressure", 0.8),
+                            ("Top cause", 1.2),
+                            ("Unmet need", 1.0)
+                        },
+                        nameof(WorkspaceViewModel.NodePressureReports),
+                        static row => new[]
+                        {
+                            row.Node,
+                            row.PressureScore,
+                            row.TopCause,
+                            row.UnmetNeed
+                        })
+                }
+            }
+        };
+        Grid.SetRow(reportsScroll, 1);
+        reportsGrid.Children.Add(reportsScroll);
+        tabControl.Items.Add(new TabItem
+        {
+            Header = "Reports",
+            Content = reportsGrid
+        });
+        tabControl.Items.Add(new TabItem
+        {
+            Header = "Status",
+            Content = new ScrollViewer
+            {
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = new StackPanel
+                {
+                    Spacing = 8,
+                    Children =
+                    {
+                        BuildQuickStat("Status", nameof(WorkspaceViewModel.StatusText)),
+                        BuildQuickStat("Selection", nameof(WorkspaceViewModel.SelectionSummary)),
+                        BuildQuickStat("Simulation", nameof(WorkspaceViewModel.SimulationSummary))
+                    }
+                }
+            }
+        });
+
+        return tabControl;
+    }
+
+    private void ToggleDashboardCollapsed()
+    {
+        if (dashboardLayoutState == DashboardLayoutState.Collapsed)
+        {
+            dashboardLayoutState = DashboardLayoutState.Normal;
+        }
+        else if (dashboardLayoutState == DashboardLayoutState.Expanded)
+        {
+            RestorePreviousDashboardLayout();
+            dashboardLayoutState = DashboardLayoutState.Collapsed;
+        }
+        else
+        {
+            dashboardLayoutState = DashboardLayoutState.Collapsed;
+        }
+
+        UpdateDashboardLayout();
+    }
+
+    private void ToggleDashboardExpanded()
+    {
+        if (dashboardLayoutState == DashboardLayoutState.Expanded)
+        {
+            RestorePreviousDashboardLayout();
+        }
+        else
+        {
+            previousDashboardLayoutState = dashboardLayoutState;
+            dashboardLayoutState = DashboardLayoutState.Expanded;
+        }
+
+        UpdateDashboardLayout();
+    }
+
+    private void RestorePreviousDashboardLayout()
+    {
+        dashboardLayoutState = previousDashboardLayoutState == DashboardLayoutState.Expanded
+            ? DashboardLayoutState.Normal
+            : previousDashboardLayoutState;
+    }
+
+    private void UpdateDashboardLayout()
+    {
+        if (workspaceGrid is null || toolRailHost is null || canvasHost is null || inspectorHost is null || dashboardStripHost is null)
+        {
+            return;
+        }
+
+        var isExpanded = dashboardLayoutState == DashboardLayoutState.Expanded;
+        var isCollapsed = dashboardLayoutState == DashboardLayoutState.Collapsed;
+
+        workspaceGrid.ColumnDefinitions[0].Width = isExpanded ? new GridLength(0) : new GridLength(240);
+        workspaceGrid.ColumnDefinitions[2].Width = isExpanded ? new GridLength(0) : new GridLength(460);
+        toolRailHost.IsVisible = !isExpanded;
+        inspectorHost.IsVisible = !isExpanded;
+
+        workspaceGrid.RowDefinitions[0].Height = isExpanded
+            ? GridLength.Auto
+            : GridLength.Star;
+        workspaceGrid.RowDefinitions[1].Height = isCollapsed
+            ? new GridLength(BottomStripCollapsedHeight)
+            : isExpanded
+                ? GridLength.Star
+                : new GridLength(BottomStripHeight);
+        workspaceGrid.RowDefinitions[1].MinHeight = isCollapsed ? BottomStripCollapsedHeight : BottomStripMinHeight;
+        workspaceGrid.RowDefinitions[1].MaxHeight = isExpanded ? double.PositiveInfinity : isCollapsed ? BottomStripCollapsedHeight : BottomStripMaxHeight;
+
+        dashboardStripBody!.IsVisible = !isCollapsed;
+
+        Grid.SetRow(canvasHost, 0);
+        Grid.SetColumn(canvasHost, 1);
+        Grid.SetColumnSpan(canvasHost, 1);
+        canvasHost.MaxHeight = isExpanded ? ExpandedCanvasPreviewHeight : double.PositiveInfinity;
+        canvasHost.MinHeight = isExpanded ? ExpandedCanvasPreviewHeight : 520;
+
+        Grid.SetColumn(dashboardStripHost, isExpanded ? 0 : 1);
+        Grid.SetColumnSpan(dashboardStripHost, isExpanded ? 3 : 2);
+    }
+
+    private void OpenFullNodeEditor()
+    {
+        if (!viewModel.IsEditingNode || fullNodeEditorDrawer is null || overlayLayer is null)
+        {
+            return;
+        }
+
+        if (overlayBackdrop is not null)
+        {
+            overlayBackdrop.IsVisible = true;
+        }
+
+        fullNodeEditorDrawer.IsVisible = true;
+        overlayLayer.IsHitTestVisible = true;
+        fullNodeEditorDrawer.Focus();
+    }
+
+    private void CloseFullNodeEditor()
+    {
+        if (fullNodeEditorDrawer is null || overlayLayer is null)
+        {
+            return;
+        }
+
+        if (overlayBackdrop is not null)
+        {
+            overlayBackdrop.IsVisible = false;
+        }
+
+        fullNodeEditorDrawer.IsVisible = false;
+        overlayLayer.IsHitTestVisible = false;
+    }
+
+    private void HandleShellWindowKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape)
+        {
+            return;
+        }
+
+        if (fullNodeEditorDrawer?.IsVisible == true)
+        {
+            CloseFullNodeEditor();
+            e.Handled = true;
+            return;
+        }
+
+        if (dashboardLayoutState == DashboardLayoutState.Expanded)
+        {
+            RestorePreviousDashboardLayout();
+            UpdateDashboardLayout();
+            e.Handled = true;
+        }
     }
 
     private static Control BuildInspector(WorkspaceViewModel viewModel)

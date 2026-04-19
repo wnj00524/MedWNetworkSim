@@ -140,6 +140,72 @@ public sealed class NodeTrafficProfileListItem(int index, NodeTrafficProfile mod
     public override string ToString() => DisplayLabel;
 }
 
+public sealed class PeriodWindowEditorRow : ObservableObject
+{
+    private string startText = string.Empty;
+    private string endText = string.Empty;
+
+    public PeriodWindowEditorRow()
+    {
+    }
+
+    public PeriodWindowEditorRow(PeriodWindow model)
+    {
+        startText = model.StartPeriod?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+        endText = model.EndPeriod?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+    }
+
+    public string StartText
+    {
+        get => startText;
+        set => SetProperty(ref startText, value);
+    }
+
+    public string EndText
+    {
+        get => endText;
+        set => SetProperty(ref endText, value);
+    }
+}
+
+public sealed class InputRequirementEditorRow : ObservableObject
+{
+    private string trafficType = string.Empty;
+    private string inputQuantityText = "1";
+    private string outputQuantityText = "1";
+
+    public InputRequirementEditorRow()
+    {
+    }
+
+    public InputRequirementEditorRow(ProductionInputRequirement model)
+    {
+        trafficType = model.TrafficType;
+        inputQuantityText = (model.InputQuantity > 0d
+            ? model.InputQuantity
+            : model.QuantityPerOutputUnit.GetValueOrDefault(1d)).ToString("0.##", CultureInfo.InvariantCulture);
+        outputQuantityText = (model.OutputQuantity > 0d ? model.OutputQuantity : 1d).ToString("0.##", CultureInfo.InvariantCulture);
+    }
+
+    public string TrafficType
+    {
+        get => trafficType;
+        set => SetProperty(ref trafficType, value);
+    }
+
+    public string InputQuantityText
+    {
+        get => inputQuantityText;
+        set => SetProperty(ref inputQuantityText, value);
+    }
+
+    public string OutputQuantityText
+    {
+        get => outputQuantityText;
+        set => SetProperty(ref outputQuantityText, value);
+    }
+}
+
 public sealed class PermissionRuleEditorRow : ObservableObject
 {
     private string trafficType;
@@ -349,13 +415,25 @@ public sealed class WorkspaceViewModel : ObservableObject
     private string networkTimelineLoopLengthText = string.Empty;
     private string bulkPlaceTypeText = string.Empty;
     private string bulkTranshipmentCapacityText = string.Empty;
+    private string nodeIdText = string.Empty;
     private string nodeNameText = string.Empty;
+    private string nodeXText = string.Empty;
+    private string nodeYText = string.Empty;
     private string nodePlaceTypeText = string.Empty;
     private string nodeDescriptionText = string.Empty;
     private string nodeTranshipmentCapacityText = string.Empty;
     private NodeVisualShape nodeShape = NodeVisualShape.Square;
     private NodeKind nodeKind = NodeKind.Ordinary;
+    private string nodeReferencedSubnetworkIdText = string.Empty;
+    private bool nodeIsExternalInterface;
+    private string nodeInterfaceNameText = string.Empty;
+    private string nodeControllingActorText = string.Empty;
+    private string nodeTagsText = string.Empty;
+    private string nodeTemplateIdText = string.Empty;
     private NodeTrafficProfileListItem? selectedNodeTrafficProfileItem;
+    private PeriodWindowEditorRow? selectedNodeProductionWindowItem;
+    private PeriodWindowEditorRow? selectedNodeConsumptionWindowItem;
+    private InputRequirementEditorRow? selectedNodeInputRequirementItem;
     private bool isPopulatingNodeTrafficEditor;
     private string nodeTrafficTypeText = string.Empty;
     private string nodeTrafficRoleText = NodeTrafficRoleCatalog.RoleOptions[0];
@@ -401,6 +479,9 @@ public sealed class WorkspaceViewModel : ObservableObject
         RouteReports = [];
         NodePressureReports = [];
         SelectedNodeTrafficProfiles = [];
+        SelectedNodeProductionWindows = [];
+        SelectedNodeConsumptionWindows = [];
+        SelectedNodeInputRequirements = [];
         SelectedEdgePermissionRows = [];
         TrafficDefinitions = [];
         DefaultTrafficPermissionRows = [];
@@ -429,6 +510,12 @@ public sealed class WorkspaceViewModel : ObservableObject
         AddNodeTrafficProfileCommand = new RelayCommand(AddNodeTrafficProfile, () => IsEditingNode);
         DuplicateSelectedNodeTrafficProfileCommand = new RelayCommand(DuplicateSelectedNodeTrafficProfile, () => IsEditingNode && SelectedNodeTrafficProfileItem is not null);
         RemoveSelectedNodeTrafficProfileCommand = new RelayCommand(RemoveSelectedNodeTrafficProfile, () => IsEditingNode && SelectedNodeTrafficProfileItem is not null);
+        AddNodeProductionWindowCommand = new RelayCommand(AddNodeProductionWindow, () => SelectedNodeTrafficProfileItem is not null);
+        RemoveSelectedNodeProductionWindowCommand = new RelayCommand(RemoveSelectedNodeProductionWindow, () => SelectedNodeTrafficProfileItem is not null && SelectedNodeProductionWindowItem is not null);
+        AddNodeConsumptionWindowCommand = new RelayCommand(AddNodeConsumptionWindow, () => SelectedNodeTrafficProfileItem is not null);
+        RemoveSelectedNodeConsumptionWindowCommand = new RelayCommand(RemoveSelectedNodeConsumptionWindow, () => SelectedNodeTrafficProfileItem is not null && SelectedNodeConsumptionWindowItem is not null);
+        AddNodeInputRequirementCommand = new RelayCommand(AddNodeInputRequirement, () => SelectedNodeTrafficProfileItem is not null);
+        RemoveSelectedNodeInputRequirementCommand = new RelayCommand(RemoveSelectedNodeInputRequirement, () => SelectedNodeTrafficProfileItem is not null && SelectedNodeInputRequirementItem is not null);
         AddTrafficDefinitionCommand = new RelayCommand(AddTrafficDefinition);
         RemoveSelectedTrafficDefinitionCommand = new RelayCommand(RemoveSelectedTrafficDefinition, () => SelectedTrafficDefinitionItem is not null);
         ApplyTrafficDefinitionCommand = new RelayCommand(ApplyTrafficDefinitionEdits, () => SelectedTrafficDefinitionItem is not null);
@@ -447,6 +534,9 @@ public sealed class WorkspaceViewModel : ObservableObject
     public ObservableCollection<RouteReportRowViewModel> RouteReports { get; }
     public ObservableCollection<NodePressureReportRowViewModel> NodePressureReports { get; }
     public ObservableCollection<NodeTrafficProfileListItem> SelectedNodeTrafficProfiles { get; }
+    public ObservableCollection<PeriodWindowEditorRow> SelectedNodeProductionWindows { get; }
+    public ObservableCollection<PeriodWindowEditorRow> SelectedNodeConsumptionWindows { get; }
+    public ObservableCollection<InputRequirementEditorRow> SelectedNodeInputRequirements { get; }
     public ObservableCollection<PermissionRuleEditorRow> SelectedEdgePermissionRows { get; }
     public ObservableCollection<TrafficDefinitionListItem> TrafficDefinitions { get; }
     public ObservableCollection<PermissionRuleEditorRow> DefaultTrafficPermissionRows { get; }
@@ -475,6 +565,12 @@ public sealed class WorkspaceViewModel : ObservableObject
     public RelayCommand AddNodeTrafficProfileCommand { get; }
     public RelayCommand DuplicateSelectedNodeTrafficProfileCommand { get; }
     public RelayCommand RemoveSelectedNodeTrafficProfileCommand { get; }
+    public RelayCommand AddNodeProductionWindowCommand { get; }
+    public RelayCommand RemoveSelectedNodeProductionWindowCommand { get; }
+    public RelayCommand AddNodeConsumptionWindowCommand { get; }
+    public RelayCommand RemoveSelectedNodeConsumptionWindowCommand { get; }
+    public RelayCommand AddNodeInputRequirementCommand { get; }
+    public RelayCommand RemoveSelectedNodeInputRequirementCommand { get; }
     public RelayCommand AddTrafficDefinitionCommand { get; }
     public RelayCommand RemoveSelectedTrafficDefinitionCommand { get; }
     public RelayCommand ApplyTrafficDefinitionCommand { get; }
@@ -565,6 +661,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     public string NetworkTimelineLoopLengthText { get => networkTimelineLoopLengthText; set => SetProperty(ref networkTimelineLoopLengthText, value); }
     public string BulkPlaceTypeText { get => bulkPlaceTypeText; set => SetProperty(ref bulkPlaceTypeText, value); }
     public string BulkTranshipmentCapacityText { get => bulkTranshipmentCapacityText; set => SetProperty(ref bulkTranshipmentCapacityText, value); }
+    public string NodeIdText { get => nodeIdText; set => SetProperty(ref nodeIdText, value); }
     public string NodeNameText
     {
         get => nodeNameText;
@@ -576,6 +673,8 @@ public sealed class WorkspaceViewModel : ObservableObject
             }
         }
     }
+    public string NodeXText { get => nodeXText; set => SetProperty(ref nodeXText, value); }
+    public string NodeYText { get => nodeYText; set => SetProperty(ref nodeYText, value); }
     public string NodePlaceTypeText
     {
         get => nodePlaceTypeText;
@@ -611,6 +710,12 @@ public sealed class WorkspaceViewModel : ObservableObject
     }
     public NodeVisualShape NodeShape { get => nodeShape; set => SetProperty(ref nodeShape, value); }
     public NodeKind NodeKind { get => nodeKind; set => SetProperty(ref nodeKind, value); }
+    public string NodeReferencedSubnetworkIdText { get => nodeReferencedSubnetworkIdText; set => SetProperty(ref nodeReferencedSubnetworkIdText, value); }
+    public bool NodeIsExternalInterface { get => nodeIsExternalInterface; set => SetProperty(ref nodeIsExternalInterface, value); }
+    public string NodeInterfaceNameText { get => nodeInterfaceNameText; set => SetProperty(ref nodeInterfaceNameText, value); }
+    public string NodeControllingActorText { get => nodeControllingActorText; set => SetProperty(ref nodeControllingActorText, value); }
+    public string NodeTagsText { get => nodeTagsText; set => SetProperty(ref nodeTagsText, value); }
+    public string NodeTemplateIdText { get => nodeTemplateIdText; private set => SetProperty(ref nodeTemplateIdText, value); }
 
     public NodeTrafficProfileListItem? SelectedNodeTrafficProfileItem
     {
@@ -627,7 +732,49 @@ public sealed class WorkspaceViewModel : ObservableObject
                 Raise(nameof(CanApplyInspectorEdits));
                 DuplicateSelectedNodeTrafficProfileCommand.NotifyCanExecuteChanged();
                 RemoveSelectedNodeTrafficProfileCommand.NotifyCanExecuteChanged();
+                AddNodeProductionWindowCommand.NotifyCanExecuteChanged();
+                RemoveSelectedNodeProductionWindowCommand.NotifyCanExecuteChanged();
+                AddNodeConsumptionWindowCommand.NotifyCanExecuteChanged();
+                RemoveSelectedNodeConsumptionWindowCommand.NotifyCanExecuteChanged();
+                AddNodeInputRequirementCommand.NotifyCanExecuteChanged();
+                RemoveSelectedNodeInputRequirementCommand.NotifyCanExecuteChanged();
                 ApplyInspectorCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public PeriodWindowEditorRow? SelectedNodeProductionWindowItem
+    {
+        get => selectedNodeProductionWindowItem;
+        set
+        {
+            if (SetProperty(ref selectedNodeProductionWindowItem, value))
+            {
+                RemoveSelectedNodeProductionWindowCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public PeriodWindowEditorRow? SelectedNodeConsumptionWindowItem
+    {
+        get => selectedNodeConsumptionWindowItem;
+        set
+        {
+            if (SetProperty(ref selectedNodeConsumptionWindowItem, value))
+            {
+                RemoveSelectedNodeConsumptionWindowCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public InputRequirementEditorRow? SelectedNodeInputRequirementItem
+    {
+        get => selectedNodeInputRequirementItem;
+        set
+        {
+            if (SetProperty(ref selectedNodeInputRequirementItem, value))
+            {
+                RemoveSelectedNodeInputRequirementCommand.NotifyCanExecuteChanged();
             }
         }
     }
@@ -1516,6 +1663,12 @@ public sealed class WorkspaceViewModel : ObservableObject
         AddNodeTrafficProfileCommand.NotifyCanExecuteChanged();
         DuplicateSelectedNodeTrafficProfileCommand.NotifyCanExecuteChanged();
         RemoveSelectedNodeTrafficProfileCommand.NotifyCanExecuteChanged();
+        AddNodeProductionWindowCommand.NotifyCanExecuteChanged();
+        RemoveSelectedNodeProductionWindowCommand.NotifyCanExecuteChanged();
+        AddNodeConsumptionWindowCommand.NotifyCanExecuteChanged();
+        RemoveSelectedNodeConsumptionWindowCommand.NotifyCanExecuteChanged();
+        AddNodeInputRequirementCommand.NotifyCanExecuteChanged();
+        RemoveSelectedNodeInputRequirementCommand.NotifyCanExecuteChanged();
         ApplyInspectorCommand.NotifyCanExecuteChanged();
         Raise(nameof(ApplyInspectorLabel));
         Raise(nameof(CanApplyInspectorEdits));
@@ -1612,12 +1765,21 @@ public sealed class WorkspaceViewModel : ObservableObject
     private void PopulateNodeEditor(NodeModel node)
     {
         EnsureDefaultTrafficType();
+        NodeIdText = node.Id;
         NodeNameText = node.Name;
+        NodeXText = node.X?.ToString("0.##", CultureInfo.InvariantCulture) ?? string.Empty;
+        NodeYText = node.Y?.ToString("0.##", CultureInfo.InvariantCulture) ?? string.Empty;
         NodePlaceTypeText = node.PlaceType ?? string.Empty;
         NodeDescriptionText = node.LoreDescription ?? string.Empty;
         NodeTranshipmentCapacityText = node.TranshipmentCapacity?.ToString("0.##", CultureInfo.InvariantCulture) ?? string.Empty;
         NodeShape = node.Shape;
         NodeKind = node.NodeKind;
+        NodeReferencedSubnetworkIdText = node.ReferencedSubnetworkId ?? string.Empty;
+        NodeIsExternalInterface = node.IsExternalInterface;
+        NodeInterfaceNameText = node.InterfaceName ?? string.Empty;
+        NodeControllingActorText = node.ControllingActor ?? string.Empty;
+        NodeTagsText = string.Join(", ", node.Tags);
+        NodeTemplateIdText = node.TemplateId ?? string.Empty;
         SelectedNodeTrafficProfiles.Clear();
         for (var index = 0; index < node.TrafficProfiles.Count; index++)
         {
@@ -1633,6 +1795,12 @@ public sealed class WorkspaceViewModel : ObservableObject
         isPopulatingNodeTrafficEditor = true;
         if (profile is null)
         {
+            SelectedNodeProductionWindows.Clear();
+            SelectedNodeConsumptionWindows.Clear();
+            SelectedNodeInputRequirements.Clear();
+            SelectedNodeProductionWindowItem = null;
+            SelectedNodeConsumptionWindowItem = null;
+            SelectedNodeInputRequirementItem = null;
             NodeTrafficTypeText = string.Empty;
             NodeTrafficRoleText = NodeTrafficRoleCatalog.RoleOptions[0];
             NodeProductionText = "0";
@@ -1662,6 +1830,27 @@ public sealed class WorkspaceViewModel : ObservableObject
         NodeCanTransship = profile.CanTransship;
         NodeStoreEnabled = profile.IsStore;
         NodeStoreCapacityText = profile.StoreCapacity?.ToString("0.##", CultureInfo.InvariantCulture) ?? string.Empty;
+        SelectedNodeProductionWindows.Clear();
+        foreach (var window in profile.ProductionWindows)
+        {
+            SelectedNodeProductionWindows.Add(new PeriodWindowEditorRow(window));
+        }
+
+        SelectedNodeConsumptionWindows.Clear();
+        foreach (var window in profile.ConsumptionWindows)
+        {
+            SelectedNodeConsumptionWindows.Add(new PeriodWindowEditorRow(window));
+        }
+
+        SelectedNodeInputRequirements.Clear();
+        foreach (var requirement in profile.InputRequirements)
+        {
+            SelectedNodeInputRequirements.Add(new InputRequirementEditorRow(requirement));
+        }
+
+        SelectedNodeProductionWindowItem = SelectedNodeProductionWindows.FirstOrDefault();
+        SelectedNodeConsumptionWindowItem = SelectedNodeConsumptionWindows.FirstOrDefault();
+        SelectedNodeInputRequirementItem = SelectedNodeInputRequirements.FirstOrDefault();
         isPopulatingNodeTrafficEditor = false;
         RaiseNodeTrafficRoleValidationStateChanged();
     }
@@ -1813,12 +2002,43 @@ public sealed class WorkspaceViewModel : ObservableObject
     {
         var nodeId = Scene.Selection.SelectedNodeIds.FirstOrDefault() ?? throw new InvalidOperationException("Select one node to edit.");
         var node = network.Nodes.First(model => Comparer.Equals(model.Id, nodeId));
+        var requestedNodeId = string.IsNullOrWhiteSpace(NodeIdText) ? node.Id : NodeIdText.Trim();
+        if (!Comparer.Equals(node.Id, requestedNodeId) &&
+            network.Nodes.Any(model => !ReferenceEquals(model, node) && Comparer.Equals(model.Id, requestedNodeId)))
+        {
+            throw new InvalidOperationException("Node id must be unique.");
+        }
+
+        if (!Comparer.Equals(node.Id, requestedNodeId))
+        {
+            foreach (var edge in network.Edges)
+            {
+                if (Comparer.Equals(edge.FromNodeId, node.Id))
+                {
+                    edge.FromNodeId = requestedNodeId;
+                }
+
+                if (Comparer.Equals(edge.ToNodeId, node.Id))
+                {
+                    edge.ToNodeId = requestedNodeId;
+                }
+            }
+        }
+
+        node.Id = requestedNodeId;
         node.Name = string.IsNullOrWhiteSpace(NodeNameText) ? node.Id : NodeNameText.Trim();
+        node.X = ParseOptionalDouble(NodeXText, "Enter an X position, or leave it blank.");
+        node.Y = ParseOptionalDouble(NodeYText, "Enter a Y position, or leave it blank.");
         node.PlaceType = NormalizeOptionalText(NodePlaceTypeText);
         node.LoreDescription = NormalizeOptionalText(NodeDescriptionText);
         node.TranshipmentCapacity = ParseOptionalNonNegativeDouble(NodeTranshipmentCapacityText, "Enter a transhipment capacity of 0 or more, or leave it blank.");
         node.Shape = NodeShape;
         node.NodeKind = NodeKind;
+        node.ReferencedSubnetworkId = NormalizeOptionalText(NodeReferencedSubnetworkIdText);
+        node.IsExternalInterface = NodeIsExternalInterface;
+        node.InterfaceName = NormalizeOptionalText(NodeInterfaceNameText);
+        node.ControllingActor = NormalizeOptionalText(NodeControllingActorText);
+        node.Tags = SplitCommaSeparatedText(NodeTagsText);
 
         var profile = SelectedNodeTrafficProfileItem?.Model;
         if (profile is not null)
@@ -1854,6 +2074,13 @@ public sealed class WorkspaceViewModel : ObservableObject
             profile.StoreCapacity = NodeStoreEnabled
                 ? ParseOptionalNonNegativeDouble(NodeStoreCapacityText, "Enter store capacity as 0 or more, or leave it blank.")
                 : null;
+            profile.ProductionWindows = BuildPeriodWindows(
+                SelectedNodeProductionWindows,
+                "production window");
+            profile.ConsumptionWindows = BuildPeriodWindows(
+                SelectedNodeConsumptionWindows,
+                "consumption window");
+            profile.InputRequirements = BuildInputRequirements(SelectedNodeInputRequirements);
         }
 
         PopulateNodeEditor(node);
@@ -1912,6 +2139,73 @@ public sealed class WorkspaceViewModel : ObservableObject
         MarkDirty();
         StatusText = "Added a new traffic role to the selected node.";
         PreviewSelectedNodeSceneLayout();
+    }
+
+    private void AddNodeProductionWindow()
+    {
+        var row = new PeriodWindowEditorRow();
+        SelectedNodeProductionWindows.Add(row);
+        SelectedNodeProductionWindowItem = row;
+    }
+
+    private void RemoveSelectedNodeProductionWindow()
+    {
+        if (SelectedNodeProductionWindowItem is null)
+        {
+            return;
+        }
+
+        var index = SelectedNodeProductionWindows.IndexOf(SelectedNodeProductionWindowItem);
+        SelectedNodeProductionWindows.Remove(SelectedNodeProductionWindowItem);
+        SelectedNodeProductionWindowItem = index >= 0 && index < SelectedNodeProductionWindows.Count
+            ? SelectedNodeProductionWindows[index]
+            : SelectedNodeProductionWindows.LastOrDefault();
+    }
+
+    private void AddNodeConsumptionWindow()
+    {
+        var row = new PeriodWindowEditorRow();
+        SelectedNodeConsumptionWindows.Add(row);
+        SelectedNodeConsumptionWindowItem = row;
+    }
+
+    private void RemoveSelectedNodeConsumptionWindow()
+    {
+        if (SelectedNodeConsumptionWindowItem is null)
+        {
+            return;
+        }
+
+        var index = SelectedNodeConsumptionWindows.IndexOf(SelectedNodeConsumptionWindowItem);
+        SelectedNodeConsumptionWindows.Remove(SelectedNodeConsumptionWindowItem);
+        SelectedNodeConsumptionWindowItem = index >= 0 && index < SelectedNodeConsumptionWindows.Count
+            ? SelectedNodeConsumptionWindows[index]
+            : SelectedNodeConsumptionWindows.LastOrDefault();
+    }
+
+    private void AddNodeInputRequirement()
+    {
+        var trafficType = network.TrafficTypes.FirstOrDefault()?.Name ?? string.Empty;
+        var row = new InputRequirementEditorRow
+        {
+            TrafficType = trafficType
+        };
+        SelectedNodeInputRequirements.Add(row);
+        SelectedNodeInputRequirementItem = row;
+    }
+
+    private void RemoveSelectedNodeInputRequirement()
+    {
+        if (SelectedNodeInputRequirementItem is null)
+        {
+            return;
+        }
+
+        var index = SelectedNodeInputRequirements.IndexOf(SelectedNodeInputRequirementItem);
+        SelectedNodeInputRequirements.Remove(SelectedNodeInputRequirementItem);
+        SelectedNodeInputRequirementItem = index >= 0 && index < SelectedNodeInputRequirements.Count
+            ? SelectedNodeInputRequirements[index]
+            : SelectedNodeInputRequirements.LastOrDefault();
     }
 
     private void DuplicateSelectedNodeTrafficProfile()
@@ -2686,13 +2980,19 @@ public sealed class WorkspaceViewModel : ObservableObject
         {
             Id = source.Id,
             Name = string.IsNullOrWhiteSpace(NodeNameText) ? source.Id : NodeNameText.Trim(),
-            X = source.X,
-            Y = source.Y,
+            X = ParseOptionalDouble(NodeXText, "Enter an X position, or leave it blank.") ?? source.X,
+            Y = ParseOptionalDouble(NodeYText, "Enter a Y position, or leave it blank.") ?? source.Y,
             PlaceType = NormalizeOptionalText(NodePlaceTypeText),
             LoreDescription = NormalizeOptionalText(NodeDescriptionText),
             TranshipmentCapacity = TryParseOptionalNonNegativeDouble(NodeTranshipmentCapacityText),
             Shape = NodeShape,
             NodeKind = NodeKind,
+            ReferencedSubnetworkId = NormalizeOptionalText(NodeReferencedSubnetworkIdText),
+            IsExternalInterface = NodeIsExternalInterface,
+            InterfaceName = NormalizeOptionalText(NodeInterfaceNameText),
+            ControllingActor = NormalizeOptionalText(NodeControllingActorText),
+            Tags = SplitCommaSeparatedText(NodeTagsText),
+            TemplateId = NormalizeOptionalText(NodeTemplateIdText),
             TrafficProfiles = source.TrafficProfiles.Select(profile => new NodeTrafficProfile
             {
                 TrafficType = profile.TrafficType,
@@ -2704,6 +3004,21 @@ public sealed class WorkspaceViewModel : ObservableObject
                 ProductionEndPeriod = profile.ProductionEndPeriod,
                 ConsumptionStartPeriod = profile.ConsumptionStartPeriod,
                 ConsumptionEndPeriod = profile.ConsumptionEndPeriod,
+                ProductionWindows = profile.ProductionWindows
+                    .Select(window => new PeriodWindow { StartPeriod = window.StartPeriod, EndPeriod = window.EndPeriod })
+                    .ToList(),
+                ConsumptionWindows = profile.ConsumptionWindows
+                    .Select(window => new PeriodWindow { StartPeriod = window.StartPeriod, EndPeriod = window.EndPeriod })
+                    .ToList(),
+                InputRequirements = profile.InputRequirements
+                    .Select(requirement => new ProductionInputRequirement
+                    {
+                        TrafficType = requirement.TrafficType,
+                        InputQuantity = requirement.InputQuantity,
+                        OutputQuantity = requirement.OutputQuantity,
+                        QuantityPerOutputUnit = requirement.QuantityPerOutputUnit
+                    })
+                    .ToList(),
                 IsStore = profile.IsStore,
                 StoreCapacity = profile.StoreCapacity
             }).ToList()
@@ -2724,6 +3039,31 @@ public sealed class WorkspaceViewModel : ObservableObject
             profile.CanTransship = NodeCanTransship;
             profile.IsStore = NodeStoreEnabled;
             profile.StoreCapacity = NodeStoreEnabled ? TryParseOptionalNonNegativeDouble(NodeStoreCapacityText) : null;
+            profile.ProductionWindows = SelectedNodeProductionWindows
+                .Select(window => new PeriodWindow
+                {
+                    StartPeriod = TryParseOptionalPositiveInt(window.StartText),
+                    EndPeriod = TryParseOptionalPositiveInt(window.EndText)
+                })
+                .Where(window => window.StartPeriod.HasValue || window.EndPeriod.HasValue)
+                .ToList();
+            profile.ConsumptionWindows = SelectedNodeConsumptionWindows
+                .Select(window => new PeriodWindow
+                {
+                    StartPeriod = TryParseOptionalPositiveInt(window.StartText),
+                    EndPeriod = TryParseOptionalPositiveInt(window.EndText)
+                })
+                .Where(window => window.StartPeriod.HasValue || window.EndPeriod.HasValue)
+                .ToList();
+            profile.InputRequirements = SelectedNodeInputRequirements
+                .Where(row => !string.IsNullOrWhiteSpace(row.TrafficType))
+                .Select(row => new ProductionInputRequirement
+                {
+                    TrafficType = row.TrafficType.Trim(),
+                    InputQuantity = TryParseNonNegativeDouble(row.InputQuantityText) ?? 0d,
+                    OutputQuantity = TryParseNonNegativeDouble(row.OutputQuantityText) ?? 1d
+                })
+                .ToList();
         }
 
         return preview;
@@ -2815,6 +3155,76 @@ public sealed class WorkspaceViewModel : ObservableObject
     private static string? NormalizeOptionalText(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+    private static List<string> SplitCommaSeparatedText(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? []
+            : value
+                .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Distinct(Comparer)
+                .OrderBy(item => item, Comparer)
+                .ToList();
+
+    private static List<PeriodWindow> BuildPeriodWindows(IEnumerable<PeriodWindowEditorRow> rows, string label)
+    {
+        var result = new List<PeriodWindow>();
+        foreach (var row in rows)
+        {
+            var start = ParseOptionalPositiveInt(row.StartText, $"Enter a {label} start period of 1 or more, or leave it blank.");
+            var end = ParseOptionalPositiveInt(row.EndText, $"Enter a {label} end period of 1 or more, or leave it blank.");
+            if (start.HasValue && end.HasValue && start.Value > end.Value)
+            {
+                throw new InvalidOperationException($"A {label} start period cannot be after its end period.");
+            }
+
+            if (!start.HasValue && !end.HasValue)
+            {
+                continue;
+            }
+
+            result.Add(new PeriodWindow
+            {
+                StartPeriod = start,
+                EndPeriod = end
+            });
+        }
+
+        return result;
+    }
+
+    private List<ProductionInputRequirement> BuildInputRequirements(IEnumerable<InputRequirementEditorRow> rows)
+    {
+        var result = new List<ProductionInputRequirement>();
+        foreach (var row in rows)
+        {
+            var trafficType = string.IsNullOrWhiteSpace(row.TrafficType) ? string.Empty : row.TrafficType.Trim();
+            if (string.IsNullOrWhiteSpace(trafficType))
+            {
+                throw new InvalidOperationException("Choose a traffic type for each local input row.");
+            }
+
+            if (!network.TrafficTypes.Any(definition => Comparer.Equals(definition.Name, trafficType)))
+            {
+                throw new InvalidOperationException($"Local input traffic '{trafficType}' must exist in the traffic type editor.");
+            }
+
+            var inputQuantity = ParseNonNegativeDouble(row.InputQuantityText, "Enter an input quantity of 0 or more.");
+            var outputQuantity = ParseNonNegativeDouble(row.OutputQuantityText, "Enter an output quantity greater than 0.");
+            if (outputQuantity <= 0d)
+            {
+                throw new InvalidOperationException("Enter an output quantity greater than 0.");
+            }
+
+            result.Add(new ProductionInputRequirement
+            {
+                TrafficType = trafficType,
+                InputQuantity = inputQuantity,
+                OutputQuantity = outputQuantity
+            });
+        }
+
+        return result;
+    }
+
     private static double ParseNonNegativeDouble(string text, string errorMessage)
     {
         if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) || value < 0d)
@@ -2833,6 +3243,21 @@ public sealed class WorkspaceViewModel : ObservableObject
         }
 
         return ParseNonNegativeDouble(text, errorMessage);
+    }
+
+    private static double? ParseOptionalDouble(string text, string errorMessage)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+        {
+            throw new InvalidOperationException(errorMessage);
+        }
+
+        return value;
     }
 
     private static int? ParseOptionalPositiveInt(string text, string errorMessage)

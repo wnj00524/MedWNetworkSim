@@ -107,6 +107,11 @@ public sealed class GraphNodeSceneItem
     public required IReadOnlyList<string> Badges { get; set; }
     public string ToolTipText { get; set; } = string.Empty;
     public required bool HasWarning { get; set; }
+    public string? LayoutContentKey { get; set; }
+    public ZoomTier? LayoutZoomTier { get; set; }
+    public GraphNodeTextLayoutResult? CachedLayout { get; set; }
+    public double CachedLayoutWidth { get; set; }
+    public double CachedLayoutHeight { get; set; }
 }
 
 public sealed class GraphEdgeSceneItem
@@ -278,6 +283,60 @@ public sealed class GraphRenderer
     public ZoomTier GetZoomTier(double zoom) =>
         zoom < 0.45d ? ZoomTier.Far : zoom < 1.15d ? ZoomTier.Medium : ZoomTier.Near;
 
+    public static GraphNodeTextLayoutResult GetOrBuildNodeLayout(GraphNodeSceneItem node, ZoomTier zoomTier)
+    {
+        var visibleDetailLines = zoomTier switch
+        {
+            ZoomTier.Near => 6,
+            ZoomTier.Medium => 3,
+            _ => 0
+        };
+        var typeLabel = zoomTier >= ZoomTier.Medium ? node.TypeLabel : string.Empty;
+        var contentKey = BuildNodeLayoutContentKey(node, typeLabel, visibleDetailLines);
+        if (node.CachedLayout is not null &&
+            string.Equals(node.LayoutContentKey, contentKey, StringComparison.Ordinal) &&
+            node.LayoutZoomTier == zoomTier)
+        {
+            return node.CachedLayout;
+        }
+
+        var layout = GraphNodeTextLayout.BuildLayout(node.Name, typeLabel, node.DetailLines, maxDetailLines: visibleDetailLines);
+        node.LayoutContentKey = contentKey;
+        node.LayoutZoomTier = zoomTier;
+        node.CachedLayout = layout;
+        node.CachedLayoutWidth = layout.Width;
+        node.CachedLayoutHeight = layout.Height;
+        return layout;
+    }
+
+    public static void ApplyLayoutBoundsKeepingCenter(GraphNodeSceneItem node, GraphNodeTextLayoutResult layout)
+    {
+        var centerX = node.Bounds.CenterX;
+        var centerY = node.Bounds.CenterY;
+        node.Bounds = new GraphRect(
+            centerX - (layout.Width / 2d),
+            centerY - (layout.Height / 2d),
+            layout.Width,
+            layout.Height);
+    }
+
+    public static string BuildNodeLayoutContentKey(GraphNodeSceneItem node, string effectiveTypeLabel, int visibleDetailLines)
+    {
+        var detailLines = node.DetailLines
+            .Take(Math.Max(0, visibleDetailLines))
+            .Select(line => $"{line.Text}|{line.IsEmphasized}|{line.IsWarning}");
+        var badges = node.Badges.Select(badge => badge ?? string.Empty);
+        return string.Join("~", new[]
+        {
+            node.Name ?? string.Empty,
+            effectiveTypeLabel ?? string.Empty,
+            node.MetricsLabel ?? string.Empty,
+            string.Join("¦", detailLines),
+            string.Join("¦", badges),
+            node.HasWarning ? "1" : "0"
+        });
+    }
+
     private static void DrawBackgroundGrid(SKCanvas canvas, GraphViewport viewport, GraphSize viewportSize)
     {
         using var minor = new SKPaint { Color = GridMinorColor, StrokeWidth = 1f, IsAntialias = true };
@@ -402,13 +461,11 @@ public sealed class GraphRenderer
 
         foreach (var node in scene.Nodes)
         {
-            var visibleDetailLines = tier switch
+            var layout = GetOrBuildNodeLayout(node, tier);
+            if (Math.Abs(node.Bounds.Width - layout.Width) > 0.001d || Math.Abs(node.Bounds.Height - layout.Height) > 0.001d)
             {
-                ZoomTier.Near => 6,
-                ZoomTier.Medium => 3,
-                _ => 0
-            };
-            var layout = GraphNodeTextLayout.BuildLayout(node.Name, tier >= ZoomTier.Medium ? node.TypeLabel : string.Empty, node.DetailLines, node.Bounds.Width, maxDetailLines: visibleDetailLines);
+                ApplyLayoutBoundsKeepingCenter(node, layout);
+            }
             var origin = viewport.WorldToScreen(
                 new GraphPoint(node.Bounds.Left + GraphNodeTextLayout.HorizontalPadding, node.Bounds.Top + GraphNodeTextLayout.TopPadding),
                 viewportSize);

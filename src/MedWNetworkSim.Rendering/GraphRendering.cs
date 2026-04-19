@@ -390,11 +390,18 @@ public sealed class GraphRenderer
     private void DrawLabels(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize)
     {
         var tier = GetZoomTier(viewport.Zoom);
-        using var titlePaint = new SKPaint { Color = TextColor, TextSize = 14f, IsAntialias = true, Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold) };
-        using var bodyPaint = new SKPaint { Color = MutedTextColor, TextSize = 11f, IsAntialias = true, Typeface = SKTypeface.FromFamilyName("Segoe UI") };
-        using var detailPaint = new SKPaint { Color = MutedTextColor, TextSize = 10f, IsAntialias = true, Typeface = SKTypeface.FromFamilyName("Segoe UI") };
-        using var emphasizedDetailPaint = new SKPaint { Color = TextColor, TextSize = 10f, IsAntialias = true, Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold) };
-        using var warningDetailPaint = new SKPaint { Color = WarningColor, TextSize = 10f, IsAntialias = true, Typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold) };
+        using var defaultTypeface = SKTypeface.FromFamilyName("Segoe UI");
+        using var boldTypeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold);
+        using var titlePaint = new SKPaint { Color = TextColor, IsAntialias = true };
+        using var bodyPaint = new SKPaint { Color = MutedTextColor, IsAntialias = true };
+        using var detailPaint = new SKPaint { Color = MutedTextColor, IsAntialias = true };
+        using var emphasizedDetailPaint = new SKPaint { Color = TextColor, IsAntialias = true };
+        using var warningDetailPaint = new SKPaint { Color = WarningColor, IsAntialias = true };
+        using var titleFont = new SKFont(boldTypeface, 14f);
+        using var bodyFont = new SKFont(defaultTypeface, 11f);
+        using var detailFont = new SKFont(defaultTypeface, 10f);
+        using var emphasizedDetailFont = new SKFont(boldTypeface, 10f);
+        using var warningDetailFont = new SKFont(boldTypeface, 10f);
 
         foreach (var node in scene.Nodes)
         {
@@ -413,17 +420,17 @@ public sealed class GraphRenderer
 
             foreach (var line in layout.Lines)
             {
-                var paint = line.Kind switch
+                var (font, paint) = line.Kind switch
                 {
-                    GraphNodeTextKind.Title => titlePaint,
-                    GraphNodeTextKind.TypeLabel => bodyPaint,
-                    _ when line.IsWarning => warningDetailPaint,
-                    _ when line.IsEmphasized => emphasizedDetailPaint,
-                    _ => detailPaint
+                    GraphNodeTextKind.Title => (titleFont, titlePaint),
+                    GraphNodeTextKind.TypeLabel => (bodyFont, bodyPaint),
+                    _ when line.IsWarning => (warningDetailFont, warningDetailPaint),
+                    _ when line.IsEmphasized => (emphasizedDetailFont, emphasizedDetailPaint),
+                    _ => (detailFont, detailPaint)
                 };
 
                 y += line.Kind == GraphNodeTextKind.Title ? 18f : 14f;
-                canvas.DrawText(line.Text, (float)origin.X, y, paint);
+                canvas.DrawText(line.Text, (float)origin.X, y, SKTextAlign.Left, font, paint);
             }
         }
     }

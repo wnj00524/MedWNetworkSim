@@ -269,8 +269,8 @@ public sealed class GraphRenderer
     {
         canvas.Clear(BackgroundColor);
         DrawBackgroundGrid(canvas, viewport, viewportSize);
-        DrawDepthLayer(canvas, scene, viewport, viewportSize);
         PrepareNodeLayouts(scene, viewport);
+        DrawDepthLayer(canvas, scene, viewport, viewportSize);
         DrawEdges(canvas, scene, viewport, viewportSize);
         DrawEdgeOverlays(canvas, scene, viewport, viewportSize);
         DrawNodes(canvas, scene, viewport, viewportSize);
@@ -344,7 +344,11 @@ public sealed class GraphRenderer
         foreach (var node in scene.Nodes)
         {
             var layout = GetOrBuildNodeLayout(node, tier);
-            ApplyLayoutBoundsKeepingCenter(node, layout);
+            if (Math.Abs(node.Bounds.Width - layout.Width) > 0.001d ||
+                Math.Abs(node.Bounds.Height - layout.Height) > 0.001d)
+            {
+                ApplyLayoutBoundsKeepingCenter(node, layout);
+            }
         }
     }
 

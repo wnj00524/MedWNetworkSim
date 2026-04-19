@@ -59,7 +59,8 @@ internal sealed class SplashWindow : Window
         ShowInTaskbar = false;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
-        var logoBitmap = new Bitmap(AssetLoader.Open(new Uri("avares://MedWNetworkSim.App.Avalonia/Assets/logo.jpg")));
+        using var logoStream = AssetLoader.Open(new Uri("avares://MedWNetworkSim.App.Avalonia/Assets/logo.jpg"));
+        var logoBitmap = new Bitmap(logoStream);
         Content = new Grid
         {
             Background = Brushes.Black,

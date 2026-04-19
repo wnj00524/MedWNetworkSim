@@ -17,6 +17,9 @@ ScenarioNodeEditsPersistThroughSaveLoad();
 ScenarioToolCommandsReflectRealModes();
 ScenarioEscapeReturnsSelectTool();
 ScenarioNodeBoundsGrowWhenTextWraps();
+ScenarioSelectedNodePreviewResizesAndKeepsCenter();
+ScenarioEdgeAnchorsAndHitTestingFollowResizedBounds();
+ScenarioNodeLayoutCacheReusesAndInvalidatesByContentAndTier();
 ScenarioEdgeTooltipIncludesRouteDetails();
 ScenarioPressureExplanationAppearsInNodeDetails();
 ScenarioReportsPopulateAndResetAroundTimeline();
@@ -395,6 +398,105 @@ static void ScenarioNodeBoundsGrowWhenTextWraps()
     {
         TryDelete(path);
     }
+}
+
+static void ScenarioSelectedNodePreviewResizesAndKeepsCenter()
+{
+    var workspace = new WorkspaceViewModel();
+    workspace.AddNodeToolCommand.Execute(null);
+    var context = workspace.CreateInteractionContext(new GraphSize(1100d, 700d));
+    workspace.InteractionController.OnPointerPressed(context, GraphPointerButton.Left, new GraphPoint(420d, 280d), false, false, false);
+    SelectFirstNode(workspace, context.ViewportSize);
+    var node = workspace.Scene.Nodes.Single();
+    var centerBefore = new GraphPoint(node.Bounds.CenterX, node.Bounds.CenterY);
+    var widthBefore = node.Bounds.Width;
+    var heightBefore = node.Bounds.Height;
+
+    workspace.NodeNameText = "Emergency Logistics Node With A Much Longer Live Preview Name";
+
+    var updated = workspace.Scene.Nodes.Single();
+    AssertTrue(updated.Bounds.Height >= heightBefore, "live preview height does not shrink with longer name");
+    AssertTrue(updated.Bounds.Width >= widthBefore, "live preview width does not shrink with longer name");
+    AssertNumberNear(centerBefore.X, updated.Bounds.CenterX, 0.001d, "live preview center x preserved");
+    AssertNumberNear(centerBefore.Y, updated.Bounds.CenterY, 0.001d, "live preview center y preserved");
+}
+
+static void ScenarioEdgeAnchorsAndHitTestingFollowResizedBounds()
+{
+    var workspace = new WorkspaceViewModel();
+    workspace.AddNodeToolCommand.Execute(null);
+    var viewportSize = new GraphSize(1200d, 760d);
+    var addContext = workspace.CreateInteractionContext(viewportSize);
+    workspace.InteractionController.OnPointerPressed(addContext, GraphPointerButton.Left, new GraphPoint(340d, 320d), false, false, false);
+    workspace.InteractionController.OnPointerPressed(addContext, GraphPointerButton.Left, new GraphPoint(860d, 320d), false, false, false);
+
+    workspace.ConnectToolCommand.Execute(null);
+    var connectContext = workspace.CreateInteractionContext(viewportSize);
+    var sourceNode = workspace.Scene.Nodes[0];
+    var targetNode = workspace.Scene.Nodes[1];
+    var sourceCenter = workspace.Viewport.WorldToScreen(new GraphPoint(sourceNode.Bounds.CenterX, sourceNode.Bounds.CenterY), viewportSize);
+    var targetCenter = workspace.Viewport.WorldToScreen(new GraphPoint(targetNode.Bounds.CenterX, targetNode.Bounds.CenterY), viewportSize);
+    workspace.InteractionController.OnPointerPressed(connectContext, GraphPointerButton.Left, sourceCenter, false, false, false);
+    workspace.InteractionController.OnPointerReleased(connectContext, GraphPointerButton.Left, targetCenter, false);
+
+    SelectFirstNode(workspace, viewportSize);
+    workspace.NodeNameText = "Source Hub With Long Preview Name That Forces A Wider Box";
+
+    var resizedSource = workspace.Scene.Nodes.First(node => node.Id == sourceNode.Id);
+    var anchor = GraphHitTester.GetEdgeAnchor(workspace.Scene, resizedSource.Id, targetNode.Id);
+    AssertNumberNear(resizedSource.Bounds.Right, anchor.X, 0.001d, "edge anchor tracks resized source width");
+    AssertNumberNear(resizedSource.Bounds.CenterY, anchor.Y, 0.001d, "edge anchor tracks resized source center");
+
+    var hit = new GraphHitTester().HitTest(workspace.Scene, new GraphPoint(resizedSource.Bounds.CenterX, resizedSource.Bounds.CenterY));
+    AssertTextEqual(resizedSource.Id, hit.NodeId ?? string.Empty, "hit testing at resized center finds node");
+}
+
+static void ScenarioNodeLayoutCacheReusesAndInvalidatesByContentAndTier()
+{
+    var renderer = new GraphRenderer();
+    var node = new GraphNodeSceneItem
+    {
+        Id = "cache-node",
+        Name = "Cache Node",
+        TypeLabel = "Depot",
+        MetricsLabel = string.Empty,
+        DetailLines = [new GraphNodeTextLine("Produces 4 aid", true, false)],
+        Bounds = new GraphRect(-84d, -59d, 168d, 118d),
+        FillColor = default,
+        StrokeColor = default,
+        Badges = ["Makes aid"],
+        HasWarning = false
+    };
+
+    var medium1 = GraphRenderer.GetOrBuildNodeLayout(node, renderer.GetZoomTier(0.8d));
+    var medium2 = GraphRenderer.GetOrBuildNodeLayout(node, renderer.GetZoomTier(0.85d));
+    AssertTrue(ReferenceEquals(medium1, medium2), "layout cache reused within same zoom tier");
+
+    node.Name = "Cache Node Updated";
+    var mediumAfterContentChange = GraphRenderer.GetOrBuildNodeLayout(node, renderer.GetZoomTier(0.8d));
+    AssertTrue(!ReferenceEquals(medium2, mediumAfterContentChange), "layout cache rebuilt after content change");
+
+    var near = GraphRenderer.GetOrBuildNodeLayout(node, renderer.GetZoomTier(1.5d));
+    AssertTrue(!ReferenceEquals(mediumAfterContentChange, near), "layout cache rebuilt after zoom tier change");
+
+    var otherNode = new GraphNodeSceneItem
+    {
+        Id = "other-cache-node",
+        Name = "Other Node",
+        TypeLabel = "Clinic",
+        MetricsLabel = string.Empty,
+        DetailLines = [new GraphNodeTextLine("Consumes 3 aid", true, false)],
+        Bounds = new GraphRect(160d, -59d, 168d, 118d),
+        FillColor = default,
+        StrokeColor = default,
+        Badges = ["Needs aid"],
+        HasWarning = false
+    };
+
+    var otherLayout1 = GraphRenderer.GetOrBuildNodeLayout(otherNode, renderer.GetZoomTier(0.8d));
+    _ = GraphRenderer.GetOrBuildNodeLayout(node, renderer.GetZoomTier(0.8d));
+    var otherLayout2 = GraphRenderer.GetOrBuildNodeLayout(otherNode, renderer.GetZoomTier(0.8d));
+    AssertTrue(ReferenceEquals(otherLayout1, otherLayout2), "other nodes keep cached layout when unchanged");
 }
 
 static void ScenarioEdgeTooltipIncludesRouteDetails()

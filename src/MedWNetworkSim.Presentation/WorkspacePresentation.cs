@@ -329,6 +329,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     private readonly TemporalNetworkSimulationEngine temporalEngine = new();
     private readonly EdgeTrafficPermissionResolver edgeTrafficPermissionResolver = new();
     private readonly GraphInteractionController interactionController = new();
+    private readonly GraphRenderer graphRenderer = new();
 
     private NetworkModel network = new();
     private TemporalNetworkSimulationEngine.TemporalSimulationState? temporalState;
@@ -564,10 +565,50 @@ public sealed class WorkspaceViewModel : ObservableObject
     public string NetworkTimelineLoopLengthText { get => networkTimelineLoopLengthText; set => SetProperty(ref networkTimelineLoopLengthText, value); }
     public string BulkPlaceTypeText { get => bulkPlaceTypeText; set => SetProperty(ref bulkPlaceTypeText, value); }
     public string BulkTranshipmentCapacityText { get => bulkTranshipmentCapacityText; set => SetProperty(ref bulkTranshipmentCapacityText, value); }
-    public string NodeNameText { get => nodeNameText; set => SetProperty(ref nodeNameText, value); }
-    public string NodePlaceTypeText { get => nodePlaceTypeText; set => SetProperty(ref nodePlaceTypeText, value); }
-    public string NodeDescriptionText { get => nodeDescriptionText; set => SetProperty(ref nodeDescriptionText, value); }
-    public string NodeTranshipmentCapacityText { get => nodeTranshipmentCapacityText; set => SetProperty(ref nodeTranshipmentCapacityText, value); }
+    public string NodeNameText
+    {
+        get => nodeNameText;
+        set
+        {
+            if (SetProperty(ref nodeNameText, value))
+            {
+                PreviewSelectedNodeSceneLayout();
+            }
+        }
+    }
+    public string NodePlaceTypeText
+    {
+        get => nodePlaceTypeText;
+        set
+        {
+            if (SetProperty(ref nodePlaceTypeText, value))
+            {
+                PreviewSelectedNodeSceneLayout();
+            }
+        }
+    }
+    public string NodeDescriptionText
+    {
+        get => nodeDescriptionText;
+        set
+        {
+            if (SetProperty(ref nodeDescriptionText, value))
+            {
+                PreviewSelectedNodeSceneLayout();
+            }
+        }
+    }
+    public string NodeTranshipmentCapacityText
+    {
+        get => nodeTranshipmentCapacityText;
+        set
+        {
+            if (SetProperty(ref nodeTranshipmentCapacityText, value))
+            {
+                PreviewSelectedNodeSceneLayout();
+            }
+        }
+    }
     public NodeVisualShape NodeShape { get => nodeShape; set => SetProperty(ref nodeShape, value); }
     public NodeKind NodeKind { get => nodeKind; set => SetProperty(ref nodeKind, value); }
 
@@ -579,6 +620,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             if (SetProperty(ref selectedNodeTrafficProfileItem, value))
             {
                 PopulateSelectedNodeTrafficEditor();
+                PreviewSelectedNodeSceneLayout();
                 Raise(nameof(IsNodeTrafficRoleSelected));
                 Raise(nameof(IsNodeStoreCapacityEnabled));
                 Raise(nameof(NodeTrafficRoleValidationText));
@@ -601,6 +643,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             if (SetProperty(ref nodeTrafficTypeText, value))
             {
                 RaiseNodeTrafficRoleValidationStateChanged();
+                PreviewSelectedNodeSceneLayout();
             }
         }
     }
@@ -618,17 +661,98 @@ public sealed class WorkspaceViewModel : ObservableObject
             {
                 ApplySelectedNodeTrafficRoleToEditor();
                 RaiseNodeTrafficRoleValidationStateChanged();
+                PreviewSelectedNodeSceneLayout();
             }
         }
     }
-    public string NodeProductionText { get => nodeProductionText; set => SetProperty(ref nodeProductionText, value); }
-    public string NodeConsumptionText { get => nodeConsumptionText; set => SetProperty(ref nodeConsumptionText, value); }
-    public string NodeConsumerPremiumText { get => nodeConsumerPremiumText; set => SetProperty(ref nodeConsumerPremiumText, value); }
-    public string NodeProductionStartText { get => nodeProductionStartText; set => SetProperty(ref nodeProductionStartText, value); }
-    public string NodeProductionEndText { get => nodeProductionEndText; set => SetProperty(ref nodeProductionEndText, value); }
-    public string NodeConsumptionStartText { get => nodeConsumptionStartText; set => SetProperty(ref nodeConsumptionStartText, value); }
-    public string NodeConsumptionEndText { get => nodeConsumptionEndText; set => SetProperty(ref nodeConsumptionEndText, value); }
-    public bool NodeCanTransship { get => nodeCanTransship; set => SetProperty(ref nodeCanTransship, value); }
+    public string NodeProductionText
+    {
+        get => nodeProductionText;
+        set
+        {
+            if (SetProperty(ref nodeProductionText, value))
+            {
+                PreviewSelectedNodeSceneLayout();
+            }
+        }
+    }
+    public string NodeConsumptionText
+    {
+        get => nodeConsumptionText;
+        set
+        {
+            if (SetProperty(ref nodeConsumptionText, value))
+            {
+                PreviewSelectedNodeSceneLayout();
+            }
+        }
+    }
+    public string NodeConsumerPremiumText
+    {
+        get => nodeConsumerPremiumText;
+        set
+        {
+            if (SetProperty(ref nodeConsumerPremiumText, value))
+            {
+                PreviewSelectedNodeSceneLayout();
+            }
+        }
+    }
+    public string NodeProductionStartText
+    {
+        get => nodeProductionStartText;
+        set
+        {
+            if (SetProperty(ref nodeProductionStartText, value))
+            {
+                PreviewSelectedNodeSceneLayout();
+            }
+        }
+    }
+    public string NodeProductionEndText
+    {
+        get => nodeProductionEndText;
+        set
+        {
+            if (SetProperty(ref nodeProductionEndText, value))
+            {
+                PreviewSelectedNodeSceneLayout();
+            }
+        }
+    }
+    public string NodeConsumptionStartText
+    {
+        get => nodeConsumptionStartText;
+        set
+        {
+            if (SetProperty(ref nodeConsumptionStartText, value))
+            {
+                PreviewSelectedNodeSceneLayout();
+            }
+        }
+    }
+    public string NodeConsumptionEndText
+    {
+        get => nodeConsumptionEndText;
+        set
+        {
+            if (SetProperty(ref nodeConsumptionEndText, value))
+            {
+                PreviewSelectedNodeSceneLayout();
+            }
+        }
+    }
+    public bool NodeCanTransship
+    {
+        get => nodeCanTransship;
+        set
+        {
+            if (SetProperty(ref nodeCanTransship, value))
+            {
+                PreviewSelectedNodeSceneLayout();
+            }
+        }
+    }
     public bool NodeStoreEnabled
     {
         get => nodeStoreEnabled;
@@ -637,10 +761,21 @@ public sealed class WorkspaceViewModel : ObservableObject
             if (SetProperty(ref nodeStoreEnabled, value))
             {
                 Raise(nameof(IsNodeStoreCapacityEnabled));
+                PreviewSelectedNodeSceneLayout();
             }
         }
     }
-    public string NodeStoreCapacityText { get => nodeStoreCapacityText; set => SetProperty(ref nodeStoreCapacityText, value); }
+    public string NodeStoreCapacityText
+    {
+        get => nodeStoreCapacityText;
+        set
+        {
+            if (SetProperty(ref nodeStoreCapacityText, value))
+            {
+                PreviewSelectedNodeSceneLayout();
+            }
+        }
+    }
     public string EdgeRouteTypeText { get => edgeRouteTypeText; set => SetProperty(ref edgeRouteTypeText, value); }
     public string EdgeTimeText { get => edgeTimeText; set => SetProperty(ref edgeTimeText, value); }
     public string EdgeCostText { get => edgeCostText; set => SetProperty(ref edgeCostText, value); }
@@ -861,6 +996,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     {
         Scene.Nodes.Clear();
         Scene.Edges.Clear();
+        var zoomTier = graphRenderer.GetZoomTier(Viewport.Zoom);
 
         foreach (var node in network.Nodes)
         {
@@ -868,21 +1004,23 @@ public sealed class WorkspaceViewModel : ObservableObject
             var centerY = node.Y ?? 0d;
             var detailLines = BuildNodeDetailLines(node, [], null);
             var typeLabel = string.IsNullOrWhiteSpace(node.PlaceType) ? "Node" : node.PlaceType!;
-            var layout = GraphNodeTextLayout.BuildLayout(node.Name, typeLabel, detailLines);
-            Scene.Nodes.Add(new GraphNodeSceneItem
+            var sceneNode = new GraphNodeSceneItem
             {
                 Id = node.Id,
                 Name = node.Name,
                 TypeLabel = typeLabel,
                 MetricsLabel = string.Empty,
                 DetailLines = detailLines,
-                Bounds = new GraphRect(centerX - (layout.Width / 2d), centerY - (layout.Height / 2d), layout.Width, layout.Height),
+                Bounds = new GraphRect(centerX - (GraphNodeTextLayout.DefaultWidth / 2d), centerY - (GraphNodeTextLayout.MinHeight / 2d), GraphNodeTextLayout.DefaultWidth, GraphNodeTextLayout.MinHeight),
                 FillColor = SKColor.Parse("#163149"),
                 StrokeColor = SKColor.Parse("#6AAED6"),
                 Badges = BuildNodeBadges(node),
                 ToolTipText = BuildNodeToolTipText(node, detailLines, null),
                 HasWarning = false
-            });
+            };
+            var layout = GraphRenderer.GetOrBuildNodeLayout(sceneNode, zoomTier);
+            GraphRenderer.ApplyLayoutBoundsKeepingCenter(sceneNode, layout);
+            Scene.Nodes.Add(sceneNode);
         }
 
         foreach (var edge in network.Edges)
@@ -1087,7 +1225,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             var nodeModel = network.Nodes.First(model => Comparer.Equals(model.Id, node.Id));
             node.MetricsLabel = string.Empty;
             node.DetailLines = BuildNodeDetailLines(nodeModel, [], null);
-            UpdateSceneNodeLayout(node, nodeModel, null);
+            UpdateSceneNodeLayout(node, nodeModel, null, graphRenderer.GetZoomTier(Viewport.Zoom));
             node.HasWarning = false;
         }
 
@@ -1141,7 +1279,7 @@ public sealed class WorkspaceViewModel : ObservableObject
                 var pressure = timeline.NodePressureById.GetValueOrDefault(node.Id);
                 node.MetricsLabel = string.Empty;
                 node.DetailLines = BuildNodeDetailLines(nodeModel, backlogByTraffic, pressure.Score > 0d ? pressure : null);
-                UpdateSceneNodeLayout(node, nodeModel, pressure.Score > 0d ? pressure : null);
+                UpdateSceneNodeLayout(node, nodeModel, pressure.Score > 0d ? pressure : null, graphRenderer.GetZoomTier(Viewport.Zoom));
                 node.HasWarning = pressure.Score > 0d || state.DemandBacklog > 0d;
             }
         }
@@ -1152,7 +1290,7 @@ public sealed class WorkspaceViewModel : ObservableObject
                 var nodeModel = network.Nodes.First(model => Comparer.Equals(model.Id, node.Id));
                 node.MetricsLabel = string.Empty;
                 node.DetailLines = BuildNodeDetailLines(nodeModel, [], null);
-                UpdateSceneNodeLayout(node, nodeModel, null);
+                UpdateSceneNodeLayout(node, nodeModel, null, graphRenderer.GetZoomTier(Viewport.Zoom));
                 node.HasWarning = false;
             }
         }
@@ -1773,6 +1911,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.TrafficRoles);
         MarkDirty();
         StatusText = "Added a new traffic role to the selected node.";
+        PreviewSelectedNodeSceneLayout();
     }
 
     private void DuplicateSelectedNodeTrafficProfile()
@@ -1806,6 +1945,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.TrafficRoles);
         MarkDirty();
         StatusText = "Duplicated the selected traffic role.";
+        PreviewSelectedNodeSceneLayout();
     }
 
     private void RemoveSelectedNodeTrafficProfile()
@@ -1822,6 +1962,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         PopulateNodeEditor(node);
         MarkDirty();
         StatusText = "Removed the selected traffic role.";
+        PreviewSelectedNodeSceneLayout();
     }
 
     private void AddTrafficDefinition()
@@ -2492,16 +2633,100 @@ public sealed class WorkspaceViewModel : ObservableObject
         return badges;
     }
 
-    private static void UpdateSceneNodeLayout(
+    private void UpdateSceneNodeLayout(
         GraphNodeSceneItem sceneNode,
         NodeModel nodeModel,
-        TemporalNetworkSimulationEngine.NodePressureSnapshot? pressure)
+        TemporalNetworkSimulationEngine.NodePressureSnapshot? pressure,
+        ZoomTier zoomTier)
     {
-        var centerX = sceneNode.Bounds.CenterX;
-        var centerY = sceneNode.Bounds.CenterY;
-        var layout = GraphNodeTextLayout.BuildLayout(sceneNode.Name, sceneNode.TypeLabel, sceneNode.DetailLines);
-        sceneNode.Bounds = new GraphRect(centerX - (layout.Width / 2d), centerY - (layout.Height / 2d), layout.Width, layout.Height);
+        sceneNode.LayoutContentKey = null;
+        sceneNode.CachedLayout = null;
+        var layout = GraphRenderer.GetOrBuildNodeLayout(sceneNode, zoomTier);
+        GraphRenderer.ApplyLayoutBoundsKeepingCenter(sceneNode, layout);
         sceneNode.ToolTipText = BuildNodeToolTipText(nodeModel, sceneNode.DetailLines, pressure);
+    }
+
+    private void PreviewSelectedNodeSceneLayout()
+    {
+        if (!IsEditingNode)
+        {
+            return;
+        }
+
+        var selectedNodeId = Scene.Selection.SelectedNodeIds.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(selectedNodeId))
+        {
+            return;
+        }
+
+        var nodeModel = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, selectedNodeId));
+        var sceneNode = Scene.FindNode(selectedNodeId);
+        if (nodeModel is null || sceneNode is null)
+        {
+            return;
+        }
+
+        var previewNode = BuildPreviewNodeModel(nodeModel);
+        sceneNode.Name = string.IsNullOrWhiteSpace(NodeNameText) ? nodeModel.Id : NodeNameText.Trim();
+        sceneNode.TypeLabel = string.IsNullOrWhiteSpace(NodePlaceTypeText) ? "Node" : NodePlaceTypeText.Trim();
+        sceneNode.DetailLines = BuildNodeDetailLines(previewNode, [], null);
+        sceneNode.Badges = BuildNodeBadges(previewNode);
+        sceneNode.ToolTipText = BuildNodeToolTipText(previewNode, sceneNode.DetailLines, null);
+        sceneNode.LayoutContentKey = null;
+        sceneNode.CachedLayout = null;
+        var zoomTier = graphRenderer.GetZoomTier(Viewport.Zoom);
+        var layout = GraphRenderer.GetOrBuildNodeLayout(sceneNode, zoomTier);
+        GraphRenderer.ApplyLayoutBoundsKeepingCenter(sceneNode, layout);
+        NotifyVisualChanged();
+    }
+
+    private NodeModel BuildPreviewNodeModel(NodeModel source)
+    {
+        var preview = new NodeModel
+        {
+            Id = source.Id,
+            Name = string.IsNullOrWhiteSpace(NodeNameText) ? source.Id : NodeNameText.Trim(),
+            X = source.X,
+            Y = source.Y,
+            PlaceType = NormalizeOptionalText(NodePlaceTypeText),
+            LoreDescription = NormalizeOptionalText(NodeDescriptionText),
+            TranshipmentCapacity = TryParseOptionalNonNegativeDouble(NodeTranshipmentCapacityText),
+            Shape = NodeShape,
+            NodeKind = NodeKind,
+            TrafficProfiles = source.TrafficProfiles.Select(profile => new NodeTrafficProfile
+            {
+                TrafficType = profile.TrafficType,
+                Production = profile.Production,
+                Consumption = profile.Consumption,
+                ConsumerPremiumPerUnit = profile.ConsumerPremiumPerUnit,
+                CanTransship = profile.CanTransship,
+                ProductionStartPeriod = profile.ProductionStartPeriod,
+                ProductionEndPeriod = profile.ProductionEndPeriod,
+                ConsumptionStartPeriod = profile.ConsumptionStartPeriod,
+                ConsumptionEndPeriod = profile.ConsumptionEndPeriod,
+                IsStore = profile.IsStore,
+                StoreCapacity = profile.StoreCapacity
+            }).ToList()
+        };
+
+        var selectedProfile = SelectedNodeTrafficProfileItem;
+        if (selectedProfile is not null && selectedProfile.Index >= 0 && selectedProfile.Index < preview.TrafficProfiles.Count)
+        {
+            var profile = preview.TrafficProfiles[selectedProfile.Index];
+            profile.TrafficType = string.IsNullOrWhiteSpace(NodeTrafficTypeText) ? profile.TrafficType : NodeTrafficTypeText.Trim();
+            profile.Production = TryParseNonNegativeDouble(NodeProductionText) ?? profile.Production;
+            profile.Consumption = TryParseNonNegativeDouble(NodeConsumptionText) ?? profile.Consumption;
+            profile.ConsumerPremiumPerUnit = TryParseNonNegativeDouble(NodeConsumerPremiumText) ?? profile.ConsumerPremiumPerUnit;
+            profile.ProductionStartPeriod = TryParseOptionalPositiveInt(NodeProductionStartText);
+            profile.ProductionEndPeriod = TryParseOptionalPositiveInt(NodeProductionEndText);
+            profile.ConsumptionStartPeriod = TryParseOptionalPositiveInt(NodeConsumptionStartText);
+            profile.ConsumptionEndPeriod = TryParseOptionalPositiveInt(NodeConsumptionEndText);
+            profile.CanTransship = NodeCanTransship;
+            profile.IsStore = NodeStoreEnabled;
+            profile.StoreCapacity = NodeStoreEnabled ? TryParseOptionalNonNegativeDouble(NodeStoreCapacityText) : null;
+        }
+
+        return preview;
     }
 
     private static string BuildNodeToolTipText(
@@ -2623,6 +2848,32 @@ public sealed class WorkspaceViewModel : ObservableObject
         }
 
         return value;
+    }
+
+    private static double? TryParseNonNegativeDouble(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) && value >= 0d
+            ? value
+            : null;
+    }
+
+    private static double? TryParseOptionalNonNegativeDouble(string text) => TryParseNonNegativeDouble(text);
+
+    private static int? TryParseOptionalPositiveInt(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        return int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) && value >= 1
+            ? value
+            : null;
     }
 
     private static double TryParseRoleQuantity(string text)

@@ -17,4 +17,8 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
   </ItemGroup>
 
+  <ItemGroup>
+    <AvaloniaResource Include="..\MedWNetworkSim.App\Assets\logo.jpg" Link="Assets\logo.jpg" />
+  </ItemGroup>
+
 </Project>

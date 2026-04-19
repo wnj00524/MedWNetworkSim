@@ -443,6 +443,7 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     public GraphInteractionController InteractionController => interactionController;
     public string WindowTitle => $"MedW Network Sim | Avalonia Workstation | {network.Name}";
+    public string SessionSubtitle => $"Active network: {network.Name} · {SimulationSummary}";
     public string StatusText { get => statusText; set => SetProperty(ref statusText, value); }
     public string ToolStatusText { get => toolStatusText; private set => SetProperty(ref toolStatusText, value); }
     public string ToolInstructionText { get => toolInstructionText; private set => SetProperty(ref toolInstructionText, value); }
@@ -635,6 +636,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         ViewportVersion++;
         Raise(nameof(ViewportVersion));
         Raise(nameof(WindowTitle));
+        Raise(nameof(SessionSubtitle));
         Raise(nameof(SelectionSummary));
         Raise(nameof(SimulationSummary));
     }
@@ -1071,6 +1073,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     private void RefreshInspector()
     {
         Raise(nameof(SelectionSummary));
+        Raise(nameof(SessionSubtitle));
         Raise(nameof(CurrentInspectorEditMode));
         Raise(nameof(IsEditingNetwork));
         Raise(nameof(IsEditingNode));

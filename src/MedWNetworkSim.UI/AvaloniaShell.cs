@@ -664,10 +664,17 @@ public sealed class ShellWindow : Window
 
     private static Border BuildDashboardPanel(Control content, string? header = null, bool includeHeader = true, Thickness? padding = null, CornerRadius? radius = null)
     {
-        var stack = new StackPanel { Spacing = 8 };
+        var layout = new Grid
+        {
+            RowDefinitions = includeHeader && !string.IsNullOrWhiteSpace(header)
+                ? new RowDefinitions("Auto,*")
+                : new RowDefinitions("*"),
+            RowSpacing = includeHeader && !string.IsNullOrWhiteSpace(header) ? 8 : 0
+        };
+
         if (includeHeader && !string.IsNullOrWhiteSpace(header))
         {
-            stack.Children.Add(new Border
+            layout.Children.Add(new Border
             {
                 Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
                 BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
@@ -683,7 +690,12 @@ public sealed class ShellWindow : Window
             });
         }
 
-        stack.Children.Add(content);
+        if (includeHeader && !string.IsNullOrWhiteSpace(header))
+        {
+            Grid.SetRow(content, 1);
+        }
+
+        layout.Children.Add(content);
 
         return new Border
         {
@@ -692,7 +704,7 @@ public sealed class ShellWindow : Window
             Padding = padding ?? new Thickness(12),
             BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
             BorderThickness = new Thickness(1),
-            Child = stack
+            Child = layout
         };
     }
 
@@ -781,7 +793,7 @@ public sealed class ShellWindow : Window
         return grid;
     }
 
-    private static Control BuildToolRail(WorkspaceViewModel viewModel)
+    private Control BuildToolRail(WorkspaceViewModel viewModel)
     {
         var selectButton = BuildToolButton("Select", "Click to select items, drag selected nodes, and marquee select.", viewModel.SelectToolCommand);
         var addNodeButton = BuildToolButton("Add Node", "Click the canvas to place a new node.", viewModel.AddNodeToolCommand);
@@ -804,23 +816,46 @@ public sealed class ShellWindow : Window
         };
         RefreshToolState();
 
-        var border = BuildDashboardPanel(
-            new StackPanel
+        var content = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,Auto,*"),
+            RowSpacing = AvaloniaDashboardTheme.SectionSpacing,
+            MinHeight = 0
+        };
+
+        content.Children.Add(new StackPanel
+        {
+            Spacing = AvaloniaDashboardTheme.SectionSpacing,
+            Children =
             {
-                Spacing = AvaloniaDashboardTheme.SectionSpacing,
-                Children =
-                {
-                    BuildSectionTitle("Tools", "Activate one operation mode for the workspace."),
-                    selectButton,
-                    addNodeButton,
-                    connectButton,
-                    deleteButton,
-                    BuildSectionTitle("Quick Access", "Current network at a glance."),
-                    BuildQuickStat("Status", nameof(WorkspaceViewModel.StatusText)),
-                    BuildQuickStat("Selection", nameof(WorkspaceViewModel.SelectionSummary)),
-                    BuildQuickStat("Simulation", nameof(WorkspaceViewModel.SimulationSummary))
-                }
-            },
+                BuildSectionTitle("Tools", "Activate one operation mode for the workspace."),
+                selectButton,
+                addNodeButton,
+                connectButton,
+                deleteButton
+            }
+        });
+
+        var quickAccess = new StackPanel
+        {
+            Spacing = AvaloniaDashboardTheme.SectionSpacing,
+            Children =
+            {
+                BuildSectionTitle("Quick Access", "Current network at a glance."),
+                BuildQuickStat("Status", nameof(WorkspaceViewModel.StatusText)),
+                BuildQuickStat("Selection", nameof(WorkspaceViewModel.SelectionSummary)),
+                BuildQuickStat("Simulation", nameof(WorkspaceViewModel.SimulationSummary))
+            }
+        };
+        Grid.SetRow(quickAccess, 1);
+        content.Children.Add(quickAccess);
+
+        var trafficEditor = BuildTrafficQuickEditor(viewModel);
+        Grid.SetRow(trafficEditor, 2);
+        content.Children.Add(trafficEditor);
+
+        var border = BuildDashboardPanel(
+            content,
             header: "Operations Rail",
             padding: new Thickness(10),
             radius: new CornerRadius(14));
@@ -968,6 +1003,171 @@ public sealed class ShellWindow : Window
         Grid.SetColumn(border, 2);
         Grid.SetRow(border, 0);
         return border;
+    }
+
+    private Control BuildTrafficQuickEditor(WorkspaceViewModel viewModel)
+    {
+        var quickList = new ListBox
+        {
+            MaxHeight = 196,
+            MinHeight = 92,
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.InputBackground),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            ItemTemplate = new FuncDataTemplate<NodeTrafficProfileListItem>((item, _) =>
+            {
+                var summaryGrid = new Grid
+                {
+                    ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+                    RowDefinitions = new RowDefinitions("Auto,Auto,Auto"),
+                    ColumnSpacing = 10,
+                    RowSpacing = 2,
+                    Margin = new Thickness(0, 0, 0, 6),
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            [!TextBlock.TextProperty] = new Binding(nameof(NodeTrafficProfileListItem.TrafficTypeText)),
+                            FontWeight = FontWeight.Bold,
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+                            TextWrapping = TextWrapping.Wrap
+                        },
+                        new TextBlock
+                        {
+                            [!TextBlock.TextProperty] = new Binding(nameof(NodeTrafficProfileListItem.RoleText)),
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                            HorizontalAlignment = HorizontalAlignment.Right,
+                            TextWrapping = TextWrapping.Wrap,
+                            [Grid.ColumnProperty] = 1
+                        },
+                        new TextBlock
+                        {
+                            [!TextBlock.TextProperty] = new Binding(nameof(NodeTrafficProfileListItem.ProductionText))
+                            {
+                                StringFormat = "Production {0}"
+                            },
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                            FontSize = 12,
+                            [Grid.RowProperty] = 1
+                        },
+                        new TextBlock
+                        {
+                            [!TextBlock.TextProperty] = new Binding(nameof(NodeTrafficProfileListItem.ConsumptionText))
+                            {
+                                StringFormat = "Consumption {0}"
+                            },
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                            FontSize = 12,
+                            HorizontalAlignment = HorizontalAlignment.Right,
+                            [Grid.RowProperty] = 1,
+                            [Grid.ColumnProperty] = 1
+                        },
+                        new TextBlock
+                        {
+                            [!TextBlock.TextProperty] = new Binding(nameof(NodeTrafficProfileListItem.CapabilityText)),
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.MutedText),
+                            FontSize = 11,
+                            TextWrapping = TextWrapping.Wrap,
+                            [Grid.RowProperty] = 2,
+                            [Grid.ColumnSpanProperty] = 2
+                        }
+                    }
+                };
+
+                return new Border
+                {
+                    Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+                    BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(10),
+                    Padding = new Thickness(10, 8),
+                    Child = summaryGrid
+                };
+            })
+        };
+        quickList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.SelectedNodeTrafficProfiles)));
+        quickList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedNodeTrafficProfileItem), BindingMode.TwoWay));
+        ApplyFocusVisual(quickList);
+
+        var tabbedEditor = BuildTrafficTabbedEditor(out var trafficEditorFocusTarget);
+        tabbedEditor.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsNodeTrafficRoleSelected)));
+        tabbedEditor.Bind(IsEnabledProperty, new Binding(nameof(WorkspaceViewModel.IsNodeTrafficRoleSelected)));
+
+        var editRoleButton = BuildButton(
+            "Edit role",
+            new RelayCommand(() => BringIntoViewAndFocus(tabbedEditor, trafficEditorFocusTarget)),
+            toolTip: "Open the tabbed traffic editor for the selected role.");
+        editRoleButton.Bind(IsEnabledProperty, new Binding(nameof(WorkspaceViewModel.IsNodeTrafficRoleSelected)));
+
+        var advancedEditorButton = BuildButton(
+            "Advanced editor \u2192",
+            new RelayCommand(() =>
+            {
+                viewModel.FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.TrafficRoles);
+                OpenFullNodeEditor();
+            }),
+            isPrimary: true,
+            toolTip: "Open the full node editor drawer for deeper traffic editing.");
+        advancedEditorButton.Bind(IsEnabledProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNode)));
+
+        var section = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,Auto,*"),
+            RowSpacing = 10,
+            MinHeight = 0,
+            Children =
+            {
+                BuildSectionTitle("Traffic", "Quickly manage traffic roles for the selected node.")
+            }
+        };
+
+        var quickEditorCard = new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(12),
+            Child = new StackPanel
+            {
+                Spacing = 10,
+                Children =
+                {
+                    BuildSectionTitle("Quick traffic roles", "Select a role for a concise summary, then edit or escalate when you need more detail."),
+                    quickList,
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 8,
+                        Children =
+                        {
+                            BuildBoundButton("Add role", nameof(WorkspaceViewModel.AddNodeTrafficProfileCommand)),
+                            BuildBoundButton("Duplicate role", nameof(WorkspaceViewModel.DuplicateSelectedNodeTrafficProfileCommand)),
+                            BuildBoundButton("Remove role", nameof(WorkspaceViewModel.RemoveSelectedNodeTrafficProfileCommand))
+                        }
+                    },
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 8,
+                        Children =
+                        {
+                            editRoleButton,
+                            advancedEditorButton
+                        }
+                    }
+                }
+            }
+        };
+        Grid.SetRow(quickEditorCard, 1);
+        section.Children.Add(quickEditorCard);
+
+        Grid.SetRow(tabbedEditor, 2);
+        section.Children.Add(tabbedEditor);
+        section.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNode)));
+        section.Bind(IsEnabledProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNode)));
+        return section;
     }
 
     private static Control BuildInspectorDetails()
@@ -1118,7 +1318,8 @@ public sealed class ShellWindow : Window
         dashboardStripContentGrid = new Grid
         {
             RowDefinitions = new RowDefinitions("Auto,*"),
-            RowSpacing = 10
+            RowSpacing = 10,
+            MinHeight = 0
         };
 
         var headerGrid = new Grid
@@ -1594,7 +1795,8 @@ public sealed class ShellWindow : Window
             BorderThickness = new Thickness(1),
             Padding = new Thickness(4),
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch
+            VerticalAlignment = VerticalAlignment.Stretch,
+            MinHeight = 0
         };
         tabControl.Items.Add(new TabItem
         {
@@ -1610,35 +1812,42 @@ public sealed class ShellWindow : Window
         var reportsGrid = new Grid
         {
             RowDefinitions = new RowDefinitions("Auto,*"),
-            RowSpacing = 10
+            RowSpacing = 10,
+            MinHeight = 0
         };
-        reportsGrid.Children.Add(new StackPanel
+
+        var reportsHeader = new Grid
         {
-            Spacing = 10,
+            RowDefinitions = new RowDefinitions("Auto,Auto"),
+            RowSpacing = 10,
+            MinHeight = 0
+        };
+        reportsHeader.Children.Add(new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
             Children =
             {
-                new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    Spacing = 8,
-                    Children =
-                    {
-                        BuildButton("Export Current (HTML)", new RelayCommand(() => _ = ExportCurrentReportAsync(viewModel, ReportExportFormat.Html))),
-                        BuildButton("Export Timeline (CSV)", new RelayCommand(() => _ = ExportTimelineReportAsync(viewModel, ReportExportFormat.Csv)))
-                    }
-                },
-                new ScrollViewer
-                {
-                    HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                    Content = metrics
-                }
+                BuildButton("Export Current (HTML)", new RelayCommand(() => _ = ExportCurrentReportAsync(viewModel, ReportExportFormat.Html))),
+                BuildButton("Export Timeline (CSV)", new RelayCommand(() => _ = ExportTimelineReportAsync(viewModel, ReportExportFormat.Csv)))
             }
         });
-        var reportsScroll = new ScrollViewer
+        var metricsScroll = new ScrollViewer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = metrics
+        };
+        Grid.SetRow(metricsScroll, 1);
+        reportsHeader.Children.Add(metricsScroll);
+        reportsGrid.Children.Add(reportsHeader);
+
+        var reportsScroll = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            MinHeight = 0,
             Content = new StackPanel
             {
                 Spacing = 10,
@@ -2496,6 +2705,184 @@ public sealed class ShellWindow : Window
                     Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
                     FontSize = 12
                 }
+            }
+        };
+    }
+
+    private static Control BuildTrafficTabbedEditor(out Control focusTarget)
+    {
+        var tabControl = new TabControl
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelBackground),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(4),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            MinHeight = 0
+        };
+        ApplyFocusVisual(tabControl);
+        focusTarget = tabControl;
+
+        tabControl.Items.Add(new TabItem
+        {
+            Header = "Summary",
+            Content = BuildTrafficEditorTabBody(BuildTrafficSummaryTab())
+        });
+        tabControl.Items.Add(new TabItem
+        {
+            Header = "Basic",
+            Content = BuildTrafficEditorTabBody(BuildTrafficBasicTab())
+        });
+        tabControl.Items.Add(new TabItem
+        {
+            Header = "Schedule",
+            Content = BuildTrafficEditorTabBody(BuildTrafficScheduleTab())
+        });
+        tabControl.Items.Add(new TabItem
+        {
+            Header = "Inputs",
+            Content = BuildTrafficEditorTabBody(BuildTrafficInputsTab())
+        });
+        tabControl.Items.Add(new TabItem
+        {
+            Header = "Validation",
+            Content = BuildTrafficEditorTabBody(BuildTrafficValidationTab())
+        });
+
+        var grid = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            RowSpacing = 8,
+            MinHeight = 0,
+            Children =
+            {
+                BuildSectionTitle("Traffic editor", "Summary stays compact first. Use tabs for role details, timing, inputs, and validation."),
+                tabControl
+            }
+        };
+        Grid.SetRow(tabControl, 1);
+        return grid;
+    }
+
+    private static Control BuildTrafficEditorTabBody(Control content)
+    {
+        return new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = content
+        };
+    }
+
+    private static Control BuildTrafficSummaryTab()
+    {
+        return new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                BuildSectionTitle("Summary", "Review the selected role at a glance."),
+                new Border
+                {
+                    Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+                    BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(10),
+                    Padding = new Thickness(10),
+                    Child = new TextBlock
+                    {
+                        [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.SelectedNodeTrafficProfileSummaryText)),
+                        TextWrapping = TextWrapping.Wrap,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                    }
+                },
+                BuildReadOnlyRow("Traffic type", nameof(WorkspaceViewModel.NodeTrafficTypeText)),
+                BuildReadOnlyRow("Role", nameof(WorkspaceViewModel.NodeTrafficRoleText)),
+                BuildReadOnlyRow("Production", nameof(WorkspaceViewModel.NodeProductionText)),
+                BuildReadOnlyRow("Consumption", nameof(WorkspaceViewModel.NodeConsumptionText)),
+                BuildReadOnlyRow("Consumer premium", nameof(WorkspaceViewModel.NodeConsumerPremiumText)),
+                BuildReadOnlyRow("Store enabled", nameof(WorkspaceViewModel.NodeStoreEnabled)),
+                BuildReadOnlyRow("Store capacity", nameof(WorkspaceViewModel.NodeStoreCapacityText)),
+                BuildReadOnlyRow("Can transship", nameof(WorkspaceViewModel.NodeCanTransship)),
+                BuildReadOnlyRow("Production windows", nameof(WorkspaceViewModel.SelectedNodeProductionWindowCountText)),
+                BuildReadOnlyRow("Consumption windows", nameof(WorkspaceViewModel.SelectedNodeConsumptionWindowCountText)),
+                BuildReadOnlyRow("Input requirements", nameof(WorkspaceViewModel.SelectedNodeInputRequirementCountText))
+            }
+        };
+    }
+
+    private static Control BuildTrafficBasicTab()
+    {
+        return new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                BuildSectionTitle("Basic", "Edit the common traffic fields for the selected role."),
+                BuildLabeledRow("Traffic type", BuildBoundComboBox(nameof(WorkspaceViewModel.TrafficTypeNameOptions), nameof(WorkspaceViewModel.NodeTrafficTypeText))),
+                BuildLabeledRow("Role", BuildBoundComboBox(nameof(WorkspaceViewModel.NodeRoleOptions), nameof(WorkspaceViewModel.NodeTrafficRoleText))),
+                BuildLabeledTextBox("Production", nameof(WorkspaceViewModel.NodeProductionText)),
+                BuildLabeledTextBox("Consumption", nameof(WorkspaceViewModel.NodeConsumptionText)),
+                BuildLabeledTextBox("Consumer premium", nameof(WorkspaceViewModel.NodeConsumerPremiumText)),
+                BuildLabeledCheckBox("Can transship", nameof(WorkspaceViewModel.NodeCanTransship)),
+                BuildLabeledCheckBox("Store enabled", nameof(WorkspaceViewModel.NodeStoreEnabled)),
+                BuildLabeledTextBox("Store capacity", nameof(WorkspaceViewModel.NodeStoreCapacityText), nameof(WorkspaceViewModel.IsNodeStoreCapacityEnabled))
+            }
+        };
+    }
+
+    private static Control BuildTrafficScheduleTab()
+    {
+        return new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                BuildSectionTitle("Schedule", "Keep timing fields and explicit windows together."),
+                BuildScheduleFields(),
+                BuildWindowEditor(
+                    "Production windows",
+                    nameof(WorkspaceViewModel.SelectedNodeProductionWindows),
+                    nameof(WorkspaceViewModel.SelectedNodeProductionWindowItem),
+                    nameof(WorkspaceViewModel.AddNodeProductionWindowCommand),
+                    nameof(WorkspaceViewModel.RemoveSelectedNodeProductionWindowCommand)),
+                BuildWindowEditor(
+                    "Consumption windows",
+                    nameof(WorkspaceViewModel.SelectedNodeConsumptionWindows),
+                    nameof(WorkspaceViewModel.SelectedNodeConsumptionWindowItem),
+                    nameof(WorkspaceViewModel.AddNodeConsumptionWindowCommand),
+                    nameof(WorkspaceViewModel.RemoveSelectedNodeConsumptionWindowCommand))
+            }
+        };
+    }
+
+    private static Control BuildTrafficInputsTab()
+    {
+        return new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                BuildSectionTitle("Inputs", "Define local input requirements for the selected role."),
+                BuildInputRequirementEditor()
+            }
+        };
+    }
+
+    private static Control BuildTrafficValidationTab()
+    {
+        return new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                BuildSectionTitle("Validation", "Use these messages to resolve issues before applying changes."),
+                BuildReadOnlyRow("Status", nameof(WorkspaceViewModel.SelectedNodeTrafficProfileIssueCountText)),
+                BuildReadOnlyRow("Guidance", nameof(WorkspaceViewModel.SelectedNodeTrafficValidationGuidanceText)),
+                BuildValidationBlock(nameof(WorkspaceViewModel.NodeTrafficRoleValidationText)),
+                BuildReadOnlyRow("Current role", nameof(WorkspaceViewModel.SelectedNodeTrafficProfileStatusText))
             }
         };
     }

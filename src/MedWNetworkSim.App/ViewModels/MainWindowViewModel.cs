@@ -393,7 +393,6 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
             }
 
             ApplyWorkspaceMode(value);
-            OnPropertyChanged(nameof(IsReportsWorkspaceActive));
         }
     }
 

@@ -17,9 +17,6 @@
         <Window.Resources>
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         </Window.Resources>
-        <ScrollViewer VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled"
-                      CanContentScroll="False">
         <Grid Margin="22">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -734,5 +731,4 @@
             <local:ReportsDrawerControl />
         </Border>
     </Grid>
-    </ScrollViewer>
 </Window>

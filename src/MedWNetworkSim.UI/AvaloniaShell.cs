@@ -544,6 +544,7 @@ public sealed class ShellWindow : Window
         ExtendClientAreaChromeHints = ExtendClientAreaChromeHints.NoChrome;
         SystemDecorations = SystemDecorations.None;
         CanResize = true;
+        WindowState = WindowState.FullScreen;
         Title = viewModel.WindowTitle;
         viewModel.PropertyChanged += (_, e) =>
         {

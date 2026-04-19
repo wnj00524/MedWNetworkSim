@@ -2,8 +2,73 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:themes="clr-namespace:Avalonia.Themes.Fluent;assembly=Avalonia.Themes.Fluent"
              x:Class="MedWNetworkSim.App.Avalonia.App"
-             RequestedThemeVariant="Light">
+             RequestedThemeVariant="Dark">
   <Application.Styles>
     <themes:FluentTheme DensityStyle="Compact" />
+    <Style Selector="Button.toolbar-button">
+      <Setter Property="MinHeight" Value="42" />
+      <Setter Property="Padding" Value="12,9" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="BorderThickness" Value="1.4" />
+      <Setter Property="Background" Value="#17263C" />
+      <Setter Property="Foreground" Value="#EAF1FB" />
+      <Setter Property="BorderBrush" Value="#3C5A80" />
+    </Style>
+    <Style Selector="Button.toolbar-button:pointerover">
+      <Setter Property="Background" Value="#1A2A42" />
+      <Setter Property="Foreground" Value="#EAF1FB" />
+      <Setter Property="BorderBrush" Value="#4EA1FF" />
+    </Style>
+    <Style Selector="Button.toolbar-button:pressed">
+      <Setter Property="Background" Value="#223E64" />
+      <Setter Property="Foreground" Value="#EAF1FB" />
+      <Setter Property="BorderBrush" Value="#66B4FF" />
+    </Style>
+    <Style Selector="Button.toolbar-button:focus">
+      <Setter Property="Background" Value="#1F3A5E" />
+      <Setter Property="Foreground" Value="#EAF1FB" />
+      <Setter Property="BorderBrush" Value="#66B4FF" />
+    </Style>
+    <Style Selector="Button.toolbar-button:disabled">
+      <Setter Property="Background" Value="#111C2E" />
+      <Setter Property="Foreground" Value="#7E93B3" />
+      <Setter Property="BorderBrush" Value="#2A3A56" />
+      <Setter Property="Opacity" Value="0.82" />
+    </Style>
+
+    <Style Selector="Button.toolbar-button.primary">
+      <Setter Property="Background" Value="#2C5E95" />
+      <Setter Property="BorderBrush" Value="#66B4FF" />
+      <Setter Property="Foreground" Value="#F5FAFF" />
+    </Style>
+    <Style Selector="Button.toolbar-button.primary:pointerover">
+      <Setter Property="Background" Value="#3770AE" />
+      <Setter Property="BorderBrush" Value="#8CC8FF" />
+      <Setter Property="Foreground" Value="#F5FAFF" />
+    </Style>
+    <Style Selector="Button.toolbar-button.primary:pressed">
+      <Setter Property="Background" Value="#274F7C" />
+      <Setter Property="BorderBrush" Value="#B5DEFF" />
+      <Setter Property="Foreground" Value="#F5FAFF" />
+    </Style>
+    <Style Selector="Button.toolbar-button.primary:focus">
+      <Setter Property="Background" Value="#315F93" />
+      <Setter Property="BorderBrush" Value="#B5DEFF" />
+      <Setter Property="Foreground" Value="#F5FAFF" />
+    </Style>
+
+    <Style Selector="Button.tool-button">
+      <Setter Property="MinHeight" Value="58" />
+    </Style>
+    <Style Selector="Button.tool-button.active">
+      <Setter Property="Background" Value="#1F3A5E" />
+      <Setter Property="Foreground" Value="#EAF1FB" />
+      <Setter Property="BorderBrush" Value="#4EA1FF" />
+    </Style>
+    <Style Selector="Button.tool-button.active:pointerover">
+      <Setter Property="Background" Value="#25466F" />
+      <Setter Property="Foreground" Value="#EAF1FB" />
+      <Setter Property="BorderBrush" Value="#66B4FF" />
+    </Style>
   </Application.Styles>
 </Application>

@@ -16,6 +16,10 @@ ScenarioTrafficDefinitionRenameAndRemovalPropagate();
 ScenarioNodeEditsPersistThroughSaveLoad();
 ScenarioToolCommandsReflectRealModes();
 ScenarioEscapeReturnsSelectTool();
+ScenarioNodeBoundsGrowWhenTextWraps();
+ScenarioEdgeTooltipIncludesRouteDetails();
+ScenarioPressureExplanationAppearsInNodeDetails();
+ScenarioReportsPopulateAndResetAroundTimeline();
 
 Console.WriteLine("Avalonia verification passed.");
 
@@ -354,6 +358,197 @@ static void ScenarioEscapeReturnsSelectTool()
 
     AssertTrue(handled, "escape key handled");
     AssertTrue(workspace.IsSelectToolActive, "escape returns select mode");
+}
+
+static void ScenarioNodeBoundsGrowWhenTextWraps()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Wrap",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "medical-supplies" }],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "long-node",
+                Name = "Very Long Humanitarian Distribution Hub With Overflowing Descriptors",
+                PlaceType = "Regional logistics coordination centre with extensive storage duties",
+                X = 0d,
+                Y = 0d,
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile { TrafficType = "medical-supplies", Production = 15d, CanTransship = true, IsStore = true, StoreCapacity = 45d }
+                ]
+            }
+        ],
+        Edges = []
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        var node = workspace.Scene.Nodes.Single();
+        AssertTrue(node.Bounds.Height > GraphNodeTextLayout.MinHeight, "wrapped node grows beyond minimum height");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioEdgeTooltipIncludesRouteDetails()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Edges",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "aid" }],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "a",
+                Name = "Depot Alpha",
+                X = 0d,
+                Y = 0d,
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "aid", Production = 5d }]
+            },
+            new NodeModel
+            {
+                Id = "b",
+                Name = "Clinic Bravo",
+                X = 200d,
+                Y = 0d,
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "aid", Consumption = 5d }]
+            }
+        ],
+        Edges =
+        [
+            new EdgeModel
+            {
+                Id = "a->b",
+                RouteType = "Northern Corridor",
+                FromNodeId = "a",
+                ToNodeId = "b",
+                Time = 2d,
+                Cost = 3d,
+                Capacity = 8d,
+                IsBidirectional = true
+            }
+        ]
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        var tooltip = workspace.Scene.Edges.Single().ToolTipText;
+        AssertTrue(tooltip.Contains("Route Northern Corridor", StringComparison.Ordinal), "edge tooltip route label");
+        AssertTrue(tooltip.Contains("Depot Alpha -> Clinic Bravo", StringComparison.Ordinal), "edge tooltip endpoints");
+        AssertTrue(tooltip.Contains("Traffic aid", StringComparison.Ordinal), "edge tooltip traffic permissions");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioPressureExplanationAppearsInNodeDetails()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Pressure",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "water" }],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "consumer",
+                Name = "Remote Clinic",
+                X = 0d,
+                Y = 0d,
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "water", Consumption = 12d }]
+            }
+        ],
+        Edges = []
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        workspace.StepCommand.Execute(null);
+        var node = workspace.Scene.Nodes.Single();
+        AssertTrue(node.DetailLines.Any(line => line.Text.StartsWith("Pressure ", StringComparison.Ordinal)), "node detail pressure line");
+        AssertTrue(node.DetailLines.Any(line => line.Text.StartsWith("Cause: ", StringComparison.Ordinal)), "node detail cause line");
+        AssertTrue(node.ToolTipText.Contains("Cause breakdown:", StringComparison.Ordinal), "node tooltip cause breakdown");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioReportsPopulateAndResetAroundTimeline()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Reports",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "fuel" }],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "source",
+                Name = "Fuel Depot",
+                X = 0d,
+                Y = 0d,
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "fuel", Production = 10d }]
+            },
+            new NodeModel
+            {
+                Id = "sink",
+                Name = "Field Hospital",
+                X = 220d,
+                Y = 0d,
+                TrafficProfiles = [new NodeTrafficProfile { TrafficType = "fuel", Consumption = 10d }]
+            }
+        ],
+        Edges =
+        [
+            new EdgeModel
+            {
+                Id = "source->sink",
+                RouteType = "Fuel Line",
+                FromNodeId = "source",
+                ToNodeId = "sink",
+                Time = 1d,
+                Cost = 1d,
+                Capacity = 10d
+            }
+        ]
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        workspace.StepCommand.Execute(null);
+
+        AssertAtLeast(1, workspace.TrafficReports.Count, "traffic reports after step");
+        AssertAtLeast(1, workspace.RouteReports.Count, "route reports after step");
+        AssertAtLeast(1, workspace.NodePressureReports.Count, "node pressure reports after step");
+
+        workspace.ResetTimelineCommand.Execute(null);
+
+        AssertNumberEqual(0d, workspace.TrafficReports.Count, "traffic reports after reset");
+        AssertNumberEqual(0d, workspace.RouteReports.Count, "route reports after reset");
+        AssertNumberEqual(0d, workspace.NodePressureReports.Count, "node pressure reports after reset");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
 }
 
 static string WriteTempNetwork(NetworkModel network)

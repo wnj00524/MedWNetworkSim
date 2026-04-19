@@ -15,6 +15,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.Interaction;
 using MedWNetworkSim.Presentation;
@@ -73,6 +74,7 @@ public sealed class GraphCanvasControl : Control
     private bool hasError;
     private int statusNotificationVersion;
     private string? hoveredNodeId;
+    private string? hoveredEdgeId;
 
     public GraphCanvasControl()
     {
@@ -317,6 +319,7 @@ public sealed class GraphCanvasControl : Control
     {
         base.OnPointerExited(e);
         hoveredNodeId = null;
+        hoveredEdgeId = null;
         ToolTip.SetTip(this, null);
     }
 
@@ -366,13 +369,16 @@ public sealed class GraphCanvasControl : Control
         var interactionContext = viewModel.CreateInteractionContext(transform.LogicalViewport);
         var worldPoint = interactionContext.Viewport.ScreenToWorld(PointerToGraph(e, transform), interactionContext.ViewportSize);
         var hit = new GraphHitTester().HitTest(interactionContext.Scene, worldPoint);
-        if (string.Equals(hoveredNodeId, hit.NodeId, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(hoveredNodeId, hit.NodeId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(hoveredEdgeId, hit.EdgeId, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
         hoveredNodeId = hit.NodeId;
-        var tooltipText = interactionContext.Scene.FindNode(hit.NodeId)?.ToolTipText;
+        hoveredEdgeId = hit.EdgeId;
+        var tooltipText = interactionContext.Scene.FindNode(hit.NodeId)?.ToolTipText
+            ?? interactionContext.Scene.FindEdge(hit.EdgeId)?.ToolTipText;
         ToolTip.SetTip(this, string.IsNullOrWhiteSpace(tooltipText) ? null : tooltipText);
     }
 
@@ -534,6 +540,10 @@ public sealed class ShellWindow : Window
         MinWidth = 1380;
         MinHeight = 900;
         Background = new SolidColorBrush(AvaloniaDashboardTheme.AppBackground);
+        ExtendClientAreaToDecorationsHint = true;
+        ExtendClientAreaChromeHints = ExtendClientAreaChromeHints.NoChrome;
+        SystemDecorations = SystemDecorations.None;
+        CanResize = true;
         Title = viewModel.WindowTitle;
         viewModel.PropertyChanged += (_, e) =>
         {
@@ -554,7 +564,9 @@ public sealed class ShellWindow : Window
             LastChildFill = true
         };
 
-        var topBar = BuildDashboardPanel(BuildTopBar(viewModel), includeHeader: false, padding: new Thickness(16, 12), radius: new CornerRadius(14));
+        var topBarContent = BuildTopBar(viewModel);
+        var topBar = BuildDashboardPanel(topBarContent, includeHeader: false, padding: new Thickness(16, 12), radius: new CornerRadius(14));
+        topBar.PointerPressed += HandleTopBarPointerPressed;
         DockPanel.SetDock(topBar, Dock.Top);
         root.Children.Add(topBar);
 
@@ -562,7 +574,11 @@ public sealed class ShellWindow : Window
         {
             Margin = new Thickness(0, 12, 0, 0),
             ColumnDefinitions = new ColumnDefinitions("240,*,460"),
-            RowDefinitions = new RowDefinitions("*,212")
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Star),
+                new RowDefinition(GridLength.Auto)
+            }
         };
 
         grid.Children.Add(BuildToolRail(viewModel));
@@ -684,7 +700,8 @@ public sealed class ShellWindow : Window
                 BuildButton("Run", viewModel.SimulateCommand, isPrimary: true, toolTip: "Run the simulation timeline."),
                 BuildButton("Step", viewModel.StepCommand, isPrimary: true, toolTip: "Advance the simulation by one period."),
                 BuildButton("Reset", viewModel.ResetTimelineCommand, toolTip: "Reset timeline to period 0."),
-                BuildButton("Fit", viewModel.FitCommand, toolTip: "Fit the graph to the viewport.")
+                BuildButton("Fit", viewModel.FitCommand, toolTip: "Fit the graph to the viewport."),
+                BuildButton("Exit", new RelayCommand(Close), toolTip: "Close the workstation.")
             }
         };
         Grid.SetColumn(buttons, 2);
@@ -737,6 +754,7 @@ public sealed class ShellWindow : Window
             radius: new CornerRadius(14));
         border.Margin = new Thickness(0, 0, 12, 0);
         Grid.SetColumn(border, 0);
+        Grid.SetRow(border, 0);
         return border;
     }
 
@@ -846,6 +864,7 @@ public sealed class ShellWindow : Window
         canvasHost.MinWidth = 760;
 
         Grid.SetColumn(canvasHost, 1);
+        Grid.SetRow(canvasHost, 0);
         return canvasHost;
     }
 
@@ -857,7 +876,9 @@ public sealed class ShellWindow : Window
             Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
             BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
             BorderThickness = new Thickness(1),
-            Padding = new Thickness(4)
+            Padding = new Thickness(4),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
         };
         tabs.Items.Add(new TabItem { Header = "Selection", Content = BuildSelectionInspector(viewModel) });
         tabs.Items.Add(new TabItem { Header = "Traffic Types", Content = BuildTrafficDefinitionEditor(viewModel) });
@@ -883,16 +904,23 @@ public sealed class ShellWindow : Window
             }
         };
 
-        var border = BuildDashboardPanel(new StackPanel
+        var inspectorGrid = new Grid
         {
-            Spacing = 10,
-            Children =
+            RowDefinitions =
             {
-                summaryBlock,
-                tabs
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Star)
             }
-        }, header: "Intelligence Rail", padding: new Thickness(14));
+        };
+        inspectorGrid.Children.Add(summaryBlock);
+        Grid.SetRow(tabs, 1);
+        inspectorGrid.Children.Add(tabs);
+
+        var border = BuildDashboardPanel(inspectorGrid, header: "Intelligence Rail", padding: new Thickness(14));
+        border.HorizontalAlignment = HorizontalAlignment.Stretch;
+        border.VerticalAlignment = VerticalAlignment.Stretch;
         Grid.SetColumn(border, 2);
+        Grid.SetRow(border, 0);
         return border;
     }
 
@@ -913,6 +941,8 @@ public sealed class ShellWindow : Window
 
         return new ScrollViewer
         {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Content = new StackPanel
             {
                 Spacing = 12,
@@ -957,6 +987,8 @@ public sealed class ShellWindow : Window
 
         return new ScrollViewer
         {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Content = new StackPanel
             {
                 Spacing = 12,
@@ -1033,32 +1065,110 @@ public sealed class ShellWindow : Window
             Padding = new Thickness(4)
         };
         tabControl.Items.Add(new TabItem { Header = "Playback", Content = playbackGrid });
+        var reportsGrid = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            RowSpacing = 10
+        };
+        reportsGrid.Children.Add(new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    Children =
+                    {
+                        BuildButton("Export Current (HTML)", new RelayCommand(() => _ = ExportCurrentReportAsync(viewModel, ReportExportFormat.Html))),
+                        BuildButton("Export Timeline (CSV)", new RelayCommand(() => _ = ExportTimelineReportAsync(viewModel, ReportExportFormat.Csv)))
+                    }
+                },
+                new ScrollViewer
+                {
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    Content = metrics
+                }
+            }
+        });
         tabControl.Items.Add(new TabItem
         {
             Header = "Reports",
+            Content = reportsGrid
+        });
+        var reportsScroll = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Content = new StackPanel
             {
                 Spacing = 10,
                 Children =
                 {
-                    new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Spacing = 8,
-                        Children =
+                    BuildReportSection<TrafficReportRowViewModel>(
+                        "Traffic Summary",
+                        new[]
                         {
-                            BuildButton("Export Current (HTML)", new RelayCommand(() => _ = ExportCurrentReportAsync(viewModel, ReportExportFormat.Html))),
-                            BuildButton("Export Timeline (CSV)", new RelayCommand(() => _ = ExportTimelineReportAsync(viewModel, ReportExportFormat.Csv)))
-                        }
-                    },
-                    new ScrollViewer
-                    {
-                        MaxHeight = 128,
-                        Content = metrics
-                    }
+                            ("Traffic", 1.2),
+                            ("Planned / moved", 1.1),
+                            ("Delivered", 1.0),
+                            ("Unmet demand", 1.0),
+                            ("Backlog", 1.0)
+                        },
+                        nameof(WorkspaceViewModel.TrafficReports),
+                        static row => new[]
+                        {
+                            row.TrafficType,
+                            row.PlannedQuantity,
+                            row.DeliveredQuantity,
+                            row.UnmetDemand,
+                            row.Backlog
+                        }),
+                    BuildReportSection<RouteReportRowViewModel>(
+                        "Route Summary",
+                        new[]
+                        {
+                            ("Route", 1.0),
+                            ("From -> to", 1.5),
+                            ("Flow", 1.0),
+                            ("Capacity", 0.9),
+                            ("Utilisation", 0.9),
+                            ("Pressure", 1.2)
+                        },
+                        nameof(WorkspaceViewModel.RouteReports),
+                        static row => new[]
+                        {
+                            row.RouteId,
+                            row.FromTo,
+                            row.CurrentFlow,
+                            row.Capacity,
+                            row.Utilisation,
+                            row.Pressure
+                        }),
+                    BuildReportSection<NodePressureReportRowViewModel>(
+                        "Node Pressure Summary",
+                        new[]
+                        {
+                            ("Node", 1.3),
+                            ("Pressure", 0.8),
+                            ("Top cause", 1.2),
+                            ("Unmet need", 1.0)
+                        },
+                        nameof(WorkspaceViewModel.NodePressureReports),
+                        static row => new[]
+                        {
+                            row.Node,
+                            row.PressureScore,
+                            row.TopCause,
+                            row.UnmetNeed
+                        })
                 }
             }
-        });
+        };
+        Grid.SetRow(reportsScroll, 1);
+        reportsGrid.Children.Add(reportsScroll);
         tabControl.Items.Add(new TabItem
         {
             Header = "Status",
@@ -1512,15 +1622,14 @@ public sealed class ShellWindow : Window
         {
             Content = label,
             Command = command,
-            Padding = new Thickness(12, 9),
-            MinHeight = 42,
-            Background = new SolidColorBrush(isPrimary ? AvaloniaDashboardTheme.ToolbarButtonPrimaryBackground : AvaloniaDashboardTheme.ToolbarButtonBackground),
-            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
-            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.ToolbarButtonBorder),
-            BorderThickness = new Thickness(1.2),
             CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius
         };
-        ApplyFocusVisual(button);
+        button.Classes.Add("toolbar-button");
+        if (isPrimary)
+        {
+            button.Classes.Add("primary");
+        }
+
         if (!string.IsNullOrWhiteSpace(toolTip))
         {
             ToolTip.SetTip(button, toolTip);
@@ -1545,31 +1654,20 @@ public sealed class ShellWindow : Window
     {
         var button = new Button
         {
-            Height = 58,
-            Content = new TextBlock
-            {
-                Text = text,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                FontWeight = FontWeight.Bold,
-                Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
-            },
+            Content = text,
             Command = command,
-            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
-            BorderThickness = new Thickness(1.2),
-            Background = new SolidColorBrush(AvaloniaDashboardTheme.ToolbarButtonBackground),
+            FontWeight = FontWeight.Bold,
             CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius
         };
+        button.Classes.Add("toolbar-button");
+        button.Classes.Add("tool-button");
         ToolTip.SetTip(button, toolTip);
-        ApplyFocusVisual(button);
         return button;
     }
 
     private static void ApplyToolButtonState(Button button, bool isActive)
     {
-        button.Background = new SolidColorBrush(isActive ? AvaloniaDashboardTheme.SelectedBackground : AvaloniaDashboardTheme.ToolbarButtonBackground);
-        button.BorderBrush = new SolidColorBrush(isActive ? AvaloniaDashboardTheme.Accent : AvaloniaDashboardTheme.PanelBorderStrong);
-        button.BorderThickness = new Thickness(isActive ? 2.2 : 1.2);
+        button.Classes.Set("active", isActive);
     }
 
     private static Control BuildLabeledTextBox(string label, string propertyName)
@@ -1683,11 +1781,6 @@ public sealed class ShellWindow : Window
 
             switch (control)
             {
-                case Button button:
-                    button.BorderBrush = border;
-                    button.BorderThickness = thickness;
-                    break;
-
                 case TextBox textBox:
                     textBox.BorderBrush = border;
                     textBox.BorderThickness = thickness;
@@ -1737,6 +1830,106 @@ public sealed class ShellWindow : Window
                 value
             }
         };
+    }
+
+    private static Control BuildReportSection<TItem>(
+        string title,
+        IReadOnlyList<(string Header, double Width)> columns,
+        string itemsPropertyName,
+        Func<TItem, IReadOnlyList<string>> valueSelector)
+    {
+        var headerGrid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions(string.Join(",", columns.Select(column => $"{column.Width}*"))),
+            ColumnSpacing = 10
+        };
+
+        for (var index = 0; index < columns.Count; index++)
+        {
+            headerGrid.Children.Add(new TextBlock
+            {
+                Text = columns[index].Header,
+                FontSize = 11,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = new SolidColorBrush(AvaloniaDashboardTheme.MutedText),
+                TextWrapping = TextWrapping.Wrap,
+                [Grid.ColumnProperty] = index
+            });
+        }
+
+        var items = new ItemsControl
+        {
+            [!ItemsControl.ItemsSourceProperty] = new Binding(itemsPropertyName),
+            ItemTemplate = new FuncDataTemplate<TItem>((item, _) =>
+            {
+                var values = valueSelector(item);
+                var rowGrid = new Grid
+                {
+                    ColumnDefinitions = new ColumnDefinitions(string.Join(",", columns.Select(column => $"{column.Width}*"))),
+                    ColumnSpacing = 10,
+                    Margin = new Thickness(0, 6, 0, 0)
+                };
+
+                for (var index = 0; index < Math.Min(values.Count, columns.Count); index++)
+                {
+                    rowGrid.Children.Add(new TextBlock
+                    {
+                        Text = values[index],
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+                        TextWrapping = TextWrapping.Wrap,
+                        [Grid.ColumnProperty] = index
+                    });
+                }
+
+                return new Border
+                {
+                    Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+                    BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(10),
+                    Padding = new Thickness(10, 8),
+                    Child = rowGrid
+                };
+            })
+        };
+
+        return new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(12),
+            Child = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    BuildSectionTitle(title, "Simulation-backed report rows refresh as you run or step the timeline."),
+                    headerGrid,
+                    items
+                }
+            }
+        };
+    }
+
+    private void HandleTopBarPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed)
+        {
+            return;
+        }
+
+        if (e.Source is Visual visual &&
+            (visual.FindAncestorOfType<Button>() is not null ||
+             visual.FindAncestorOfType<TextBox>() is not null ||
+             visual.FindAncestorOfType<ComboBox>() is not null ||
+             visual.FindAncestorOfType<Slider>() is not null))
+        {
+            return;
+        }
+
+        BeginMoveDrag(e);
     }
 
     private async Task OpenNetworkFileAsync(WorkspaceViewModel viewModel)

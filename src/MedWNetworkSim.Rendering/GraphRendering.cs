@@ -121,6 +121,7 @@ public sealed class GraphEdgeSceneItem
     public required double Time { get; set; }
     public required double LoadRatio { get; set; }
     public required double FlowRate { get; set; }
+    public string ToolTipText { get; set; } = string.Empty;
     public required bool HasWarning { get; set; }
 }
 
@@ -174,6 +175,9 @@ public sealed class GraphScene
 
     public GraphNodeSceneItem? FindNode(string? id) =>
         string.IsNullOrWhiteSpace(id) ? null : Nodes.FirstOrDefault(node => string.Equals(node.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    public GraphEdgeSceneItem? FindEdge(string? id) =>
+        string.IsNullOrWhiteSpace(id) ? null : Edges.FirstOrDefault(edge => string.Equals(edge.Id, id, StringComparison.OrdinalIgnoreCase));
 }
 
 public readonly record struct GraphHitResult(string? NodeId, string? EdgeId);
@@ -395,93 +399,33 @@ public sealed class GraphRenderer
         foreach (var node in scene.Nodes)
         {
             var leftPadding = 14d;
-            var topPadding = 18d;
-            var contentWidth = Math.Max(48d, node.Bounds.Width - (leftPadding * 2d));
-            var origin = viewport.WorldToScreen(new GraphPoint(node.Bounds.Left + leftPadding, node.Bounds.Top + topPadding), viewportSize);
-            var maxTextWidth = (float)(contentWidth * viewport.Zoom);
+            var origin = viewport.WorldToScreen(
+                new GraphPoint(node.Bounds.Left + leftPadding, node.Bounds.Top + GraphNodeTextLayout.TopPadding),
+                viewportSize);
+            var visibleDetailLines = tier switch
+            {
+                ZoomTier.Near => 6,
+                ZoomTier.Medium => 3,
+                _ => 0
+            };
+            var layout = GraphNodeTextLayout.BuildLayout(node.Name, tier >= ZoomTier.Medium ? node.TypeLabel : string.Empty, node.DetailLines, node.Bounds.Width, visibleDetailLines);
             var y = (float)origin.Y;
-            foreach (var line in WrapText(node.Name, titlePaint, maxTextWidth))
-            {
-                y += 16f;
-                canvas.DrawText(line, (float)origin.X, y, titlePaint);
-            }
 
-            if (tier >= ZoomTier.Medium)
+            foreach (var line in layout.Lines)
             {
-                foreach (var line in WrapText(node.TypeLabel, bodyPaint, maxTextWidth))
+                var paint = line.Kind switch
                 {
-                    y += 14f;
-                    canvas.DrawText(line, (float)origin.X, y, bodyPaint);
-                }
-            }
+                    GraphNodeTextKind.Title => titlePaint,
+                    GraphNodeTextKind.TypeLabel => bodyPaint,
+                    _ when line.IsWarning => warningDetailPaint,
+                    _ when line.IsEmphasized => emphasizedDetailPaint,
+                    _ => detailPaint
+                };
 
-            if (tier == ZoomTier.Near)
-            {
-                var visibleLines = node.DetailLines.Take(6).ToList();
-                foreach (var line in visibleLines)
-                {
-                    var paint = line.IsWarning
-                        ? warningDetailPaint
-                        : line.IsEmphasized
-                            ? emphasizedDetailPaint
-                            : detailPaint;
-                    foreach (var wrapped in WrapText(line.Text, paint, maxTextWidth))
-                    {
-                        y += 14f;
-                        canvas.DrawText(wrapped, (float)origin.X, y, paint);
-                    }
-                }
-            }
-            else if (tier == ZoomTier.Medium)
-            {
-                var visibleLines = node.DetailLines.Take(3).ToList();
-                foreach (var line in visibleLines)
-                {
-                    var paint = line.IsWarning
-                        ? warningDetailPaint
-                        : line.IsEmphasized
-                            ? emphasizedDetailPaint
-                            : detailPaint;
-                    foreach (var wrapped in WrapText(line.Text, paint, maxTextWidth))
-                    {
-                        y += 13f;
-                        canvas.DrawText(wrapped, (float)origin.X, y, paint);
-                    }
-                }
+                y += line.Kind == GraphNodeTextKind.Title ? 18f : 14f;
+                canvas.DrawText(line.Text, (float)origin.X, y, paint);
             }
         }
-    }
-
-    private static IReadOnlyList<string> WrapText(string? text, SKPaint paint, float maxWidth)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return [];
-        }
-
-        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (words.Length == 0)
-        {
-            return [text.Trim()];
-        }
-
-        var lines = new List<string>();
-        var current = words[0];
-        for (var i = 1; i < words.Length; i++)
-        {
-            var candidate = $"{current} {words[i]}";
-            if (paint.MeasureText(candidate) <= maxWidth)
-            {
-                current = candidate;
-                continue;
-            }
-
-            lines.Add(current);
-            current = words[i];
-        }
-
-        lines.Add(current);
-        return lines;
     }
 
     private static void DrawSelection(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize)

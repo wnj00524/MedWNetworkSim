@@ -1248,6 +1248,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         Viewport.Reset(Scene.GetContentBounds(), LastViewportSize);
         PopulateTrafficDefinitionList();
         PopulateDefaultPermissionRows();
+        RaiseTrafficTypeOptionsChanged();
         Scene.Selection.SelectedNodeIds.Clear();
         Scene.Selection.SelectedEdgeIds.Clear();
         Scene.Selection.KeyboardNodeId = null;
@@ -2023,6 +2024,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         SelectedTrafficDefinitionItem = TrafficDefinitions.FirstOrDefault(item =>
             selectedTrafficDefinitionItem is not null && ReferenceEquals(item.Model, selectedTrafficDefinitionItem.Model))
             ?? TrafficDefinitions.FirstOrDefault();
+        RaiseTrafficTypeOptionsChanged();
     }
 
     private void PopulateTrafficDefinitionEditor()
@@ -2401,6 +2403,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         pendingTrafficRemovalName = string.Empty;
         PopulateTrafficDefinitionList();
         PopulateDefaultPermissionRows();
+        RaiseTrafficTypeOptionsChanged();
         RefreshInspector();
         MarkDirty();
         StatusText = $"Added traffic type '{nextName}'.";
@@ -2439,6 +2442,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         EnsureDefaultTrafficType();
         PopulateTrafficDefinitionList();
         PopulateDefaultPermissionRows();
+        RaiseTrafficTypeOptionsChanged();
         RefreshInspector();
         MarkDirty();
         StatusText = $"Removed traffic type '{selected.Name}' and cleared matching dependencies.";
@@ -2485,6 +2489,7 @@ public sealed class WorkspaceViewModel : ObservableObject
 
             PopulateTrafficDefinitionList();
             PopulateDefaultPermissionRows();
+            RaiseTrafficTypeOptionsChanged();
             RefreshInspector();
             TrafficValidationText = string.Empty;
             MarkDirty();
@@ -2760,6 +2765,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             RoutingPreference = RoutingPreference.TotalCost,
             AllocationMode = AllocationMode.GreedyBestRoute
         });
+        RaiseTrafficTypeOptionsChanged();
         StatusText = "Created default traffic type 'general'.";
     }
 
@@ -2886,6 +2892,12 @@ public sealed class WorkspaceViewModel : ObservableObject
         Raise(nameof(NodeTrafficRoleValidationText));
         Raise(nameof(CanApplyInspectorEdits));
         ApplyInspectorCommand.NotifyCanExecuteChanged();
+    }
+
+    private void RaiseTrafficTypeOptionsChanged()
+    {
+        Raise(nameof(TrafficTypeNameOptions));
+        RaiseNodeTrafficRoleValidationStateChanged();
     }
 
     private void RaiseTrafficTypeDisplayStateChanged()

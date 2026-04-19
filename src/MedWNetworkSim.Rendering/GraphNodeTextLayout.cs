@@ -15,19 +15,24 @@ public readonly record struct GraphWrappedTextLine(
 
 public sealed class GraphNodeTextLayoutResult
 {
+    public required double Width { get; init; }
     public required IReadOnlyList<GraphWrappedTextLine> Lines { get; init; }
+    public required IReadOnlyList<GraphWrappedTextLine> TitleLines { get; init; }
+    public required IReadOnlyList<GraphWrappedTextLine> TypeLines { get; init; }
+    public required IReadOnlyList<GraphWrappedTextLine> DetailLines { get; init; }
+    public required double ContentHeight { get; init; }
     public required double Height { get; init; }
 }
 
 public static class GraphNodeTextLayout
 {
     public const double MinWidth = 132d;
-    public const double MaxWidth = 248d;
+    public const double MaxWidth = 236d;
     public const double DefaultWidth = 168d;
     public const double MinHeight = 118d;
     public const double HorizontalPadding = 14d;
     public const double TopPadding = 18d;
-    public const double BottomPadding = 20d;
+    public const double BottomPadding = 24d;
 
     private const double TitleLineHeight = 18d;
     private const double TypeLineHeight = 14d;
@@ -35,23 +40,49 @@ public static class GraphNodeTextLayout
     private const double TitleCharacterWidth = 7.5d;
     private const double TypeCharacterWidth = 6.1d;
     private const double DetailCharacterWidth = 5.9d;
+    private const double WidthStep = 12d;
+    private const int AllowedExtraWrappedLines = 1;
+    private const double AllowedExtraContentHeight = DetailLineHeight * 2d;
 
     public static double ComputeNodeWidth(string? title, string? typeLabel, IReadOnlyList<GraphNodeTextLine> detailLines)
     {
-        var samples = new List<(string Text, GraphNodeTextKind Kind)>
+        return BuildLayout(title, typeLabel, detailLines).Width;
+    }
+
+    public static GraphNodeTextLayoutResult BuildLayout(
+        string? title,
+        string? typeLabel,
+        IReadOnlyList<GraphNodeTextLine> detailLines,
+        int maxDetailLines = int.MaxValue)
+    {
+        var layouts = EnumerateCandidateWidths()
+            .Select(width => BuildLayoutForWidth(title, typeLabel, detailLines, width, maxDetailLines))
+            .ToList();
+
+        var minimumWrappedLineCount = layouts.Min(layout => layout.Lines.Count);
+        var minimumContentHeight = layouts.Min(layout => layout.ContentHeight);
+        var preferred = layouts.FirstOrDefault(layout =>
+            layout.Lines.Count <= minimumWrappedLineCount + AllowedExtraWrappedLines &&
+            layout.ContentHeight <= minimumContentHeight + AllowedExtraContentHeight)
+            ?? layouts
+                .OrderBy(layout => layout.Lines.Count)
+                .ThenBy(layout => layout.ContentHeight)
+                .ThenBy(layout => layout.Width)
+                .First();
+
+        var measuredWidth = MeasureMaxLineWidth(preferred.Lines);
+        var finalWidth = Math.Clamp(measuredWidth + (HorizontalPadding * 2d), MinWidth, preferred.Width);
+
+        return new GraphNodeTextLayoutResult
         {
-            (title ?? string.Empty, GraphNodeTextKind.Title),
-            (typeLabel ?? string.Empty, GraphNodeTextKind.TypeLabel)
+            Width = finalWidth,
+            Lines = preferred.Lines,
+            TitleLines = preferred.TitleLines,
+            TypeLines = preferred.TypeLines,
+            DetailLines = preferred.DetailLines,
+            ContentHeight = preferred.ContentHeight,
+            Height = preferred.Height
         };
-        samples.AddRange(detailLines.Select(line => (line.Text, GraphNodeTextKind.Detail)));
-
-        var contentWidth = samples
-            .Where(sample => !string.IsNullOrWhiteSpace(sample.Text))
-            .Select(sample => MeasureTextWidth(sample.Text.Trim(), sample.Kind))
-            .DefaultIfEmpty(DefaultWidth - (HorizontalPadding * 2d))
-            .Max();
-
-        return Math.Clamp(contentWidth + (HorizontalPadding * 2d), MinWidth, MaxWidth);
     }
 
     public static GraphNodeTextLayoutResult BuildLayout(
@@ -61,23 +92,7 @@ public static class GraphNodeTextLayout
         double nodeWidth,
         int maxDetailLines = int.MaxValue)
     {
-        var availableWidth = Math.Max(88d, nodeWidth - (HorizontalPadding * 2d));
-        var wrappedLines = new List<GraphWrappedTextLine>();
-        double totalHeight = TopPadding + BottomPadding;
-
-        AppendWrappedLines(title, GraphNodeTextKind.Title, isEmphasized: true, isWarning: false, availableWidth, TitleLineHeight, wrappedLines, ref totalHeight);
-        AppendWrappedLines(typeLabel, GraphNodeTextKind.TypeLabel, isEmphasized: false, isWarning: false, availableWidth, TypeLineHeight, wrappedLines, ref totalHeight);
-
-        foreach (var detailLine in detailLines.Take(Math.Max(0, maxDetailLines)))
-        {
-            AppendWrappedLines(detailLine.Text, GraphNodeTextKind.Detail, detailLine.IsEmphasized, detailLine.IsWarning, availableWidth, DetailLineHeight, wrappedLines, ref totalHeight);
-        }
-
-        return new GraphNodeTextLayoutResult
-        {
-            Lines = wrappedLines,
-            Height = Math.Max(MinHeight, totalHeight)
-        };
+        return BuildLayoutForWidth(title, typeLabel, detailLines, nodeWidth, maxDetailLines);
     }
 
     public static IReadOnlyList<string> WrapText(string? text, GraphNodeTextKind kind, double maxWidth)
@@ -133,21 +148,53 @@ public static class GraphNodeTextLayout
         return lines;
     }
 
-    private static void AppendWrappedLines(
+    private static GraphNodeTextLayoutResult BuildLayoutForWidth(
+        string? title,
+        string? typeLabel,
+        IReadOnlyList<GraphNodeTextLine> detailLines,
+        double nodeWidth,
+        int maxDetailLines)
+    {
+        var availableWidth = Math.Max(88d, nodeWidth - (HorizontalPadding * 2d));
+        var titleLines = WrapSegment(title, GraphNodeTextKind.Title, isEmphasized: true, isWarning: false, availableWidth);
+        var typeLines = WrapSegment(typeLabel, GraphNodeTextKind.TypeLabel, isEmphasized: false, isWarning: false, availableWidth);
+        var detailWrappedLines = detailLines
+            .Take(Math.Max(0, maxDetailLines))
+            .SelectMany(detailLine => WrapSegment(detailLine.Text, GraphNodeTextKind.Detail, detailLine.IsEmphasized, detailLine.IsWarning, availableWidth))
+            .ToList();
+
+        var wrappedLines = titleLines
+            .Concat(typeLines)
+            .Concat(detailWrappedLines)
+            .ToList();
+
+        var contentHeight =
+            (titleLines.Count * TitleLineHeight) +
+            (typeLines.Count * TypeLineHeight) +
+            (detailWrappedLines.Count * DetailLineHeight);
+
+        return new GraphNodeTextLayoutResult
+        {
+            Width = Math.Clamp(nodeWidth, MinWidth, MaxWidth),
+            Lines = wrappedLines,
+            TitleLines = titleLines,
+            TypeLines = typeLines,
+            DetailLines = detailWrappedLines,
+            ContentHeight = contentHeight,
+            Height = Math.Max(MinHeight, TopPadding + BottomPadding + contentHeight)
+        };
+    }
+
+    private static IReadOnlyList<GraphWrappedTextLine> WrapSegment(
         string? text,
         GraphNodeTextKind kind,
         bool isEmphasized,
         bool isWarning,
-        double availableWidth,
-        double lineHeight,
-        ICollection<GraphWrappedTextLine> lines,
-        ref double totalHeight)
+        double availableWidth)
     {
-        foreach (var line in WrapText(text, kind, availableWidth))
-        {
-            lines.Add(new GraphWrappedTextLine(line, kind, isEmphasized, isWarning));
-            totalHeight += lineHeight;
-        }
+        return WrapText(text, kind, availableWidth)
+            .Select(line => new GraphWrappedTextLine(line, kind, isEmphasized, isWarning))
+            .ToList();
     }
 
     private static IReadOnlyList<string> BreakLongWord(string word, GraphNodeTextKind kind, double maxWidth)
@@ -173,6 +220,23 @@ public static class GraphNodeTextLayout
         }
 
         return fragments;
+    }
+
+    private static IEnumerable<double> EnumerateCandidateWidths()
+    {
+        for (var width = MinWidth; width < MaxWidth; width += WidthStep)
+        {
+            yield return width;
+        }
+
+        yield return MaxWidth;
+    }
+
+    private static double MeasureMaxLineWidth(IReadOnlyList<GraphWrappedTextLine> lines)
+    {
+        return lines.Count == 0
+            ? DefaultWidth - (HorizontalPadding * 2d)
+            : lines.Max(line => MeasureTextWidth(line.Text, line.Kind));
     }
 
     private static double MeasureTextWidth(string text, GraphNodeTextKind kind)

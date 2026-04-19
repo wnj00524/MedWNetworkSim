@@ -850,7 +850,7 @@ public sealed class ShellWindow : Window
         Grid.SetRow(quickAccess, 1);
         content.Children.Add(quickAccess);
 
-        var trafficEditor = BuildTrafficQuickEditor(viewModel);
+        var trafficEditor = BuildTrafficTypeRailEditor(viewModel);
         Grid.SetRow(trafficEditor, 2);
         content.Children.Add(trafficEditor);
 
@@ -1005,124 +1005,16 @@ public sealed class ShellWindow : Window
         return border;
     }
 
-    private Control BuildTrafficQuickEditor(WorkspaceViewModel viewModel)
+    private Control BuildTrafficTypeRailEditor(WorkspaceViewModel viewModel)
     {
-        var quickList = new ListBox
-        {
-            MaxHeight = 196,
-            MinHeight = 92,
-            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
-            BorderThickness = new Thickness(1),
-            Background = new SolidColorBrush(AvaloniaDashboardTheme.InputBackground),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            ItemTemplate = new FuncDataTemplate<NodeTrafficProfileListItem>((item, _) =>
-            {
-                var summaryGrid = new Grid
-                {
-                    ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-                    RowDefinitions = new RowDefinitions("Auto,Auto,Auto"),
-                    ColumnSpacing = 10,
-                    RowSpacing = 2,
-                    Margin = new Thickness(0, 0, 0, 6),
-                    Children =
-                    {
-                        new TextBlock
-                        {
-                            [!TextBlock.TextProperty] = new Binding(nameof(NodeTrafficProfileListItem.TrafficTypeText)),
-                            FontWeight = FontWeight.Bold,
-                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
-                            TextWrapping = TextWrapping.Wrap
-                        },
-                        new TextBlock
-                        {
-                            [!TextBlock.TextProperty] = new Binding(nameof(NodeTrafficProfileListItem.RoleText)),
-                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
-                            HorizontalAlignment = HorizontalAlignment.Right,
-                            TextWrapping = TextWrapping.Wrap,
-                            [Grid.ColumnProperty] = 1
-                        },
-                        new TextBlock
-                        {
-                            [!TextBlock.TextProperty] = new Binding(nameof(NodeTrafficProfileListItem.ProductionText))
-                            {
-                                StringFormat = "Production {0}"
-                            },
-                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
-                            FontSize = 12,
-                            [Grid.RowProperty] = 1
-                        },
-                        new TextBlock
-                        {
-                            [!TextBlock.TextProperty] = new Binding(nameof(NodeTrafficProfileListItem.ConsumptionText))
-                            {
-                                StringFormat = "Consumption {0}"
-                            },
-                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
-                            FontSize = 12,
-                            HorizontalAlignment = HorizontalAlignment.Right,
-                            [Grid.RowProperty] = 1,
-                            [Grid.ColumnProperty] = 1
-                        },
-                        new TextBlock
-                        {
-                            [!TextBlock.TextProperty] = new Binding(nameof(NodeTrafficProfileListItem.CapabilityText)),
-                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.MutedText),
-                            FontSize = 11,
-                            TextWrapping = TextWrapping.Wrap,
-                            [Grid.RowProperty] = 2,
-                            [Grid.ColumnSpanProperty] = 2
-                        }
-                    }
-                };
+        Border? compactCard = null;
+        Control? expandedEditor = null;
 
-                return new Border
-                {
-                    Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
-                    BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(10),
-                    Padding = new Thickness(10, 8),
-                    Child = summaryGrid
-                };
-            })
-        };
-        quickList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.SelectedNodeTrafficProfiles)));
-        quickList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedNodeTrafficProfileItem), BindingMode.TwoWay));
-        ApplyFocusVisual(quickList);
+        var compactList = BuildTrafficTypeList(maxHeight: 220, onOpenEditor: ExpandEditor);
+        var editTypeButton = BuildButton("Edit type", new RelayCommand(ExpandEditor));
+        editTypeButton.IsEnabled = viewModel.SelectedTrafficDefinitionItem is not null;
 
-        var tabbedEditor = BuildTrafficTabbedEditor(out var trafficEditorFocusTarget);
-        tabbedEditor.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsNodeTrafficRoleSelected)));
-        tabbedEditor.Bind(IsEnabledProperty, new Binding(nameof(WorkspaceViewModel.IsNodeTrafficRoleSelected)));
-
-        var editRoleButton = BuildButton(
-            "Edit role",
-            new RelayCommand(() => BringIntoViewAndFocus(tabbedEditor, trafficEditorFocusTarget)),
-            toolTip: "Open the tabbed traffic editor for the selected role.");
-        editRoleButton.Bind(IsEnabledProperty, new Binding(nameof(WorkspaceViewModel.IsNodeTrafficRoleSelected)));
-
-        var advancedEditorButton = BuildButton(
-            "Advanced editor \u2192",
-            new RelayCommand(() =>
-            {
-                viewModel.FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.TrafficRoles);
-                OpenFullNodeEditor();
-            }),
-            isPrimary: true,
-            toolTip: "Open the full node editor drawer for deeper traffic editing.");
-        advancedEditorButton.Bind(IsEnabledProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNode)));
-
-        var section = new Grid
-        {
-            RowDefinitions = new RowDefinitions("Auto,Auto,*"),
-            RowSpacing = 10,
-            MinHeight = 0,
-            Children =
-            {
-                BuildSectionTitle("Traffic", "Quickly manage traffic roles for the selected node.")
-            }
-        };
-
-        var quickEditorCard = new Border
+        compactCard = new Border
         {
             Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
             BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
@@ -1134,39 +1026,83 @@ public sealed class ShellWindow : Window
                 Spacing = 10,
                 Children =
                 {
-                    BuildSectionTitle("Quick traffic roles", "Select a role for a concise summary, then edit or escalate when you need more detail."),
-                    quickList,
+                    compactList,
                     new StackPanel
                     {
                         Orientation = Orientation.Horizontal,
                         Spacing = 8,
                         Children =
                         {
-                            BuildBoundButton("Add role", nameof(WorkspaceViewModel.AddNodeTrafficProfileCommand)),
-                            BuildBoundButton("Duplicate role", nameof(WorkspaceViewModel.DuplicateSelectedNodeTrafficProfileCommand)),
-                            BuildBoundButton("Remove role", nameof(WorkspaceViewModel.RemoveSelectedNodeTrafficProfileCommand))
-                        }
-                    },
-                    new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Spacing = 8,
-                        Children =
-                        {
-                            editRoleButton,
-                            advancedEditorButton
+                            BuildButton("Add type", new RelayCommand(() =>
+                            {
+                                viewModel.AddTrafficDefinitionCommand.Execute(null);
+                                ExpandEditor();
+                            })),
+                            BuildBoundButton("Remove type", nameof(WorkspaceViewModel.RemoveSelectedTrafficDefinitionCommand)),
+                            editTypeButton
                         }
                     }
                 }
             }
         };
-        Grid.SetRow(quickEditorCard, 1);
-        section.Children.Add(quickEditorCard);
 
-        Grid.SetRow(tabbedEditor, 2);
-        section.Children.Add(tabbedEditor);
-        section.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNode)));
-        section.Bind(IsEnabledProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNode)));
+        expandedEditor = BuildExpandedTrafficTypeEditor(viewModel, CollapseEditor);
+
+        var section = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            RowSpacing = 10,
+            MinHeight = 0,
+            Children =
+            {
+                BuildSectionTitle("Traffic Types", "Create, review, and edit traffic types."),
+                compactCard,
+                expandedEditor
+            }
+        };
+
+        Grid.SetRow(compactCard, 1);
+        Grid.SetRow(expandedEditor, 1);
+        compactCard.IsVisible = true;
+        expandedEditor.IsVisible = false;
+
+        void ExpandEditor()
+        {
+            if (viewModel.SelectedTrafficDefinitionItem is null)
+            {
+                return;
+            }
+
+            compactCard!.IsVisible = false;
+            expandedEditor!.IsVisible = true;
+            expandedEditor.BringIntoView();
+            expandedEditor.Focus();
+        }
+
+        void CollapseEditor()
+        {
+            expandedEditor!.IsVisible = false;
+            compactCard!.IsVisible = true;
+            compactCard.BringIntoView();
+        }
+
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(WorkspaceViewModel.SelectedTrafficDefinitionItem) &&
+                viewModel.SelectedTrafficDefinitionItem is null)
+            {
+                editTypeButton.IsEnabled = false;
+                if (expandedEditor.IsVisible)
+                {
+                    CollapseEditor();
+                }
+            }
+            else if (e.PropertyName == nameof(WorkspaceViewModel.SelectedTrafficDefinitionItem))
+            {
+                editTypeButton.IsEnabled = true;
+            }
+        };
+
         return section;
     }
 
@@ -2172,28 +2108,6 @@ public sealed class ShellWindow : Window
 
     private static Control BuildTrafficDefinitionEditor(WorkspaceViewModel viewModel)
     {
-        var definitionList = new ListBox
-        {
-            Height = 180,
-            SelectionMode = SelectionMode.Single
-        };
-        definitionList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.TrafficDefinitions)));
-        definitionList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedTrafficDefinitionItem), BindingMode.TwoWay));
-        ApplyFocusVisual(definitionList);
-
-        var routingPreference = BuildLabeledComboBox("Routing preference", nameof(WorkspaceViewModel.RoutingPreferenceOptions), nameof(WorkspaceViewModel.TrafficRoutingPreference));
-        ToolTip.SetTip(routingPreference, "Routing preference affects how route costs are prioritized.");
-        var allocationMode = BuildLabeledComboBox("Allocation mode", nameof(WorkspaceViewModel.AllocationModeOptions), nameof(WorkspaceViewModel.TrafficAllocationMode));
-        ToolTip.SetTip(allocationMode, "Allocation mode controls how available route capacity is assigned.");
-        var routeChoiceModel = BuildLabeledComboBox("Route choice model", nameof(WorkspaceViewModel.RouteChoiceModelOptions), nameof(WorkspaceViewModel.TrafficRouteChoiceModel));
-        ToolTip.SetTip(routeChoiceModel, "Route choice model defines deterministic or adaptive route behavior.");
-        var flowSplitPolicy = BuildLabeledComboBox("Flow split policy", nameof(WorkspaceViewModel.FlowSplitPolicyOptions), nameof(WorkspaceViewModel.TrafficFlowSplitPolicy));
-        ToolTip.SetTip(flowSplitPolicy, "Flow split policy controls how flow is divided across eligible routes.");
-        var capacityBid = BuildLabeledTextBox("Capacity bid per unit", nameof(WorkspaceViewModel.TrafficCapacityBidText));
-        ToolTip.SetTip(capacityBid, "Capacity bid influences route competition when capacity is constrained.");
-        var perishability = BuildLabeledTextBox("Perishability periods", nameof(WorkspaceViewModel.TrafficPerishabilityText));
-        ToolTip.SetTip(perishability, "Perishability periods is how many periods traffic can remain viable.");
-
         return new ScrollViewer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
@@ -2204,32 +2118,20 @@ public sealed class ShellWindow : Window
                 Children =
                 {
                     BuildSectionTitle("Traffic Types", "Choose a traffic type, update its routing settings, and manage default route access."),
-                    definitionList,
+                    BuildTrafficTypeList(maxHeight: 180),
                     new StackPanel
                     {
                         Orientation = Orientation.Horizontal,
                         Spacing = 8,
                         Children =
                         {
-                            BuildButton("Add Traffic Type", viewModel.AddTrafficDefinitionCommand),
-                            BuildButton("Remove Traffic Type", viewModel.RemoveSelectedTrafficDefinitionCommand),
-                            BuildButton("Apply Traffic Type", viewModel.ApplyTrafficDefinitionCommand)
+                            BuildButton("Add type", viewModel.AddTrafficDefinitionCommand),
+                            BuildButton("Remove type", viewModel.RemoveSelectedTrafficDefinitionCommand),
+                            BuildButton("Apply traffic type", viewModel.ApplyTrafficDefinitionCommand)
                         }
                     },
-                    BuildLabeledTextBox("Traffic type name", nameof(WorkspaceViewModel.TrafficNameText)),
-                    BuildLabeledTextBox("Description", nameof(WorkspaceViewModel.TrafficDescriptionText)),
-                    routingPreference,
-                    allocationMode,
-                    routeChoiceModel,
-                    flowSplitPolicy,
-                    capacityBid,
-                    perishability,
-                    BuildValidationBlock(nameof(WorkspaceViewModel.TrafficValidationText)),
-                    BuildPermissionEditor(
-                        "Default Route Access",
-                        "Set the default rule each traffic type uses on new and unchanged routes.",
-                        nameof(WorkspaceViewModel.DefaultTrafficPermissionRows),
-                        edgeCapacityPropertyName: null)
+                    BuildTrafficTypeIdentityEditors(),
+                    BuildTrafficTypeTabbedEditor()
                 }
             }
         };
@@ -2709,7 +2611,186 @@ public sealed class ShellWindow : Window
         };
     }
 
-    private static Control BuildTrafficTabbedEditor(out Control focusTarget)
+    private static ListBox BuildTrafficTypeList(double maxHeight, Action? onOpenEditor = null)
+    {
+        var definitionList = new ListBox
+        {
+            MaxHeight = maxHeight,
+            MinHeight = 96,
+            SelectionMode = SelectionMode.Single,
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.InputBackground),
+            ItemTemplate = new FuncDataTemplate<TrafficDefinitionListItem>((item, _) =>
+            {
+                var row = new Grid
+                {
+                    ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+                    RowDefinitions = new RowDefinitions("Auto,Auto,Auto"),
+                    ColumnSpacing = 10,
+                    RowSpacing = 2,
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            [!TextBlock.TextProperty] = new Binding(nameof(TrafficDefinitionListItem.Name)),
+                            FontWeight = FontWeight.Bold,
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+                            TextWrapping = TextWrapping.Wrap
+                        },
+                        new TextBlock
+                        {
+                            [!TextBlock.TextProperty] = new Binding(nameof(TrafficDefinitionListItem.RoutingPreferenceText)),
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                            HorizontalAlignment = HorizontalAlignment.Right,
+                            [Grid.ColumnProperty] = 1
+                        },
+                        new TextBlock
+                        {
+                            [!TextBlock.TextProperty] = new Binding(nameof(TrafficDefinitionListItem.AllocationModeText)),
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                            FontSize = 12,
+                            [Grid.RowProperty] = 1,
+                            [Grid.ColumnSpanProperty] = 2
+                        },
+                        new TextBlock
+                        {
+                            [!TextBlock.TextProperty] = new Binding(nameof(TrafficDefinitionListItem.SummaryBadgeText)),
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.MutedText),
+                            FontSize = 11,
+                            TextWrapping = TextWrapping.Wrap,
+                            [Grid.RowProperty] = 2,
+                            [Grid.ColumnSpanProperty] = 2
+                        }
+                    }
+                };
+
+                return new Border
+                {
+                    Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+                    BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(10),
+                    Padding = new Thickness(10, 8),
+                    Margin = new Thickness(0, 0, 0, 6),
+                    Child = row
+                };
+            })
+        };
+        definitionList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.TrafficDefinitions)));
+        definitionList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedTrafficDefinitionItem), BindingMode.TwoWay));
+        ApplyFocusVisual(definitionList);
+        if (onOpenEditor is not null)
+        {
+            definitionList.DoubleTapped += (_, _) => onOpenEditor();
+        }
+
+        return definitionList;
+    }
+
+    private Control BuildExpandedTrafficTypeEditor(WorkspaceViewModel viewModel, Action collapseAction)
+    {
+        var header = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto"),
+            ColumnSpacing = 8
+        };
+        header.Children.Add(new StackPanel
+        {
+            Spacing = 2,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "Traffic Type Editor",
+                    FontSize = 16,
+                    FontWeight = FontWeight.Bold,
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                },
+                new TextBlock
+                {
+                    [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.TrafficNameText)),
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                    TextWrapping = TextWrapping.Wrap
+                }
+            }
+        });
+
+        var collapseButton = BuildButton("Collapse", new RelayCommand(collapseAction));
+        var inspectorButton = BuildButton("Open in inspector", new RelayCommand(() => viewModel.SelectedInspectorTab = InspectorTabTarget.TrafficTypes));
+        var newTypeButton = BuildButton("Add type", new RelayCommand(() => viewModel.AddTrafficDefinitionCommand.Execute(null)));
+        Grid.SetColumn(collapseButton, 1);
+        Grid.SetColumn(inspectorButton, 2);
+        Grid.SetColumn(newTypeButton, 3);
+        header.Children.Add(collapseButton);
+        header.Children.Add(inspectorButton);
+        header.Children.Add(newTypeButton);
+
+        var footer = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto"),
+            ColumnSpacing = 8,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "Tab through the editor, then apply or collapse when you are done.",
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                    FontSize = 12
+                }
+            }
+        };
+        var applyButton = BuildBoundButton("Apply traffic type", nameof(WorkspaceViewModel.ApplyTrafficDefinitionCommand));
+        var removeButton = BuildBoundButton("Remove type", nameof(WorkspaceViewModel.RemoveSelectedTrafficDefinitionCommand));
+        var doneButton = BuildButton("Done", new RelayCommand(collapseAction), isPrimary: true);
+        Grid.SetColumn(applyButton, 1);
+        Grid.SetColumn(removeButton, 2);
+        Grid.SetColumn(doneButton, 3);
+        footer.Children.Add(applyButton);
+        footer.Children.Add(removeButton);
+        footer.Children.Add(doneButton);
+
+        var body = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            RowSpacing = 10,
+            MinHeight = 0,
+            Children =
+            {
+                BuildTrafficTypeIdentityEditors(),
+                BuildTrafficTypeTabbedEditor()
+            }
+        };
+        Grid.SetRow(body.Children[1], 1);
+
+        var layout = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*,Auto"),
+            RowSpacing = 10,
+            MinHeight = 0,
+            Children =
+            {
+                header,
+                body,
+                footer
+            }
+        };
+        Grid.SetRow(layout.Children[1], 1);
+        Grid.SetRow(layout.Children[2], 2);
+
+        return new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(12),
+            Child = layout
+        };
+    }
+
+    private static Control BuildTrafficTypeTabbedEditor()
     {
         var tabControl = new TabControl
         {
@@ -2723,50 +2804,29 @@ public sealed class ShellWindow : Window
             MinHeight = 0
         };
         ApplyFocusVisual(tabControl);
-        focusTarget = tabControl;
 
-        tabControl.Items.Add(new TabItem
-        {
-            Header = "Summary",
-            Content = BuildTrafficEditorTabBody(BuildTrafficSummaryTab())
-        });
-        tabControl.Items.Add(new TabItem
-        {
-            Header = "Basic",
-            Content = BuildTrafficEditorTabBody(BuildTrafficBasicTab())
-        });
-        tabControl.Items.Add(new TabItem
-        {
-            Header = "Schedule",
-            Content = BuildTrafficEditorTabBody(BuildTrafficScheduleTab())
-        });
-        tabControl.Items.Add(new TabItem
-        {
-            Header = "Inputs",
-            Content = BuildTrafficEditorTabBody(BuildTrafficInputsTab())
-        });
-        tabControl.Items.Add(new TabItem
-        {
-            Header = "Validation",
-            Content = BuildTrafficEditorTabBody(BuildTrafficValidationTab())
-        });
-
-        var grid = new Grid
-        {
-            RowDefinitions = new RowDefinitions("Auto,*"),
-            RowSpacing = 8,
-            MinHeight = 0,
-            Children =
-            {
-                BuildSectionTitle("Traffic editor", "Summary stays compact first. Use tabs for role details, timing, inputs, and validation."),
-                tabControl
-            }
-        };
-        Grid.SetRow(tabControl, 1);
-        return grid;
+        tabControl.Items.Add(new TabItem { Header = "Summary", Content = BuildScrollableTabBody(BuildTrafficTypeSummaryTab()) });
+        tabControl.Items.Add(new TabItem { Header = "Routing", Content = BuildScrollableTabBody(BuildTrafficTypeRoutingTab()) });
+        tabControl.Items.Add(new TabItem { Header = "Economics", Content = BuildScrollableTabBody(BuildTrafficTypeEconomicsTab()) });
+        tabControl.Items.Add(new TabItem { Header = "Default Route Access", Content = BuildScrollableTabBody(BuildTrafficTypeDefaultAccessTab()) });
+        tabControl.Items.Add(new TabItem { Header = "Validation", Content = BuildScrollableTabBody(BuildTrafficTypeValidationTab()) });
+        return tabControl;
     }
 
-    private static Control BuildTrafficEditorTabBody(Control content)
+    private static Control BuildTrafficTypeIdentityEditors()
+    {
+        return new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                BuildLabeledTextBox("Traffic type name", nameof(WorkspaceViewModel.TrafficNameText)),
+                BuildLabeledTextBox("Description", nameof(WorkspaceViewModel.TrafficDescriptionText))
+            }
+        };
+    }
+
+    private static Control BuildScrollableTabBody(Control content)
     {
         return new ScrollViewer
         {
@@ -2776,14 +2836,13 @@ public sealed class ShellWindow : Window
         };
     }
 
-    private static Control BuildTrafficSummaryTab()
+    private static Control BuildTrafficTypeSummaryTab()
     {
         return new StackPanel
         {
             Spacing = 10,
             Children =
             {
-                BuildSectionTitle("Summary", "Review the selected role at a glance."),
                 new Border
                 {
                     Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
@@ -2793,96 +2852,96 @@ public sealed class ShellWindow : Window
                     Padding = new Thickness(10),
                     Child = new TextBlock
                     {
-                        [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.SelectedNodeTrafficProfileSummaryText)),
+                        [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.SelectedTrafficTypeSummaryText)),
                         TextWrapping = TextWrapping.Wrap,
                         Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
                     }
                 },
-                BuildReadOnlyRow("Traffic type", nameof(WorkspaceViewModel.NodeTrafficTypeText)),
-                BuildReadOnlyRow("Role", nameof(WorkspaceViewModel.NodeTrafficRoleText)),
-                BuildReadOnlyRow("Production", nameof(WorkspaceViewModel.NodeProductionText)),
-                BuildReadOnlyRow("Consumption", nameof(WorkspaceViewModel.NodeConsumptionText)),
-                BuildReadOnlyRow("Consumer premium", nameof(WorkspaceViewModel.NodeConsumerPremiumText)),
-                BuildReadOnlyRow("Store enabled", nameof(WorkspaceViewModel.NodeStoreEnabled)),
-                BuildReadOnlyRow("Store capacity", nameof(WorkspaceViewModel.NodeStoreCapacityText)),
-                BuildReadOnlyRow("Can transship", nameof(WorkspaceViewModel.NodeCanTransship)),
-                BuildReadOnlyRow("Production windows", nameof(WorkspaceViewModel.SelectedNodeProductionWindowCountText)),
-                BuildReadOnlyRow("Consumption windows", nameof(WorkspaceViewModel.SelectedNodeConsumptionWindowCountText)),
-                BuildReadOnlyRow("Input requirements", nameof(WorkspaceViewModel.SelectedNodeInputRequirementCountText))
+                BuildReadOnlyRow("Name", nameof(WorkspaceViewModel.TrafficNameText)),
+                BuildReadOnlyRow("Description", nameof(WorkspaceViewModel.TrafficDescriptionText)),
+                BuildReadOnlyRow("Routing preference", nameof(WorkspaceViewModel.TrafficRoutingPreference)),
+                BuildReadOnlyRow("Allocation mode", nameof(WorkspaceViewModel.TrafficAllocationMode)),
+                BuildReadOnlyRow("Route choice model", nameof(WorkspaceViewModel.TrafficRouteChoiceModel)),
+                BuildReadOnlyRow("Flow split policy", nameof(WorkspaceViewModel.TrafficFlowSplitPolicy)),
+                BuildReadOnlyRow("Capacity bid per unit", nameof(WorkspaceViewModel.TrafficCapacityBidText)),
+                BuildReadOnlyRow("Perishability periods", nameof(WorkspaceViewModel.TrafficPerishabilityText)),
+                BuildReadOnlyRow("Default route access", nameof(WorkspaceViewModel.SelectedTrafficTypeDefaultAccessSummaryText))
             }
         };
     }
 
-    private static Control BuildTrafficBasicTab()
+    private static Control BuildTrafficTypeRoutingTab()
+    {
+        var routingPreference = BuildLabeledComboBox("Routing preference", nameof(WorkspaceViewModel.RoutingPreferenceOptions), nameof(WorkspaceViewModel.TrafficRoutingPreference));
+        ToolTip.SetTip(routingPreference, "Routing preference affects how route costs are prioritized.");
+        var allocationMode = BuildLabeledComboBox("Allocation mode", nameof(WorkspaceViewModel.AllocationModeOptions), nameof(WorkspaceViewModel.TrafficAllocationMode));
+        ToolTip.SetTip(allocationMode, "Allocation mode controls how available route capacity is assigned.");
+        var routeChoiceModel = BuildLabeledComboBox("Route choice model", nameof(WorkspaceViewModel.RouteChoiceModelOptions), nameof(WorkspaceViewModel.TrafficRouteChoiceModel));
+        ToolTip.SetTip(routeChoiceModel, "Route choice model defines deterministic or adaptive route behavior.");
+        var flowSplitPolicy = BuildLabeledComboBox("Flow split policy", nameof(WorkspaceViewModel.FlowSplitPolicyOptions), nameof(WorkspaceViewModel.TrafficFlowSplitPolicy));
+        ToolTip.SetTip(flowSplitPolicy, "Flow split policy controls how flow is divided across eligible routes.");
+
+        return new StackPanel
+        {
+            Spacing = 10,
+            Children = { routingPreference, allocationMode, routeChoiceModel, flowSplitPolicy }
+        };
+    }
+
+    private static Control BuildTrafficTypeEconomicsTab()
     {
         return new StackPanel
         {
             Spacing = 10,
             Children =
             {
-                BuildSectionTitle("Basic", "Edit the common traffic fields for the selected role."),
-                BuildLabeledRow("Traffic type", BuildBoundComboBox(nameof(WorkspaceViewModel.TrafficTypeNameOptions), nameof(WorkspaceViewModel.NodeTrafficTypeText))),
-                BuildLabeledRow("Role", BuildBoundComboBox(nameof(WorkspaceViewModel.NodeRoleOptions), nameof(WorkspaceViewModel.NodeTrafficRoleText))),
-                BuildLabeledTextBox("Production", nameof(WorkspaceViewModel.NodeProductionText)),
-                BuildLabeledTextBox("Consumption", nameof(WorkspaceViewModel.NodeConsumptionText)),
-                BuildLabeledTextBox("Consumer premium", nameof(WorkspaceViewModel.NodeConsumerPremiumText)),
-                BuildLabeledCheckBox("Can transship", nameof(WorkspaceViewModel.NodeCanTransship)),
-                BuildLabeledCheckBox("Store enabled", nameof(WorkspaceViewModel.NodeStoreEnabled)),
-                BuildLabeledTextBox("Store capacity", nameof(WorkspaceViewModel.NodeStoreCapacityText), nameof(WorkspaceViewModel.IsNodeStoreCapacityEnabled))
+                BuildLabeledTextBox("Capacity bid per unit", nameof(WorkspaceViewModel.TrafficCapacityBidText)),
+                new TextBlock
+                {
+                    Text = "Bid per unit: used when competing for constrained route capacity.",
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                    FontSize = 12,
+                    TextWrapping = TextWrapping.Wrap
+                },
+                BuildLabeledTextBox("Perishability periods", nameof(WorkspaceViewModel.TrafficPerishabilityText)),
+                new TextBlock
+                {
+                    Text = "Perishability: maximum periods before the traffic expires.",
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                    FontSize = 12,
+                    TextWrapping = TextWrapping.Wrap
+                }
             }
         };
     }
 
-    private static Control BuildTrafficScheduleTab()
+    private static Control BuildTrafficTypeDefaultAccessTab()
     {
         return new StackPanel
         {
             Spacing = 10,
             Children =
             {
-                BuildSectionTitle("Schedule", "Keep timing fields and explicit windows together."),
-                BuildScheduleFields(),
-                BuildWindowEditor(
-                    "Production windows",
-                    nameof(WorkspaceViewModel.SelectedNodeProductionWindows),
-                    nameof(WorkspaceViewModel.SelectedNodeProductionWindowItem),
-                    nameof(WorkspaceViewModel.AddNodeProductionWindowCommand),
-                    nameof(WorkspaceViewModel.RemoveSelectedNodeProductionWindowCommand)),
-                BuildWindowEditor(
-                    "Consumption windows",
-                    nameof(WorkspaceViewModel.SelectedNodeConsumptionWindows),
-                    nameof(WorkspaceViewModel.SelectedNodeConsumptionWindowItem),
-                    nameof(WorkspaceViewModel.AddNodeConsumptionWindowCommand),
-                    nameof(WorkspaceViewModel.RemoveSelectedNodeConsumptionWindowCommand))
+                BuildReadOnlyRow("Selected type", nameof(WorkspaceViewModel.TrafficNameText)),
+                BuildReadOnlyRow("Access summary", nameof(WorkspaceViewModel.SelectedTrafficTypeDefaultAccessSummaryText)),
+                BuildPermissionEditor(
+                    "Default Route Access",
+                    "All traffic types are shown here. Use the selected type summary above to keep the current row obvious.",
+                    nameof(WorkspaceViewModel.DefaultTrafficPermissionRows),
+                    edgeCapacityPropertyName: null)
             }
         };
     }
 
-    private static Control BuildTrafficInputsTab()
+    private static Control BuildTrafficTypeValidationTab()
     {
         return new StackPanel
         {
             Spacing = 10,
             Children =
             {
-                BuildSectionTitle("Inputs", "Define local input requirements for the selected role."),
-                BuildInputRequirementEditor()
-            }
-        };
-    }
-
-    private static Control BuildTrafficValidationTab()
-    {
-        return new StackPanel
-        {
-            Spacing = 10,
-            Children =
-            {
-                BuildSectionTitle("Validation", "Use these messages to resolve issues before applying changes."),
-                BuildReadOnlyRow("Status", nameof(WorkspaceViewModel.SelectedNodeTrafficProfileIssueCountText)),
-                BuildReadOnlyRow("Guidance", nameof(WorkspaceViewModel.SelectedNodeTrafficValidationGuidanceText)),
-                BuildValidationBlock(nameof(WorkspaceViewModel.NodeTrafficRoleValidationText)),
-                BuildReadOnlyRow("Current role", nameof(WorkspaceViewModel.SelectedNodeTrafficProfileStatusText))
+                BuildReadOnlyRow("Status", nameof(WorkspaceViewModel.SelectedTrafficTypeStatusText)),
+                BuildValidationBlock(nameof(WorkspaceViewModel.TrafficValidationText))
             }
         };
     }

@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
@@ -121,6 +120,27 @@ public sealed class TrafficDefinitionListItem(TrafficTypeDefinition model)
 {
     public TrafficTypeDefinition Model { get; } = model;
     public string Name => string.IsNullOrWhiteSpace(Model.Name) ? "(unnamed)" : Model.Name;
+    public string RoutingPreferenceText => Model.RoutingPreference.ToString();
+    public string AllocationModeText => Model.AllocationMode.ToString();
+    public string SummaryBadgeText
+    {
+        get
+        {
+            var badges = new List<string>();
+            if (Model.PerishabilityPeriods.HasValue)
+            {
+                badges.Add($"Perish {Model.PerishabilityPeriods.Value}");
+            }
+
+            if (Model.CapacityBidPerUnit.HasValue)
+            {
+                badges.Add($"Bid {Model.CapacityBidPerUnit.Value:0.##}");
+            }
+
+            return badges.Count == 0 ? "Stable defaults" : string.Join(" | ", badges);
+        }
+    }
+
     public override string ToString() => Name;
 }
 
@@ -128,17 +148,13 @@ public sealed class NodeTrafficProfileListItem(int index, NodeTrafficProfile mod
 {
     public int Index { get; } = index;
     public NodeTrafficProfile Model { get; } = model;
-    public string TrafficTypeText => string.IsNullOrWhiteSpace(Model.TrafficType) ? "Choose type" : Model.TrafficType;
-    public string RoleText => NodeTrafficRoleCatalog.GetRoleName(Model.Production > 0d, Model.Consumption > 0d, Model.CanTransship);
-    public string ProductionText => Model.Production.ToString("0.##", CultureInfo.InvariantCulture);
-    public string ConsumptionText => Model.Consumption.ToString("0.##", CultureInfo.InvariantCulture);
-    public string CapabilityText => $"{(Model.IsStore ? "Store" : "No store")} | {(Model.CanTransship ? "Transship" : "No transship")}";
 
     public string DisplayLabel
     {
         get
         {
-            return $"{TrafficTypeText} | {RoleText}";
+            var role = NodeTrafficRoleCatalog.GetRoleName(Model.Production > 0d, Model.Consumption > 0d, Model.CanTransship);
+            return $"{Model.TrafficType} | {role}";
         }
     }
 
@@ -490,10 +506,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         SelectedEdgePermissionRows = [];
         TrafficDefinitions = [];
         DefaultTrafficPermissionRows = [];
-        SelectedNodeProductionWindows.CollectionChanged += HandleSelectedNodeTrafficCollectionChanged;
-        SelectedNodeConsumptionWindows.CollectionChanged += HandleSelectedNodeTrafficCollectionChanged;
-        SelectedNodeInputRequirements.CollectionChanged += HandleSelectedNodeTrafficCollectionChanged;
-
+        DefaultTrafficPermissionRows.CollectionChanged += (_, _) => RaiseTrafficTypeDisplayStateChanged();
         NewCommand = new RelayCommand(CreateBlankNetwork);
         SimulateCommand = new RelayCommand(RunSimulation);
         StepCommand = new RelayCommand(AdvanceTimeline);
@@ -663,20 +676,14 @@ public sealed class WorkspaceViewModel : ObservableObject
     public bool IsNodeTrafficRoleSelected => SelectedNodeTrafficProfileItem is not null;
     public bool IsNodeStoreCapacityEnabled => IsNodeTrafficRoleSelected && NodeStoreEnabled;
     public string NodeTrafficRoleValidationText => BuildNodeTrafficRoleValidationText();
-    public bool HasSelectedNodeTrafficValidationIssues => !string.IsNullOrWhiteSpace(NodeTrafficRoleValidationText);
-    public string SelectedNodeTrafficProfileSummaryText => BuildSelectedNodeTrafficProfileSummaryText();
-    public string SelectedNodeTrafficProfileStatusText => IsNodeTrafficRoleSelected
-        ? $"{NodeTrafficTypeTextOrFallback()} | {NodeTrafficRoleText} | Production {NodeProductionText} | Consumption {NodeConsumptionText}"
-        : "Select a role to review traffic details.";
-    public string SelectedNodeTrafficProfileIssueCountText => HasSelectedNodeTrafficValidationIssues
-        ? "Fix 1 issue before applying changes."
-        : "Ready to apply.";
-    public string SelectedNodeTrafficValidationGuidanceText => HasSelectedNodeTrafficValidationIssues
-        ? $"Action needed: {NodeTrafficRoleValidationText}"
-        : "No traffic-role issues detected.";
-    public string SelectedNodeProductionWindowCountText => $"{SelectedNodeProductionWindows.Count}";
-    public string SelectedNodeConsumptionWindowCountText => $"{SelectedNodeConsumptionWindows.Count}";
-    public string SelectedNodeInputRequirementCountText => $"{SelectedNodeInputRequirements.Count}";
+    public string SelectedTrafficTypeSummaryText => BuildSelectedTrafficTypeSummaryText();
+    public string SelectedTrafficTypeStatusText => SelectedTrafficDefinitionItem is null
+        ? "Select a traffic type to edit"
+        : string.IsNullOrWhiteSpace(TrafficValidationText)
+            ? "Ready to apply"
+            : "Fix the issue below before applying";
+    public string SelectedTrafficTypeIssueCountText => SelectedTrafficTypeStatusText;
+    public string SelectedTrafficTypeDefaultAccessSummaryText => BuildSelectedTrafficTypeDefaultAccessSummaryText();
     public bool CanApplyInspectorEdits => string.IsNullOrWhiteSpace(NodeTrafficRoleValidationText);
     public string NetworkNameText { get => networkNameText; set => SetProperty(ref networkNameText, value); }
     public string NetworkDescriptionText { get => networkDescriptionText; set => SetProperty(ref networkDescriptionText, value); }
@@ -840,7 +847,6 @@ public sealed class WorkspaceViewModel : ObservableObject
         {
             if (SetProperty(ref nodeProductionText, value))
             {
-                RaiseSelectedNodeTrafficSummaryStateChanged();
                 PreviewSelectedNodeSceneLayout();
             }
         }
@@ -852,7 +858,6 @@ public sealed class WorkspaceViewModel : ObservableObject
         {
             if (SetProperty(ref nodeConsumptionText, value))
             {
-                RaiseSelectedNodeTrafficSummaryStateChanged();
                 PreviewSelectedNodeSceneLayout();
             }
         }
@@ -864,7 +869,6 @@ public sealed class WorkspaceViewModel : ObservableObject
         {
             if (SetProperty(ref nodeConsumerPremiumText, value))
             {
-                RaiseSelectedNodeTrafficSummaryStateChanged();
                 PreviewSelectedNodeSceneLayout();
             }
         }
@@ -920,7 +924,6 @@ public sealed class WorkspaceViewModel : ObservableObject
         {
             if (SetProperty(ref nodeCanTransship, value))
             {
-                RaiseSelectedNodeTrafficSummaryStateChanged();
                 PreviewSelectedNodeSceneLayout();
             }
         }
@@ -933,7 +936,6 @@ public sealed class WorkspaceViewModel : ObservableObject
             if (SetProperty(ref nodeStoreEnabled, value))
             {
                 Raise(nameof(IsNodeStoreCapacityEnabled));
-                RaiseSelectedNodeTrafficSummaryStateChanged();
                 PreviewSelectedNodeSceneLayout();
             }
         }
@@ -945,7 +947,6 @@ public sealed class WorkspaceViewModel : ObservableObject
         {
             if (SetProperty(ref nodeStoreCapacityText, value))
             {
-                RaiseSelectedNodeTrafficSummaryStateChanged();
                 PreviewSelectedNodeSceneLayout();
             }
         }
@@ -967,19 +968,118 @@ public sealed class WorkspaceViewModel : ObservableObject
                 PopulateTrafficDefinitionEditor();
                 RemoveSelectedTrafficDefinitionCommand.NotifyCanExecuteChanged();
                 ApplyTrafficDefinitionCommand.NotifyCanExecuteChanged();
+                RaiseTrafficTypeDisplayStateChanged();
             }
         }
     }
 
-    public string TrafficNameText { get => trafficNameText; set => SetProperty(ref trafficNameText, value); }
-    public string TrafficDescriptionText { get => trafficDescriptionText; set => SetProperty(ref trafficDescriptionText, value); }
-    public RoutingPreference TrafficRoutingPreference { get => trafficRoutingPreference; set => SetProperty(ref trafficRoutingPreference, value); }
-    public AllocationMode TrafficAllocationMode { get => trafficAllocationMode; set => SetProperty(ref trafficAllocationMode, value); }
-    public RouteChoiceModel TrafficRouteChoiceModel { get => trafficRouteChoiceModel; set => SetProperty(ref trafficRouteChoiceModel, value); }
-    public FlowSplitPolicy TrafficFlowSplitPolicy { get => trafficFlowSplitPolicy; set => SetProperty(ref trafficFlowSplitPolicy, value); }
-    public string TrafficCapacityBidText { get => trafficCapacityBidText; set => SetProperty(ref trafficCapacityBidText, value); }
-    public string TrafficPerishabilityText { get => trafficPerishabilityText; set => SetProperty(ref trafficPerishabilityText, value); }
-    public string TrafficValidationText { get => trafficValidationText; private set => SetProperty(ref trafficValidationText, value); }
+    public string TrafficNameText
+    {
+        get => trafficNameText;
+        set
+        {
+            if (SetProperty(ref trafficNameText, value))
+            {
+                RaiseTrafficTypeDisplayStateChanged();
+            }
+        }
+    }
+
+    public string TrafficDescriptionText
+    {
+        get => trafficDescriptionText;
+        set
+        {
+            if (SetProperty(ref trafficDescriptionText, value))
+            {
+                RaiseTrafficTypeDisplayStateChanged();
+            }
+        }
+    }
+
+    public RoutingPreference TrafficRoutingPreference
+    {
+        get => trafficRoutingPreference;
+        set
+        {
+            if (SetProperty(ref trafficRoutingPreference, value))
+            {
+                RaiseTrafficTypeDisplayStateChanged();
+            }
+        }
+    }
+
+    public AllocationMode TrafficAllocationMode
+    {
+        get => trafficAllocationMode;
+        set
+        {
+            if (SetProperty(ref trafficAllocationMode, value))
+            {
+                RaiseTrafficTypeDisplayStateChanged();
+            }
+        }
+    }
+
+    public RouteChoiceModel TrafficRouteChoiceModel
+    {
+        get => trafficRouteChoiceModel;
+        set
+        {
+            if (SetProperty(ref trafficRouteChoiceModel, value))
+            {
+                RaiseTrafficTypeDisplayStateChanged();
+            }
+        }
+    }
+
+    public FlowSplitPolicy TrafficFlowSplitPolicy
+    {
+        get => trafficFlowSplitPolicy;
+        set
+        {
+            if (SetProperty(ref trafficFlowSplitPolicy, value))
+            {
+                RaiseTrafficTypeDisplayStateChanged();
+            }
+        }
+    }
+
+    public string TrafficCapacityBidText
+    {
+        get => trafficCapacityBidText;
+        set
+        {
+            if (SetProperty(ref trafficCapacityBidText, value))
+            {
+                RaiseTrafficTypeDisplayStateChanged();
+            }
+        }
+    }
+
+    public string TrafficPerishabilityText
+    {
+        get => trafficPerishabilityText;
+        set
+        {
+            if (SetProperty(ref trafficPerishabilityText, value))
+            {
+                RaiseTrafficTypeDisplayStateChanged();
+            }
+        }
+    }
+
+    public string TrafficValidationText
+    {
+        get => trafficValidationText;
+        private set
+        {
+            if (SetProperty(ref trafficValidationText, value))
+            {
+                RaiseTrafficTypeDisplayStateChanged();
+            }
+        }
+    }
 
     public GraphInteractionContext CreateInteractionContext(GraphSize viewportSize)
     {
@@ -2784,51 +2884,52 @@ public sealed class WorkspaceViewModel : ObservableObject
     private void RaiseNodeTrafficRoleValidationStateChanged()
     {
         Raise(nameof(NodeTrafficRoleValidationText));
-        Raise(nameof(HasSelectedNodeTrafficValidationIssues));
-        Raise(nameof(SelectedNodeTrafficProfileIssueCountText));
-        Raise(nameof(SelectedNodeTrafficValidationGuidanceText));
         Raise(nameof(CanApplyInspectorEdits));
-        RaiseSelectedNodeTrafficSummaryStateChanged();
         ApplyInspectorCommand.NotifyCanExecuteChanged();
     }
 
-    private void RaiseSelectedNodeTrafficSummaryStateChanged()
+    private void RaiseTrafficTypeDisplayStateChanged()
     {
-        Raise(nameof(SelectedNodeTrafficProfileSummaryText));
-        Raise(nameof(SelectedNodeTrafficProfileStatusText));
-        Raise(nameof(SelectedNodeProductionWindowCountText));
-        Raise(nameof(SelectedNodeConsumptionWindowCountText));
-        Raise(nameof(SelectedNodeInputRequirementCountText));
+        Raise(nameof(SelectedTrafficTypeSummaryText));
+        Raise(nameof(SelectedTrafficTypeStatusText));
+        Raise(nameof(SelectedTrafficTypeIssueCountText));
+        Raise(nameof(SelectedTrafficTypeDefaultAccessSummaryText));
     }
 
-    private void HandleSelectedNodeTrafficCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    private string BuildSelectedTrafficTypeSummaryText()
     {
-        RaiseSelectedNodeTrafficSummaryStateChanged();
-    }
-
-    private string BuildSelectedNodeTrafficProfileSummaryText()
-    {
-        if (!IsNodeTrafficRoleSelected)
+        if (SelectedTrafficDefinitionItem?.Model is null)
         {
-            return "Select a traffic role to see its summary.";
+            return "Select a traffic type to review its routing and behaviour.";
         }
 
-        var productionWindows = SelectedNodeProductionWindows.Count;
-        var consumptionWindows = SelectedNodeConsumptionWindows.Count;
-        var inputRequirements = SelectedNodeInputRequirements.Count;
-        var storeClause = NodeStoreEnabled
-            ? $"stores up to {(string.IsNullOrWhiteSpace(NodeStoreCapacityText) ? "the configured limit" : NodeStoreCapacityText)}"
-            : "does not store inventory";
-        var transshipClause = NodeCanTransship ? "can transship" : "does not transship";
-        var inputClause = inputRequirements == 0
-            ? "has no local input requirements"
-            : $"has {inputRequirements} input requirement{(inputRequirements == 1 ? string.Empty : "s")}";
+        var name = string.IsNullOrWhiteSpace(TrafficNameText) ? "This traffic type" : TrafficNameText.Trim();
+        var descriptionClause = string.IsNullOrWhiteSpace(TrafficDescriptionText)
+            ? string.Empty
+            : $" {TrafficDescriptionText.Trim()}";
+        var perishabilityClause = string.IsNullOrWhiteSpace(TrafficPerishabilityText)
+            ? "does not set a perishability limit"
+            : $"has a perishability limit of {TrafficPerishabilityText.Trim()} periods";
+        var bidClause = string.IsNullOrWhiteSpace(TrafficCapacityBidText)
+            ? "uses the default bid behaviour"
+            : $"bids {TrafficCapacityBidText.Trim()} per unit for constrained capacity";
 
-        return $"{NodeTrafficRoleText} role for {NodeTrafficTypeTextOrFallback()}. Produces {NodeProductionText} per period, consumes {NodeConsumptionText}, {storeClause}, {transshipClause}, has {productionWindows} production window{(productionWindows == 1 ? string.Empty : "s")}, {consumptionWindows} consumption window{(consumptionWindows == 1 ? string.Empty : "s")}, and {inputClause}.";
+        return $"{name}{descriptionClause} prefers {TrafficRoutingPreference}, uses {TrafficAllocationMode}, applies {TrafficFlowSplitPolicy}, {bidClause}, and {perishabilityClause}.";
     }
 
-    private string NodeTrafficTypeTextOrFallback() =>
-        string.IsNullOrWhiteSpace(NodeTrafficTypeText) ? "an unnamed traffic type" : NodeTrafficTypeText.Trim();
+    private string BuildSelectedTrafficTypeDefaultAccessSummaryText()
+    {
+        var selectedName = SelectedTrafficDefinitionItem?.Model?.Name;
+        if (string.IsNullOrWhiteSpace(selectedName))
+        {
+            return "Select a traffic type to review its default route access.";
+        }
+
+        var matchingRows = DefaultTrafficPermissionRows.Count(row => Comparer.Equals(row.TrafficType, selectedName));
+        return matchingRows == 1
+            ? $"1 default route-access row matches {selectedName}."
+            : $"{matchingRows} default route-access rows match {selectedName}.";
+    }
 
     private string GetNextTrafficName(int startIndex)
     {

@@ -270,6 +270,7 @@ public sealed class GraphRenderer
         canvas.Clear(BackgroundColor);
         DrawBackgroundGrid(canvas, viewport, viewportSize);
         DrawDepthLayer(canvas, scene, viewport, viewportSize);
+        PrepareNodeLayouts(scene, viewport);
         DrawEdges(canvas, scene, viewport, viewportSize);
         DrawEdgeOverlays(canvas, scene, viewport, viewportSize);
         DrawNodes(canvas, scene, viewport, viewportSize);
@@ -335,6 +336,16 @@ public sealed class GraphRenderer
             string.Join("¦", badges),
             node.HasWarning ? "1" : "0"
         });
+    }
+
+    private void PrepareNodeLayouts(GraphScene scene, GraphViewport viewport)
+    {
+        var tier = GetZoomTier(viewport.Zoom);
+        foreach (var node in scene.Nodes)
+        {
+            var layout = GetOrBuildNodeLayout(node, tier);
+            ApplyLayoutBoundsKeepingCenter(node, layout);
+        }
     }
 
     private static void DrawBackgroundGrid(SKCanvas canvas, GraphViewport viewport, GraphSize viewportSize)
@@ -462,10 +473,6 @@ public sealed class GraphRenderer
         foreach (var node in scene.Nodes)
         {
             var layout = GetOrBuildNodeLayout(node, tier);
-            if (Math.Abs(node.Bounds.Width - layout.Width) > 0.001d || Math.Abs(node.Bounds.Height - layout.Height) > 0.001d)
-            {
-                ApplyLayoutBoundsKeepingCenter(node, layout);
-            }
             var origin = viewport.WorldToScreen(
                 new GraphPoint(node.Bounds.Left + GraphNodeTextLayout.HorizontalPadding, node.Bounds.Top + GraphNodeTextLayout.TopPadding),
                 viewportSize);

@@ -27,7 +27,7 @@ public sealed class GraphNodeTextLayoutResult
 public static class GraphNodeTextLayout
 {
     public const double MinWidth = 132d;
-    public const double MaxWidth = 236d;
+    public const double MaxWidth = 320d;
     public const double DefaultWidth = 168d;
     public const double MinHeight = 118d;
     public const double HorizontalPadding = 14d;

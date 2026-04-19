@@ -413,10 +413,33 @@ public sealed class GraphCanvasControl : Control
 
     private void DrawBaseBackground(DrawingContext context)
     {
+        var gradient = new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+            GradientStops = new GradientStops
+            {
+                new GradientStop(AvaloniaDashboardTheme.CanvasBackgroundStart, 0),
+                new GradientStop(AvaloniaDashboardTheme.CanvasBackgroundEnd, 1)
+            }
+        };
+
         context.DrawRectangle(
-            new SolidColorBrush(Color.Parse("#DCEBFA")),
-            new Pen(new SolidColorBrush(Color.Parse("#7FA7C9")), 1),
+            gradient,
+            new Pen(new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder), 1),
             Bounds);
+
+        const double spacing = 32d;
+        var gridPen = new Pen(new SolidColorBrush(AvaloniaDashboardTheme.CanvasGridLine, 0.35), 1);
+        for (double x = 0; x <= Bounds.Width; x += spacing)
+        {
+            context.DrawLine(gridPen, new Point(x, 0), new Point(x, Bounds.Height));
+        }
+
+        for (double y = 0; y <= Bounds.Height; y += spacing)
+        {
+            context.DrawLine(gridPen, new Point(0, y), new Point(Bounds.Width, y));
+        }
     }
 
     private void DrawStatusPanel(DrawingContext context, string title, string detail, bool isError)
@@ -427,18 +450,18 @@ public sealed class GraphCanvasControl : Control
             Math.Max(0d, Bounds.Width - 32d),
             Math.Max(0d, Bounds.Height - 32d));
 
-        var fill = new SolidColorBrush(Color.Parse(isError ? "#FFF0F0" : "#F7FBFF"));
-        var border = new Pen(new SolidColorBrush(Color.Parse(isError ? "#CC5252" : "#4D8AC3")), 2);
+        var fill = new SolidColorBrush(AvaloniaDashboardTheme.PanelBackground);
+        var border = new Pen(new SolidColorBrush(isError ? AvaloniaDashboardTheme.Danger : AvaloniaDashboardTheme.PanelBorderStrong), 2);
         context.DrawRectangle(fill, border, panelRect);
 
-        var titleText = CreateFormattedText(title, 24d, FontWeight.Bold, isError ? "#7F1D1D" : "#163B63");
-        var detailText = CreateFormattedText(detail, 14d, FontWeight.Normal, isError ? "#993333" : "#365B7E");
+        var titleText = CreateFormattedText(title, 24d, FontWeight.Bold, isError ? AvaloniaDashboardTheme.Danger : AvaloniaDashboardTheme.PrimaryText);
+        var detailText = CreateFormattedText(detail, 14d, FontWeight.Normal, AvaloniaDashboardTheme.SecondaryText);
 
         context.DrawText(titleText, new Point(panelRect.X + 18d, panelRect.Y + 18d));
         context.DrawText(detailText, new Point(panelRect.X + 18d, panelRect.Y + 58d));
     }
 
-    private static FormattedText CreateFormattedText(string text, double fontSize, FontWeight weight, string color)
+    private static FormattedText CreateFormattedText(string text, double fontSize, FontWeight weight, Color color)
     {
         return new FormattedText(
             text,
@@ -446,7 +469,7 @@ public sealed class GraphCanvasControl : Control
             FlowDirection.LeftToRight,
             new Typeface(new FontFamily("Segoe UI"), FontStyle.Normal, weight),
             fontSize,
-            new SolidColorBrush(Color.Parse(color)));
+            new SolidColorBrush(color));
     }
 
     private void UpdateStatus(string title, string detail, bool isError, bool visibleFrame)
@@ -510,7 +533,7 @@ public sealed class ShellWindow : Window
         Height = 1100;
         MinWidth = 1380;
         MinHeight = 900;
-        Background = new SolidColorBrush(Color.Parse("#EEF4FA"));
+        Background = new SolidColorBrush(AvaloniaDashboardTheme.AppBackground);
         Title = viewModel.WindowTitle;
         viewModel.PropertyChanged += (_, e) =>
         {
@@ -527,48 +550,19 @@ public sealed class ShellWindow : Window
     {
         var root = new DockPanel
         {
-            Margin = new Thickness(16),
+            Margin = new Thickness(14),
             LastChildFill = true
         };
 
-        var statusBar = new Border
-        {
-            Background = new SolidColorBrush(Color.Parse("#DAE8F5")),
-            CornerRadius = new CornerRadius(14),
-            Padding = new Thickness(14, 10),
-            BorderBrush = new SolidColorBrush(Color.Parse("#87A9C7")),
-            BorderThickness = new Thickness(1),
-            Child = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"),
-                Children =
-                {
-                    BuildBoundText(nameof(WorkspaceViewModel.StatusText), 0),
-                    BuildBoundText(nameof(WorkspaceViewModel.SelectionSummary), 1),
-                    BuildBoundText(nameof(WorkspaceViewModel.SimulationSummary), 2)
-                }
-            }
-        };
-        DockPanel.SetDock(statusBar, Dock.Bottom);
-        root.Children.Add(statusBar);
-
-        var topBar = new Border
-        {
-            Background = new SolidColorBrush(Color.Parse("#F8FBFF")),
-            CornerRadius = new CornerRadius(18),
-            Padding = new Thickness(18, 14),
-            BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
-            BorderThickness = new Thickness(1),
-            Child = BuildTopBar(viewModel)
-        };
+        var topBar = BuildDashboardPanel(BuildTopBar(viewModel), includeHeader: false, padding: new Thickness(16, 12), radius: new CornerRadius(14));
         DockPanel.SetDock(topBar, Dock.Top);
         root.Children.Add(topBar);
 
         var grid = new Grid
         {
-            Margin = new Thickness(0, 16, 0, 16),
-            ColumnDefinitions = new ColumnDefinitions("88,*,540"),
-            RowDefinitions = new RowDefinitions("*,176")
+            Margin = new Thickness(0, 12, 0, 0),
+            ColumnDefinitions = new ColumnDefinitions("240,*,460"),
+            RowDefinitions = new RowDefinitions("*,212")
         };
 
         grid.Children.Add(BuildToolRail(viewModel));
@@ -580,41 +574,100 @@ public sealed class ShellWindow : Window
         return root;
     }
 
+    private static Border BuildDashboardPanel(Control content, string? header = null, bool includeHeader = true, Thickness? padding = null, CornerRadius? radius = null)
+    {
+        var stack = new StackPanel { Spacing = 8 };
+        if (includeHeader && !string.IsNullOrWhiteSpace(header))
+        {
+            stack.Children.Add(new Border
+            {
+                Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+                BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(10, 8),
+                Child = new TextBlock
+                {
+                    Text = header,
+                    FontSize = 13,
+                    FontWeight = FontWeight.SemiBold,
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
+                }
+            });
+        }
+
+        stack.Children.Add(content);
+
+        return new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            CornerRadius = radius ?? AvaloniaDashboardTheme.PanelCornerRadius,
+            Padding = padding ?? new Thickness(12),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            Child = stack
+        };
+    }
+
     private Control BuildTopBar(WorkspaceViewModel viewModel)
     {
         var grid = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto")
+            ColumnDefinitions = new ColumnDefinitions("2*,*,Auto"),
+            ColumnSpacing = 18
         };
 
         var titleStack = new StackPanel
         {
-            Spacing = 4,
+            Spacing = 2,
             Children =
             {
                 new TextBlock
                 {
-                    Text = "MedW Network Sim Workstation",
-                    FontSize = 28,
+                    Text = "MedW Command Workstation",
+                    FontSize = 24,
                     FontWeight = FontWeight.Bold,
-                    Foreground = new SolidColorBrush(Color.Parse("#16324C"))
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
                 },
                 new TextBlock
                 {
-                    Text = "Select, drag, or marquee. Ctrl-drag between nodes to create a route.",
-                    FontSize = 15,
-                    Foreground = new SolidColorBrush(Color.Parse("#4D6781")),
+                    [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.SessionSubtitle)),
+                    FontSize = 13,
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
                     TextWrapping = TextWrapping.Wrap
-                },
-                new TextBlock
-                {
-                    [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.ToolInstructionText)),
-                    FontSize = 12,
-                    Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
                 }
             }
         };
         grid.Children.Add(titleStack);
+
+        var centerStatus = new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(10, 6),
+            Child = new StackPanel
+            {
+                Spacing = 2,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.StatusText)),
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+                        FontWeight = FontWeight.Medium
+                    },
+                    new TextBlock
+                    {
+                        [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.ToolStatusText)),
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.MutedText),
+                        FontSize = 12
+                    }
+                }
+            }
+        };
+        Grid.SetColumn(centerStatus, 1);
+        grid.Children.Add(centerStatus);
 
         var buttons = new StackPanel
         {
@@ -623,18 +676,18 @@ public sealed class ShellWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                BuildButton("New", viewModel.NewCommand),
-                BuildButton("Open", new RelayCommand(() => _ = OpenNetworkFileAsync(viewModel))),
-                BuildButton("Save", new RelayCommand(() => _ = SaveNetworkFileAsync(viewModel))),
-                BuildButton("Import", new RelayCommand(() => _ = ImportGraphMlAsync(viewModel))),
-                BuildButton("Export", new RelayCommand(() => _ = ExportGraphMlAsync(viewModel))),
-                BuildButton("Run", viewModel.SimulateCommand),
-                BuildButton("Step", viewModel.StepCommand),
-                BuildButton("Reset", viewModel.ResetTimelineCommand),
-                BuildButton("Fit", viewModel.FitCommand)
+                BuildButton("New", viewModel.NewCommand, toolTip: "Create a blank network."),
+                BuildButton("Open", new RelayCommand(() => _ = OpenNetworkFileAsync(viewModel)), toolTip: "Open a network JSON file."),
+                BuildButton("Save", new RelayCommand(() => _ = SaveNetworkFileAsync(viewModel)), toolTip: "Save the current network JSON."),
+                BuildButton("Import", new RelayCommand(() => _ = ImportGraphMlAsync(viewModel)), toolTip: "Import GraphML into the current workspace."),
+                BuildButton("Export", new RelayCommand(() => _ = ExportGraphMlAsync(viewModel)), toolTip: "Export the active network as GraphML."),
+                BuildButton("Run", viewModel.SimulateCommand, isPrimary: true, toolTip: "Run the simulation timeline."),
+                BuildButton("Step", viewModel.StepCommand, isPrimary: true, toolTip: "Advance the simulation by one period."),
+                BuildButton("Reset", viewModel.ResetTimelineCommand, toolTip: "Reset timeline to period 0."),
+                BuildButton("Fit", viewModel.FitCommand, toolTip: "Fit the graph to the viewport.")
             }
         };
-        Grid.SetColumn(buttons, 1);
+        Grid.SetColumn(buttons, 2);
         grid.Children.Add(buttons);
         return grid;
     }
@@ -662,57 +715,39 @@ public sealed class ShellWindow : Window
         };
         RefreshToolState();
 
-        var border = new Border
-        {
-            Background = new SolidColorBrush(Color.Parse("#E8F0F8")),
-            CornerRadius = new CornerRadius(20),
-            BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(10),
-            Margin = new Thickness(0, 0, 14, 0),
-            Child = new StackPanel
+        var border = BuildDashboardPanel(
+            new StackPanel
             {
-                Spacing = 12,
+                Spacing = AvaloniaDashboardTheme.SectionSpacing,
                 Children =
                 {
-                    new TextBlock
-                    {
-                        Text = "Tools",
-                        FontSize = 16,
-                        FontWeight = FontWeight.Bold,
-                        HorizontalAlignment = HorizontalAlignment.Center,
-                        Foreground = new SolidColorBrush(Color.Parse("#16324C"))
-                    },
+                    BuildSectionTitle("Tools", "Activate one operation mode for the workspace."),
                     selectButton,
                     addNodeButton,
                     connectButton,
-                    deleteButton
+                    deleteButton,
+                    BuildSectionTitle("Quick Access", "Current network at a glance."),
+                    BuildQuickStat("Status", nameof(WorkspaceViewModel.StatusText)),
+                    BuildQuickStat("Selection", nameof(WorkspaceViewModel.SelectionSummary)),
+                    BuildQuickStat("Simulation", nameof(WorkspaceViewModel.SimulationSummary))
                 }
-            }
-        };
+            },
+            header: "Operations Rail",
+            padding: new Thickness(10),
+            radius: new CornerRadius(14));
+        border.Margin = new Thickness(0, 0, 12, 0);
         Grid.SetColumn(border, 0);
         return border;
     }
 
     private static Control BuildCanvasArea(WorkspaceViewModel viewModel)
     {
-        var canvasHost = new Border
-        {
-            Background = new SolidColorBrush(Color.Parse("#DCEAF7")),
-            CornerRadius = new CornerRadius(24),
-            BorderBrush = new SolidColorBrush(Color.Parse("#7FA7C9")),
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(10),
-            MinHeight = 520,
-            MinWidth = 760
-        };
-
         var header = new Border
         {
-            Padding = new Thickness(12, 10),
-            Background = new SolidColorBrush(Color.Parse("#F8FCFF")),
-            CornerRadius = new CornerRadius(12),
-            BorderBrush = new SolidColorBrush(Color.Parse("#93B7D7")),
+            Padding = new Thickness(12, 8),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            CornerRadius = new CornerRadius(10),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
             BorderThickness = new Thickness(1),
             Child = new StackPanel
             {
@@ -721,17 +756,17 @@ public sealed class ShellWindow : Window
                 {
                     new TextBlock
                     {
-                        [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.ToolStatusText)),
-                        FontSize = 14,
-                        FontWeight = FontWeight.SemiBold,
-                        Foreground = new SolidColorBrush(Color.Parse("#284A67")),
+                        Text = "Network Topology",
+                        FontSize = 16,
+                        FontWeight = FontWeight.Bold,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
                         TextWrapping = TextWrapping.Wrap
                     },
                     new TextBlock
                     {
-                        Text = "Click to place a node. Right-click for context actions.",
+                        [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.ToolStatusText)),
                         FontSize = 12,
-                        Foreground = new SolidColorBrush(Color.Parse("#4D6781")),
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
                         TextWrapping = TextWrapping.Wrap
                     }
                 }
@@ -750,19 +785,19 @@ public sealed class ShellWindow : Window
             Text = "Canvas placeholder",
             FontSize = 22,
             FontWeight = FontWeight.Bold,
-            Foreground = new SolidColorBrush(Color.Parse("#7F1D1D"))
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.Danger)
         };
         var fallbackDetail = new TextBlock
         {
             Text = "The graph could not be displayed. Reopen the file or reset the view.",
             Margin = new Thickness(0, 8, 0, 0),
-            Foreground = new SolidColorBrush(Color.Parse("#934040")),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
             TextWrapping = TextWrapping.Wrap
         };
         var fallbackPanel = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#FFF2F2")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#D37474")),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.Danger),
             BorderThickness = new Thickness(2),
             CornerRadius = new CornerRadius(16),
             Padding = new Thickness(20),
@@ -802,7 +837,13 @@ public sealed class ShellWindow : Window
         Grid.SetRow(fallbackPanel, 1);
         canvasSurface.Children.Add(graphCanvas);
         canvasSurface.Children.Add(fallbackPanel);
-        canvasHost.Child = canvasSurface;
+        var canvasHost = BuildDashboardPanel(
+            canvasSurface,
+            header: "Workspace",
+            padding: new Thickness(10),
+            radius: new CornerRadius(18));
+        canvasHost.MinHeight = 520;
+        canvasHost.MinWidth = 760;
 
         Grid.SetColumn(canvasHost, 1);
         return canvasHost;
@@ -810,20 +851,47 @@ public sealed class ShellWindow : Window
 
     private static Control BuildInspector(WorkspaceViewModel viewModel)
     {
-        var tabs = new TabControl();
+        var tabs = new TabControl
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelBackground),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(4)
+        };
         tabs.Items.Add(new TabItem { Header = "Selection", Content = BuildSelectionInspector(viewModel) });
         tabs.Items.Add(new TabItem { Header = "Traffic Types", Content = BuildTrafficDefinitionEditor(viewModel) });
         tabs.Bind(SelectingItemsControl.SelectedIndexProperty, new Binding(nameof(WorkspaceViewModel.SelectedInspectorTabIndex), BindingMode.TwoWay));
 
-        var border = new Border
+        var summaryBlock = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#F6FAFE")),
-            CornerRadius = new CornerRadius(22),
-            BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
             BorderThickness = new Thickness(1),
-            Padding = new Thickness(18),
-            Child = tabs
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(10),
+            Child = new StackPanel
+            {
+                Spacing = 4,
+                Children =
+                {
+                    BuildQuickStat("Status", nameof(WorkspaceViewModel.StatusText)),
+                    BuildQuickStat("Selection", nameof(WorkspaceViewModel.SelectionSummary)),
+                    BuildQuickStat("Simulation", nameof(WorkspaceViewModel.SimulationSummary)),
+                    BuildQuickStat("Tool", nameof(WorkspaceViewModel.ToolStatusText))
+                }
+            }
         };
+
+        var border = BuildDashboardPanel(new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                summaryBlock,
+                tabs
+            }
+        }, header: "Intelligence Rail", padding: new Thickness(14));
         Grid.SetColumn(border, 2);
         return border;
     }
@@ -837,7 +905,7 @@ public sealed class ShellWindow : Window
                 new TextBlock
                 {
                     Text = item,
-                    Foreground = new SolidColorBrush(Color.Parse("#31506B")),
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
                     Margin = new Thickness(0, 0, 0, 6),
                     TextWrapping = TextWrapping.Wrap
                 })
@@ -874,6 +942,19 @@ public sealed class ShellWindow : Window
         definitionList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedTrafficDefinitionItem), BindingMode.TwoWay));
         ApplyFocusVisual(definitionList);
 
+        var routingPreference = BuildLabeledComboBox("Routing preference", nameof(WorkspaceViewModel.RoutingPreferenceOptions), nameof(WorkspaceViewModel.TrafficRoutingPreference));
+        ToolTip.SetTip(routingPreference, "Routing preference affects how route costs are prioritized.");
+        var allocationMode = BuildLabeledComboBox("Allocation mode", nameof(WorkspaceViewModel.AllocationModeOptions), nameof(WorkspaceViewModel.TrafficAllocationMode));
+        ToolTip.SetTip(allocationMode, "Allocation mode controls how available route capacity is assigned.");
+        var routeChoiceModel = BuildLabeledComboBox("Route choice model", nameof(WorkspaceViewModel.RouteChoiceModelOptions), nameof(WorkspaceViewModel.TrafficRouteChoiceModel));
+        ToolTip.SetTip(routeChoiceModel, "Route choice model defines deterministic or adaptive route behavior.");
+        var flowSplitPolicy = BuildLabeledComboBox("Flow split policy", nameof(WorkspaceViewModel.FlowSplitPolicyOptions), nameof(WorkspaceViewModel.TrafficFlowSplitPolicy));
+        ToolTip.SetTip(flowSplitPolicy, "Flow split policy controls how flow is divided across eligible routes.");
+        var capacityBid = BuildLabeledTextBox("Capacity bid per unit", nameof(WorkspaceViewModel.TrafficCapacityBidText));
+        ToolTip.SetTip(capacityBid, "Capacity bid influences route competition when capacity is constrained.");
+        var perishability = BuildLabeledTextBox("Perishability periods", nameof(WorkspaceViewModel.TrafficPerishabilityText));
+        ToolTip.SetTip(perishability, "Perishability periods is how many periods traffic can remain viable.");
+
         return new ScrollViewer
         {
             Content = new StackPanel
@@ -896,12 +977,12 @@ public sealed class ShellWindow : Window
                     },
                     BuildLabeledTextBox("Traffic type name", nameof(WorkspaceViewModel.TrafficNameText)),
                     BuildLabeledTextBox("Description", nameof(WorkspaceViewModel.TrafficDescriptionText)),
-                    BuildLabeledComboBox("Routing preference", nameof(WorkspaceViewModel.RoutingPreferenceOptions), nameof(WorkspaceViewModel.TrafficRoutingPreference)),
-                    BuildLabeledComboBox("Allocation mode", nameof(WorkspaceViewModel.AllocationModeOptions), nameof(WorkspaceViewModel.TrafficAllocationMode)),
-                    BuildLabeledComboBox("Route choice model", nameof(WorkspaceViewModel.RouteChoiceModelOptions), nameof(WorkspaceViewModel.TrafficRouteChoiceModel)),
-                    BuildLabeledComboBox("Flow split policy", nameof(WorkspaceViewModel.FlowSplitPolicyOptions), nameof(WorkspaceViewModel.TrafficFlowSplitPolicy)),
-                    BuildLabeledTextBox("Capacity bid per unit", nameof(WorkspaceViewModel.TrafficCapacityBidText)),
-                    BuildLabeledTextBox("Perishability periods", nameof(WorkspaceViewModel.TrafficPerishabilityText)),
+                    routingPreference,
+                    allocationMode,
+                    routeChoiceModel,
+                    flowSplitPolicy,
+                    capacityBid,
+                    perishability,
                     BuildValidationBlock(nameof(WorkspaceViewModel.TrafficValidationText)),
                     BuildPermissionEditor(
                         "Default Route Access",
@@ -918,7 +999,7 @@ public sealed class ShellWindow : Window
         var metrics = new ItemsControl
         {
             [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ReportMetrics)),
-            ItemTemplate = new FuncDataTemplate<ReportMetricViewModel>((metric, _) => BuildButton($"{metric.Label}  {metric.Value}", new RelayCommand(metric.Activate)))
+            ItemTemplate = new FuncDataTemplate<ReportMetricViewModel>((metric, _) => BuildButton($"{metric.Label}  {metric.Value}", new RelayCommand(metric.Activate), toolTip: $"Open {metric.Label} report details."))
         };
 
         var playbackGrid = new Grid
@@ -926,17 +1007,16 @@ public sealed class ShellWindow : Window
             ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,*"),
             RowDefinitions = new RowDefinitions("Auto")
         };
-        playbackGrid.Children.Add(BuildButton("Run", viewModel.SimulateCommand));
-        playbackGrid.Children.Add(BuildButton("Step", viewModel.StepCommand, 1));
-        playbackGrid.Children.Add(BuildButton("Reset", viewModel.ResetTimelineCommand, 2));
-        playbackGrid.Children.Add(BuildButton("Fit", viewModel.FitCommand, 3));
+        playbackGrid.Children.Add(BuildButton("Run", viewModel.SimulateCommand, isPrimary: true, toolTip: "Run timeline simulation."));
+        playbackGrid.Children.Add(BuildButton("Step", viewModel.StepCommand, 1, isPrimary: true, toolTip: "Advance one period."));
+        playbackGrid.Children.Add(BuildButton("Reset", viewModel.ResetTimelineCommand, 2, toolTip: "Reset timeline to start."));
+        playbackGrid.Children.Add(BuildButton("Fit", viewModel.FitCommand, 3, toolTip: "Fit graph on canvas."));
 
         var slider = new Slider
         {
             Minimum = 0,
             Maximum = 12,
-            Margin = new Thickness(12, 6, 0, 0)
-            ,
+            Margin = new Thickness(12, 6, 0, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
         slider.Bind(RangeBase.ValueProperty, new Binding(nameof(WorkspaceViewModel.TimelinePosition), BindingMode.TwoWay));
@@ -944,7 +1024,14 @@ public sealed class ShellWindow : Window
         ApplyFocusVisual(slider);
         playbackGrid.Children.Add(slider);
 
-        var tabControl = new TabControl();
+        var tabControl = new TabControl
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelBackground),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(4)
+        };
         tabControl.Items.Add(new TabItem { Header = "Playback", Content = playbackGrid });
         tabControl.Items.Add(new TabItem
         {
@@ -972,17 +1059,23 @@ public sealed class ShellWindow : Window
                 }
             }
         });
-
-        var strip = new Border
+        tabControl.Items.Add(new TabItem
         {
-            Margin = new Thickness(12, 10, 0, 0),
-            Background = new SolidColorBrush(Color.Parse("#F6FAFE")),
-            CornerRadius = new CornerRadius(20),
-            BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(14, 12),
-            Child = tabControl
-        };
+            Header = "Status",
+            Content = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    BuildQuickStat("Status", nameof(WorkspaceViewModel.StatusText)),
+                    BuildQuickStat("Selection", nameof(WorkspaceViewModel.SelectionSummary)),
+                    BuildQuickStat("Simulation", nameof(WorkspaceViewModel.SimulationSummary))
+                }
+            }
+        });
+
+        var strip = BuildDashboardPanel(tabControl, header: "Dashboard Strip", padding: new Thickness(14, 10), radius: new CornerRadius(14));
+        strip.Margin = new Thickness(12, 10, 0, 0);
 
         Grid.SetColumn(strip, 1);
         Grid.SetColumnSpan(strip, 2);
@@ -1002,13 +1095,13 @@ public sealed class ShellWindow : Window
                     [!TextBlock.TextProperty] = new Binding("Inspector.Headline"),
                     FontSize = 20,
                     FontWeight = FontWeight.Bold,
-                    Foreground = new SolidColorBrush(Color.Parse("#16324C"))
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
                 },
                 new TextBlock
                 {
                     [!TextBlock.TextProperty] = new Binding("Inspector.Summary"),
                     TextWrapping = TextWrapping.Wrap,
-                    Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
                 }
             }
         };
@@ -1016,16 +1109,24 @@ public sealed class ShellWindow : Window
 
     private static Control BuildNetworkEditor()
     {
-        var panel = new StackPanel
+        var panel = new Border
         {
-            Spacing = 8,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+            Padding = new Thickness(10),
             IsVisible = false,
-            Children =
+            Child = new StackPanel
             {
-                BuildSectionTitle("Network", "Edit the network name, description, and loop length."),
-                BuildLabeledTextBox("Network name", nameof(WorkspaceViewModel.NetworkNameText)),
-                BuildLabeledTextBox("Description", nameof(WorkspaceViewModel.NetworkDescriptionText)),
-                BuildLabeledTextBox("Loop length (periods)", nameof(WorkspaceViewModel.NetworkTimelineLoopLengthText))
+                Spacing = 8,
+                Children =
+                {
+                    BuildSectionTitle("Network", "Edit the network name, description, and loop length."),
+                    BuildLabeledTextBox("Network name", nameof(WorkspaceViewModel.NetworkNameText)),
+                    BuildLabeledTextBox("Description", nameof(WorkspaceViewModel.NetworkDescriptionText)),
+                    BuildLabeledTextBox("Loop length (periods)", nameof(WorkspaceViewModel.NetworkTimelineLoopLengthText))
+                }
             }
         };
         panel.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNetwork)));
@@ -1045,35 +1146,43 @@ public sealed class ShellWindow : Window
 
         var trafficRoleEditor = BuildTrafficRoleEditor(out var trafficRoleEditorFocusTarget);
 
-        var panel = new StackPanel
+        var panel = new Border
         {
-            Spacing = 8,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+            Padding = new Thickness(10),
             IsVisible = false,
-            Children =
+            Child = new StackPanel
             {
-                BuildSectionTitle("Node", "Edit node details and traffic roles."),
-                BuildLabeledTextBox("Name", nameof(WorkspaceViewModel.NodeNameText)),
-                BuildLabeledTextBox("Place type", nameof(WorkspaceViewModel.NodePlaceTypeText)),
-                BuildLabeledTextBox("Description", nameof(WorkspaceViewModel.NodeDescriptionText)),
-                BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.NodeTranshipmentCapacityText)),
-                BuildLabeledComboBox("Node shape", nameof(WorkspaceViewModel.NodeShapeOptions), nameof(WorkspaceViewModel.NodeShape)),
-                BuildLabeledComboBox("Node kind", nameof(WorkspaceViewModel.NodeKindOptions), nameof(WorkspaceViewModel.NodeKind)),
-                BuildSectionTitle("Traffic Roles", "Select a role, then edit traffic, supply, demand, storage, and timing right below."),
-                profileList,
-                new StackPanel
+                Spacing = 8,
+                Children =
                 {
-                    Orientation = Orientation.Horizontal,
-                    Spacing = 8,
-                    Children =
+                    BuildSectionTitle("Node", "Edit node details and traffic roles."),
+                    BuildLabeledTextBox("Name", nameof(WorkspaceViewModel.NodeNameText)),
+                    BuildLabeledTextBox("Place type", nameof(WorkspaceViewModel.NodePlaceTypeText)),
+                    BuildLabeledTextBox("Description", nameof(WorkspaceViewModel.NodeDescriptionText)),
+                    BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.NodeTranshipmentCapacityText)),
+                    BuildLabeledComboBox("Node shape", nameof(WorkspaceViewModel.NodeShapeOptions), nameof(WorkspaceViewModel.NodeShape)),
+                    BuildLabeledComboBox("Node kind", nameof(WorkspaceViewModel.NodeKindOptions), nameof(WorkspaceViewModel.NodeKind)),
+                    BuildSectionTitle("Traffic Roles", "Select a role, then edit traffic, supply, demand, storage, and timing right below."),
+                    profileList,
+                    new StackPanel
                     {
-                        BuildBoundButton("Add Role", nameof(WorkspaceViewModel.AddNodeTrafficProfileCommand)),
-                        BuildBoundButton("Duplicate Role", nameof(WorkspaceViewModel.DuplicateSelectedNodeTrafficProfileCommand)),
-                        BuildBoundButton("Delete Role", nameof(WorkspaceViewModel.RemoveSelectedNodeTrafficProfileCommand))
-                    }
-                },
-                BuildValidationBlock(nameof(WorkspaceViewModel.NodeTrafficRoleValidationText)),
-                BuildTrafficRoleEmptyState(viewModel),
-                trafficRoleEditor
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 8,
+                        Children =
+                        {
+                            BuildBoundButton("Add Role", nameof(WorkspaceViewModel.AddNodeTrafficProfileCommand)),
+                            BuildBoundButton("Duplicate Role", nameof(WorkspaceViewModel.DuplicateSelectedNodeTrafficProfileCommand)),
+                            BuildBoundButton("Delete Role", nameof(WorkspaceViewModel.RemoveSelectedNodeTrafficProfileCommand))
+                        }
+                    },
+                    BuildValidationBlock(nameof(WorkspaceViewModel.NodeTrafficRoleValidationText)),
+                    BuildTrafficRoleEmptyState(viewModel),
+                    trafficRoleEditor
+                }
             }
         };
         panel.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNode)));
@@ -1083,23 +1192,31 @@ public sealed class ShellWindow : Window
 
     private static Control BuildEdgeEditor(WorkspaceViewModel viewModel)
     {
-        var panel = new StackPanel
+        var panel = new Border
         {
-            Spacing = 8,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+            Padding = new Thickness(10),
             IsVisible = false,
-            Children =
+            Child = new StackPanel
             {
-                BuildSectionTitle("Route", "Edit route values and access rules."),
-                BuildLabeledTextBox("Route label", nameof(WorkspaceViewModel.EdgeRouteTypeText)),
-                BuildLabeledTextBox("Travel time", nameof(WorkspaceViewModel.EdgeTimeText)),
-                BuildLabeledTextBox("Travel cost", nameof(WorkspaceViewModel.EdgeCostText)),
-                BuildLabeledTextBox("Capacity", nameof(WorkspaceViewModel.EdgeCapacityText)),
-                BuildLabeledCheckBox("Bidirectional", nameof(WorkspaceViewModel.EdgeIsBidirectional)),
-                BuildPermissionEditor(
-                    "Route Access",
-                    "Override the network default for this route when you need a different access rule.",
-                    nameof(WorkspaceViewModel.SelectedEdgePermissionRows),
-                    nameof(WorkspaceViewModel.EdgeCapacityText))
+                Spacing = 8,
+                Children =
+                {
+                    BuildSectionTitle("Route", "Edit route values and access rules."),
+                    BuildLabeledTextBox("Route label", nameof(WorkspaceViewModel.EdgeRouteTypeText)),
+                    BuildLabeledTextBox("Travel time", nameof(WorkspaceViewModel.EdgeTimeText)),
+                    BuildLabeledTextBox("Travel cost", nameof(WorkspaceViewModel.EdgeCostText)),
+                    BuildLabeledTextBox("Capacity", nameof(WorkspaceViewModel.EdgeCapacityText)),
+                    BuildLabeledCheckBox("Bidirectional", nameof(WorkspaceViewModel.EdgeIsBidirectional)),
+                    BuildPermissionEditor(
+                        "Route Access",
+                        "Override the network default for this route when you need a different access rule.",
+                        nameof(WorkspaceViewModel.SelectedEdgePermissionRows),
+                        nameof(WorkspaceViewModel.EdgeCapacityText))
+                }
             }
         };
         panel.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingEdge)));
@@ -1109,15 +1226,23 @@ public sealed class ShellWindow : Window
 
     private static Control BuildBulkEditor()
     {
-        var panel = new StackPanel
+        var panel = new Border
         {
-            Spacing = 8,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+            Padding = new Thickness(10),
             IsVisible = false,
-            Children =
+            Child = new StackPanel
             {
-                BuildSectionTitle("Bulk Edit", "Apply shared values across selected nodes."),
-                BuildLabeledTextBox("Place type", nameof(WorkspaceViewModel.BulkPlaceTypeText)),
-                BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.BulkTranshipmentCapacityText))
+                Spacing = 8,
+                Children =
+                {
+                    BuildSectionTitle("Bulk Edit", "Apply shared values across selected nodes."),
+                    BuildLabeledTextBox("Place type", nameof(WorkspaceViewModel.BulkPlaceTypeText)),
+                    BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.BulkTranshipmentCapacityText))
+                }
             }
         };
         panel.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsEditingSelection)));
@@ -1148,7 +1273,7 @@ public sealed class ShellWindow : Window
                         {
                             Text = row.TrafficType,
                             FontWeight = FontWeight.Bold,
-                            Foreground = new SolidColorBrush(Color.Parse("#16324C"))
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
                         }
                     }
                 };
@@ -1156,6 +1281,7 @@ public sealed class ShellWindow : Window
                 if (row.SupportsOverrideToggle)
                 {
                     var overrideBox = BuildCheckBox("Override network default");
+                    ToolTip.SetTip(overrideBox, "Enable to apply a route-specific access rule instead of the network default.");
                     overrideBox.Bind(ToggleButton.IsCheckedProperty, new Binding(nameof(PermissionRuleEditorRow.IsActive), BindingMode.TwoWay));
                     wrap.Children.Add(overrideBox);
                 }
@@ -1164,20 +1290,23 @@ public sealed class ShellWindow : Window
                 modeBox.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.PermissionModeOptions)) { Source = Application.Current?.ApplicationLifetime is not null ? null : null });
                 modeBox.ItemsSource = Enum.GetValues<EdgeTrafficPermissionMode>();
                 modeBox.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(PermissionRuleEditorRow.Mode), BindingMode.TwoWay));
+                ToolTip.SetTip(modeBox, "Permission mode selects permitted, blocked, or limited route access.");
                 wrap.Children.Add(BuildLabeledRow("Permission", modeBox));
 
                 var limitKind = BuildComboBox();
                 limitKind.ItemsSource = Enum.GetValues<EdgeTrafficLimitKind>();
                 limitKind.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(PermissionRuleEditorRow.LimitKind), BindingMode.TwoWay));
+                ToolTip.SetTip(limitKind, "Limit kind sets absolute units or percent-of-capacity limits.");
                 wrap.Children.Add(BuildLabeledRow("Limit type", limitKind));
 
                 var limitValue = BuildTextBox("Enter a limit");
                 limitValue.Bind(TextBox.TextProperty, new Binding(nameof(PermissionRuleEditorRow.LimitValueText), BindingMode.TwoWay));
+                ToolTip.SetTip(limitValue, "When mode is Limited, specify the allowed quantity.");
                 wrap.Children.Add(BuildLabeledRow("Limit value", limitValue));
 
                 var effective = new TextBlock
                 {
-                    Foreground = new SolidColorBrush(Color.Parse("#4D6781")),
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
                     TextWrapping = TextWrapping.Wrap
                 };
                 effective.Bind(TextBlock.TextProperty, new Binding(nameof(PermissionRuleEditorRow.EffectiveSummary)));
@@ -1185,7 +1314,7 @@ public sealed class ShellWindow : Window
 
                 var validation = new TextBlock
                 {
-                    Foreground = new SolidColorBrush(Color.Parse("#9D2E2E")),
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.Danger),
                     TextWrapping = TextWrapping.Wrap
                 };
                 validation.Bind(TextBlock.TextProperty, new Binding(nameof(PermissionRuleEditorRow.ValidationMessage)));
@@ -1195,13 +1324,21 @@ public sealed class ShellWindow : Window
             })
         };
 
-        return new StackPanel
+        return new Border
         {
-            Spacing = 8,
-            Children =
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(10),
+            Child = new StackPanel
             {
-                BuildSectionTitle(title, summary),
-                rows
+                Spacing = 8,
+                Children =
+                {
+                    BuildSectionTitle(title, summary),
+                    rows
+                }
             }
         };
     }
@@ -1217,13 +1354,14 @@ public sealed class ShellWindow : Window
                 {
                     Text = title,
                     FontWeight = FontWeight.Bold,
-                    Foreground = new SolidColorBrush(Color.Parse("#16324C"))
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
                 },
                 new TextBlock
                 {
                     Text = summary,
                     TextWrapping = TextWrapping.Wrap,
-                    Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                    FontSize = 12
                 }
             }
         };
@@ -1266,10 +1404,10 @@ public sealed class ShellWindow : Window
         };
         var card = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#ECF4FC")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(12),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
             Padding = new Thickness(12),
             Child = stack
         };
@@ -1281,8 +1419,8 @@ public sealed class ShellWindow : Window
     {
         var panel = new Border
         {
-            Background = new SolidColorBrush(Color.Parse("#ECF4FC")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#9CB9D3")),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10),
             Padding = new Thickness(10),
@@ -1291,7 +1429,7 @@ public sealed class ShellWindow : Window
                 Spacing = 6,
                 Children =
                 {
-                    new TextBlock { Text = "No traffic role selected.", Foreground = new SolidColorBrush(Color.Parse("#31506B")) },
+                    new TextBlock { Text = "No traffic role selected.", Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) },
                     BuildButton("Add role", viewModel.AddNodeTrafficProfileCommand)
                 }
             }
@@ -1360,7 +1498,7 @@ public sealed class ShellWindow : Window
         {
             Margin = new Thickness(column == 0 ? 0 : 18, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            Foreground = new SolidColorBrush(Color.Parse(column == 0 ? "#16324C" : "#31506B")),
+            Foreground = new SolidColorBrush(column == 0 ? AvaloniaDashboardTheme.PrimaryText : AvaloniaDashboardTheme.SecondaryText),
             TextWrapping = TextWrapping.Wrap
         };
         Grid.SetColumn(text, column);
@@ -1368,21 +1506,25 @@ public sealed class ShellWindow : Window
         return text;
     }
 
-    private static Button BuildButton(string label, ICommand command, int column = -1)
+    private static Button BuildButton(string label, ICommand command, int column = -1, bool isPrimary = false, string? toolTip = null)
     {
         var button = new Button
         {
             Content = label,
             Command = command,
-            Padding = new Thickness(12, 10),
+            Padding = new Thickness(12, 9),
             MinHeight = 42,
-            Background = new SolidColorBrush(Color.Parse("#D9EAF8")),
-            Foreground = new SolidColorBrush(Color.Parse("#17324B")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#7FA7C9")),
-            BorderThickness = new Thickness(1.5),
-            CornerRadius = new CornerRadius(12)
+            Background = new SolidColorBrush(isPrimary ? AvaloniaDashboardTheme.ToolbarButtonPrimaryBackground : AvaloniaDashboardTheme.ToolbarButtonBackground),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.ToolbarButtonBorder),
+            BorderThickness = new Thickness(1.2),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius
         };
         ApplyFocusVisual(button);
+        if (!string.IsNullOrWhiteSpace(toolTip))
+        {
+            ToolTip.SetTip(button, toolTip);
+        }
 
         if (column >= 0)
         {
@@ -1410,13 +1552,13 @@ public sealed class ShellWindow : Window
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
                 FontWeight = FontWeight.Bold,
-                Foreground = new SolidColorBrush(Color.Parse("#355777"))
+                Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
             },
             Command = command,
-            BorderBrush = new SolidColorBrush(Color.Parse("#93B7D7")),
-            BorderThickness = new Thickness(1.5),
-            Background = new SolidColorBrush(Color.Parse("#F8FCFF")),
-            CornerRadius = new CornerRadius(14)
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
+            BorderThickness = new Thickness(1.2),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ToolbarButtonBackground),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius
         };
         ToolTip.SetTip(button, toolTip);
         ApplyFocusVisual(button);
@@ -1425,9 +1567,9 @@ public sealed class ShellWindow : Window
 
     private static void ApplyToolButtonState(Button button, bool isActive)
     {
-        button.Background = new SolidColorBrush(Color.Parse(isActive ? "#C8E4FB" : "#F8FCFF"));
-        button.BorderBrush = new SolidColorBrush(Color.Parse(isActive ? "#2D78B8" : "#93B7D7"));
-        button.BorderThickness = new Thickness(isActive ? 2.5 : 1.5);
+        button.Background = new SolidColorBrush(isActive ? AvaloniaDashboardTheme.SelectedBackground : AvaloniaDashboardTheme.ToolbarButtonBackground);
+        button.BorderBrush = new SolidColorBrush(isActive ? AvaloniaDashboardTheme.Accent : AvaloniaDashboardTheme.PanelBorderStrong);
+        button.BorderThickness = new Thickness(isActive ? 2.2 : 1.2);
     }
 
     private static Control BuildLabeledTextBox(string label, string propertyName)
@@ -1471,7 +1613,7 @@ public sealed class ShellWindow : Window
                 {
                     Text = label,
                     FontSize = 12,
-                    Foreground = new SolidColorBrush(Color.Parse("#4D6781"))
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
                 },
                 editor
             }
@@ -1485,9 +1627,11 @@ public sealed class ShellWindow : Window
             Watermark = watermark,
             MinHeight = 40,
             Padding = new Thickness(10, 8),
-            BorderBrush = new SolidColorBrush(Color.Parse("#93B7D7")),
-            BorderThickness = new Thickness(1.5),
-            Background = new SolidColorBrush(Color.Parse("#FFFFFF"))
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.InputBorder),
+            BorderThickness = new Thickness(1.2),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.InputBackground),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius
         };
         ApplyFocusVisual(textBox);
         return textBox;
@@ -1498,9 +1642,10 @@ public sealed class ShellWindow : Window
         var comboBox = new ComboBox
         {
             MinHeight = 40,
-            BorderBrush = new SolidColorBrush(Color.Parse("#93B7D7")),
-            BorderThickness = new Thickness(1.5),
-            Background = new SolidColorBrush(Color.Parse("#FFFFFF"))
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.InputBorder),
+            BorderThickness = new Thickness(1.2),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.InputBackground),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
         };
         ApplyFocusVisual(comboBox);
         return comboBox;
@@ -1511,7 +1656,8 @@ public sealed class ShellWindow : Window
         var checkBox = new CheckBox
         {
             Content = label,
-            MinHeight = 40
+            MinHeight = 40,
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
         };
         ApplyFocusVisual(checkBox);
         return checkBox;
@@ -1521,7 +1667,7 @@ public sealed class ShellWindow : Window
     {
         var textBlock = new TextBlock
         {
-            Foreground = new SolidColorBrush(Color.Parse("#9D2E2E")),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.Danger),
             TextWrapping = TextWrapping.Wrap
         };
         textBlock.Bind(TextBlock.TextProperty, new Binding(propertyName));
@@ -1532,8 +1678,8 @@ public sealed class ShellWindow : Window
     {
         void Apply(bool focused)
         {
-            var border = new SolidColorBrush(Color.Parse(focused ? "#2D78B8" : "#93B7D7"));
-            var thickness = new Thickness(focused ? 2.5 : 1.5);
+            var border = new SolidColorBrush(focused ? AvaloniaDashboardTheme.FocusBorder : AvaloniaDashboardTheme.InputBorder);
+            var thickness = new Thickness(focused ? 2.3 : 1.2);
 
             switch (control)
             {
@@ -1566,6 +1712,31 @@ public sealed class ShellWindow : Window
 
         control.GotFocus += (_, _) => Apply(true);
         control.LostFocus += (_, _) => Apply(false);
+    }
+
+    private static Control BuildQuickStat(string label, string bindingProperty)
+    {
+        var value = new TextBlock
+        {
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            TextWrapping = TextWrapping.Wrap
+        };
+        value.Bind(TextBlock.TextProperty, new Binding(bindingProperty));
+
+        return new StackPanel
+        {
+            Spacing = 2,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = label,
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.MutedText),
+                    FontSize = 11
+                },
+                value
+            }
+        };
     }
 
     private async Task OpenNetworkFileAsync(WorkspaceViewModel viewModel)

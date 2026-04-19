@@ -393,8 +393,11 @@ private string? NormalizeEdgeEndpointInterface(string? nodeId, string? currentIn
             }
 
             ApplyWorkspaceMode(value);
+            OnPropertyChanged(nameof(IsReportsWorkspaceActive));
         }
     }
+
+    public bool IsReportsWorkspaceActive => SelectedWorkspaceMode == AppWorkspaceMode.Analyze;
 
     public double ReportsDrawerMaxHeight
     {
@@ -3632,6 +3635,7 @@ private static string FormatInterfaceTrafficList(IReadOnlyList<string> items)
         }
 
         OnPropertyChanged(nameof(BottomWorkspaceVisibility));
+        OnPropertyChanged(nameof(IsReportsWorkspaceActive));
     }
 
     private void SetReportsDrawerOpen(bool isOpen)

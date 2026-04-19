@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.ComponentModel;
 using System.Globalization;
 using System.Collections.Generic;
 using System.Windows.Input;
@@ -520,6 +521,20 @@ public sealed class GraphCanvasControl : Control
 
 public sealed class ShellWindow : Window
 {
+    private const double BottomStripHeight = 300d;
+    private const double BottomStripMinHeight = 220d;
+    private const double BottomStripMaxHeight = 360d;
+
+    private readonly WorkspaceViewModel viewModel;
+    private bool allowConfirmedClose;
+
+    private enum UnsavedChangesChoice
+    {
+        Save,
+        Discard,
+        Cancel
+    }
+
     private sealed class InverseBoolConverter : IValueConverter
     {
         public static InverseBoolConverter Instance { get; } = new();
@@ -533,7 +548,7 @@ public sealed class ShellWindow : Window
 
     public ShellWindow()
     {
-        var viewModel = new WorkspaceViewModel();
+        viewModel = new WorkspaceViewModel();
         DataContext = viewModel;
         Width = 1760;
         Height = 1100;
@@ -554,6 +569,7 @@ public sealed class ShellWindow : Window
             }
         };
 
+        Closing += HandleWindowClosing;
         Content = BuildLayout(viewModel);
     }
 
@@ -578,7 +594,11 @@ public sealed class ShellWindow : Window
             RowDefinitions =
             {
                 new RowDefinition(GridLength.Star),
-                new RowDefinition(GridLength.Auto)
+                new RowDefinition(new GridLength(BottomStripHeight))
+                {
+                    MinHeight = BottomStripMinHeight,
+                    MaxHeight = BottomStripMaxHeight
+                }
             }
         };
 
@@ -693,16 +713,16 @@ public sealed class ShellWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                BuildButton("New", viewModel.NewCommand, toolTip: "Create a blank network."),
+                BuildButton("New", new RelayCommand(() => _ = CreateBlankNetworkAsync(viewModel)), toolTip: "Create a blank network."),
                 BuildButton("Open", new RelayCommand(() => _ = OpenNetworkFileAsync(viewModel)), toolTip: "Open a network JSON file."),
-                BuildButton("Save", new RelayCommand(() => _ = SaveNetworkFileAsync(viewModel)), toolTip: "Save the current network JSON."),
+                BuildButton("Save", new RelayCommand(() => _ = SaveNetworkAsync(viewModel)), toolTip: "Save the current network JSON."),
                 BuildButton("Import", new RelayCommand(() => _ = ImportGraphMlAsync(viewModel)), toolTip: "Import GraphML into the current workspace."),
                 BuildButton("Export", new RelayCommand(() => _ = ExportGraphMlAsync(viewModel)), toolTip: "Export the active network as GraphML."),
                 BuildButton("Run", viewModel.SimulateCommand, isPrimary: true, toolTip: "Run the simulation timeline."),
                 BuildButton("Step", viewModel.StepCommand, isPrimary: true, toolTip: "Advance the simulation by one period."),
                 BuildButton("Reset", viewModel.ResetTimelineCommand, toolTip: "Reset timeline to period 0."),
                 BuildButton("Fit", viewModel.FitCommand, toolTip: "Fit the graph to the viewport."),
-                BuildButton("Exit", new RelayCommand(Close), toolTip: "Close the workstation.")
+                BuildButton("Exit", new RelayCommand(() => _ = CloseWithConfirmationAsync()), toolTip: "Close the workstation.")
             }
         };
         Grid.SetColumn(buttons, 2);
@@ -1063,9 +1083,23 @@ public sealed class ShellWindow : Window
             Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
             BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
             BorderThickness = new Thickness(1),
-            Padding = new Thickness(4)
+            Padding = new Thickness(4),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Height = BottomStripHeight - 56d,
+            MinHeight = BottomStripMinHeight - 56d,
+            MaxHeight = BottomStripMaxHeight - 56d
         };
-        tabControl.Items.Add(new TabItem { Header = "Playback", Content = playbackGrid });
+        tabControl.Items.Add(new TabItem
+        {
+            Header = "Playback",
+            Content = new ScrollViewer
+            {
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = playbackGrid
+            }
+        });
         var reportsGrid = new Grid
         {
             RowDefinitions = new RowDefinitions("Auto,*"),
@@ -1089,7 +1123,7 @@ public sealed class ShellWindow : Window
                 new ScrollViewer
                 {
                     HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-                    VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                     Content = metrics
                 }
             }
@@ -1101,7 +1135,7 @@ public sealed class ShellWindow : Window
         });
         var reportsScroll = new ScrollViewer
         {
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Content = new StackPanel
             {
@@ -1173,20 +1207,29 @@ public sealed class ShellWindow : Window
         tabControl.Items.Add(new TabItem
         {
             Header = "Status",
-            Content = new StackPanel
+            Content = new ScrollViewer
             {
-                Spacing = 8,
-                Children =
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = new StackPanel
                 {
-                    BuildQuickStat("Status", nameof(WorkspaceViewModel.StatusText)),
-                    BuildQuickStat("Selection", nameof(WorkspaceViewModel.SelectionSummary)),
-                    BuildQuickStat("Simulation", nameof(WorkspaceViewModel.SimulationSummary))
+                    Spacing = 8,
+                    Children =
+                    {
+                        BuildQuickStat("Status", nameof(WorkspaceViewModel.StatusText)),
+                        BuildQuickStat("Selection", nameof(WorkspaceViewModel.SelectionSummary)),
+                        BuildQuickStat("Simulation", nameof(WorkspaceViewModel.SimulationSummary))
+                    }
                 }
             }
         });
 
         var strip = BuildDashboardPanel(tabControl, header: "Dashboard Strip", padding: new Thickness(14, 10), radius: new CornerRadius(14));
         strip.Margin = new Thickness(12, 10, 0, 0);
+        strip.MinHeight = BottomStripMinHeight;
+        strip.MaxHeight = BottomStripMaxHeight;
+        strip.Height = BottomStripHeight;
+        strip.VerticalAlignment = VerticalAlignment.Stretch;
 
         Grid.SetColumn(strip, 1);
         Grid.SetColumnSpan(strip, 2);
@@ -1933,8 +1976,175 @@ public sealed class ShellWindow : Window
         BeginMoveDrag(e);
     }
 
+    private async void HandleWindowClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (allowConfirmedClose)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        if (await ConfirmDiscardOrSaveChangesAsync("Save changes before exiting?"))
+        {
+            allowConfirmedClose = true;
+            Close();
+        }
+    }
+
+    private async Task CloseWithConfirmationAsync()
+    {
+        if (!await ConfirmDiscardOrSaveChangesAsync("Save changes before exiting?"))
+        {
+            return;
+        }
+
+        allowConfirmedClose = true;
+        Close();
+    }
+
+    private async Task CreateBlankNetworkAsync(WorkspaceViewModel viewModel)
+    {
+        if (!await ConfirmDiscardOrSaveChangesAsync("Save changes before creating a new network?"))
+        {
+            return;
+        }
+
+        viewModel.NewCommand.Execute(null);
+    }
+
+    private async Task<bool> ConfirmDiscardOrSaveChangesAsync(string message)
+    {
+        if (!viewModel.HasUnsavedChanges)
+        {
+            return true;
+        }
+
+        var choice = await ShowUnsavedChangesDialogAsync(message);
+        return choice switch
+        {
+            UnsavedChangesChoice.Save => await SaveNetworkAsync(viewModel),
+            UnsavedChangesChoice.Discard => true,
+            _ => false
+        };
+    }
+
+    private async Task<UnsavedChangesChoice> ShowUnsavedChangesDialogAsync(string message)
+    {
+        var dialog = new Window
+        {
+            Width = 420,
+            CanResize = false,
+            SystemDecorations = SystemDecorations.None,
+            ExtendClientAreaToDecorationsHint = true,
+            ExtendClientAreaChromeHints = ExtendClientAreaChromeHints.NoChrome,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Title = "Unsaved changes"
+        };
+
+        var saveButton = BuildButton("Save", new RelayCommand(() => dialog.Close(UnsavedChangesChoice.Save)), isPrimary: true);
+        var discardButton = BuildButton("Discard", new RelayCommand(() => dialog.Close(UnsavedChangesChoice.Discard)));
+        var cancelButton = BuildButton("Cancel", new RelayCommand(() => dialog.Close(UnsavedChangesChoice.Cancel)));
+
+        dialog.Content = new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(16),
+            Padding = new Thickness(18),
+            Child = new StackPanel
+            {
+                Spacing = 14,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "Unsaved changes",
+                        FontSize = 20,
+                        FontWeight = FontWeight.Bold,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                    },
+                    new TextBlock
+                    {
+                        Text = message,
+                        TextWrapping = TextWrapping.Wrap,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
+                    },
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Spacing = 8,
+                        Children = { saveButton, discardButton, cancelButton }
+                    }
+                }
+            }
+        };
+
+        return await dialog.ShowDialog<UnsavedChangesChoice>(this);
+    }
+
+    private async Task ShowErrorDialogAsync(string title, string message)
+    {
+        var dialog = new Window
+        {
+            Width = 440,
+            CanResize = false,
+            SystemDecorations = SystemDecorations.None,
+            ExtendClientAreaToDecorationsHint = true,
+            ExtendClientAreaChromeHints = ExtendClientAreaChromeHints.NoChrome,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Title = title
+        };
+
+        var closeButton = BuildButton("OK", new RelayCommand(dialog.Close), isPrimary: true);
+        dialog.Content = new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(16),
+            Padding = new Thickness(18),
+            Child = new StackPanel
+            {
+                Spacing = 14,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = title,
+                        FontSize = 20,
+                        FontWeight = FontWeight.Bold,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.Danger)
+                    },
+                    new TextBlock
+                    {
+                        Text = message,
+                        TextWrapping = TextWrapping.Wrap,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
+                    },
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Children = { closeButton }
+                    }
+                }
+            }
+        };
+
+        await dialog.ShowDialog(this);
+    }
+
     private async Task OpenNetworkFileAsync(WorkspaceViewModel viewModel)
     {
+        if (!await ConfirmDiscardOrSaveChangesAsync("Save changes before opening another network?"))
+        {
+            return;
+        }
+
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             AllowMultiple = false,
@@ -1951,31 +2161,63 @@ public sealed class ShellWindow : Window
             return;
         }
 
-        viewModel.OpenNetwork(selected.Path.LocalPath);
+        try
+        {
+            viewModel.OpenNetwork(selected.Path.LocalPath);
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorDialogAsync("Open failed", ex.Message);
+        }
     }
 
-    private async Task SaveNetworkFileAsync(WorkspaceViewModel viewModel)
+    private async Task<bool> SaveNetworkAsync(WorkspaceViewModel viewModel)
+    {
+        var path = viewModel.CurrentFilePath;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            path = await PickSaveNetworkPathAsync(viewModel);
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+        }
+
+        try
+        {
+            viewModel.SaveNetwork(path);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorDialogAsync("Save failed", ex.Message);
+            return false;
+        }
+    }
+
+    private async Task<string?> PickSaveNetworkPathAsync(WorkspaceViewModel viewModel)
     {
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = "Save network",
             DefaultExtension = "json",
+            SuggestedFileName = viewModel.SuggestedFileName,
             FileTypeChoices =
             [
                 new FilePickerFileType("Network JSON") { Patterns = ["*.json"] }
             ]
         });
 
-        if (file is null)
-        {
-            return;
-        }
-
-        viewModel.SaveNetwork(file.Path.LocalPath);
+        return file?.Path.LocalPath;
     }
 
     private async Task ImportGraphMlAsync(WorkspaceViewModel viewModel)
     {
+        if (!await ConfirmDiscardOrSaveChangesAsync("Save changes before importing GraphML?"))
+        {
+            return;
+        }
+
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             AllowMultiple = false,
@@ -1991,7 +2233,14 @@ public sealed class ShellWindow : Window
             return;
         }
 
-        viewModel.ImportGraphMl(selected.Path.LocalPath);
+        try
+        {
+            viewModel.ImportGraphMl(selected.Path.LocalPath);
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorDialogAsync("Import failed", ex.Message);
+        }
     }
 
     private async Task ExportGraphMlAsync(WorkspaceViewModel viewModel)

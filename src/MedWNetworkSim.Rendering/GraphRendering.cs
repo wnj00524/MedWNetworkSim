@@ -247,6 +247,8 @@ public sealed class GraphHitTester
 
 public sealed class GraphRenderer
 {
+    private const float NodeCornerRadius = 18f;
+    private const double TextClipInset = 6d;
     private static readonly SKColor BackgroundColor = SKColor.Parse("#08111D");
     private static readonly SKColor GridMajorColor = SKColor.Parse("#1A3148");
     private static readonly SKColor GridMinorColor = SKColor.Parse("#102437");
@@ -366,12 +368,7 @@ public sealed class GraphRenderer
     {
         foreach (var node in scene.Nodes)
         {
-            var topLeft = viewport.WorldToScreen(new GraphPoint(node.Bounds.Left, node.Bounds.Top), viewportSize);
-            var screenRect = new SKRect(
-                (float)topLeft.X,
-                (float)topLeft.Y,
-                (float)(topLeft.X + (node.Bounds.Width * viewport.Zoom)),
-                (float)(topLeft.Y + (node.Bounds.Height * viewport.Zoom)));
+            var screenRect = GetNodeScreenRect(node, viewport, viewportSize);
 
             using var fill = new SKPaint { Color = node.FillColor, IsAntialias = true };
             using var stroke = new SKPaint
@@ -382,8 +379,8 @@ public sealed class GraphRenderer
                 Style = SKPaintStyle.Stroke
             };
 
-            canvas.DrawRoundRect(screenRect, 18f, 18f, fill);
-            canvas.DrawRoundRect(screenRect, 18f, 18f, stroke);
+            canvas.DrawRoundRect(screenRect, NodeCornerRadius, NodeCornerRadius, fill);
+            canvas.DrawRoundRect(screenRect, NodeCornerRadius, NodeCornerRadius, stroke);
         }
     }
 
@@ -405,17 +402,28 @@ public sealed class GraphRenderer
 
         foreach (var node in scene.Nodes)
         {
-            var leftPadding = 14d;
-            var origin = viewport.WorldToScreen(
-                new GraphPoint(node.Bounds.Left + leftPadding, node.Bounds.Top + GraphNodeTextLayout.TopPadding),
-                viewportSize);
             var visibleDetailLines = tier switch
             {
                 ZoomTier.Near => 6,
                 ZoomTier.Medium => 3,
                 _ => 0
             };
-            var layout = GraphNodeTextLayout.BuildLayout(node.Name, tier >= ZoomTier.Medium ? node.TypeLabel : string.Empty, node.DetailLines, node.Bounds.Width, visibleDetailLines);
+            var layout = GraphNodeTextLayout.BuildLayout(node.Name, tier >= ZoomTier.Medium ? node.TypeLabel : string.Empty, node.DetailLines, node.Bounds.Width, maxDetailLines: visibleDetailLines);
+            var origin = viewport.WorldToScreen(
+                new GraphPoint(node.Bounds.Left + GraphNodeTextLayout.HorizontalPadding, node.Bounds.Top + GraphNodeTextLayout.TopPadding),
+                viewportSize);
+            var clipRect = InsetRect(GetNodeScreenRect(node, viewport, viewportSize), (float)Math.Max(TextClipInset, viewport.Zoom * TextClipInset));
+            if (clipRect.Width <= 1f || clipRect.Height <= 1f)
+            {
+                continue;
+            }
+
+            using var clipPath = new SKPath();
+            var clipRadius = Math.Max(8f, NodeCornerRadius - ((float)Math.Max(TextClipInset, viewport.Zoom * TextClipInset) * 0.6f));
+            clipPath.AddRoundRect(clipRect, clipRadius, clipRadius);
+
+            canvas.Save();
+            canvas.ClipPath(clipPath, antialias: true);
             var y = (float)origin.Y;
 
             foreach (var line in layout.Lines)
@@ -432,7 +440,24 @@ public sealed class GraphRenderer
                 y += line.Kind == GraphNodeTextKind.Title ? 18f : 14f;
                 canvas.DrawText(line.Text, (float)origin.X, y, SKTextAlign.Left, font, paint);
             }
+
+            canvas.Restore();
         }
+    }
+
+    private static SKRect GetNodeScreenRect(GraphNodeSceneItem node, GraphViewport viewport, GraphSize viewportSize)
+    {
+        var topLeft = viewport.WorldToScreen(new GraphPoint(node.Bounds.Left, node.Bounds.Top), viewportSize);
+        return new SKRect(
+            (float)topLeft.X,
+            (float)topLeft.Y,
+            (float)(topLeft.X + (node.Bounds.Width * viewport.Zoom)),
+            (float)(topLeft.Y + (node.Bounds.Height * viewport.Zoom)));
+    }
+
+    private static SKRect InsetRect(SKRect rect, float inset)
+    {
+        return new SKRect(rect.Left + inset, rect.Top + inset, rect.Right - inset, rect.Bottom - inset);
     }
 
     private static void DrawSelection(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize)

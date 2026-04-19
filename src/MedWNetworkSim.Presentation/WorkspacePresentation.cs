@@ -387,6 +387,8 @@ public sealed class WorkspaceViewModel : ObservableObject
     private string pendingTrafficRemovalName = string.Empty;
     private InspectorTabTarget selectedInspectorTab = InspectorTabTarget.Selection;
     private InspectorSectionTarget selectedInspectorSection = InspectorSectionTarget.None;
+    private bool hasUnsavedChanges;
+    private string? currentFilePath;
 
     public WorkspaceViewModel()
     {
@@ -477,7 +479,37 @@ public sealed class WorkspaceViewModel : ObservableObject
     public RelayCommand ApplyTrafficDefinitionCommand { get; }
 
     public GraphInteractionController InteractionController => interactionController;
-    public string WindowTitle => $"MedW Network Sim | Avalonia Workstation | {network.Name}";
+    public bool HasUnsavedChanges
+    {
+        get => hasUnsavedChanges;
+        private set
+        {
+            if (SetProperty(ref hasUnsavedChanges, value))
+            {
+                Raise(nameof(WindowTitle));
+                Raise(nameof(SessionSubtitle));
+            }
+        }
+    }
+
+    public string? CurrentFilePath
+    {
+        get => currentFilePath;
+        private set
+        {
+            if (SetProperty(ref currentFilePath, value))
+            {
+                Raise(nameof(WindowTitle));
+                Raise(nameof(SessionSubtitle));
+                Raise(nameof(LastSavedDisplayName));
+                Raise(nameof(SuggestedFileName));
+            }
+        }
+    }
+
+    public string LastSavedDisplayName => string.IsNullOrWhiteSpace(CurrentFilePath) ? "Untitled Network.json" : Path.GetFileName(CurrentFilePath);
+    public string SuggestedFileName => string.IsNullOrWhiteSpace(CurrentFilePath) ? BuildSuggestedFileName() : Path.GetFileName(CurrentFilePath);
+    public string WindowTitle => $"{(HasUnsavedChanges ? "*" : string.Empty)}MedW Network Sim | Avalonia Workstation | {network.Name}";
     public string SessionSubtitle => $"Active network: {network.Name} · {SimulationSummary}";
     public string StatusText { get => statusText; set => SetProperty(ref statusText, value); }
     public string ToolStatusText { get => toolStatusText; private set => SetProperty(ref toolStatusText, value); }
@@ -667,7 +699,11 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     public void NotifyVisualChanged()
     {
-        SyncNetworkNodePositionsFromScene();
+        if (SyncNetworkNodePositionsFromScene())
+        {
+            MarkDirty();
+        }
+
         ViewportVersion++;
         Raise(nameof(ViewportVersion));
         Raise(nameof(WindowTitle));
@@ -676,21 +712,43 @@ public sealed class WorkspaceViewModel : ObservableObject
         Raise(nameof(SimulationSummary));
     }
 
+    private void MarkDirty()
+    {
+        HasUnsavedChanges = true;
+    }
+
+    private string BuildSuggestedFileName()
+    {
+        var baseName = string.IsNullOrWhiteSpace(network.Name) ? "Untitled Network" : network.Name.Trim();
+        var invalidChars = Path.GetInvalidFileNameChars();
+        var sanitized = new string(baseName.Select(character => invalidChars.Contains(character) ? '_' : character).ToArray()).Trim();
+        if (string.IsNullOrWhiteSpace(sanitized))
+        {
+            sanitized = "Untitled Network";
+        }
+
+        return sanitized.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? sanitized : $"{sanitized}.json";
+    }
+
     public void OpenNetwork(string path)
     {
-        LoadNetwork(fileService.Load(path), $"Opened '{Path.GetFileName(path)}'.");
+        LoadNetwork(fileService.Load(path), $"Opened '{Path.GetFileName(path)}'.", path);
     }
 
     public void SaveNetwork(string path)
     {
         CommitTransientEditorsToModel();
         fileService.Save(network, path);
+        CurrentFilePath = path;
+        HasUnsavedChanges = false;
         StatusText = $"Saved '{Path.GetFileName(path)}'.";
+        Raise(nameof(WindowTitle));
+        Raise(nameof(SessionSubtitle));
     }
 
     public void ImportGraphMl(string path)
     {
-        LoadNetwork(graphMlFileService.Load(path, new GraphMlTransferOptions(default, "transship", 25d)), $"Imported '{Path.GetFileName(path)}'.");
+        LoadNetwork(graphMlFileService.Load(path, new GraphMlTransferOptions(default, "transship", 25d)), $"Imported '{Path.GetFileName(path)}'.", currentFilePath: null);
     }
 
     public void ExportGraphMl(string path)
@@ -766,7 +824,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         }, "Created a blank network.");
     }
 
-    private void LoadNetwork(NetworkModel source, string status)
+    private void LoadNetwork(NetworkModel source, string status, string? currentFilePath = null)
     {
         network = fileService.NormalizeAndValidate(source);
         temporalState = null;
@@ -792,6 +850,8 @@ public sealed class WorkspaceViewModel : ObservableObject
         Scene.Simulation.ShowAnimatedFlows = true;
         Scene.Simulation.ReducedMotion = ReducedMotion;
         ClearDynamicReports();
+        CurrentFilePath = currentFilePath;
+        HasUnsavedChanges = false;
         RefreshInspector();
         StatusText = status;
         NotifyVisualChanged();
@@ -808,8 +868,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             var centerY = node.Y ?? 0d;
             var detailLines = BuildNodeDetailLines(node, [], null);
             var typeLabel = string.IsNullOrWhiteSpace(node.PlaceType) ? "Node" : node.PlaceType!;
-            var nodeWidth = GraphNodeTextLayout.ComputeNodeWidth(node.Name, typeLabel, detailLines);
-            var nodeHeight = GraphNodeTextLayout.BuildLayout(node.Name, typeLabel, detailLines, nodeWidth).Height;
+            var layout = GraphNodeTextLayout.BuildLayout(node.Name, typeLabel, detailLines);
             Scene.Nodes.Add(new GraphNodeSceneItem
             {
                 Id = node.Id,
@@ -817,7 +876,7 @@ public sealed class WorkspaceViewModel : ObservableObject
                 TypeLabel = typeLabel,
                 MetricsLabel = string.Empty,
                 DetailLines = detailLines,
-                Bounds = new GraphRect(centerX - (nodeWidth / 2d), centerY - (nodeHeight / 2d), nodeWidth, nodeHeight),
+                Bounds = new GraphRect(centerX - (layout.Width / 2d), centerY - (layout.Height / 2d), layout.Width, layout.Height),
                 FillColor = SKColor.Parse("#163149"),
                 StrokeColor = SKColor.Parse("#6AAED6"),
                 Badges = BuildNodeBadges(node),
@@ -870,6 +929,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         });
         BuildSceneFromNetwork();
         RefreshInspector();
+        MarkDirty();
         NotifyVisualChanged();
         return true;
     }
@@ -905,6 +965,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         Scene.Selection.SelectedNodeIds.Clear();
         Scene.Selection.SelectedNodeIds.Add(id);
         RefreshInspector();
+        MarkDirty();
         NotifyVisualChanged();
         return id;
     }
@@ -925,6 +986,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         Scene.Selection.SelectedEdgeIds.Clear();
         BuildSceneFromNetwork();
         RefreshInspector();
+        MarkDirty();
         NotifyVisualChanged();
         StatusText = "Deleted the current selection.";
     }
@@ -1590,6 +1652,7 @@ public sealed class WorkspaceViewModel : ObservableObject
 
             BuildSceneFromNetwork();
             RefreshInspector();
+            MarkDirty();
             NotifyVisualChanged();
         }
         catch (Exception ex)
@@ -1708,6 +1771,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         PopulateNodeEditor(node);
         SelectedNodeTrafficProfileItem = SelectedNodeTrafficProfiles.LastOrDefault();
         FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.TrafficRoles);
+        MarkDirty();
         StatusText = "Added a new traffic role to the selected node.";
     }
 
@@ -1740,6 +1804,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         PopulateNodeEditor(node);
         SelectedNodeTrafficProfileItem = SelectedNodeTrafficProfiles.FirstOrDefault(item => ReferenceEquals(item.Model, duplicate));
         FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.TrafficRoles);
+        MarkDirty();
         StatusText = "Duplicated the selected traffic role.";
     }
 
@@ -1755,6 +1820,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         var node = network.Nodes.First(model => Comparer.Equals(model.Id, nodeId));
         node.TrafficProfiles.Remove(SelectedNodeTrafficProfileItem.Model);
         PopulateNodeEditor(node);
+        MarkDirty();
         StatusText = "Removed the selected traffic role.";
     }
 
@@ -1774,6 +1840,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         PopulateTrafficDefinitionList();
         PopulateDefaultPermissionRows();
         RefreshInspector();
+        MarkDirty();
         StatusText = $"Added traffic type '{nextName}'.";
     }
 
@@ -1811,6 +1878,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         PopulateTrafficDefinitionList();
         PopulateDefaultPermissionRows();
         RefreshInspector();
+        MarkDirty();
         StatusText = $"Removed traffic type '{selected.Name}' and cleared matching dependencies.";
         TrafficValidationText = string.Empty;
     }
@@ -1857,6 +1925,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             PopulateDefaultPermissionRows();
             RefreshInspector();
             TrafficValidationText = string.Empty;
+            MarkDirty();
             StatusText = $"Updated traffic type '{requestedName}'.";
         }
         catch (Exception ex)
@@ -2041,8 +2110,9 @@ public sealed class WorkspaceViewModel : ObservableObject
         };
     }
 
-    private void SyncNetworkNodePositionsFromScene()
+    private bool SyncNetworkNodePositionsFromScene()
     {
+        var changed = false;
         foreach (var sceneNode in Scene.Nodes)
         {
             var model = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, sceneNode.Id));
@@ -2051,9 +2121,20 @@ public sealed class WorkspaceViewModel : ObservableObject
                 continue;
             }
 
-            model.X = sceneNode.Bounds.CenterX;
-            model.Y = sceneNode.Bounds.CenterY;
+            if (Math.Abs((model.X ?? 0d) - sceneNode.Bounds.CenterX) > 0.001d)
+            {
+                model.X = sceneNode.Bounds.CenterX;
+                changed = true;
+            }
+
+            if (Math.Abs((model.Y ?? 0d) - sceneNode.Bounds.CenterY) > 0.001d)
+            {
+                model.Y = sceneNode.Bounds.CenterY;
+                changed = true;
+            }
         }
+
+        return changed;
     }
 
     private string BuildSelectionSummary()
@@ -2330,26 +2411,36 @@ public sealed class WorkspaceViewModel : ObservableObject
             .Select(item => item.Line)
             .ToList();
 
-        var visible = ordered.Count <= 4
-            ? ordered
-            : ordered.Take(3).Append(new GraphNodeTextLine($"+{ordered.Count - 3} more roles", false, false)).ToList();
-
+        var specialLines = new List<GraphNodeTextLine>();
         var unmetNeedLine = BuildSceneUnmetNeedLine(backlogByTraffic);
         if (!string.IsNullOrWhiteSpace(unmetNeedLine))
         {
-            visible.Add(new GraphNodeTextLine(unmetNeedLine, true, true));
+            specialLines.Add(new GraphNodeTextLine(unmetNeedLine, true, true));
         }
 
         if (pressure is { Score: > 0d })
         {
-            visible.Add(new GraphNodeTextLine($"Pressure {pressure.Value.Score:0.##}", true, true));
+            specialLines.Add(new GraphNodeTextLine($"Pressure {pressure.Value.Score:0.##}", true, true));
             var topCause = BuildTopCauseText(pressure.Value.TopCause);
             if (!string.IsNullOrWhiteSpace(topCause))
             {
-                visible.Add(new GraphNodeTextLine($"Cause: {topCause}", false, true));
+                specialLines.Add(new GraphNodeTextLine($"Cause: {topCause}", false, true));
             }
         }
 
+        var maxRoleLines = specialLines.Count switch
+        {
+            >= 3 => 1,
+            2 => 2,
+            1 => 3,
+            _ => 4
+        };
+
+        var visible = ordered.Count <= maxRoleLines
+            ? ordered
+            : ordered.Take(maxRoleLines).Append(new GraphNodeTextLine($"+{ordered.Count - maxRoleLines} more roles", false, false)).ToList();
+
+        visible.AddRange(specialLines);
         return visible;
     }
 
@@ -2408,9 +2499,8 @@ public sealed class WorkspaceViewModel : ObservableObject
     {
         var centerX = sceneNode.Bounds.CenterX;
         var centerY = sceneNode.Bounds.CenterY;
-        var width = GraphNodeTextLayout.ComputeNodeWidth(sceneNode.Name, sceneNode.TypeLabel, sceneNode.DetailLines);
-        var height = GraphNodeTextLayout.BuildLayout(sceneNode.Name, sceneNode.TypeLabel, sceneNode.DetailLines, width).Height;
-        sceneNode.Bounds = new GraphRect(centerX - (width / 2d), centerY - (height / 2d), width, height);
+        var layout = GraphNodeTextLayout.BuildLayout(sceneNode.Name, sceneNode.TypeLabel, sceneNode.DetailLines);
+        sceneNode.Bounds = new GraphRect(centerX - (layout.Width / 2d), centerY - (layout.Height / 2d), layout.Width, layout.Height);
         sceneNode.ToolTipText = BuildNodeToolTipText(nodeModel, sceneNode.DetailLines, pressure);
     }
 

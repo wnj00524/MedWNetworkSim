@@ -530,6 +530,9 @@ public sealed class ShellWindow : Window
     private readonly WorkspaceViewModel viewModel;
     private bool allowConfirmedClose;
     private Grid? workspaceGrid;
+    private Grid? standardWorkspaceHost;
+    private Border? trafficTypeWorkspaceHost;
+    private Control? trafficTypeWorkspaceFocusTarget;
     private Border? toolRailHost;
     private Border? canvasHost;
     private Border? inspectorHost;
@@ -541,12 +544,19 @@ public sealed class ShellWindow : Window
     private Border? fullNodeEditorDrawer;
     private DashboardLayoutState dashboardLayoutState = DashboardLayoutState.Normal;
     private DashboardLayoutState previousDashboardLayoutState = DashboardLayoutState.Normal;
+    private ShellWorkspaceMode shellWorkspaceMode = ShellWorkspaceMode.Standard;
 
     private enum DashboardLayoutState
     {
         Collapsed,
         Normal,
         Expanded
+    }
+
+    private enum ShellWorkspaceMode
+    {
+        Standard,
+        TrafficTypes
     }
 
     private enum UnsavedChangesChoice
@@ -639,7 +649,27 @@ public sealed class ShellWindow : Window
         workspaceGrid.Children.Add(inspectorHost);
         workspaceGrid.Children.Add(dashboardStripHost);
 
-        dockRoot.Children.Add(workspaceGrid);
+        standardWorkspaceHost = new Grid
+        {
+            Children =
+            {
+                workspaceGrid
+            }
+        };
+        trafficTypeWorkspaceHost = BuildTrafficTypeWorkspace(viewModel);
+        trafficTypeWorkspaceHost.IsVisible = false;
+
+        var contentRoot = new Grid
+        {
+            Children =
+            {
+                standardWorkspaceHost,
+                trafficTypeWorkspaceHost
+            }
+        };
+
+        dockRoot.Children.Remove(workspaceGrid);
+        dockRoot.Children.Add(contentRoot);
 
         overlayLayer = new Grid
         {
@@ -659,6 +689,7 @@ public sealed class ShellWindow : Window
         root.Children.Add(dockRoot);
         root.Children.Add(overlayLayer);
         UpdateDashboardLayout();
+        UpdateShellWorkspaceMode();
         return root;
     }
 
@@ -850,9 +881,17 @@ public sealed class ShellWindow : Window
         Grid.SetRow(quickAccess, 1);
         content.Children.Add(quickAccess);
 
-        var trafficEditor = BuildTrafficTypeRailEditor(viewModel);
-        Grid.SetRow(trafficEditor, 2);
-        content.Children.Add(trafficEditor);
+        var trafficLauncher = new StackPanel
+        {
+            Spacing = AvaloniaDashboardTheme.SectionSpacing,
+            Children =
+            {
+                BuildSectionTitle("Traffic", "Open a dedicated workspace to manage traffic types."),
+                BuildTrafficWorkspaceLauncher()
+            }
+        };
+        Grid.SetRow(trafficLauncher, 2);
+        content.Children.Add(trafficLauncher);
 
         var border = BuildDashboardPanel(
             content,
@@ -1005,105 +1044,153 @@ public sealed class ShellWindow : Window
         return border;
     }
 
-    private Control BuildTrafficTypeRailEditor(WorkspaceViewModel viewModel)
+    private Control BuildTrafficWorkspaceLauncher()
     {
-        Border? compactCard = null;
-        Control? expandedEditor = null;
+        return BuildButton(
+            "Edit Traffic Types",
+            new RelayCommand(EnterTrafficTypeWorkspace),
+            isPrimary: true,
+            toolTip: "Switch to the dedicated traffic-type workspace.");
+    }
 
-        var compactList = BuildTrafficTypeList(maxHeight: 220, onOpenEditor: ExpandEditor);
-        var editTypeButton = BuildButton("Edit type", new RelayCommand(ExpandEditor));
-        editTypeButton.IsEnabled = viewModel.SelectedTrafficDefinitionItem is not null;
+    private Border BuildTrafficTypeWorkspace(WorkspaceViewModel viewModel)
+    {
+        Control editorFocusTarget;
+        var navigator = BuildTrafficTypeList(maxHeight: double.PositiveInfinity, onOpenEditor: FocusTrafficTypeWorkspaceEditor);
+        trafficTypeWorkspaceFocusTarget = navigator;
+        Grid? leftGrid = null;
 
-        compactCard = new Border
+        var leftColumn = new Border
         {
             Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
             BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(12),
             Padding = new Thickness(12),
-            Child = new StackPanel
+            Child = leftGrid = new Grid
             {
-                Spacing = 10,
+                RowDefinitions = new RowDefinitions("Auto,*,Auto"),
+                RowSpacing = 10,
+                MinHeight = 0,
                 Children =
                 {
-                    compactList,
+                    BuildSectionTitle("Traffic Types", "Browse and select the traffic type you want to edit."),
+                    navigator,
                     new StackPanel
                     {
                         Orientation = Orientation.Horizontal,
                         Spacing = 8,
                         Children =
                         {
-                            BuildButton("Add type", new RelayCommand(() =>
-                            {
-                                viewModel.AddTrafficDefinitionCommand.Execute(null);
-                                ExpandEditor();
-                            })),
-                            BuildBoundButton("Remove type", nameof(WorkspaceViewModel.RemoveSelectedTrafficDefinitionCommand)),
-                            editTypeButton
+                            BuildBoundButton("Remove type", nameof(WorkspaceViewModel.RemoveSelectedTrafficDefinitionCommand))
+                        }
+                    }
+                }
+            }
+        };
+        Grid.SetRow(leftGrid.Children[1], 1);
+        Grid.SetRow(leftGrid.Children[2], 2);
+
+        Grid? editorGrid = null;
+        var editorColumn = new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(14),
+            Child = editorGrid = new Grid
+            {
+                RowDefinitions = new RowDefinitions("Auto,*"),
+                RowSpacing = 12,
+                MinHeight = 0,
+                Children =
+                {
+                    BuildTrafficTypeIdentityEditors(out editorFocusTarget),
+                    BuildTrafficTypeTabbedEditor()
+                }
+            }
+        };
+        Grid.SetRow(editorGrid.Children[1], 1);
+        trafficTypeWorkspaceFocusTarget = editorFocusTarget;
+
+        var header = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto,Auto"),
+            ColumnSpacing = 8,
+            Children =
+            {
+                new StackPanel
+                {
+                    Spacing = 2,
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = "Traffic Type Workspace",
+                            FontSize = 18,
+                            FontWeight = FontWeight.Bold,
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                        },
+                        new TextBlock
+                        {
+                            Text = "Create, review, and edit traffic types in one place.",
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                            TextWrapping = TextWrapping.Wrap
                         }
                     }
                 }
             }
         };
 
-        expandedEditor = BuildExpandedTrafficTypeEditor(viewModel, CollapseEditor);
-
-        var section = new Grid
+        var addTypeButton = BuildButton("Add type", new RelayCommand(() =>
         {
-            RowDefinitions = new RowDefinitions("Auto,*"),
-            RowSpacing = 10,
+            viewModel.AddTrafficDefinitionCommand.Execute(null);
+            FocusTrafficTypeWorkspaceEditor();
+        }));
+        var applyTypeButton = BuildBoundButton("Apply traffic type", nameof(WorkspaceViewModel.ApplyTrafficDefinitionCommand));
+        var cancelButton = BuildButton("Cancel", new RelayCommand(ExitTrafficTypeWorkspace));
+        var doneButton = BuildButton("Done", new RelayCommand(ExitTrafficTypeWorkspace), isPrimary: true);
+        Grid.SetColumn(addTypeButton, 1);
+        Grid.SetColumn(applyTypeButton, 2);
+        Grid.SetColumn(cancelButton, 3);
+        Grid.SetColumn(doneButton, 4);
+        header.Children.Add(addTypeButton);
+        header.Children.Add(applyTypeButton);
+        header.Children.Add(cancelButton);
+        header.Children.Add(doneButton);
+
+        var body = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("320,16,*"),
             MinHeight = 0,
             Children =
             {
-                BuildSectionTitle("Traffic Types", "Create, review, and edit traffic types."),
-                compactCard,
-                expandedEditor
+                leftColumn,
+                editorColumn
             }
         };
+        Grid.SetColumn(editorColumn, 2);
 
-        Grid.SetRow(compactCard, 1);
-        Grid.SetRow(expandedEditor, 1);
-        compactCard.IsVisible = true;
-        expandedEditor.IsVisible = false;
-
-        void ExpandEditor()
+        var layout = new Grid
         {
-            if (viewModel.SelectedTrafficDefinitionItem is null)
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            RowSpacing = 12,
+            MinHeight = 0,
+            Margin = new Thickness(0, 12, 0, 0),
+            Children =
             {
-                return;
-            }
-
-            compactCard!.IsVisible = false;
-            expandedEditor!.IsVisible = true;
-            expandedEditor.BringIntoView();
-            expandedEditor.Focus();
-        }
-
-        void CollapseEditor()
-        {
-            expandedEditor!.IsVisible = false;
-            compactCard!.IsVisible = true;
-            compactCard.BringIntoView();
-        }
-
-        viewModel.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(WorkspaceViewModel.SelectedTrafficDefinitionItem) &&
-                viewModel.SelectedTrafficDefinitionItem is null)
-            {
-                editTypeButton.IsEnabled = false;
-                if (expandedEditor.IsVisible)
-                {
-                    CollapseEditor();
-                }
-            }
-            else if (e.PropertyName == nameof(WorkspaceViewModel.SelectedTrafficDefinitionItem))
-            {
-                editTypeButton.IsEnabled = true;
+                header,
+                body
             }
         };
+        Grid.SetRow(layout.Children[1], 1);
 
-        return section;
+        return BuildDashboardPanel(
+            layout,
+            header: "Traffic Workspace",
+            padding: new Thickness(14),
+            radius: new CornerRadius(18));
     }
 
     private static Control BuildInspectorDetails()
@@ -1991,6 +2078,58 @@ public sealed class ShellWindow : Window
         overlayLayer.IsHitTestVisible = false;
     }
 
+    private void EnterTrafficTypeWorkspace()
+    {
+        if (viewModel.SelectedTrafficDefinitionItem is null)
+        {
+            viewModel.SelectedTrafficDefinitionItem = viewModel.TrafficDefinitions.FirstOrDefault();
+        }
+
+        shellWorkspaceMode = ShellWorkspaceMode.TrafficTypes;
+        UpdateShellWorkspaceMode();
+        FocusTrafficTypeWorkspaceEditor();
+    }
+
+    private void ExitTrafficTypeWorkspace()
+    {
+        shellWorkspaceMode = ShellWorkspaceMode.Standard;
+        UpdateShellWorkspaceMode();
+        toolRailHost?.BringIntoView();
+    }
+
+    private void UpdateShellWorkspaceMode()
+    {
+        if (standardWorkspaceHost is null || trafficTypeWorkspaceHost is null)
+        {
+            return;
+        }
+
+        var isTrafficTypeWorkspace = shellWorkspaceMode == ShellWorkspaceMode.TrafficTypes;
+        standardWorkspaceHost.IsVisible = !isTrafficTypeWorkspace;
+        trafficTypeWorkspaceHost.IsVisible = isTrafficTypeWorkspace;
+    }
+
+    private void FocusTrafficTypeWorkspaceEditor()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (trafficTypeWorkspaceHost?.IsVisible != true)
+            {
+                return;
+            }
+
+            trafficTypeWorkspaceHost.BringIntoView();
+            if (trafficTypeWorkspaceFocusTarget is { IsVisible: true, IsEnabled: true })
+            {
+                trafficTypeWorkspaceFocusTarget.Focus();
+            }
+            else
+            {
+                trafficTypeWorkspaceHost.Focus();
+            }
+        }, DispatcherPriority.Background);
+    }
+
     private void HandleShellWindowKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key != Key.Escape)
@@ -2001,6 +2140,13 @@ public sealed class ShellWindow : Window
         if (fullNodeEditorDrawer?.IsVisible == true)
         {
             CloseFullNodeEditor();
+            e.Handled = true;
+            return;
+        }
+
+        if (shellWorkspaceMode == ShellWorkspaceMode.TrafficTypes)
+        {
+            ExitTrafficTypeWorkspace();
             e.Handled = true;
             return;
         }
@@ -2688,108 +2834,6 @@ public sealed class ShellWindow : Window
         return definitionList;
     }
 
-    private Control BuildExpandedTrafficTypeEditor(WorkspaceViewModel viewModel, Action collapseAction)
-    {
-        var header = new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto"),
-            ColumnSpacing = 8
-        };
-        header.Children.Add(new StackPanel
-        {
-            Spacing = 2,
-            Children =
-            {
-                new TextBlock
-                {
-                    Text = "Traffic Type Editor",
-                    FontSize = 16,
-                    FontWeight = FontWeight.Bold,
-                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
-                },
-                new TextBlock
-                {
-                    [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.TrafficNameText)),
-                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
-                    TextWrapping = TextWrapping.Wrap
-                }
-            }
-        });
-
-        var collapseButton = BuildButton("Collapse", new RelayCommand(collapseAction));
-        var inspectorButton = BuildButton("Open in inspector", new RelayCommand(() => viewModel.SelectedInspectorTab = InspectorTabTarget.TrafficTypes));
-        var newTypeButton = BuildButton("Add type", new RelayCommand(() => viewModel.AddTrafficDefinitionCommand.Execute(null)));
-        Grid.SetColumn(collapseButton, 1);
-        Grid.SetColumn(inspectorButton, 2);
-        Grid.SetColumn(newTypeButton, 3);
-        header.Children.Add(collapseButton);
-        header.Children.Add(inspectorButton);
-        header.Children.Add(newTypeButton);
-
-        var footer = new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto"),
-            ColumnSpacing = 8,
-            Children =
-            {
-                new TextBlock
-                {
-                    Text = "Tab through the editor, then apply or collapse when you are done.",
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
-                    FontSize = 12
-                }
-            }
-        };
-        var applyButton = BuildBoundButton("Apply traffic type", nameof(WorkspaceViewModel.ApplyTrafficDefinitionCommand));
-        var removeButton = BuildBoundButton("Remove type", nameof(WorkspaceViewModel.RemoveSelectedTrafficDefinitionCommand));
-        var doneButton = BuildButton("Done", new RelayCommand(collapseAction), isPrimary: true);
-        Grid.SetColumn(applyButton, 1);
-        Grid.SetColumn(removeButton, 2);
-        Grid.SetColumn(doneButton, 3);
-        footer.Children.Add(applyButton);
-        footer.Children.Add(removeButton);
-        footer.Children.Add(doneButton);
-
-        var body = new Grid
-        {
-            RowDefinitions = new RowDefinitions("Auto,*"),
-            RowSpacing = 10,
-            MinHeight = 0,
-            Children =
-            {
-                BuildTrafficTypeIdentityEditors(),
-                BuildTrafficTypeTabbedEditor()
-            }
-        };
-        Grid.SetRow(body.Children[1], 1);
-
-        var layout = new Grid
-        {
-            RowDefinitions = new RowDefinitions("Auto,*,Auto"),
-            RowSpacing = 10,
-            MinHeight = 0,
-            Children =
-            {
-                header,
-                body,
-                footer
-            }
-        };
-        Grid.SetRow(layout.Children[1], 1);
-        Grid.SetRow(layout.Children[2], 2);
-
-        return new Border
-        {
-            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
-            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(12),
-            Padding = new Thickness(12),
-            Child = layout
-        };
-    }
-
     private static Control BuildTrafficTypeTabbedEditor()
     {
         var tabControl = new TabControl
@@ -2815,13 +2859,25 @@ public sealed class ShellWindow : Window
 
     private static Control BuildTrafficTypeIdentityEditors()
     {
+        return BuildTrafficTypeIdentityEditors(out _);
+    }
+
+    private static Control BuildTrafficTypeIdentityEditors(out Control focusTarget)
+    {
+        var nameEditor = BuildTextBox("Traffic type name");
+        nameEditor.Bind(TextBox.TextProperty, new Binding(nameof(WorkspaceViewModel.TrafficNameText), BindingMode.TwoWay));
+        focusTarget = nameEditor;
+
+        var descriptionEditor = BuildTextBox("Description");
+        descriptionEditor.Bind(TextBox.TextProperty, new Binding(nameof(WorkspaceViewModel.TrafficDescriptionText), BindingMode.TwoWay));
+
         return new StackPanel
         {
             Spacing = 10,
             Children =
             {
-                BuildLabeledTextBox("Traffic type name", nameof(WorkspaceViewModel.TrafficNameText)),
-                BuildLabeledTextBox("Description", nameof(WorkspaceViewModel.TrafficDescriptionText))
+                BuildLabeledRow("Traffic type name", nameEditor),
+                BuildLabeledRow("Description", descriptionEditor)
             }
         };
     }

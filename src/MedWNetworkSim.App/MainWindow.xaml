@@ -17,6 +17,9 @@
         <Window.Resources>
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         </Window.Resources>
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      CanContentScroll="False">
         <Grid Margin="22">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -27,9 +30,18 @@
 
         <Border x:Name="TopControlsRegion"
                 Padding="16"
-                Style="{StaticResource GlassCardStyle}"
                 Focusable="True"
                 KeyboardNavigation.TabNavigation="Continue">
+            <Border.Style>
+                <Style TargetType="Border" BasedOn="{StaticResource GlassCardStyle}">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsReportsWorkspaceActive}" Value="True">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -722,4 +734,5 @@
             <local:ReportsDrawerControl />
         </Border>
     </Grid>
+    </ScrollViewer>
 </Window>

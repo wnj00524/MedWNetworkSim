@@ -194,6 +194,12 @@ dotnet build MedWNetworkSim.slnx
 dotnet run --project ./src/MedWNetworkSim.App.Avalonia/MedWNetworkSim.App.Avalonia.csproj
 ```
 
+### Publish the Avalonia application as a single Windows executable
+
+```bash
+dotnet publish ./src/MedWNetworkSim.App.Avalonia/MedWNetworkSim.App.Avalonia.csproj -c Release
+```
+
 ### Run the verification project
 
 ```bash

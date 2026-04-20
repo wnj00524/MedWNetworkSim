@@ -33,6 +33,11 @@ public sealed class GraphCanvasStatusChangedEventArgs : EventArgs
     public required bool HasVisibleFrame { get; init; }
 }
 
+public sealed class GraphCanvasFullNodeEditorRequestedEventArgs : EventArgs
+{
+    public required string NodeId { get; init; }
+}
+
 public readonly record struct GraphCanvasCoordinateTransform(GraphSize LogicalViewport, PixelSize PixelViewport)
 {
     public double ScaleX => LogicalViewport.Width <= 0d ? 1d : PixelViewport.Width / LogicalViewport.Width;
@@ -96,6 +101,7 @@ public sealed class GraphCanvasControl : Control
     }
 
     public event EventHandler<GraphCanvasStatusChangedEventArgs>? StatusChanged;
+    public event EventHandler<GraphCanvasFullNodeEditorRequestedEventArgs>? FullNodeEditorRequested;
 
     public WorkspaceViewModel? ViewModel
     {
@@ -188,20 +194,13 @@ public sealed class GraphCanvasControl : Control
             return;
         }
 
-        if (button == GraphPointerButton.Left && e.ClickCount >= 2)
+        if (button == GraphPointerButton.Left && e.ClickCount >= 2 && TryHandleWorkspaceDoubleClick(interactionContext, point))
         {
-            var hit = new GraphHitTester().HitTest(
-                interactionContext.Scene,
-                interactionContext.Viewport.ScreenToWorld(point, interactionContext.ViewportSize));
-            if (hit.EdgeId is not null)
-            {
-                ViewModel.OpenRouteEditor(hit.EdgeId);
-                ViewModel.NotifyVisualChanged();
-                RefreshEditorSummaries(ViewModel);
-                InvalidateVisual();
-                e.Handled = true;
-                return;
-            }
+            ViewModel.NotifyVisualChanged();
+            RefreshEditorSummaries(ViewModel);
+            InvalidateVisual();
+            e.Handled = true;
+            return;
         }
 
         ViewModel.InteractionController.OnPointerPressed(
@@ -215,6 +214,34 @@ public sealed class GraphCanvasControl : Control
         RefreshEditorSummaries(ViewModel);
         InvalidateVisual();
         e.Handled = true;
+    }
+
+    public bool TryHandleWorkspaceDoubleClick(GraphInteractionContext interactionContext, GraphPoint point)
+    {
+        if (ViewModel is null)
+        {
+            return false;
+        }
+
+        var worldPoint = interactionContext.Viewport.ScreenToWorld(point, interactionContext.ViewportSize);
+        var hit = new GraphHitTester().HitTest(interactionContext.Scene, worldPoint);
+        if (hit.EdgeId is not null)
+        {
+            ViewModel.OpenRouteEditor(hit.EdgeId);
+            return true;
+        }
+
+        if (hit.NodeId is not null)
+        {
+            return false;
+        }
+
+        var nodeId = ViewModel.AddNodeAtPosition(worldPoint);
+        FullNodeEditorRequested?.Invoke(this, new GraphCanvasFullNodeEditorRequestedEventArgs
+        {
+            NodeId = nodeId
+        });
+        return true;
     }
 
     private void ShowContextMenu(WorkspaceViewModel viewModel, GraphInteractionContext interactionContext, GraphPoint screenPoint)
@@ -938,7 +965,7 @@ public sealed class ShellWindow : Window
         return border;
     }
 
-    private static Control BuildCanvasArea(WorkspaceViewModel viewModel)
+    private Control BuildCanvasArea(WorkspaceViewModel viewModel)
     {
         var header = new Border
         {
@@ -1022,6 +1049,7 @@ public sealed class ShellWindow : Window
             fallbackDetail.Text = args.Detail;
             fallbackPanel.IsVisible = args.IsError;
         };
+        graphCanvas.FullNodeEditorRequested += (_, _) => OpenFullNodeEditor();
 
         var canvasSurface = new Grid
         {

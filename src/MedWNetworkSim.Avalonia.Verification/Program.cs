@@ -9,7 +9,9 @@ using MedWNetworkSim.UI;
 ScenarioCoordinateTransformPreservesLogicalInput();
 ScenarioCoordinateTransformClampsPointerOutsideCanvas();
 ScenarioAddNodePlacementMatchesClickedWorldPosition();
+ScenarioWorkspaceDoubleClickCreatesNodeAndRequestsFullEditor();
 ScenarioDragAndConnectUseRenderedCoordinates();
+ScenarioModifierDragCreatesExpectedRouteDirection();
 ScenarioMultipleTrafficProfilesCanBeSwitched();
 ScenarioNodeTrafficRoleCanBeEditedInInspector();
 ScenarioRouteEditorWorkspaceModeTransitions();
@@ -23,6 +25,7 @@ ScenarioEscapeReturnsSelectTool();
 ScenarioNodeBoundsGrowWhenTextWraps();
 ScenarioSelectedNodePreviewResizesAndKeepsCenter();
 ScenarioEdgeAnchorsAndHitTestingFollowResizedBounds();
+ScenarioOneWayEdgeArrowTracksEdgeGeometry();
 ScenarioNodeLayoutCacheReusesAndInvalidatesByContentAndTier();
 ScenarioEdgeTooltipIncludesRouteDetails();
 ScenarioPressureExplanationAppearsInNodeDetails();
@@ -67,6 +70,32 @@ static void ScenarioAddNodePlacementMatchesClickedWorldPosition()
     AssertNumberNear(expectedWorld.Y, created.Y!.Value, 0.001d, "add node saved y");
 }
 
+static void ScenarioWorkspaceDoubleClickCreatesNodeAndRequestsFullEditor()
+{
+    var workspace = new WorkspaceViewModel();
+    var canvas = new GraphCanvasControl
+    {
+        ViewModel = workspace
+    };
+    var viewportSize = new GraphSize(960d, 640d);
+    var context = workspace.CreateInteractionContext(viewportSize);
+    var screenPoint = new GraphPoint(360d, 240d);
+    var expectedWorld = context.Viewport.ScreenToWorld(screenPoint, viewportSize);
+    var requestedNodeId = string.Empty;
+    canvas.FullNodeEditorRequested += (_, args) => requestedNodeId = args.NodeId;
+
+    var handled = canvas.TryHandleWorkspaceDoubleClick(context, screenPoint);
+
+    AssertTrue(handled, "workspace double click handled");
+    AssertTrue(workspace.IsEditingNode, "workspace double click selects created node");
+    AssertTrue(!string.IsNullOrWhiteSpace(requestedNodeId), "workspace double click requests full node editor");
+
+    var saved = SaveAndReload(workspace);
+    var created = saved.Nodes.Single(node => node.Id == requestedNodeId);
+    AssertNumberNear(expectedWorld.X, created.X!.Value, 0.001d, "workspace double click saved x");
+    AssertNumberNear(expectedWorld.Y, created.Y!.Value, 0.001d, "workspace double click saved y");
+}
+
 static void ScenarioDragAndConnectUseRenderedCoordinates()
 {
     var workspace = new WorkspaceViewModel();
@@ -101,6 +130,44 @@ static void ScenarioDragAndConnectUseRenderedCoordinates()
     AssertNumberNear(expectedDraggedWorld.X, movedNode.X!.Value, 0.001d, "dragged node x");
     AssertNumberNear(expectedDraggedWorld.Y, movedNode.Y!.Value, 0.001d, "dragged node y");
     AssertAtLeast(1, saved.Edges.Count, "created edge count");
+}
+
+static void ScenarioModifierDragCreatesExpectedRouteDirection()
+{
+    var workspace = new WorkspaceViewModel();
+    workspace.AddNodeToolCommand.Execute(null);
+    var viewportSize = new GraphSize(1000d, 700d);
+    var addContext = workspace.CreateInteractionContext(viewportSize);
+    workspace.InteractionController.OnPointerPressed(addContext, GraphPointerButton.Left, new GraphPoint(300d, 260d), false, false, false);
+    workspace.InteractionController.OnPointerPressed(addContext, GraphPointerButton.Left, new GraphPoint(700d, 260d), false, false, false);
+
+    workspace.SelectToolCommand.Execute(null);
+    var selectContext = workspace.CreateInteractionContext(viewportSize);
+    var sourceCenter = workspace.Viewport.WorldToScreen(new GraphPoint(workspace.Scene.Nodes[0].Bounds.CenterX, workspace.Scene.Nodes[0].Bounds.CenterY), selectContext.ViewportSize);
+    var targetCenter = workspace.Viewport.WorldToScreen(new GraphPoint(workspace.Scene.Nodes[1].Bounds.CenterX, workspace.Scene.Nodes[1].Bounds.CenterY), selectContext.ViewportSize);
+
+    workspace.InteractionController.OnPointerPressed(selectContext, GraphPointerButton.Left, sourceCenter, false, false, true);
+    workspace.InteractionController.OnPointerMoved(selectContext, targetCenter);
+    workspace.InteractionController.OnPointerReleased(selectContext, GraphPointerButton.Left, targetCenter, false);
+
+    var afterBidirectional = SaveAndReload(workspace);
+    var createdBidirectional = afterBidirectional.Edges.Single();
+    AssertTrue(createdBidirectional.IsBidirectional, "ctrl drag creates a bidirectional route");
+
+    workspace.DeleteRouteById(createdBidirectional.Id);
+    selectContext = workspace.CreateInteractionContext(viewportSize);
+    sourceCenter = workspace.Viewport.WorldToScreen(new GraphPoint(workspace.Scene.Nodes[0].Bounds.CenterX, workspace.Scene.Nodes[0].Bounds.CenterY), selectContext.ViewportSize);
+    targetCenter = workspace.Viewport.WorldToScreen(new GraphPoint(workspace.Scene.Nodes[1].Bounds.CenterX, workspace.Scene.Nodes[1].Bounds.CenterY), selectContext.ViewportSize);
+
+    workspace.InteractionController.OnPointerPressed(selectContext, GraphPointerButton.Left, sourceCenter, true, false, false);
+    workspace.InteractionController.OnPointerMoved(selectContext, targetCenter);
+    workspace.InteractionController.OnPointerReleased(selectContext, GraphPointerButton.Left, targetCenter, true);
+
+    var afterOneWay = SaveAndReload(workspace);
+    var createdOneWay = afterOneWay.Edges.Single();
+    AssertTrue(!createdOneWay.IsBidirectional, "shift drag creates a one-way route");
+    AssertTextEqual(afterOneWay.Nodes[0].Id, createdOneWay.FromNodeId, "shift drag preserves source direction");
+    AssertTextEqual(afterOneWay.Nodes[1].Id, createdOneWay.ToNodeId, "shift drag preserves target direction");
 }
 
 static void ScenarioMultipleTrafficProfilesCanBeSwitched()
@@ -668,6 +735,51 @@ static void ScenarioEdgeAnchorsAndHitTestingFollowResizedBounds()
 
     var hit = new GraphHitTester().HitTest(workspace.Scene, new GraphPoint(resizedSource.Bounds.CenterX, resizedSource.Bounds.CenterY));
     AssertTextEqual(resizedSource.Id, hit.NodeId ?? string.Empty, "hit testing at resized center finds node");
+}
+
+static void ScenarioOneWayEdgeArrowTracksEdgeGeometry()
+{
+    var workspace = new WorkspaceViewModel();
+    workspace.AddNodeToolCommand.Execute(null);
+    var viewportSize = new GraphSize(1200d, 760d);
+    var addContext = workspace.CreateInteractionContext(viewportSize);
+    workspace.InteractionController.OnPointerPressed(addContext, GraphPointerButton.Left, new GraphPoint(340d, 320d), false, false, false);
+    workspace.InteractionController.OnPointerPressed(addContext, GraphPointerButton.Left, new GraphPoint(860d, 320d), false, false, false);
+
+    workspace.SelectToolCommand.Execute(null);
+    var connectContext = workspace.CreateInteractionContext(viewportSize);
+    var sourceNode = workspace.Scene.Nodes[0];
+    var targetNode = workspace.Scene.Nodes[1];
+    var sourceCenter = workspace.Viewport.WorldToScreen(new GraphPoint(sourceNode.Bounds.CenterX, sourceNode.Bounds.CenterY), connectContext.ViewportSize);
+    var targetCenter = workspace.Viewport.WorldToScreen(new GraphPoint(targetNode.Bounds.CenterX, targetNode.Bounds.CenterY), connectContext.ViewportSize);
+    workspace.InteractionController.OnPointerPressed(connectContext, GraphPointerButton.Left, sourceCenter, true, false, false);
+    workspace.InteractionController.OnPointerMoved(connectContext, targetCenter);
+    workspace.InteractionController.OnPointerReleased(connectContext, GraphPointerButton.Left, targetCenter, true);
+
+    var edge = workspace.Scene.Edges.Single();
+    AssertTrue(!edge.IsBidirectional, "one-way arrow scenario starts with one-way edge");
+    var start = workspace.Viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(workspace.Scene, edge.FromNodeId, edge.ToNodeId), viewportSize);
+    var end = workspace.Viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(workspace.Scene, edge.ToNodeId, edge.FromNodeId), viewportSize);
+    var arrow = GraphRenderer.GetDirectionalArrowHead(start, end, 2.4d + (edge.LoadRatio * 1.6d));
+    AssertTrue(arrow.HasValue, "one-way edge exposes arrow geometry");
+    var arrowHead = arrow.GetValueOrDefault();
+    AssertTrue(arrowHead.Tip.X > arrowHead.Left.X, "one-way arrow points toward the target");
+    AssertTrue(arrowHead.Tip.X > arrowHead.Right.X, "one-way arrow tip stays ahead of the arrow base");
+
+    var moveContext = workspace.CreateInteractionContext(viewportSize);
+    var movedTargetStart = workspace.Viewport.WorldToScreen(new GraphPoint(workspace.Scene.Nodes[1].Bounds.CenterX, workspace.Scene.Nodes[1].Bounds.CenterY), viewportSize);
+    var movedTargetEnd = new GraphPoint(movedTargetStart.X + 120d, movedTargetStart.Y + 40d);
+    workspace.InteractionController.OnPointerPressed(moveContext, GraphPointerButton.Left, movedTargetStart, false, false, false);
+    workspace.InteractionController.OnPointerMoved(moveContext, movedTargetEnd);
+    workspace.InteractionController.OnPointerReleased(moveContext, GraphPointerButton.Left, movedTargetEnd, false);
+
+    var updatedEdge = workspace.Scene.Edges.Single();
+    var updatedStart = workspace.Viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(workspace.Scene, updatedEdge.FromNodeId, updatedEdge.ToNodeId), viewportSize);
+    var updatedEnd = workspace.Viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(workspace.Scene, updatedEdge.ToNodeId, updatedEdge.FromNodeId), viewportSize);
+    var updatedArrow = GraphRenderer.GetDirectionalArrowHead(updatedStart, updatedEnd, 2.4d + (updatedEdge.LoadRatio * 1.6d));
+    AssertTrue(updatedArrow.HasValue, "one-way arrow geometry remains available after node resize");
+    var updatedArrowHead = updatedArrow.GetValueOrDefault();
+    AssertTrue(updatedArrowHead.Tip.X > arrowHead.Tip.X, "one-way arrow moves with the edge when anchors move");
 }
 
 static void ScenarioNodeLayoutCacheReusesAndInvalidatesByContentAndTier()

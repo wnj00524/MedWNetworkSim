@@ -460,7 +460,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     private IReadOnlyList<ConsumerCostSummary> lastConsumerCosts = [];
     private string statusText = "Select a tool and start editing.";
     private string toolStatusText = "Select mode: select, drag, or marquee.";
-    private string toolInstructionText = "Shortcuts: S Select, A Add node, C Connect, Ctrl-drag creates a route.";
+    private string toolInstructionText = "Shortcuts: S Select, A Add node, C Connect, Ctrl-drag creates a bidirectional route, Shift-drag creates a one-way route.";
     private GraphToolMode activeToolMode = GraphToolMode.Select;
     private bool reducedMotion;
     private int currentPeriod;
@@ -1429,7 +1429,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         {
             GraphToolMode.AddNode => "Keyboard: A keeps Add node active. Esc returns to Select.",
             GraphToolMode.Connect => "Keyboard: C keeps Connect active. Esc returns to Select.",
-            _ => "Keyboard: S Select, A Add node, C Connect. Ctrl-drag from one node to another to create a route."
+            _ => "Keyboard: S Select, A Add node, C Connect. Ctrl-drag makes a bidirectional route, Shift-drag makes a one-way route."
         };
         Raise(nameof(IsSelectToolActive));
         Raise(nameof(IsAddNodeToolActive));
@@ -1547,7 +1547,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         }
     }
 
-    private bool CreateEdge(string sourceId, string targetId)
+    private bool CreateEdge(string sourceId, string targetId, bool isBidirectional)
     {
         CommitTransientEditorsToModel();
         var edgeId = $"{sourceId}->{targetId}";
@@ -1565,7 +1565,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             Time = 1.5d,
             Cost = 1d,
             Capacity = 30d,
-            IsBidirectional = false,
+            IsBidirectional = isBidirectional,
             RouteType = "Proposed route",
             TrafficPermissions = []
         });

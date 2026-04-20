@@ -22,7 +22,7 @@ public sealed class GraphInteractionContext
     public required GraphViewport Viewport { get; init; }
     public required GraphSize ViewportSize { get; init; }
     public required GraphToolMode ToolMode { get; init; }
-    public required Func<string, string, bool> CreateEdge { get; init; }
+    public required Func<string, string, bool, bool> CreateEdge { get; init; }
     public required Func<GraphPoint, string> AddNodeAt { get; init; }
     public required Action DeleteSelection { get; init; }
     public required Func<string?> FocusNextConnectedEdge { get; init; }
@@ -42,6 +42,7 @@ public sealed class GraphInteractionController
     private bool isPanning;
     private bool isMarqueeSelecting;
     private bool isConnectionGesture;
+    private bool connectionGestureCreatesBidirectionalEdge;
     private bool keyboardConnectMode;
     private string? keyboardConnectSource;
 
@@ -85,6 +86,7 @@ public sealed class GraphInteractionController
             {
                 SelectNode(context, hit.NodeId, additive: false);
                 isConnectionGesture = true;
+                connectionGestureCreatesBidirectionalEdge = false;
                 context.Scene.Transient.ConnectionSourceNodeId = hit.NodeId;
                 context.Scene.Transient.ConnectionWorld = worldPoint;
                 context.StatusChanged("Connect mode: source selected. Choose a target node.");
@@ -93,19 +95,23 @@ public sealed class GraphInteractionController
 
             SelectNode(context, hit.NodeId, additive: false);
             isConnectionGesture = true;
+            connectionGestureCreatesBidirectionalEdge = false;
             context.Scene.Transient.ConnectionWorld = worldPoint;
             context.StatusChanged("Connect mode: release on a target node to create a route.");
             return;
         }
 
-        if (controlPressed && hit.NodeId is not null && context.ToolMode == GraphToolMode.Select)
+        if ((controlPressed || shiftPressed) && hit.NodeId is not null && context.ToolMode == GraphToolMode.Select)
         {
             SelectNode(context, hit.NodeId, additive: false);
             isConnectionGesture = true;
+            connectionGestureCreatesBidirectionalEdge = controlPressed;
             dragNodeId = null;
             context.Scene.Transient.ConnectionSourceNodeId = hit.NodeId;
             context.Scene.Transient.ConnectionWorld = worldPoint;
-            context.StatusChanged("Connection preview active. Drag to another node and release.");
+            context.StatusChanged(controlPressed
+                ? "Bidirectional connection preview active. Drag to another node and release."
+                : "One-way connection preview active. Drag to another node and release.");
             return;
         }
 
@@ -227,10 +233,11 @@ public sealed class GraphInteractionController
             context.Scene.Transient.ConnectionSourceNodeId = null;
             context.Scene.Transient.ConnectionWorld = null;
             isConnectionGesture = false;
+            connectionGestureCreatesBidirectionalEdge = false;
 
             if (sourceId is not null && target.NodeId is not null && !string.Equals(sourceId, target.NodeId, StringComparison.OrdinalIgnoreCase))
             {
-                if (context.CreateEdge(sourceId, target.NodeId))
+                if (context.CreateEdge(sourceId, target.NodeId, false))
                 {
                     SelectEdge(context, $"{sourceId}->{target.NodeId}", additive: shiftPressed);
                     context.StatusChanged("Edge created.");
@@ -249,7 +256,7 @@ public sealed class GraphInteractionController
             if (sourceId is not null &&
                 target.NodeId is not null &&
                 !string.Equals(sourceId, target.NodeId, StringComparison.OrdinalIgnoreCase) &&
-                context.CreateEdge(sourceId, target.NodeId))
+                context.CreateEdge(sourceId, target.NodeId, false))
             {
                 context.Scene.Transient.ConnectionSourceNodeId = target.NodeId;
                 context.Scene.Transient.ConnectionWorld = worldPoint;
@@ -272,15 +279,17 @@ public sealed class GraphInteractionController
             context.Scene.Transient.ConnectionSourceNodeId = null;
             context.Scene.Transient.ConnectionWorld = null;
             isConnectionGesture = false;
+            var createsBidirectionalEdge = connectionGestureCreatesBidirectionalEdge;
+            connectionGestureCreatesBidirectionalEdge = false;
 
             if (sourceId is not null &&
                 target.NodeId is not null &&
                 !string.Equals(sourceId, target.NodeId, StringComparison.OrdinalIgnoreCase))
             {
-                if (context.CreateEdge(sourceId, target.NodeId))
+                if (context.CreateEdge(sourceId, target.NodeId, createsBidirectionalEdge))
                 {
                     SelectEdge(context, $"{sourceId}->{target.NodeId}", additive: false);
-                    context.StatusChanged("Route created.");
+                    context.StatusChanged(createsBidirectionalEdge ? "Bidirectional route created." : "One-way route created.");
                 }
 
                 return;
@@ -371,12 +380,12 @@ public sealed class GraphInteractionController
                 return true;
 
             case "Enter":
-                if (keyboardConnectMode && keyboardConnectSource is not null && GetPrimaryNode(context.Scene) is { } targetNode && !string.Equals(keyboardConnectSource, targetNode, StringComparison.OrdinalIgnoreCase))
-                {
-                    if (context.CreateEdge(keyboardConnectSource, targetNode))
-                    {
-                        keyboardConnectMode = false;
-                        keyboardConnectSource = null;
+        if (keyboardConnectMode && keyboardConnectSource is not null && GetPrimaryNode(context.Scene) is { } targetNode && !string.Equals(keyboardConnectSource, targetNode, StringComparison.OrdinalIgnoreCase))
+        {
+            if (context.CreateEdge(keyboardConnectSource, targetNode, false))
+            {
+                keyboardConnectMode = false;
+                keyboardConnectSource = null;
                         context.StatusChanged("Edge created from keyboard.");
                     }
                 }

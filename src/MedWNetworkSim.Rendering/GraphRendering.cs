@@ -284,6 +284,43 @@ public sealed class GraphRenderer
     public ZoomTier GetZoomTier(double zoom) =>
         zoom < 0.45d ? ZoomTier.Far : zoom < 1.15d ? ZoomTier.Medium : ZoomTier.Near;
 
+    public static (GraphPoint Tip, GraphPoint Left, GraphPoint Right)? GetDirectionalArrowHead(
+        GraphPoint start,
+        GraphPoint end,
+        double strokeWidth)
+    {
+        var delta = end - start;
+        var length = delta.Length;
+        if (length < 18d)
+        {
+            return null;
+        }
+
+        var unitX = delta.X / length;
+        var unitY = delta.Y / length;
+        var arrowLength = Math.Clamp(10d + (strokeWidth * 1.4d), 10d, 16d);
+        var arrowInset = Math.Max(18d, arrowLength * 1.45d);
+        if (length <= arrowInset + arrowLength)
+        {
+            return null;
+        }
+
+        var tip = new GraphPoint(
+            end.X - (unitX * arrowInset),
+            end.Y - (unitY * arrowInset));
+        var baseCenter = new GraphPoint(
+            tip.X - (unitX * arrowLength),
+            tip.Y - (unitY * arrowLength));
+        var perpendicularX = -unitY;
+        var perpendicularY = unitX;
+        var halfWidth = arrowLength * 0.58d;
+
+        return (
+            tip,
+            new GraphPoint(baseCenter.X + (perpendicularX * halfWidth), baseCenter.Y + (perpendicularY * halfWidth)),
+            new GraphPoint(baseCenter.X - (perpendicularX * halfWidth), baseCenter.Y - (perpendicularY * halfWidth)));
+    }
+
     public static GraphNodeTextLayoutResult GetOrBuildNodeLayout(GraphNodeSceneItem node, ZoomTier zoomTier)
     {
         var visibleDetailLines = zoomTier switch
@@ -415,6 +452,7 @@ public sealed class GraphRenderer
     private void DrawEdges(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize)
     {
         using var edgePaint = new SKPaint { Color = EdgeColor, IsAntialias = true, StrokeWidth = 2.8f, Style = SKPaintStyle.Stroke, StrokeCap = SKStrokeCap.Round };
+        using var arrowPaint = new SKPaint { Color = EdgeColor, IsAntialias = true, Style = SKPaintStyle.Fill };
 
         foreach (var edge in scene.Edges)
         {
@@ -423,19 +461,46 @@ public sealed class GraphRenderer
             edgePaint.Color = edge.HasWarning ? WarningColor.WithAlpha(190) : EdgeColor.WithAlpha(180);
             edgePaint.StrokeWidth = (float)(2.4d + (edge.LoadRatio * 1.6d));
             canvas.DrawLine((float)start.X, (float)start.Y, (float)end.X, (float)end.Y, edgePaint);
+            if (!edge.IsBidirectional)
+            {
+                arrowPaint.Color = edgePaint.Color;
+                DrawDirectionalArrow(canvas, start, end, edgePaint.StrokeWidth, arrowPaint);
+            }
         }
     }
 
     private void DrawEdgeOverlays(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize)
     {
         using var overlayPaint = new SKPaint { IsAntialias = true, StrokeWidth = 6f, Style = SKPaintStyle.Stroke, StrokeCap = SKStrokeCap.Round };
+        using var arrowPaint = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill };
         foreach (var edge in scene.Edges.Where(edge => scene.Selection.SelectedEdgeIds.Contains(edge.Id)))
         {
             var start = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId), viewportSize);
             var end = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId), viewportSize);
             overlayPaint.Color = FocusColor.WithAlpha(120);
             canvas.DrawLine((float)start.X, (float)start.Y, (float)end.X, (float)end.Y, overlayPaint);
+            if (!edge.IsBidirectional)
+            {
+                arrowPaint.Color = overlayPaint.Color;
+                DrawDirectionalArrow(canvas, start, end, overlayPaint.StrokeWidth, arrowPaint);
+            }
         }
+    }
+
+    private static void DrawDirectionalArrow(SKCanvas canvas, GraphPoint start, GraphPoint end, float strokeWidth, SKPaint paint)
+    {
+        var arrowHead = GetDirectionalArrowHead(start, end, strokeWidth);
+        if (!arrowHead.HasValue)
+        {
+            return;
+        }
+
+        using var path = new SKPath();
+        path.MoveTo((float)arrowHead.Value.Tip.X, (float)arrowHead.Value.Tip.Y);
+        path.LineTo((float)arrowHead.Value.Left.X, (float)arrowHead.Value.Left.Y);
+        path.LineTo((float)arrowHead.Value.Right.X, (float)arrowHead.Value.Right.Y);
+        path.Close();
+        canvas.DrawPath(path, paint);
     }
 
     private void DrawNodes(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize)

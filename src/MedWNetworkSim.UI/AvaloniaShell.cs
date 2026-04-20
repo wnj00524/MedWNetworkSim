@@ -188,6 +188,22 @@ public sealed class GraphCanvasControl : Control
             return;
         }
 
+        if (button == GraphPointerButton.Left && e.ClickCount >= 2)
+        {
+            var hit = new GraphHitTester().HitTest(
+                interactionContext.Scene,
+                interactionContext.Viewport.ScreenToWorld(point, interactionContext.ViewportSize));
+            if (hit.EdgeId is not null)
+            {
+                ViewModel.OpenRouteEditor(hit.EdgeId);
+                ViewModel.NotifyVisualChanged();
+                RefreshEditorSummaries(ViewModel);
+                InvalidateVisual();
+                e.Handled = true;
+                return;
+            }
+        }
+
         ViewModel.InteractionController.OnPointerPressed(
             interactionContext,
             button,
@@ -229,7 +245,7 @@ public sealed class GraphCanvasControl : Control
         else if (hit.EdgeId is not null)
         {
             items.Add(BuildMenuItem("Select Route", () => viewModel.SelectRouteForEdit(hit.EdgeId)));
-            items.Add(BuildMenuItem("Edit Route", () => viewModel.SelectRouteForEdit(hit.EdgeId)));
+            items.Add(BuildMenuItem("Edit Route", () => viewModel.OpenRouteEditor(hit.EdgeId)));
             items.Add(BuildMenuItem("Delete Route", () => viewModel.DeleteRouteById(hit.EdgeId)));
         }
         else
@@ -533,6 +549,8 @@ public sealed class ShellWindow : Window
     private Grid? standardWorkspaceHost;
     private Border? trafficTypeWorkspaceHost;
     private Control? trafficTypeWorkspaceFocusTarget;
+    private Border? edgeEditorWorkspaceHost;
+    private Control? edgeEditorWorkspaceFocusTarget;
     private Border? toolRailHost;
     private Border? canvasHost;
     private Border? inspectorHost;
@@ -603,6 +621,19 @@ public sealed class ShellWindow : Window
             {
                 CloseFullNodeEditor();
             }
+
+            if (e.PropertyName == nameof(WorkspaceViewModel.CurrentWorkspaceMode))
+            {
+                UpdateShellWorkspaceMode();
+                if (viewModel.IsEdgeEditorWorkspaceMode)
+                {
+                    FocusEdgeEditorWorkspaceEditor();
+                }
+                else
+                {
+                    toolRailHost?.BringIntoView();
+                }
+            }
         };
 
         Closing += HandleWindowClosing;
@@ -658,13 +689,16 @@ public sealed class ShellWindow : Window
         };
         trafficTypeWorkspaceHost = BuildTrafficTypeWorkspace(viewModel);
         trafficTypeWorkspaceHost.IsVisible = false;
+        edgeEditorWorkspaceHost = BuildEdgeEditorWorkspace(viewModel);
+        edgeEditorWorkspaceHost.IsVisible = false;
 
         var contentRoot = new Grid
         {
             Children =
             {
                 standardWorkspaceHost,
-                trafficTypeWorkspaceHost
+                trafficTypeWorkspaceHost,
+                edgeEditorWorkspaceHost
             }
         };
 
@@ -1029,7 +1063,7 @@ public sealed class ShellWindow : Window
                     BuildInspectorDetails(),
                     BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
                     BuildCompactNodeInspector(viewModel),
-                    BuildCompactEdgeInspector(),
+                    BuildCompactEdgeInspector(viewModel),
                     BuildCompactBulkInspector(),
                     BuildCompactNetworkSummary()
                 }
@@ -1193,6 +1227,163 @@ public sealed class ShellWindow : Window
             radius: new CornerRadius(18));
     }
 
+    private Border BuildEdgeEditorWorkspace(WorkspaceViewModel viewModel)
+    {
+        var routeTypeEditor = BuildTextBox("Route type");
+        routeTypeEditor.Bind(TextBox.TextProperty, new Binding(nameof(WorkspaceViewModel.EdgeRouteTypeText), BindingMode.TwoWay));
+        edgeEditorWorkspaceFocusTarget = routeTypeEditor;
+
+        var timeEditor = BuildValidatedTextBox(
+            "Travel time",
+            nameof(WorkspaceViewModel.EdgeTimeText),
+            nameof(WorkspaceViewModel.EdgeTimeValidationText));
+        var costEditor = BuildValidatedTextBox(
+            "Cost",
+            nameof(WorkspaceViewModel.EdgeCostText),
+            nameof(WorkspaceViewModel.EdgeCostValidationText));
+        var capacityEditor = BuildValidatedTextBox(
+            "Capacity",
+            nameof(WorkspaceViewModel.EdgeCapacityText),
+            nameof(WorkspaceViewModel.EdgeCapacityValidationText));
+
+        var saveButton = BuildButton("Save Route", new RelayCommand(() => { }), isPrimary: true, toolTip: "Save this route and return to the workspace.");
+        saveButton.Bind(Button.CommandProperty, new Binding(nameof(WorkspaceViewModel.SaveEdgeEditorCommand)));
+
+        var cancelButton = BuildButton("Cancel", new RelayCommand(() => { }), toolTip: "Discard in-progress route changes and return to the workspace.");
+        cancelButton.Bind(Button.CommandProperty, new Binding(nameof(WorkspaceViewModel.CancelEdgeEditorCommand)));
+
+        var deleteButton = BuildDestructiveButton("Delete Route", new RelayCommand(() => _ = ConfirmDeleteRouteAsync()), toolTip: "Delete the selected route after confirmation.");
+
+        var header = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto"),
+            ColumnSpacing = 8,
+            Children =
+            {
+                new StackPanel
+                {
+                    Spacing = 2,
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = "Edit Route",
+                            FontSize = 20,
+                            FontWeight = FontWeight.Bold,
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                        },
+                        new TextBlock
+                        {
+                            Text = "Update route properties, direction, and traffic permissions.",
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                            TextWrapping = TextWrapping.Wrap
+                        }
+                    }
+                }
+            }
+        };
+        Grid.SetColumn(saveButton, 1);
+        Grid.SetColumn(cancelButton, 2);
+        Grid.SetColumn(deleteButton, 3);
+        header.Children.Add(saveButton);
+        header.Children.Add(cancelButton);
+        header.Children.Add(deleteButton);
+
+        var leftColumn = new StackPanel
+        {
+            Spacing = 14,
+            Children =
+            {
+                BuildEditorSection(
+                    "Route Basics",
+                    "Core route identity and travel values.",
+                    BuildReadOnlyRow("Route id", nameof(WorkspaceViewModel.SelectedEdgeIdText)),
+                    BuildReadOnlyRow("Source node", nameof(WorkspaceViewModel.SelectedEdgeSourceNodeText)),
+                    BuildReadOnlyRow("Target node", nameof(WorkspaceViewModel.SelectedEdgeTargetNodeText)),
+                    BuildLabeledRow("Route type", routeTypeEditor),
+                    timeEditor,
+                    costEditor),
+                BuildEditorSection(
+                    "Direction and Capacity",
+                    "Set directionality and any route-wide throughput limit.",
+                    BuildLabeledCheckBox("Bidirectional", nameof(WorkspaceViewModel.EdgeIsBidirectional)),
+                    capacityEditor,
+                    BuildReadOnlyRow("Direction", nameof(WorkspaceViewModel.SelectedEdgeDirectionSummaryText))),
+                BuildEditorSection(
+                    "Traffic Permissions",
+                    "Review each traffic type and override the network default where needed.",
+                    BuildReadOnlyRow("Rule status", nameof(WorkspaceViewModel.SelectedEdgeRuleCountText)),
+                    BuildEdgePermissionRulesEditor(viewModel)),
+                BuildEditorSection(
+                    "Review",
+                    "Check validation and workspace context before saving.",
+                    BuildReadOnlyRow("Validation", nameof(WorkspaceViewModel.SelectedEdgeValidationStatusText)),
+                    BuildValidationBlock(nameof(WorkspaceViewModel.EdgeEditorValidationText)),
+                    BuildQuickStat("Selection", nameof(WorkspaceViewModel.SelectionSummary)),
+                    BuildQuickStat("Status", nameof(WorkspaceViewModel.StatusText)),
+                    BuildQuickStat("Simulation", nameof(WorkspaceViewModel.SimulationSummary)))
+            }
+        };
+
+        var rightColumn = new StackPanel
+        {
+            Spacing = 14,
+            Children =
+            {
+                BuildEdgeSummaryPanel(),
+                BuildEditorSection(
+                    "Live Preview",
+                    "This summary updates as you edit the route.",
+                    BuildReadOnlyRow("Route", nameof(WorkspaceViewModel.SelectedEdgePreviewTitleText)),
+                    BuildReadOnlyRow("Travel", nameof(WorkspaceViewModel.SelectedEdgePreviewTravelText)),
+                    BuildReadOnlyRow("Capacity", nameof(WorkspaceViewModel.SelectedEdgePreviewCapacityText)),
+                    BuildReadOnlyRow("Direction", nameof(WorkspaceViewModel.SelectedEdgeDirectionSummaryText)),
+                    BuildReadOnlyRow("Rules", nameof(WorkspaceViewModel.SelectedEdgeRuleCountText)),
+                    BuildReadOnlyRow("Status", nameof(WorkspaceViewModel.SelectedEdgeValidationStatusText)))
+            }
+        };
+
+        var body = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("1.85*,16,1.15*"),
+            MinHeight = 0,
+            Children =
+            {
+                leftColumn,
+                rightColumn
+            }
+        };
+        Grid.SetColumn(rightColumn, 2);
+
+        var scrollViewer = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            MinHeight = 0,
+            Content = body
+        };
+
+        var layout = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            RowSpacing = 12,
+            MinHeight = 0,
+            Margin = new Thickness(0, 12, 0, 0),
+            Children =
+            {
+                header,
+                scrollViewer
+            }
+        };
+        Grid.SetRow(scrollViewer, 1);
+
+        return BuildDashboardPanel(
+            layout,
+            header: "Route Workspace",
+            padding: new Thickness(14),
+            radius: new CornerRadius(18));
+    }
+
     private static Control BuildInspectorDetails()
     {
         return new ItemsControl
@@ -1248,8 +1439,11 @@ public sealed class ShellWindow : Window
         return card;
     }
 
-    private static Control BuildCompactEdgeInspector()
+    private static Control BuildCompactEdgeInspector(WorkspaceViewModel viewModel)
     {
+        var openButton = BuildButton("Edit route", new RelayCommand(() => { }), isPrimary: true, toolTip: "Open the selected route in the dedicated route workspace.");
+        openButton.Bind(Button.CommandProperty, new Binding(nameof(WorkspaceViewModel.OpenSelectedEdgeEditorCommand)));
+
         var card = new Border
         {
             Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
@@ -1259,16 +1453,17 @@ public sealed class ShellWindow : Window
             Padding = new Thickness(12),
             Child = new StackPanel
             {
-                Spacing = 8,
+                Spacing = 10,
                 Children =
                 {
-                    BuildSectionTitle("Route Summary", "Route editing stays compact in the rail."),
-                    BuildLabeledTextBox("Route label", nameof(WorkspaceViewModel.EdgeRouteTypeText)),
-                    BuildLabeledTextBox("Travel time", nameof(WorkspaceViewModel.EdgeTimeText)),
-                    BuildLabeledTextBox("Travel cost", nameof(WorkspaceViewModel.EdgeCostText)),
-                    BuildLabeledTextBox("Capacity", nameof(WorkspaceViewModel.EdgeCapacityText)),
-                    BuildLabeledCheckBox("Bidirectional", nameof(WorkspaceViewModel.EdgeIsBidirectional)),
-                    BuildBoundButton("Apply route changes", nameof(WorkspaceViewModel.ApplyInspectorCommand))
+                    BuildSectionTitle("Route Summary", "Open the focused route in the main route workspace to edit everything in one place."),
+                    BuildReadOnlyRow("Route id", nameof(WorkspaceViewModel.SelectedEdgeIdText)),
+                    BuildReadOnlyRow("Source", nameof(WorkspaceViewModel.SelectedEdgeSourceNodeText)),
+                    BuildReadOnlyRow("Target", nameof(WorkspaceViewModel.SelectedEdgeTargetNodeText)),
+                    BuildReadOnlyRow("Direction", nameof(WorkspaceViewModel.SelectedEdgeDirectionSummaryText)),
+                    BuildReadOnlyRow("Rules", nameof(WorkspaceViewModel.SelectedEdgeRuleCountText)),
+                    BuildValidationBlock(nameof(WorkspaceViewModel.EdgeEditorValidationText)),
+                    openButton
                 }
             }
         };
@@ -1876,25 +2071,7 @@ public sealed class ShellWindow : Window
                 Spacing = 10,
                 Children =
                 {
-                    BuildReportSection<TrafficReportRowViewModel>(
-                        "Traffic Summary",
-                        new[]
-                        {
-                            ("Traffic", 1.2),
-                            ("Planned / moved", 1.1),
-                            ("Delivered", 1.0),
-                            ("Unmet demand", 1.0),
-                            ("Backlog", 1.0)
-                        },
-                        nameof(WorkspaceViewModel.TrafficReports),
-                        static row => new[]
-                        {
-                            row.TrafficType,
-                            row.PlannedQuantity,
-                            row.DeliveredQuantity,
-                            row.UnmetDemand,
-                            row.Backlog
-                        }),
+                    BuildTrafficReportSection(),
                     BuildReportSection<RouteReportRowViewModel>(
                         "Route Summary",
                         new[]
@@ -2099,14 +2276,16 @@ public sealed class ShellWindow : Window
 
     private void UpdateShellWorkspaceMode()
     {
-        if (standardWorkspaceHost is null || trafficTypeWorkspaceHost is null)
+        if (standardWorkspaceHost is null || trafficTypeWorkspaceHost is null || edgeEditorWorkspaceHost is null)
         {
             return;
         }
 
         var isTrafficTypeWorkspace = shellWorkspaceMode == ShellWorkspaceMode.TrafficTypes;
-        standardWorkspaceHost.IsVisible = !isTrafficTypeWorkspace;
+        var isEdgeEditorWorkspace = !isTrafficTypeWorkspace && viewModel.IsEdgeEditorWorkspaceMode;
+        standardWorkspaceHost.IsVisible = !isTrafficTypeWorkspace && !isEdgeEditorWorkspace;
         trafficTypeWorkspaceHost.IsVisible = isTrafficTypeWorkspace;
+        edgeEditorWorkspaceHost.IsVisible = isEdgeEditorWorkspace;
     }
 
     private void FocusTrafficTypeWorkspaceEditor()
@@ -2130,8 +2309,49 @@ public sealed class ShellWindow : Window
         }, DispatcherPriority.Background);
     }
 
+    private void FocusEdgeEditorWorkspaceEditor()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (edgeEditorWorkspaceHost?.IsVisible != true)
+            {
+                return;
+            }
+
+            edgeEditorWorkspaceHost.BringIntoView();
+            if (edgeEditorWorkspaceFocusTarget is { IsVisible: true, IsEnabled: true })
+            {
+                edgeEditorWorkspaceFocusTarget.Focus();
+            }
+            else
+            {
+                edgeEditorWorkspaceHost.Focus();
+            }
+        }, DispatcherPriority.Background);
+    }
+
     private void HandleShellWindowKeyDown(object? sender, KeyEventArgs e)
     {
+        if (viewModel.IsEdgeEditorWorkspaceMode &&
+            e.Key == Key.Enter &&
+            e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            if (viewModel.SaveEdgeEditorCommand.CanExecute(null))
+            {
+                viewModel.SaveEdgeEditorCommand.Execute(null);
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        if (viewModel.IsEdgeEditorWorkspaceMode && e.Key == Key.Escape)
+        {
+            viewModel.CancelEdgeEditorCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key != Key.Escape)
         {
             return;
@@ -2378,25 +2598,7 @@ public sealed class ShellWindow : Window
                 Spacing = 10,
                 Children =
                 {
-                    BuildReportSection<TrafficReportRowViewModel>(
-                        "Traffic Summary",
-                        new[]
-                        {
-                            ("Traffic", 1.2),
-                            ("Planned / moved", 1.1),
-                            ("Delivered", 1.0),
-                            ("Unmet demand", 1.0),
-                            ("Backlog", 1.0)
-                        },
-                        nameof(WorkspaceViewModel.TrafficReports),
-                        static row => new[]
-                        {
-                            row.TrafficType,
-                            row.PlannedQuantity,
-                            row.DeliveredQuantity,
-                            row.UnmetDemand,
-                            row.Backlog
-                        }),
+                    BuildTrafficReportSection(),
                     BuildReportSection<RouteReportRowViewModel>(
                         "Route Summary",
                         new[]
@@ -3202,6 +3404,21 @@ public sealed class ShellWindow : Window
         return BuildLabeledRow(label, textBox);
     }
 
+    private static Control BuildValidatedTextBox(string label, string propertyName, string validationPropertyName)
+    {
+        var textBox = BuildTextBox(label);
+        textBox.Bind(TextBox.TextProperty, new Binding(propertyName, BindingMode.TwoWay));
+        return new StackPanel
+        {
+            Spacing = 4,
+            Children =
+            {
+                BuildLabeledRow(label, textBox),
+                BuildValidationBlock(validationPropertyName)
+            }
+        };
+    }
+
     private static Control BuildLabeledTextBox(string label, string propertyName, string isEnabledPropertyName)
     {
         var textBox = BuildTextBox(label);
@@ -3295,6 +3512,157 @@ public sealed class ShellWindow : Window
         };
         textBlock.Bind(TextBlock.TextProperty, new Binding(propertyName));
         return textBlock;
+    }
+
+    private static Button BuildDestructiveButton(string label, ICommand command, string? toolTip = null)
+    {
+        var button = BuildButton(label, command, toolTip: toolTip);
+        button.Background = new SolidColorBrush(AvaloniaDashboardTheme.Danger);
+        button.BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.Danger);
+        button.Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText);
+        return button;
+    }
+
+    private static Control BuildEdgePermissionRulesEditor(WorkspaceViewModel viewModel)
+    {
+        var addRuleButton = BuildBoundButton("Add rule", nameof(WorkspaceViewModel.AddEdgePermissionRuleCommand));
+
+        var rows = new ItemsControl
+        {
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.VisibleEdgePermissionRows)),
+            ItemTemplate = new FuncDataTemplate<PermissionRuleEditorRow>((row, _) =>
+            {
+                var trafficTypeBox = BuildComboBox();
+                trafficTypeBox.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.TrafficTypeNameOptions)) { Source = viewModel });
+                trafficTypeBox.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(PermissionRuleEditorRow.TrafficType), BindingMode.TwoWay));
+                ToolTip.SetTip(trafficTypeBox, "Choose which traffic type this route rule applies to.");
+
+                var removeButton = BuildButton("Remove rule", new RelayCommand(() => viewModel.RemoveEdgePermissionRule(row)), toolTip: "Remove this explicit route rule.");
+
+                var wrap = new Border
+                {
+                    Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelBackground),
+                    BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(10),
+                    Padding = new Thickness(10),
+                    Margin = new Thickness(0, 0, 0, 10),
+                    Child = new StackPanel
+                    {
+                        Spacing = 8,
+                        Children =
+                        {
+                            new Grid
+                            {
+                                ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+                                ColumnSpacing = 8,
+                                Children =
+                                {
+                                    BuildLabeledRow("Traffic type", trafficTypeBox),
+                                    removeButton
+                                }
+                            }
+                        }
+                    }
+                };
+                Grid.SetColumn(removeButton, 1);
+
+                var content = (StackPanel)wrap.Child!;
+
+                if (row.SupportsOverrideToggle)
+                {
+                    var overrideBox = BuildCheckBox("Override network default");
+                    ToolTip.SetTip(overrideBox, "Enable to apply a route-specific access rule instead of the network default.");
+                    overrideBox.Bind(ToggleButton.IsCheckedProperty, new Binding(nameof(PermissionRuleEditorRow.IsActive), BindingMode.TwoWay));
+                    content.Children.Add(overrideBox);
+                }
+
+                var modeBox = BuildComboBox();
+                modeBox.ItemsSource = Enum.GetValues<EdgeTrafficPermissionMode>();
+                modeBox.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(PermissionRuleEditorRow.Mode), BindingMode.TwoWay));
+                content.Children.Add(BuildLabeledRow("Permission", modeBox));
+
+                var limitKind = BuildComboBox();
+                limitKind.ItemsSource = Enum.GetValues<EdgeTrafficLimitKind>();
+                limitKind.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(PermissionRuleEditorRow.LimitKind), BindingMode.TwoWay));
+                content.Children.Add(BuildLabeledRow("Limit type", limitKind));
+
+                var limitValue = BuildTextBox("Enter a limit");
+                limitValue.Bind(TextBox.TextProperty, new Binding(nameof(PermissionRuleEditorRow.LimitValueText), BindingMode.TwoWay));
+                content.Children.Add(BuildLabeledRow("Limit value", limitValue));
+
+                var effective = new TextBlock
+                {
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                    TextWrapping = TextWrapping.Wrap
+                };
+                effective.Bind(TextBlock.TextProperty, new Binding(nameof(PermissionRuleEditorRow.EffectiveSummary)));
+                content.Children.Add(effective);
+
+                var validation = new TextBlock
+                {
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.Danger),
+                    TextWrapping = TextWrapping.Wrap
+                };
+                validation.Bind(TextBlock.TextProperty, new Binding(nameof(PermissionRuleEditorRow.ValidationMessage)));
+                content.Children.Add(validation);
+
+                return wrap;
+            })
+        };
+
+        var emptyState = new TextBlock
+        {
+            Text = "No explicit route rules yet. Add a rule to override the network default for a traffic type.",
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+            TextWrapping = TextWrapping.Wrap
+        };
+        emptyState.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.VisibleEdgePermissionRows.Count))
+        {
+            Source = viewModel,
+            Converter = new FuncValueConverter<int, bool>(count => count == 0)
+        });
+
+        return new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(10),
+            Child = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    BuildSectionTitle("Permissions", "Add explicit route rules for the traffic types that need route-specific access."),
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 8,
+                        Children =
+                        {
+                            addRuleButton
+                        }
+                    },
+                    emptyState,
+                    rows
+                }
+            }
+        };
+    }
+
+    private static Control BuildEdgeSummaryPanel()
+    {
+        return BuildEditorSection(
+            "Route Summary",
+            "Read-only context for safe route edits.",
+            BuildReadOnlyRow("Route id", nameof(WorkspaceViewModel.SelectedEdgeIdText)),
+            BuildReadOnlyRow("Source node", nameof(WorkspaceViewModel.SelectedEdgeSourceNodeText)),
+            BuildReadOnlyRow("Target node", nameof(WorkspaceViewModel.SelectedEdgeTargetNodeText)),
+            BuildReadOnlyRow("Direction", nameof(WorkspaceViewModel.SelectedEdgeDirectionSummaryText)),
+            BuildReadOnlyRow("Rule status", nameof(WorkspaceViewModel.SelectedEdgeRuleCountText)),
+            BuildReadOnlyRow("Validation", nameof(WorkspaceViewModel.SelectedEdgeValidationStatusText)));
     }
 
     private static void ApplyFocusVisual(Control control)
@@ -3438,6 +3806,39 @@ public sealed class ShellWindow : Window
         };
     }
 
+    private static Control BuildTrafficReportSection()
+    {
+        var columns = new (string Header, double Width)[]
+        {
+            ("Traffic", 1.2),
+            ("Planned / moved", 1.1),
+            (string.Empty, 1.0),
+            ("Unmet demand", 1.0),
+            ("Backlog", 1.0)
+        };
+        var section = (Border)BuildReportSection<TrafficReportRowViewModel>(
+            "Traffic Summary",
+            columns,
+            nameof(WorkspaceViewModel.TrafficReports),
+            static row => new[]
+            {
+                row.TrafficType,
+                row.PlannedQuantity,
+                row.DeliveredQuantity,
+                row.UnmetDemand,
+                row.Backlog
+            });
+
+        var content = (StackPanel)section.Child!;
+        var headerGrid = (Grid)content.Children[1];
+        if (headerGrid.Children[2] is TextBlock startedHeader)
+        {
+            startedHeader.Bind(TextBlock.TextProperty, new Binding(nameof(WorkspaceViewModel.TrafficDeliveredColumnLabel)));
+        }
+
+        return section;
+    }
+
     private void HandleTopBarPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (e.GetCurrentPoint(this).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed)
@@ -3564,6 +3965,85 @@ public sealed class ShellWindow : Window
         };
 
         return await dialog.ShowDialog<UnsavedChangesChoice>(this);
+    }
+
+    private async Task ConfirmDeleteRouteAsync()
+    {
+        if (!viewModel.CanDeleteSelectedEdgeEditor)
+        {
+            return;
+        }
+
+        var routeLabel = viewModel.SelectedEdgePreviewTitleText;
+        var confirmed = await ShowConfirmationDialogAsync(
+            "Delete route",
+            $"Delete route '{routeLabel}'? This removes the route and returns to the normal workspace.",
+            "Delete Route",
+            isDestructive: true);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        viewModel.DeleteSelectedEdgeEditorCommand.Execute(null);
+    }
+
+    private async Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel, bool isDestructive)
+    {
+        var dialog = new Window
+        {
+            Width = 440,
+            CanResize = false,
+            SystemDecorations = SystemDecorations.None,
+            ExtendClientAreaToDecorationsHint = true,
+            ExtendClientAreaChromeHints = ExtendClientAreaChromeHints.NoChrome,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Title = title
+        };
+
+        var confirmButton = isDestructive
+            ? BuildDestructiveButton(confirmLabel, new RelayCommand(() => dialog.Close(true)))
+            : BuildButton(confirmLabel, new RelayCommand(() => dialog.Close(true)), isPrimary: true);
+        var cancelButton = BuildButton("Cancel", new RelayCommand(() => dialog.Close(false)));
+
+        dialog.Content = new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(16),
+            Padding = new Thickness(18),
+            Child = new StackPanel
+            {
+                Spacing = 14,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = title,
+                        FontSize = 20,
+                        FontWeight = FontWeight.Bold,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                    },
+                    new TextBlock
+                    {
+                        Text = message,
+                        TextWrapping = TextWrapping.Wrap,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
+                    },
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Spacing = 8,
+                        Children = { confirmButton, cancelButton }
+                    }
+                }
+            }
+        };
+
+        return await dialog.ShowDialog<bool>(this);
     }
 
     private async Task ShowErrorDialogAsync(string title, string message)

@@ -12,6 +12,10 @@ ScenarioAddNodePlacementMatchesClickedWorldPosition();
 ScenarioDragAndConnectUseRenderedCoordinates();
 ScenarioMultipleTrafficProfilesCanBeSwitched();
 ScenarioNodeTrafficRoleCanBeEditedInInspector();
+ScenarioRouteEditorWorkspaceModeTransitions();
+ScenarioRouteEditorCanAddTrafficRule();
+ScenarioRouteEditorValidationBlocksSave();
+ScenarioRouteEditorDeleteReturnsToNormalWorkspace();
 ScenarioTrafficDefinitionRenameAndRemovalPropagate();
 ScenarioNodeEditsPersistThroughSaveLoad();
 ScenarioToolCommandsReflectRealModes();
@@ -22,6 +26,7 @@ ScenarioEdgeAnchorsAndHitTestingFollowResizedBounds();
 ScenarioNodeLayoutCacheReusesAndInvalidatesByContentAndTier();
 ScenarioEdgeTooltipIncludesRouteDetails();
 ScenarioPressureExplanationAppearsInNodeDetails();
+ScenarioTimelineStepUsesEdgeOccupancyForVisualState();
 ScenarioReportsPopulateAndResetAroundTimeline();
 
 Console.WriteLine("Avalonia verification passed.");
@@ -184,6 +189,220 @@ static void ScenarioNodeTrafficRoleCanBeEditedInInspector()
         AssertNumberEqual(0d, profile.Production, "saved edited role production");
         AssertNumberEqual(4d, profile.Consumption, "saved edited role consumption");
         AssertTrue(!profile.CanTransship, "saved edited role transshipment");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioRouteEditorWorkspaceModeTransitions()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Route Editor",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "aid" }],
+        Nodes =
+        [
+            new NodeModel { Id = "source", Name = "Source", X = 0d, Y = 0d },
+            new NodeModel { Id = "target", Name = "Target", X = 220d, Y = 0d }
+        ],
+        Edges =
+        [
+            new EdgeModel
+            {
+                Id = "source->target",
+                RouteType = "Relief Corridor",
+                FromNodeId = "source",
+                ToNodeId = "target",
+                Time = 2d,
+                Cost = 3d,
+                Capacity = 9d,
+                IsBidirectional = true,
+                TrafficPermissions = [new EdgeTrafficPermissionRule { TrafficType = "aid", Mode = EdgeTrafficPermissionMode.Permitted }]
+            }
+        ]
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        workspace.SelectRouteForEdit("source->target");
+        workspace.EnterEdgeEditor();
+
+        AssertTrue(workspace.IsEdgeEditorWorkspaceMode, "route editor enters dedicated workspace mode");
+        workspace.EdgeRouteTypeText = "Updated Corridor";
+        workspace.EdgeTimeText = "5";
+        workspace.CancelEdgeEditorCommand.Execute(null);
+
+        AssertTrue(workspace.IsNormalWorkspaceMode, "route editor cancel returns to normal workspace");
+        AssertTextEqual("Relief Corridor", workspace.EdgeRouteTypeText, "route editor cancel restores route label");
+        AssertTextEqual("2", workspace.EdgeTimeText, "route editor cancel restores travel time");
+
+        workspace.EnterEdgeEditor();
+        workspace.EdgeRouteTypeText = "Updated Corridor";
+        workspace.EdgeTimeText = "5";
+        workspace.EdgeCostText = "7";
+        workspace.EdgeCapacityText = "12";
+        workspace.SaveEdgeEditorCommand.Execute(null);
+
+        AssertTrue(workspace.IsNormalWorkspaceMode, "route editor save returns to normal workspace");
+        var saved = SaveAndReload(workspace);
+        var edge = saved.Edges.Single();
+        AssertTextEqual("Updated Corridor", edge.RouteType!, "route editor save updates route label");
+        AssertNumberEqual(5d, edge.Time, "route editor save updates time");
+        AssertNumberEqual(7d, edge.Cost, "route editor save updates cost");
+        AssertNumberEqual(12d, edge.Capacity!.Value, "route editor save updates capacity");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioRouteEditorValidationBlocksSave()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Route Validation",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "aid" }],
+        Nodes =
+        [
+            new NodeModel { Id = "a", Name = "A", X = 0d, Y = 0d },
+            new NodeModel { Id = "b", Name = "B", X = 200d, Y = 0d }
+        ],
+        Edges =
+        [
+            new EdgeModel
+            {
+                Id = "a->b",
+                FromNodeId = "a",
+                ToNodeId = "b",
+                Time = 1d,
+                Cost = 1d,
+                IsBidirectional = false
+            }
+        ]
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        workspace.OpenRouteEditor("a->b");
+        workspace.AddEdgePermissionRuleCommand.Execute(null);
+
+        var row = workspace.SelectedEdgePermissionRows.Single(permission => permission.TrafficType == "aid");
+        row.IsActive = true;
+        row.Mode = EdgeTrafficPermissionMode.Limited;
+        row.LimitKind = EdgeTrafficLimitKind.PercentOfEdgeCapacity;
+        row.LimitValueText = "35";
+
+        AssertTextEqual("Set edge capacity before using a percentage limit.", row.ValidationMessage, "route editor percent limit requires capacity");
+        AssertTrue(!workspace.CanSaveEdgeEditor, "route editor blocks save while permission rule is invalid");
+
+        workspace.EdgeCapacityText = "20";
+        AssertTextEqual(string.Empty, row.ValidationMessage, "route editor clears permission validation after capacity is set");
+        AssertTrue(workspace.CanSaveEdgeEditor, "route editor enables save once validation passes");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioRouteEditorCanAddTrafficRule()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Route Add Rule",
+        TrafficTypes =
+        [
+            new TrafficTypeDefinition { Name = "aid" },
+            new TrafficTypeDefinition { Name = "water" }
+        ],
+        Nodes =
+        [
+            new NodeModel { Id = "a", Name = "A", X = 0d, Y = 0d },
+            new NodeModel { Id = "b", Name = "B", X = 200d, Y = 0d }
+        ],
+        Edges =
+        [
+            new EdgeModel
+            {
+                Id = "a->b",
+                FromNodeId = "a",
+                ToNodeId = "b",
+                Time = 1d,
+                Cost = 1d
+            }
+        ]
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        workspace.OpenRouteEditor("a->b");
+
+        AssertNumberEqual(0d, workspace.VisibleEdgePermissionRows.Count, "route editor starts with no active route rules");
+        workspace.AddEdgePermissionRuleCommand.Execute(null);
+
+        AssertNumberEqual(1d, workspace.VisibleEdgePermissionRows.Count, "route editor activates one route rule");
+        AssertTextEqual("aid", workspace.VisibleEdgePermissionRows.Single().TrafficType, "route editor adds first available traffic type");
+
+        workspace.VisibleEdgePermissionRows.Single().Mode = EdgeTrafficPermissionMode.Blocked;
+        workspace.SaveEdgeEditorCommand.Execute(null);
+
+        var saved = SaveAndReload(workspace);
+        var edge = saved.Edges.Single();
+        var addedRule = edge.TrafficPermissions.Single(rule => rule.TrafficType == "aid");
+        AssertTrue(addedRule.IsActive, "route editor saves activated route rule");
+        AssertTrue(addedRule.Mode == EdgeTrafficPermissionMode.Blocked, "route editor saves activated route rule mode");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioRouteEditorDeleteReturnsToNormalWorkspace()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Route Delete",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "aid" }],
+        Nodes =
+        [
+            new NodeModel { Id = "a", Name = "A", X = 0d, Y = 0d },
+            new NodeModel { Id = "b", Name = "B", X = 200d, Y = 0d }
+        ],
+        Edges =
+        [
+            new EdgeModel
+            {
+                Id = "a->b",
+                FromNodeId = "a",
+                ToNodeId = "b",
+                Time = 1d,
+                Cost = 1d
+            }
+        ]
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        workspace.OpenRouteEditor("a->b");
+        workspace.DeleteSelectedEdgeFromEditor();
+
+        AssertTrue(workspace.IsNormalWorkspaceMode, "route delete returns to normal workspace");
+        AssertNumberEqual(0d, workspace.Scene.Selection.SelectedEdgeIds.Count, "route delete clears deleted edge selection");
+
+        var saved = SaveAndReload(workspace);
+        AssertNumberEqual(0d, saved.Edges.Count, "route delete removes edge from saved network");
     }
     finally
     {
@@ -584,6 +803,103 @@ static void ScenarioPressureExplanationAppearsInNodeDetails()
         AssertTrue(node.DetailLines.Any(line => line.Text.StartsWith("Pressure ", StringComparison.Ordinal)), "node detail pressure line");
         AssertTrue(node.DetailLines.Any(line => line.Text.StartsWith("Cause: ", StringComparison.Ordinal)), "node detail cause line");
         AssertTrue(node.ToolTipText.Contains("Cause breakdown:", StringComparison.Ordinal), "node tooltip cause breakdown");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioTimelineStepUsesEdgeOccupancyForVisualState()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Timeline Occupancy",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "aid" }],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "source",
+                Name = "Source Depot",
+                X = 0d,
+                Y = 0d,
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile
+                    {
+                        TrafficType = "aid",
+                        Production = 5d,
+                        ProductionStartPeriod = 1,
+                        ProductionEndPeriod = 1
+                    }
+                ]
+            },
+            new NodeModel
+            {
+                Id = "sink",
+                Name = "Remote Clinic",
+                X = 260d,
+                Y = 0d,
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile
+                    {
+                        TrafficType = "aid",
+                        Consumption = 5d,
+                        ConsumptionStartPeriod = 1,
+                        ConsumptionEndPeriod = 1
+                    }
+                ]
+            }
+        ],
+        Edges =
+        [
+            new EdgeModel
+            {
+                Id = "source->sink",
+                RouteType = "Mountain Pass",
+                FromNodeId = "source",
+                ToNodeId = "sink",
+                Time = 3d,
+                Cost = 1d,
+                Capacity = 5d
+            }
+        ]
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+
+        workspace.StepCommand.Execute(null);
+        var period1Edge = workspace.Scene.Edges.Single();
+        AssertTextEqual("Started this period", workspace.TrafficDeliveredColumnLabel, "timeline traffic column label");
+        AssertTrue(period1Edge.LoadRatio > 0d, "timeline period 1 edge load active");
+        AssertTrue(period1Edge.FlowRate > 0d, "timeline period 1 edge flow active");
+        AssertTextEqual("5", workspace.TrafficReports.Single().DeliveredQuantity, "timeline period 1 starts are reported");
+
+        workspace.StepCommand.Execute(null);
+        var period2Edge = workspace.Scene.Edges.Single();
+        AssertTrue(period2Edge.LoadRatio > 0d, "timeline period 2 edge stays occupied after allocations stop");
+        AssertTrue(period2Edge.FlowRate > 0d, "timeline period 2 edge visuals use occupancy");
+        AssertTextEqual("0", workspace.TrafficReports.Single().DeliveredQuantity, "timeline period 2 reports no new starts");
+
+        workspace.StepCommand.Execute(null);
+        var period3Edge = workspace.Scene.Edges.Single();
+        AssertTrue(period3Edge.LoadRatio > 0d, "timeline period 3 edge remains occupied before arrival");
+        AssertTrue(period3Edge.FlowRate > 0d, "timeline period 3 edge visuals still reflect in-flight movement");
+        AssertTextEqual("0", workspace.TrafficReports.Single().DeliveredQuantity, "timeline period 3 reports no new starts");
+
+        workspace.StepCommand.Execute(null);
+        var period4Edge = workspace.Scene.Edges.Single();
+        AssertNumberEqual(0d, period4Edge.LoadRatio, "timeline period 4 edge clears after arrival");
+        AssertNumberEqual(0d, period4Edge.FlowRate, "timeline period 4 edge flow clears after arrival");
+        AssertTextEqual("0", workspace.TrafficReports.Single().DeliveredQuantity, "timeline period 4 reports no new starts");
+
+        workspace.ResetTimelineCommand.Execute(null);
+        AssertTextEqual("Delivered", workspace.TrafficDeliveredColumnLabel, "static traffic column label after reset");
     }
     finally
     {

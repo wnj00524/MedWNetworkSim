@@ -74,6 +74,12 @@ public enum InspectorTabTarget
     TrafficTypes
 }
 
+public enum WorkspaceMode
+{
+    Normal,
+    EdgeEditor
+}
+
 public enum InspectorSectionTarget
 {
     None,
@@ -235,6 +241,8 @@ public sealed class PermissionRuleEditorRow : ObservableObject
     private EdgeTrafficLimitKind limitKind;
     private string limitValueText;
     private string effectiveSummary;
+    private string baseValidationMessage = string.Empty;
+    private string externalValidationMessage = string.Empty;
     private string validationMessage = string.Empty;
 
     public PermissionRuleEditorRow(
@@ -256,7 +264,13 @@ public sealed class PermissionRuleEditorRow : ObservableObject
     public string TrafficType
     {
         get => trafficType;
-        set => SetProperty(ref trafficType, value);
+        set
+        {
+            if (SetProperty(ref trafficType, value))
+            {
+                Validate(null);
+            }
+        }
     }
 
     public bool SupportsOverrideToggle { get; }
@@ -341,51 +355,66 @@ public sealed class PermissionRuleEditorRow : ObservableObject
         };
     }
 
-    private void Validate(double? edgeCapacity)
+    public void RefreshValidation(double? edgeCapacity, IReadOnlyCollection<string>? knownTrafficTypes = null, bool hasDuplicateTrafficType = false) =>
+        Validate(edgeCapacity, knownTrafficTypes, hasDuplicateTrafficType);
+
+    private void Validate(double? edgeCapacity, IReadOnlyCollection<string>? knownTrafficTypes = null, bool hasDuplicateTrafficType = false)
     {
         if (SupportsOverrideToggle && !IsActive)
         {
-            ValidationMessage = string.Empty;
+            baseValidationMessage = string.Empty;
+            externalValidationMessage = string.Empty;
+            UpdateValidationMessage();
             return;
         }
 
-        if (Mode != EdgeTrafficPermissionMode.Limited)
+        baseValidationMessage = string.Empty;
+        if (Mode == EdgeTrafficPermissionMode.Limited)
         {
-            ValidationMessage = string.Empty;
-            return;
-        }
-
-        var parsed = ParseNullableDouble(LimitValueText);
-        if (!parsed.HasValue)
-        {
-            ValidationMessage = LimitKind == EdgeTrafficLimitKind.PercentOfEdgeCapacity
-                ? "Enter a percentage from 0 to 100."
-                : "Enter a limit of 0 or more.";
-            return;
-        }
-
-        if (LimitKind == EdgeTrafficLimitKind.PercentOfEdgeCapacity)
-        {
-            if (parsed.Value < 0d || parsed.Value > 100d)
+            var parsed = ParseNullableDouble(LimitValueText);
+            if (!parsed.HasValue)
             {
-                ValidationMessage = "Enter a percentage from 0 to 100.";
-                return;
+                baseValidationMessage = LimitKind == EdgeTrafficLimitKind.PercentOfEdgeCapacity
+                    ? "Enter a percentage from 0 to 100."
+                    : "Enter a limit of 0 or more.";
             }
-
-            if (!edgeCapacity.HasValue)
+            else if (LimitKind == EdgeTrafficLimitKind.PercentOfEdgeCapacity)
             {
-                ValidationMessage = "Set edge capacity before using a percentage limit.";
-                return;
+                if (parsed.Value < 0d || parsed.Value > 100d)
+                {
+                    baseValidationMessage = "Enter a percentage from 0 to 100.";
+                }
+                else if (!edgeCapacity.HasValue)
+                {
+                    baseValidationMessage = "Set edge capacity before using a percentage limit.";
+                }
+            }
+            else if (parsed.Value < 0d)
+            {
+                baseValidationMessage = "Enter a limit of 0 or more.";
             }
         }
-        else if (parsed.Value < 0d)
+
+        externalValidationMessage = string.Empty;
+        var normalizedTrafficType = string.IsNullOrWhiteSpace(TrafficType) ? string.Empty : TrafficType.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedTrafficType))
         {
-            ValidationMessage = "Enter a limit of 0 or more.";
-            return;
+            externalValidationMessage = "Choose a traffic type for this route rule.";
+        }
+        else if (knownTrafficTypes is not null && !knownTrafficTypes.Contains(normalizedTrafficType))
+        {
+            externalValidationMessage = "Choose a traffic type that exists in the traffic type editor.";
+        }
+        else if (hasDuplicateTrafficType)
+        {
+            externalValidationMessage = "Use each traffic type only once per route.";
         }
 
-        ValidationMessage = string.Empty;
+        UpdateValidationMessage();
     }
+
+    private void UpdateValidationMessage() =>
+        ValidationMessage = string.IsNullOrWhiteSpace(baseValidationMessage) ? externalValidationMessage : baseValidationMessage;
 
     private static double? ParseNullableDouble(string text)
     {
@@ -402,6 +431,12 @@ public sealed class PermissionRuleEditorRow : ObservableObject
 
 public sealed class WorkspaceViewModel : ObservableObject
 {
+    private sealed class EdgeEditorSession
+    {
+        public required string EdgeId { get; init; }
+        public required EdgeModel Snapshot { get; init; }
+    }
+
     internal const double SceneNodeMinWidth = 132d;
     internal const double SceneNodeMaxWidth = 248d;
     internal const double SceneNodeDefaultWidth = 168d;
@@ -487,6 +522,13 @@ public sealed class WorkspaceViewModel : ObservableObject
     private string pendingTrafficRemovalName = string.Empty;
     private InspectorTabTarget selectedInspectorTab = InspectorTabTarget.Selection;
     private InspectorSectionTarget selectedInspectorSection = InspectorSectionTarget.None;
+    private WorkspaceMode workspaceMode = WorkspaceMode.Normal;
+    private EdgeEditorSession? edgeEditorSession;
+    private string edgeTimeValidationText = string.Empty;
+    private string edgeCostValidationText = string.Empty;
+    private string edgeCapacityValidationText = string.Empty;
+    private string edgeEditorValidationText = string.Empty;
+    private bool isRefreshingEdgeEditorState;
     private bool hasUnsavedChanges;
     private string? currentFilePath;
 
@@ -504,6 +546,26 @@ public sealed class WorkspaceViewModel : ObservableObject
         SelectedNodeConsumptionWindows = [];
         SelectedNodeInputRequirements = [];
         SelectedEdgePermissionRows = [];
+        SelectedEdgePermissionRows.CollectionChanged += (_, e) =>
+        {
+            if (e.OldItems is not null)
+            {
+                foreach (var item in e.OldItems.OfType<PermissionRuleEditorRow>())
+                {
+                    item.PropertyChanged -= HandleSelectedEdgePermissionRowChanged;
+                }
+            }
+
+            if (e.NewItems is not null)
+            {
+                foreach (var item in e.NewItems.OfType<PermissionRuleEditorRow>())
+                {
+                    item.PropertyChanged += HandleSelectedEdgePermissionRowChanged;
+                }
+            }
+
+            RefreshEdgeEditorState();
+        };
         TrafficDefinitions = [];
         DefaultTrafficPermissionRows = [];
         DefaultTrafficPermissionRows.CollectionChanged += (_, _) => RaiseTrafficTypeDisplayStateChanged();
@@ -528,6 +590,11 @@ public sealed class WorkspaceViewModel : ObservableObject
         ConnectToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.Connect));
         DeleteSelectionCommand = new RelayCommand(DeleteSelection, () => CanDeleteSelection);
         ApplyInspectorCommand = new RelayCommand(ApplyInspectorEdits, () => CanApplyInspectorEdits);
+        OpenSelectedEdgeEditorCommand = new RelayCommand(EnterEdgeEditor, () => CanOpenSelectedEdgeEditor);
+        SaveEdgeEditorCommand = new RelayCommand(SaveEdgeEditor, () => CanSaveEdgeEditor);
+        CancelEdgeEditorCommand = new RelayCommand(CancelEdgeEditor, () => IsEdgeEditorWorkspaceMode);
+        DeleteSelectedEdgeEditorCommand = new RelayCommand(DeleteSelectedEdgeFromEditor, () => CanDeleteSelectedEdgeEditor);
+        AddEdgePermissionRuleCommand = new RelayCommand(AddEdgePermissionRule, () => CanAddEdgePermissionRule);
         AddNodeTrafficProfileCommand = new RelayCommand(AddNodeTrafficProfile, () => IsEditingNode);
         DuplicateSelectedNodeTrafficProfileCommand = new RelayCommand(DuplicateSelectedNodeTrafficProfile, () => IsEditingNode && SelectedNodeTrafficProfileItem is not null);
         RemoveSelectedNodeTrafficProfileCommand = new RelayCommand(RemoveSelectedNodeTrafficProfile, () => IsEditingNode && SelectedNodeTrafficProfileItem is not null);
@@ -583,6 +650,11 @@ public sealed class WorkspaceViewModel : ObservableObject
     public RelayCommand ConnectToolCommand { get; }
     public RelayCommand DeleteSelectionCommand { get; }
     public RelayCommand ApplyInspectorCommand { get; }
+    public RelayCommand OpenSelectedEdgeEditorCommand { get; }
+    public RelayCommand SaveEdgeEditorCommand { get; }
+    public RelayCommand CancelEdgeEditorCommand { get; }
+    public RelayCommand DeleteSelectedEdgeEditorCommand { get; }
+    public RelayCommand AddEdgePermissionRuleCommand { get; }
     public RelayCommand AddNodeTrafficProfileCommand { get; }
     public RelayCommand DuplicateSelectedNodeTrafficProfileCommand { get; }
     public RelayCommand RemoveSelectedNodeTrafficProfileCommand { get; }
@@ -641,6 +713,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     public int TimelineMaximum { get => timelineMaximum; private set => SetProperty(ref timelineMaximum, value); }
     public int TimelinePosition { get => timelinePosition; set => SetProperty(ref timelinePosition, value); }
     public string SimulationSummary => temporalState is null ? "Static mode" : $"Timeline period {CurrentPeriod}";
+    public string TrafficDeliveredColumnLabel => lastTimelineStepResult is null ? "Delivered" : "Started this period";
     public string SelectionSummary => BuildSelectionSummary();
     public bool CanDeleteSelection => Scene.Selection.SelectedNodeIds.Count > 0 || Scene.Selection.SelectedEdgeIds.Count > 0;
     public InspectorEditMode CurrentInspectorEditMode => GetInspectorEditMode();
@@ -648,6 +721,29 @@ public sealed class WorkspaceViewModel : ObservableObject
     public bool IsEditingNode => CurrentInspectorEditMode == InspectorEditMode.Node;
     public bool IsEditingEdge => CurrentInspectorEditMode == InspectorEditMode.Edge;
     public bool IsEditingSelection => CurrentInspectorEditMode == InspectorEditMode.Selection;
+    public WorkspaceMode CurrentWorkspaceMode
+    {
+        get => workspaceMode;
+        private set
+        {
+            if (SetProperty(ref workspaceMode, value))
+            {
+                Raise(nameof(IsNormalWorkspaceMode));
+                Raise(nameof(IsEdgeEditorWorkspaceMode));
+                Raise(nameof(CanOpenSelectedEdgeEditor));
+                Raise(nameof(CanSaveEdgeEditor));
+                Raise(nameof(CanDeleteSelectedEdgeEditor));
+                Raise(nameof(CanAddEdgePermissionRule));
+                OpenSelectedEdgeEditorCommand.NotifyCanExecuteChanged();
+                SaveEdgeEditorCommand.NotifyCanExecuteChanged();
+                CancelEdgeEditorCommand.NotifyCanExecuteChanged();
+                DeleteSelectedEdgeEditorCommand.NotifyCanExecuteChanged();
+                AddEdgePermissionRuleCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+    public bool IsNormalWorkspaceMode => CurrentWorkspaceMode == WorkspaceMode.Normal;
+    public bool IsEdgeEditorWorkspaceMode => CurrentWorkspaceMode == WorkspaceMode.EdgeEditor;
     public InspectorTabTarget SelectedInspectorTab
     {
         get => selectedInspectorTab;
@@ -685,6 +781,84 @@ public sealed class WorkspaceViewModel : ObservableObject
     public string SelectedTrafficTypeIssueCountText => SelectedTrafficTypeStatusText;
     public string SelectedTrafficTypeDefaultAccessSummaryText => BuildSelectedTrafficTypeDefaultAccessSummaryText();
     public bool CanApplyInspectorEdits => string.IsNullOrWhiteSpace(NodeTrafficRoleValidationText);
+    public bool CanOpenSelectedEdgeEditor => GetSelectedEdgeModel() is not null && !IsEdgeEditorWorkspaceMode;
+    public bool CanSaveEdgeEditor =>
+        IsEdgeEditorWorkspaceMode &&
+        GetSelectedEdgeModel() is not null &&
+        string.IsNullOrWhiteSpace(EdgeTimeValidationText) &&
+        string.IsNullOrWhiteSpace(EdgeCostValidationText) &&
+        string.IsNullOrWhiteSpace(EdgeCapacityValidationText) &&
+        SelectedEdgePermissionRows.All(row => string.IsNullOrWhiteSpace(row.ValidationMessage));
+    public bool CanDeleteSelectedEdgeEditor => IsEdgeEditorWorkspaceMode && GetSelectedEdgeModel() is not null;
+    public bool CanAddEdgePermissionRule => IsEdgeEditorWorkspaceMode && AvailableEdgeRuleTrafficTypes.Count > 0;
+    public string EdgeTimeValidationText { get => edgeTimeValidationText; private set => SetProperty(ref edgeTimeValidationText, value); }
+    public string EdgeCostValidationText { get => edgeCostValidationText; private set => SetProperty(ref edgeCostValidationText, value); }
+    public string EdgeCapacityValidationText { get => edgeCapacityValidationText; private set => SetProperty(ref edgeCapacityValidationText, value); }
+    public string EdgeEditorValidationText { get => edgeEditorValidationText; private set => SetProperty(ref edgeEditorValidationText, value); }
+    public string SelectedEdgeIdText => GetEdgeSummaryContext()?.Id ?? "No route selected";
+    public string SelectedEdgeSourceNodeText => GetEdgeSummaryContext()?.FromNodeId ?? "No route selected";
+    public string SelectedEdgeTargetNodeText => GetEdgeSummaryContext()?.ToNodeId ?? "No route selected";
+    public string SelectedEdgeDirectionSummaryText
+    {
+        get
+        {
+            var edge = GetEdgeSummaryContext();
+            if (edge is null)
+            {
+                return "No route selected";
+            }
+
+            return EdgeIsBidirectional
+                ? $"Bidirectional between {edge.FromNodeId} and {edge.ToNodeId}"
+                : $"One-way from {edge.FromNodeId} to {edge.ToNodeId}";
+        }
+    }
+
+    public string SelectedEdgeRuleCountText
+    {
+        get
+        {
+            var activeRules = SelectedEdgePermissionRows.Count(row => !row.SupportsOverrideToggle || row.IsActive);
+            var issueCount = SelectedEdgePermissionRows.Count(row => !string.IsNullOrWhiteSpace(row.ValidationMessage));
+            return issueCount == 0
+                ? $"{activeRules} route rules ready"
+                : $"{activeRules} route rules, {issueCount} need attention";
+        }
+    }
+
+    public string SelectedEdgeValidationStatusText => CanSaveEdgeEditor || !IsEdgeEditorWorkspaceMode
+        ? "Ready to save"
+        : "Fix the highlighted route details before saving.";
+    public string SelectedEdgePreviewTitleText
+    {
+        get
+        {
+            var edge = GetEdgeSummaryContext();
+            if (edge is null)
+            {
+                return "No route selected";
+            }
+
+            var routeLabel = string.IsNullOrWhiteSpace(EdgeRouteTypeText) ? edge.RouteType : EdgeRouteTypeText;
+            return string.IsNullOrWhiteSpace(routeLabel) ? edge.Id : routeLabel.Trim();
+        }
+    }
+
+    public string SelectedEdgePreviewTravelText => $"Time {EdgeTimeText} | Cost {EdgeCostText}";
+    public string SelectedEdgePreviewCapacityText => string.IsNullOrWhiteSpace(EdgeCapacityText)
+        ? "Capacity unlimited"
+        : $"Capacity {EdgeCapacityText}";
+    public IReadOnlyList<string> AvailableEdgeRuleTrafficTypes =>
+        SelectedEdgePermissionRows
+            .Where(row => row.SupportsOverrideToggle && !row.IsActive)
+            .Select(row => row.TrafficType)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(name => name, Comparer)
+            .ToList();
+    public IReadOnlyList<PermissionRuleEditorRow> VisibleEdgePermissionRows =>
+        SelectedEdgePermissionRows
+            .Where(row => !row.SupportsOverrideToggle || row.IsActive)
+            .ToList();
     public string NetworkNameText { get => networkNameText; set => SetProperty(ref networkNameText, value); }
     public string NetworkDescriptionText { get => networkDescriptionText; set => SetProperty(ref networkDescriptionText, value); }
     public string NetworkTimelineLoopLengthText { get => networkTimelineLoopLengthText; set => SetProperty(ref networkTimelineLoopLengthText, value); }
@@ -951,11 +1125,65 @@ public sealed class WorkspaceViewModel : ObservableObject
             }
         }
     }
-    public string EdgeRouteTypeText { get => edgeRouteTypeText; set => SetProperty(ref edgeRouteTypeText, value); }
-    public string EdgeTimeText { get => edgeTimeText; set => SetProperty(ref edgeTimeText, value); }
-    public string EdgeCostText { get => edgeCostText; set => SetProperty(ref edgeCostText, value); }
-    public string EdgeCapacityText { get => edgeCapacityText; set => SetProperty(ref edgeCapacityText, value); }
-    public bool EdgeIsBidirectional { get => edgeIsBidirectional; set => SetProperty(ref edgeIsBidirectional, value); }
+    public string EdgeRouteTypeText
+    {
+        get => edgeRouteTypeText;
+        set
+        {
+            if (SetProperty(ref edgeRouteTypeText, value))
+            {
+                RefreshEdgeEditorState();
+            }
+        }
+    }
+
+    public string EdgeTimeText
+    {
+        get => edgeTimeText;
+        set
+        {
+            if (SetProperty(ref edgeTimeText, value))
+            {
+                RefreshEdgeEditorState();
+            }
+        }
+    }
+
+    public string EdgeCostText
+    {
+        get => edgeCostText;
+        set
+        {
+            if (SetProperty(ref edgeCostText, value))
+            {
+                RefreshEdgeEditorState();
+            }
+        }
+    }
+
+    public string EdgeCapacityText
+    {
+        get => edgeCapacityText;
+        set
+        {
+            if (SetProperty(ref edgeCapacityText, value))
+            {
+                RefreshEdgeEditorState();
+            }
+        }
+    }
+
+    public bool EdgeIsBidirectional
+    {
+        get => edgeIsBidirectional;
+        set
+        {
+            if (SetProperty(ref edgeIsBidirectional, value))
+            {
+                RefreshEdgeEditorState();
+            }
+        }
+    }
     public string InspectorValidationText { get => inspectorValidationText; set => SetProperty(ref inspectorValidationText, value); }
 
     public TrafficDefinitionListItem? SelectedTrafficDefinitionItem
@@ -1238,6 +1466,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         network = fileService.NormalizeAndValidate(source);
         temporalState = null;
         lastTimelineStepResult = null;
+        Raise(nameof(TrafficDeliveredColumnLabel));
         lastOutcomes = [];
         lastConsumerCosts = [];
         CurrentPeriod = 0;
@@ -1463,6 +1692,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         lastOutcomes = outcomes;
         lastConsumerCosts = simulationEngine.SummarizeConsumerCosts(outcomes);
         lastTimelineStepResult = null;
+        Raise(nameof(TrafficDeliveredColumnLabel));
         ApplySimulationOutcomes(outcomes.SelectMany(outcome => outcome.Allocations), null);
         StatusText = "Simulation finished.";
     }
@@ -1470,9 +1700,11 @@ public sealed class WorkspaceViewModel : ObservableObject
     private void AdvanceTimeline()
     {
         CommitTransientEditorsToModel();
-        temporalState ??= temporalEngine.Initialize(fileService.NormalizeAndValidate(network));
-        var result = temporalEngine.Advance(network, temporalState);
+        var validatedNetwork = fileService.NormalizeAndValidate(network);
+        temporalState ??= temporalEngine.Initialize(validatedNetwork);
+        var result = temporalEngine.Advance(validatedNetwork, temporalState);
         lastTimelineStepResult = result;
+        Raise(nameof(TrafficDeliveredColumnLabel));
         lastConsumerCosts = simulationEngine.SummarizeConsumerCosts(result.Allocations);
         CurrentPeriod = result.Period;
         TimelinePosition = result.EffectivePeriod;
@@ -1484,6 +1716,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     {
         temporalState = null;
         lastTimelineStepResult = null;
+        Raise(nameof(TrafficDeliveredColumnLabel));
         lastOutcomes = [];
         lastConsumerCosts = [];
         CurrentPeriod = 0;
@@ -1513,15 +1746,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     private void ApplySimulationOutcomes(IEnumerable<RouteAllocation> allocations, TemporalNetworkSimulationEngine.TemporalSimulationStepResult? timeline)
     {
         var allocationList = allocations.ToList();
-        var edgeLoads = Scene.Edges.ToDictionary(edge => edge.Id, _ => 0d, Comparer);
-        foreach (var allocation in allocationList)
-        {
-            foreach (var edgeId in allocation.PathEdgeIds)
-            {
-                edgeLoads[edgeId] = edgeLoads.GetValueOrDefault(edgeId) + allocation.Quantity;
-            }
-        }
-
+        var edgeLoads = BuildEdgeLoads(allocationList, timeline);
         var maxLoad = Math.Max(1d, edgeLoads.Values.DefaultIfEmpty(0d).Max());
         foreach (var edge in Scene.Edges)
         {
@@ -1780,6 +2005,7 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     private void RefreshInspector()
     {
+        EnsureEdgeEditorSelectionState();
         Raise(nameof(SelectionSummary));
         Raise(nameof(SessionSubtitle));
         Raise(nameof(CurrentInspectorEditMode));
@@ -1787,7 +2013,14 @@ public sealed class WorkspaceViewModel : ObservableObject
         Raise(nameof(IsEditingNode));
         Raise(nameof(IsEditingEdge));
         Raise(nameof(IsEditingSelection));
+        Raise(nameof(CurrentWorkspaceMode));
+        Raise(nameof(IsNormalWorkspaceMode));
+        Raise(nameof(IsEdgeEditorWorkspaceMode));
         DeleteSelectionCommand.NotifyCanExecuteChanged();
+        OpenSelectedEdgeEditorCommand.NotifyCanExecuteChanged();
+        SaveEdgeEditorCommand.NotifyCanExecuteChanged();
+        CancelEdgeEditorCommand.NotifyCanExecuteChanged();
+        DeleteSelectedEdgeEditorCommand.NotifyCanExecuteChanged();
         AddNodeTrafficProfileCommand.NotifyCanExecuteChanged();
         DuplicateSelectedNodeTrafficProfileCommand.NotifyCanExecuteChanged();
         RemoveSelectedNodeTrafficProfileCommand.NotifyCanExecuteChanged();
@@ -1801,6 +2034,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         Raise(nameof(ApplyInspectorLabel));
         Raise(nameof(CanApplyInspectorEdits));
         Raise(nameof(NodeTrafficRoleValidationText));
+        RaiseEdgeDisplayStateChanged();
 
         InspectorValidationText = string.Empty;
         var selectedNodeIds = Scene.Selection.SelectedNodeIds.ToList();
@@ -1821,6 +2055,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             SelectedNodeTrafficProfiles.Clear();
             SelectedNodeTrafficProfileItem = null;
             SelectedEdgePermissionRows.Clear();
+            RefreshEdgeEditorState();
             return;
         }
 
@@ -1838,6 +2073,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             SelectedNodeTrafficProfiles.Clear();
             SelectedNodeTrafficProfileItem = null;
             SelectedEdgePermissionRows.Clear();
+            RefreshEdgeEditorState();
             return;
         }
 
@@ -1854,6 +2090,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             ];
             PopulateNodeEditor(node);
             SelectedEdgePermissionRows.Clear();
+            RefreshEdgeEditorState();
             return;
         }
 
@@ -1867,7 +2104,14 @@ public sealed class WorkspaceViewModel : ObservableObject
             $"Capacity: {(edge.Capacity?.ToString("0.##", CultureInfo.InvariantCulture) ?? "Unlimited")}",
             "Edit route access rules to control which traffic types can use this route."
         ];
-        PopulateEdgeEditor(edge);
+        if (!IsEdgeEditorWorkspaceMode || edgeEditorSession is null || !Comparer.Equals(edgeEditorSession.EdgeId, edge.Id))
+        {
+            PopulateEdgeEditor(edge);
+        }
+        else
+        {
+            RefreshEdgeEditorState();
+        }
         SelectedNodeTrafficProfiles.Clear();
         SelectedNodeTrafficProfileItem = null;
     }
@@ -2011,6 +2255,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         EdgeCapacityText = edge.Capacity?.ToString("0.##", CultureInfo.InvariantCulture) ?? string.Empty;
         EdgeIsBidirectional = edge.IsBidirectional;
         PopulateEdgePermissionRows(edge);
+        RefreshEdgeEditorState();
     }
 
     private void PopulateTrafficDefinitionList()
@@ -2072,12 +2317,10 @@ public sealed class WorkspaceViewModel : ObservableObject
     private void PopulateEdgePermissionRows(EdgeModel edge)
     {
         SelectedEdgePermissionRows.Clear();
-        var previewNetwork = BuildPreviewNetwork();
-        foreach (var trafficName in GetKnownTrafficTypeNames())
+        foreach (var rule in edge.TrafficPermissions.OrderBy(rule => rule.TrafficType, Comparer))
         {
-            var rule = edge.TrafficPermissions.FirstOrDefault(item => Comparer.Equals(item.TrafficType, trafficName));
-            var effective = edgeTrafficPermissionResolver.Resolve(previewNetwork, edge, trafficName).Summary;
-            SelectedEdgePermissionRows.Add(new PermissionRuleEditorRow(trafficName, supportsOverrideToggle: true, rule, effective));
+            var effective = BuildEdgePermissionEffectiveSummary(edge, rule.TrafficType);
+            SelectedEdgePermissionRows.Add(new PermissionRuleEditorRow(rule.TrafficType, supportsOverrideToggle: true, rule, effective));
         }
     }
 
@@ -2228,6 +2471,42 @@ public sealed class WorkspaceViewModel : ObservableObject
         edge.TrafficPermissions = SelectedEdgePermissionRows.Select(row => row.ToModel(edge.Capacity)).ToList();
         UpdateEffectivePermissionSummaries(edge);
         StatusText = $"Updated route '{edge.Id}'.";
+    }
+
+    private void SaveEdgeEditor()
+    {
+        RefreshEdgeEditorState();
+        if (!CanSaveEdgeEditor)
+        {
+            InspectorValidationText = EdgeEditorValidationText;
+            StatusText = EdgeEditorValidationText;
+            return;
+        }
+
+        ApplyEdgeEdits();
+        CurrentWorkspaceMode = WorkspaceMode.Normal;
+        edgeEditorSession = null;
+        BuildSceneFromNetwork();
+        RefreshInspector();
+        MarkDirty();
+        NotifyVisualChanged();
+    }
+
+    private void CancelEdgeEditor()
+    {
+        var edge = GetSelectedEdgeModel();
+        if (edgeEditorSession is not null)
+        {
+            PopulateEdgeEditor(edge ?? edgeEditorSession.Snapshot);
+        }
+
+        CurrentWorkspaceMode = WorkspaceMode.Normal;
+        edgeEditorSession = null;
+        RefreshInspector();
+        NotifyVisualChanged();
+        StatusText = edge is null
+            ? "Cancelled route editing."
+            : $"Cancelled changes for route '{edge.Id}'.";
     }
 
     private void ApplyBulkEdits()
@@ -2677,6 +2956,29 @@ public sealed class WorkspaceViewModel : ObservableObject
         };
     }
 
+    private static EdgeModel CloneEdge(EdgeModel source)
+    {
+        return new EdgeModel
+        {
+            Id = source.Id,
+            FromNodeId = source.FromNodeId,
+            ToNodeId = source.ToNodeId,
+            Time = source.Time,
+            Cost = source.Cost,
+            Capacity = source.Capacity,
+            IsBidirectional = source.IsBidirectional,
+            RouteType = source.RouteType,
+            TrafficPermissions = source.TrafficPermissions.Select(rule => new EdgeTrafficPermissionRule
+            {
+                TrafficType = rule.TrafficType,
+                IsActive = rule.IsActive,
+                Mode = rule.Mode,
+                LimitKind = rule.LimitKind,
+                LimitValue = rule.LimitValue
+            }).ToList()
+        };
+    }
+
     private bool SyncNetworkNodePositionsFromScene()
     {
         var changed = false;
@@ -2799,6 +3101,56 @@ public sealed class WorkspaceViewModel : ObservableObject
         NotifyVisualChanged();
     }
 
+    private Dictionary<string, double> BuildEdgeLoads(
+        IReadOnlyList<RouteAllocation> allocations,
+        TemporalNetworkSimulationEngine.TemporalSimulationStepResult? timeline)
+    {
+        if (timeline is not null)
+        {
+            return Scene.Edges.ToDictionary(
+                edge => edge.Id,
+                edge => timeline.EdgeOccupancy.GetValueOrDefault(edge.Id, 0d),
+                Comparer);
+        }
+
+        var edgeLoads = Scene.Edges.ToDictionary(edge => edge.Id, _ => 0d, Comparer);
+        foreach (var allocation in allocations)
+        {
+            foreach (var edgeId in allocation.PathEdgeIds)
+            {
+                edgeLoads[edgeId] = edgeLoads.GetValueOrDefault(edgeId) + allocation.Quantity;
+            }
+        }
+
+        return edgeLoads;
+    }
+
+    public void OpenRouteEditor(string edgeId)
+    {
+        SelectRouteForEdit(edgeId);
+        EnterEdgeEditor();
+    }
+
+    public void EnterEdgeEditor()
+    {
+        var edge = GetSelectedEdgeModel();
+        if (edge is null)
+        {
+            StatusText = "Select one route before opening the route editor.";
+            return;
+        }
+
+        edgeEditorSession = new EdgeEditorSession
+        {
+            EdgeId = edge.Id,
+            Snapshot = CloneEdge(edge)
+        };
+        PopulateEdgeEditor(edge);
+        CurrentWorkspaceMode = WorkspaceMode.EdgeEditor;
+        RefreshEdgeEditorState();
+        StatusText = $"Editing route '{edge.Id}'.";
+    }
+
     public string AddNodeAtPosition(GraphPoint position)
     {
         var nodeId = AddNodeAt(position);
@@ -2840,6 +3192,48 @@ public sealed class WorkspaceViewModel : ObservableObject
         Scene.Selection.SelectedEdgeIds.Clear();
         Scene.Selection.SelectedEdgeIds.Add(edgeId);
         DeleteSelection();
+    }
+
+    public void DeleteSelectedEdgeFromEditor()
+    {
+        var edgeId = Scene.Selection.SelectedEdgeIds.FirstOrDefault();
+        if (edgeId is null)
+        {
+            return;
+        }
+
+        CurrentWorkspaceMode = WorkspaceMode.Normal;
+        edgeEditorSession = null;
+        DeleteRouteById(edgeId);
+    }
+
+    public void AddEdgePermissionRule()
+    {
+        var row = SelectedEdgePermissionRows
+            .Where(candidate => candidate.SupportsOverrideToggle && !candidate.IsActive)
+            .OrderBy(candidate => candidate.TrafficType, Comparer)
+            .FirstOrDefault();
+        if (row is null)
+        {
+            StatusText = "All traffic types already have route rules.";
+            return;
+        }
+
+        row.IsActive = true;
+        RefreshEdgeEditorState();
+        StatusText = $"Added route rule for '{row.TrafficType}'.";
+    }
+
+    public void RemoveEdgePermissionRule(PermissionRuleEditorRow row)
+    {
+        if (!SelectedEdgePermissionRows.Contains(row))
+        {
+            return;
+        }
+
+        row.IsActive = false;
+        RefreshEdgeEditorState();
+        StatusText = $"Removed route rule for '{row.TrafficType}'.";
     }
 
     public bool StartEdgeFromNode(string nodeId)
@@ -2892,6 +3286,200 @@ public sealed class WorkspaceViewModel : ObservableObject
         Raise(nameof(NodeTrafficRoleValidationText));
         Raise(nameof(CanApplyInspectorEdits));
         ApplyInspectorCommand.NotifyCanExecuteChanged();
+    }
+
+    private void HandleSelectedEdgePermissionRowChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(PermissionRuleEditorRow.EffectiveSummary) or nameof(PermissionRuleEditorRow.ValidationMessage))
+        {
+            return;
+        }
+
+        RefreshEdgeEditorState();
+    }
+
+    private void EnsureEdgeEditorSelectionState()
+    {
+        if (!IsEdgeEditorWorkspaceMode)
+        {
+            return;
+        }
+
+        var selectedEdgeId = Scene.Selection.SelectedEdgeIds.FirstOrDefault();
+        if (selectedEdgeId is null ||
+            Scene.Selection.SelectedNodeIds.Count > 0 ||
+            edgeEditorSession is null ||
+            !Comparer.Equals(edgeEditorSession.EdgeId, selectedEdgeId))
+        {
+            CurrentWorkspaceMode = WorkspaceMode.Normal;
+            edgeEditorSession = null;
+        }
+    }
+
+    private void RefreshEdgeEditorState()
+    {
+        if (isRefreshingEdgeEditorState)
+        {
+            return;
+        }
+
+        isRefreshingEdgeEditorState = true;
+        try
+        {
+        var hasEdgeContext = GetEdgeSummaryContext() is not null || SelectedEdgePermissionRows.Count > 0;
+        var capacityParse = TryParseOptionalNonNegativeDouble(
+            EdgeCapacityText,
+            "Enter route capacity as 0 or more, or leave it blank.");
+        var timeParse = TryParseNonNegativeDouble(EdgeTimeText, "Enter travel time as 0 or more.");
+        var costParse = TryParseNonNegativeDouble(EdgeCostText, "Enter travel cost as 0 or more.");
+
+        EdgeTimeValidationText = hasEdgeContext ? timeParse.ValidationMessage : string.Empty;
+        EdgeCostValidationText = hasEdgeContext ? costParse.ValidationMessage : string.Empty;
+        EdgeCapacityValidationText = hasEdgeContext ? capacityParse.ValidationMessage : string.Empty;
+
+        var knownTrafficTypes = GetKnownTrafficTypeNames();
+        var duplicateTrafficTypes = SelectedEdgePermissionRows
+            .Select(row => string.IsNullOrWhiteSpace(row.TrafficType) ? string.Empty : row.TrafficType.Trim())
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .GroupBy(name => name, Comparer)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToHashSet(Comparer);
+        var edgeCapacity = string.IsNullOrWhiteSpace(capacityParse.ValidationMessage) ? capacityParse.Value : null;
+        foreach (var row in SelectedEdgePermissionRows)
+        {
+            var normalizedTrafficType = string.IsNullOrWhiteSpace(row.TrafficType) ? string.Empty : row.TrafficType.Trim();
+            row.RefreshValidation(
+                edgeCapacity,
+                knownTrafficTypes,
+                hasDuplicateTrafficType: !string.IsNullOrWhiteSpace(normalizedTrafficType) && duplicateTrafficTypes.Contains(normalizedTrafficType));
+        }
+
+        UpdateEdgeEditorPermissionSummaries(edgeCapacity);
+        EdgeEditorValidationText = BuildEdgeEditorValidationText();
+        RaiseEdgeDisplayStateChanged();
+        SaveEdgeEditorCommand.NotifyCanExecuteChanged();
+        DeleteSelectedEdgeEditorCommand.NotifyCanExecuteChanged();
+        AddEdgePermissionRuleCommand.NotifyCanExecuteChanged();
+        }
+        finally
+        {
+            isRefreshingEdgeEditorState = false;
+        }
+    }
+
+    private void UpdateEdgeEditorPermissionSummaries(double? edgeCapacity)
+    {
+        var edge = GetEdgeSummaryContext();
+        if (edge is null)
+        {
+            return;
+        }
+
+        var previewNetwork = BuildPreviewNetwork();
+        var previewEdge = new EdgeModel
+        {
+            Id = edge.Id,
+            FromNodeId = edge.FromNodeId,
+            ToNodeId = edge.ToNodeId,
+            Time = string.IsNullOrWhiteSpace(EdgeTimeValidationText) ? TryParseNonNegativeDouble(EdgeTimeText, string.Empty).Value.GetValueOrDefault(edge.Time) : edge.Time,
+            Cost = string.IsNullOrWhiteSpace(EdgeCostValidationText) ? TryParseNonNegativeDouble(EdgeCostText, string.Empty).Value.GetValueOrDefault(edge.Cost) : edge.Cost,
+            Capacity = string.IsNullOrWhiteSpace(EdgeCapacityValidationText) ? edgeCapacity : edge.Capacity,
+            IsBidirectional = EdgeIsBidirectional,
+            RouteType = NormalizeOptionalText(EdgeRouteTypeText) ?? edge.RouteType,
+            TrafficPermissions = []
+        };
+
+        foreach (var row in SelectedEdgePermissionRows)
+        {
+            if (!string.IsNullOrWhiteSpace(row.ValidationMessage))
+            {
+                row.EffectiveSummary = "Fix this rule to preview its effect.";
+                continue;
+            }
+
+            previewEdge.TrafficPermissions = SelectedEdgePermissionRows
+                .Where(permission => string.IsNullOrWhiteSpace(permission.ValidationMessage))
+                .Select(permission => permission.ToModel(previewEdge.Capacity))
+                .ToList();
+            row.EffectiveSummary = edgeTrafficPermissionResolver.Resolve(previewNetwork, previewEdge, row.TrafficType).Summary;
+        }
+    }
+
+    private string BuildEdgeEditorValidationText()
+    {
+        if (!string.IsNullOrWhiteSpace(EdgeTimeValidationText))
+        {
+            return EdgeTimeValidationText;
+        }
+
+        if (!string.IsNullOrWhiteSpace(EdgeCostValidationText))
+        {
+            return EdgeCostValidationText;
+        }
+
+        if (!string.IsNullOrWhiteSpace(EdgeCapacityValidationText))
+        {
+            return EdgeCapacityValidationText;
+        }
+
+        var rowIssue = SelectedEdgePermissionRows.FirstOrDefault(row => !string.IsNullOrWhiteSpace(row.ValidationMessage));
+        return rowIssue is null ? string.Empty : $"{rowIssue.TrafficType}: {rowIssue.ValidationMessage}";
+    }
+
+    private void RaiseEdgeDisplayStateChanged()
+    {
+        Raise(nameof(CanOpenSelectedEdgeEditor));
+        Raise(nameof(CanSaveEdgeEditor));
+        Raise(nameof(CanDeleteSelectedEdgeEditor));
+        Raise(nameof(CanAddEdgePermissionRule));
+        Raise(nameof(AvailableEdgeRuleTrafficTypes));
+        Raise(nameof(VisibleEdgePermissionRows));
+        Raise(nameof(EdgeTimeValidationText));
+        Raise(nameof(EdgeCostValidationText));
+        Raise(nameof(EdgeCapacityValidationText));
+        Raise(nameof(EdgeEditorValidationText));
+        Raise(nameof(SelectedEdgeIdText));
+        Raise(nameof(SelectedEdgeSourceNodeText));
+        Raise(nameof(SelectedEdgeTargetNodeText));
+        Raise(nameof(SelectedEdgeDirectionSummaryText));
+        Raise(nameof(SelectedEdgeRuleCountText));
+        Raise(nameof(SelectedEdgeValidationStatusText));
+        Raise(nameof(SelectedEdgePreviewTitleText));
+        Raise(nameof(SelectedEdgePreviewTravelText));
+        Raise(nameof(SelectedEdgePreviewCapacityText));
+    }
+
+    private EdgeModel? GetSelectedEdgeModel()
+    {
+        var edgeId = Scene.Selection.SelectedEdgeIds.FirstOrDefault();
+        return edgeId is null
+            ? null
+            : network.Edges.FirstOrDefault(model => Comparer.Equals(model.Id, edgeId));
+    }
+
+    private EdgeModel? GetEdgeSummaryContext() => GetSelectedEdgeModel() ?? edgeEditorSession?.Snapshot;
+
+    private static (double? Value, string ValidationMessage) TryParseNonNegativeDouble(string text, string validationMessage)
+    {
+        if (double.TryParse(text?.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && parsed >= 0d)
+        {
+            return (parsed, string.Empty);
+        }
+
+        return (null, validationMessage);
+    }
+
+    private static (double? Value, string ValidationMessage) TryParseOptionalNonNegativeDouble(string text, string validationMessage)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return (null, string.Empty);
+        }
+
+        return double.TryParse(text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && parsed >= 0d
+            ? (parsed, string.Empty)
+            : (null, validationMessage);
     }
 
     private void RaiseTrafficTypeOptionsChanged()
@@ -2974,6 +3562,12 @@ public sealed class WorkspaceViewModel : ObservableObject
             .Distinct(Comparer)
             .OrderBy(name => name, Comparer)
             .ToList();
+    }
+
+    private string BuildEdgePermissionEffectiveSummary(EdgeModel edge, string trafficType)
+    {
+        var previewNetwork = BuildPreviewNetwork();
+        return edgeTrafficPermissionResolver.Resolve(previewNetwork, edge, trafficType).Summary;
     }
 
     private IReadOnlyList<GraphNodeTextLine> BuildNodeDetailLines(

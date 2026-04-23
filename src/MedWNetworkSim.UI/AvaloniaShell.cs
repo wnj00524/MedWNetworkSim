@@ -1451,6 +1451,7 @@ public sealed class ShellWindow : Window
                     BuildLabeledAutoCompleteTextBox("Place type", nameof(WorkspaceViewModel.NodePlaceTypeText), nameof(WorkspaceViewModel.PlaceTypeSuggestions)),
                     BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.NodeTranshipmentCapacityText)),
                     BuildLabeledComboBox("Node shape", nameof(WorkspaceViewModel.NodeShapeOptions), nameof(WorkspaceViewModel.NodeShape)),
+                    BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
                     new StackPanel
                     {
                         Orientation = Orientation.Horizontal,
@@ -1517,6 +1518,7 @@ public sealed class ShellWindow : Window
                     BuildSectionTitle("Bulk Edit", "Shared values for multi-node selections."),
                     BuildLabeledAutoCompleteTextBox("Place type", nameof(WorkspaceViewModel.BulkPlaceTypeText), nameof(WorkspaceViewModel.PlaceTypeSuggestions)),
                     BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.BulkTranshipmentCapacityText)),
+                    BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
                     BuildBoundButton("Apply bulk changes", nameof(WorkspaceViewModel.ApplyInspectorCommand))
                 }
             }

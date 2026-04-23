@@ -471,6 +471,9 @@ public sealed class WorkspaceViewModel : ObservableObject
     private string networkTimelineLoopLengthText = string.Empty;
     private string bulkPlaceTypeText = string.Empty;
     private string bulkTranshipmentCapacityText = string.Empty;
+    private string? nodeInspectorTargetId;
+    private string? edgeInspectorTargetId;
+    private IReadOnlyList<string> bulkInspectorTargetNodeIds = [];
     private string nodeIdText = string.Empty;
     private string nodeNameText = string.Empty;
     private string nodeXText = string.Empty;
@@ -546,6 +549,8 @@ public sealed class WorkspaceViewModel : ObservableObject
         SelectedNodeConsumptionWindows = [];
         SelectedNodeInputRequirements = [];
         SelectedEdgePermissionRows = [];
+        NodePlaceTypeSuggestions = [];
+        EdgeRouteTypeSuggestions = [];
         SelectedEdgePermissionRows.CollectionChanged += (_, e) =>
         {
             if (e.OldItems is not null)
@@ -628,6 +633,8 @@ public sealed class WorkspaceViewModel : ObservableObject
     public ObservableCollection<PermissionRuleEditorRow> SelectedEdgePermissionRows { get; }
     public ObservableCollection<TrafficDefinitionListItem> TrafficDefinitions { get; }
     public ObservableCollection<PermissionRuleEditorRow> DefaultTrafficPermissionRows { get; }
+    public ObservableCollection<string> NodePlaceTypeSuggestions { get; }
+    public ObservableCollection<string> EdgeRouteTypeSuggestions { get; }
 
     public Array NodeShapeOptions { get; } = Enum.GetValues(typeof(NodeVisualShape));
     public Array NodeKindOptions { get; } = Enum.GetValues(typeof(NodeKind));
@@ -864,10 +871,8 @@ public sealed class WorkspaceViewModel : ObservableObject
     public string NetworkTimelineLoopLengthText { get => networkTimelineLoopLengthText; set => SetProperty(ref networkTimelineLoopLengthText, value); }
     public string BulkPlaceTypeText { get => bulkPlaceTypeText; set => SetProperty(ref bulkPlaceTypeText, value); }
     public string BulkTranshipmentCapacityText { get => bulkTranshipmentCapacityText; set => SetProperty(ref bulkTranshipmentCapacityText, value); }
-    public IReadOnlyList<string> PlaceTypeSuggestions => GetKnownPlaceTypes();
-    public IReadOnlyList<string> RouteTypeSuggestions => GetKnownRouteTypes();
-    public IReadOnlyList<string> SubnetworkIdSuggestions => GetKnownSubnetworkIds();
-    public IReadOnlyList<string> InterfaceNameSuggestions => GetKnownInterfaceNames();
+    public string? InspectorNodeTargetId => nodeInspectorTargetId;
+    public IReadOnlyList<string> InspectorBulkTargetNodeIds => bulkInspectorTargetNodeIds;
     public string NodeIdText { get => nodeIdText; set => SetProperty(ref nodeIdText, value); }
     public string NodeNameText
     {
@@ -1503,6 +1508,7 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     private void BuildSceneFromNetwork()
     {
+        RefreshInspectorSuggestionCollections();
         Scene.Nodes.Clear();
         Scene.Edges.Clear();
         var zoomTier = graphRenderer.GetZoomTier(Viewport.Zoom);
@@ -2123,6 +2129,7 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     private void PopulateNetworkEditor()
     {
+        ClearInspectorTargets();
         NetworkNameText = network.Name;
         NetworkDescriptionText = network.Description;
         NetworkTimelineLoopLengthText = network.TimelineLoopLength?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
@@ -2130,7 +2137,14 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     private void PopulateBulkEditor(IEnumerable<string> selectedNodeIds)
     {
-        var selectedNodes = network.Nodes.Where(node => selectedNodeIds.Contains(node.Id, Comparer)).ToList();
+        bulkInspectorTargetNodeIds = selectedNodeIds
+            .Where(nodeId => !string.IsNullOrWhiteSpace(nodeId))
+            .Distinct(Comparer)
+            .ToList();
+        nodeInspectorTargetId = null;
+        edgeInspectorTargetId = null;
+
+        var selectedNodes = network.Nodes.Where(node => bulkInspectorTargetNodeIds.Contains(node.Id, Comparer)).ToList();
         BulkPlaceTypeText = selectedNodes.Select(node => node.PlaceType ?? string.Empty).Distinct(Comparer).Count() == 1
             ? selectedNodes.First().PlaceType ?? string.Empty
             : string.Empty;
@@ -2141,6 +2155,9 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     private void PopulateNodeEditor(NodeModel node)
     {
+        nodeInspectorTargetId = node.Id;
+        bulkInspectorTargetNodeIds = [];
+        edgeInspectorTargetId = null;
         EnsureDefaultTrafficType();
         NodeIdText = node.Id;
         NodeNameText = node.Name;
@@ -2254,6 +2271,9 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     private void PopulateEdgeEditor(EdgeModel edge)
     {
+        edgeInspectorTargetId = edge.Id;
+        nodeInspectorTargetId = null;
+        bulkInspectorTargetNodeIds = [];
         EdgeRouteTypeText = edge.RouteType ?? string.Empty;
         EdgeTimeText = edge.Time.ToString("0.##", CultureInfo.InvariantCulture);
         EdgeCostText = edge.Cost.ToString("0.##", CultureInfo.InvariantCulture);
@@ -2261,6 +2281,13 @@ public sealed class WorkspaceViewModel : ObservableObject
         EdgeIsBidirectional = edge.IsBidirectional;
         PopulateEdgePermissionRows(edge);
         RefreshEdgeEditorState();
+    }
+
+    private void ClearInspectorTargets()
+    {
+        nodeInspectorTargetId = null;
+        edgeInspectorTargetId = null;
+        bulkInspectorTargetNodeIds = [];
     }
 
     private void PopulateTrafficDefinitionList()
@@ -2377,7 +2404,7 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     private void ApplyNodeEdits()
     {
-        var nodeId = Scene.Selection.SelectedNodeIds.FirstOrDefault() ?? throw new InvalidOperationException("Select one node to edit.");
+        var nodeId = nodeInspectorTargetId ?? throw new InvalidOperationException("Select one node to edit.");
         var node = network.Nodes.First(model => Comparer.Equals(model.Id, nodeId));
         var requestedNodeId = string.IsNullOrWhiteSpace(NodeIdText) ? node.Id : NodeIdText.Trim();
         if (!Comparer.Equals(node.Id, requestedNodeId) &&
@@ -2466,7 +2493,7 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     private void ApplyEdgeEdits()
     {
-        var edgeId = Scene.Selection.SelectedEdgeIds.FirstOrDefault() ?? throw new InvalidOperationException("Select one route to edit.");
+        var edgeId = edgeInspectorTargetId ?? throw new InvalidOperationException("Select one route to edit.");
         var edge = network.Edges.First(model => Comparer.Equals(model.Id, edgeId));
         edge.RouteType = NormalizeOptionalText(EdgeRouteTypeText);
         edge.Time = ParseNonNegativeDouble(EdgeTimeText, "Enter travel time as 0 or more.");
@@ -2516,7 +2543,7 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     private void ApplyBulkEdits()
     {
-        var selectedNodeIds = Scene.Selection.SelectedNodeIds.ToHashSet(Comparer);
+        var selectedNodeIds = bulkInspectorTargetNodeIds.ToHashSet(Comparer);
         var updatedPlaceType = NormalizeOptionalText(BulkPlaceTypeText);
         var updatedCapacity = ParseOptionalNonNegativeDouble(BulkTranshipmentCapacityText, "Enter a transhipment capacity of 0 or more, or leave it blank.");
         foreach (var node in network.Nodes.Where(node => selectedNodeIds.Contains(node.Id)))
@@ -2847,6 +2874,45 @@ public sealed class WorkspaceViewModel : ObservableObject
             catch
             {
             }
+        }
+    }
+
+    private void RefreshInspectorSuggestionCollections()
+    {
+        ReplaceItems(NodePlaceTypeSuggestions, GetNodePlaceTypeSuggestions());
+        ReplaceItems(EdgeRouteTypeSuggestions, GetEdgeRouteTypeSuggestions());
+    }
+
+    private IReadOnlyList<string> GetNodePlaceTypeSuggestions()
+    {
+        return network.Nodes
+            .Select(node => node.PlaceType)
+            .Append("Draft place")
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .Distinct(Comparer)
+            .OrderBy(value => value, Comparer)
+            .ToList();
+    }
+
+    private IReadOnlyList<string> GetEdgeRouteTypeSuggestions()
+    {
+        return network.Edges
+            .Select(edge => edge.RouteType)
+            .Append("Proposed route")
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .Distinct(Comparer)
+            .OrderBy(value => value, Comparer)
+            .ToList();
+    }
+
+    private static void ReplaceItems(ObservableCollection<string> target, IEnumerable<string> values)
+    {
+        target.Clear();
+        foreach (var value in values)
+        {
+            target.Add(value);
         }
     }
 

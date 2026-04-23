@@ -864,6 +864,10 @@ public sealed class WorkspaceViewModel : ObservableObject
     public string NetworkTimelineLoopLengthText { get => networkTimelineLoopLengthText; set => SetProperty(ref networkTimelineLoopLengthText, value); }
     public string BulkPlaceTypeText { get => bulkPlaceTypeText; set => SetProperty(ref bulkPlaceTypeText, value); }
     public string BulkTranshipmentCapacityText { get => bulkTranshipmentCapacityText; set => SetProperty(ref bulkTranshipmentCapacityText, value); }
+    public IReadOnlyList<string> PlaceTypeSuggestions => GetKnownPlaceTypes();
+    public IReadOnlyList<string> RouteTypeSuggestions => GetKnownRouteTypes();
+    public IReadOnlyList<string> SubnetworkIdSuggestions => GetKnownSubnetworkIds();
+    public IReadOnlyList<string> InterfaceNameSuggestions => GetKnownInterfaceNames();
     public string NodeIdText { get => nodeIdText; set => SetProperty(ref nodeIdText, value); }
     public string NodeNameText
     {
@@ -1347,6 +1351,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         Raise(nameof(SessionSubtitle));
         Raise(nameof(SelectionSummary));
         Raise(nameof(SimulationSummary));
+        RaiseAutoCompleteOptionsChanged();
     }
 
     private void MarkDirty()
@@ -3484,8 +3489,17 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     private void RaiseTrafficTypeOptionsChanged()
     {
-        Raise(nameof(TrafficTypeNameOptions));
+        RaiseAutoCompleteOptionsChanged();
         RaiseNodeTrafficRoleValidationStateChanged();
+    }
+
+    private void RaiseAutoCompleteOptionsChanged()
+    {
+        Raise(nameof(TrafficTypeNameOptions));
+        Raise(nameof(PlaceTypeSuggestions));
+        Raise(nameof(RouteTypeSuggestions));
+        Raise(nameof(SubnetworkIdSuggestions));
+        Raise(nameof(InterfaceNameSuggestions));
     }
 
     private void RaiseTrafficTypeDisplayStateChanged()
@@ -3561,6 +3575,50 @@ public sealed class WorkspaceViewModel : ObservableObject
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Distinct(Comparer)
             .OrderBy(name => name, Comparer)
+            .ToList();
+    }
+
+    private IReadOnlyList<string> GetKnownPlaceTypes()
+    {
+        return network.Nodes
+            .Select(node => node.PlaceType)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .Distinct(Comparer)
+            .OrderBy(value => value, Comparer)
+            .ToList();
+    }
+
+    private IReadOnlyList<string> GetKnownRouteTypes()
+    {
+        return network.Edges
+            .Select(edge => edge.RouteType)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .Distinct(Comparer)
+            .OrderBy(value => value, Comparer)
+            .ToList();
+    }
+
+    private IReadOnlyList<string> GetKnownSubnetworkIds()
+    {
+        return (network.Subnetworks ?? [])
+            .Select(subnetwork => subnetwork.Id)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(Comparer)
+            .OrderBy(value => value, Comparer)
+            .ToList();
+    }
+
+    private IReadOnlyList<string> GetKnownInterfaceNames()
+    {
+        return network.Nodes
+            .Select(node => node.InterfaceName)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .Distinct(Comparer)
+            .OrderBy(value => value, Comparer)
             .ToList();
     }
 

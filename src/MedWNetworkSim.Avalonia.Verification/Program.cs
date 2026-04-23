@@ -19,6 +19,8 @@ ScenarioBulkSelectionApplyUsesLoadedSelectionTarget();
 ScenarioSwitchingFromSelectionModeToNodeModeDoesNotRetainBulkDraftBehavior();
 ScenarioPlaceTypeSuggestionsPopulateFromCurrentNetwork();
 ScenarioRouteTypeSuggestionsPopulateFromCurrentNetwork();
+ScenarioAutocompleteSuggestionsRefreshAfterInspectorEdits();
+ScenarioAutocompleteSuggestionsImportGraphMlRefreshesCollections();
 ScenarioRouteEditorWorkspaceModeTransitions();
 ScenarioRouteEditorCanAddTrafficRule();
 ScenarioRouteEditorValidationBlocksSave();
@@ -389,7 +391,9 @@ static void ScenarioPlaceTypeSuggestionsPopulateFromCurrentNetwork()
         Nodes =
         [
             new NodeModel { Id = "alpha", Name = "Alpha", PlaceType = "Village", X = 0d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
-            new NodeModel { Id = "beta", Name = "Beta", PlaceType = "Harbor", X = 10d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] }
+            new NodeModel { Id = "beta", Name = "Beta", PlaceType = "Harbor", X = 10d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
+            new NodeModel { Id = "gamma", Name = "Gamma", PlaceType = "village", X = 20d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
+            new NodeModel { Id = "delta", Name = "Delta", PlaceType = "", X = 30d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] }
         ],
         Edges = []
     });
@@ -402,6 +406,7 @@ static void ScenarioPlaceTypeSuggestionsPopulateFromCurrentNetwork()
         AssertTrue(workspace.NodePlaceTypeSuggestions.Contains("Village"), "place type suggestions include existing value");
         AssertTrue(workspace.NodePlaceTypeSuggestions.Contains("Harbor"), "place type suggestions include second existing value");
         AssertTrue(workspace.NodePlaceTypeSuggestions.Contains("Draft place"), "place type suggestions include default place value");
+        AssertNumberEqual(3d, workspace.NodePlaceTypeSuggestions.Count, "place type suggestions remove duplicate and blank values");
     }
     finally
     {
@@ -422,7 +427,9 @@ static void ScenarioRouteTypeSuggestionsPopulateFromCurrentNetwork()
         ],
         Edges =
         [
-            new EdgeModel { Id = "alpha->beta", FromNodeId = "alpha", ToNodeId = "beta", Time = 1d, Cost = 1d, IsBidirectional = true, RouteType = "Canal" }
+            new EdgeModel { Id = "alpha->beta", FromNodeId = "alpha", ToNodeId = "beta", Time = 1d, Cost = 1d, IsBidirectional = true, RouteType = "Canal" },
+            new EdgeModel { Id = "beta->alpha", FromNodeId = "beta", ToNodeId = "alpha", Time = 1d, Cost = 1d, IsBidirectional = true, RouteType = "canal" },
+            new EdgeModel { Id = "alpha->alpha", FromNodeId = "alpha", ToNodeId = "alpha", Time = 1d, Cost = 1d, IsBidirectional = true, RouteType = "" }
         ]
     });
 
@@ -433,10 +440,100 @@ static void ScenarioRouteTypeSuggestionsPopulateFromCurrentNetwork()
 
         AssertTrue(workspace.EdgeRouteTypeSuggestions.Contains("Canal"), "route type suggestions include existing value");
         AssertTrue(workspace.EdgeRouteTypeSuggestions.Contains("Proposed route"), "route type suggestions include default route value");
+        AssertNumberEqual(2d, workspace.EdgeRouteTypeSuggestions.Count, "route type suggestions remove duplicate and blank values");
     }
     finally
     {
         TryDelete(path);
+    }
+}
+
+static void ScenarioAutocompleteSuggestionsRefreshAfterInspectorEdits()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Suggestion Refresh",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "grain" }],
+        Nodes =
+        [
+            new NodeModel { Id = "alpha", Name = "Alpha", PlaceType = "Village", X = 0d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
+            new NodeModel { Id = "beta", Name = "Beta", PlaceType = "Town", X = 10d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] }
+        ],
+        Edges =
+        [
+            new EdgeModel { Id = "alpha->beta", FromNodeId = "alpha", ToNodeId = "beta", Time = 1d, Cost = 1d, IsBidirectional = true, RouteType = "Road" }
+        ]
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        workspace.SelectNodeForEdit("alpha");
+        workspace.NodePlaceTypeText = "Harbor";
+        workspace.ApplyInspectorCommand.Execute(null);
+
+        workspace.SelectRouteForEdit("alpha->beta");
+        workspace.EdgeRouteTypeText = "Canal";
+        workspace.ApplyInspectorCommand.Execute(null);
+
+        AssertTrue(workspace.NodePlaceTypeSuggestions.Contains("Harbor"), "place type suggestions refresh after inspector edit");
+        AssertTrue(workspace.EdgeRouteTypeSuggestions.Contains("Canal"), "route type suggestions refresh after inspector edit");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioAutocompleteSuggestionsImportGraphMlRefreshesCollections()
+{
+    var graphMlPath = Path.Combine(Path.GetTempPath(), $"medw-avalonia-import-{Guid.NewGuid():N}.graphml");
+
+    try
+    {
+        var source = new WorkspaceViewModel();
+        var networkPath = WriteTempNetwork(new NetworkModel
+        {
+            Name = "Import Suggestions",
+            TrafficTypes = [new TrafficTypeDefinition { Name = "grain" }],
+            Nodes =
+            [
+                new NodeModel { Id = "alpha", Name = "Alpha", PlaceType = "Village", X = 0d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
+                new NodeModel { Id = "beta", Name = "Beta", PlaceType = "village", X = 10d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
+                new NodeModel { Id = "gamma", Name = "Gamma", PlaceType = "", X = 20d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] }
+            ],
+            Edges =
+            [
+                new EdgeModel { Id = "alpha->beta", FromNodeId = "alpha", ToNodeId = "beta", Time = 1d, Cost = 1d, IsBidirectional = true, RouteType = "Road" },
+                new EdgeModel { Id = "beta->gamma", FromNodeId = "beta", ToNodeId = "gamma", Time = 1d, Cost = 1d, IsBidirectional = true, RouteType = "road" },
+                new EdgeModel { Id = "gamma->alpha", FromNodeId = "gamma", ToNodeId = "alpha", Time = 1d, Cost = 1d, IsBidirectional = true, RouteType = "" }
+            ]
+        });
+
+        try
+        {
+            source.OpenNetwork(networkPath);
+            source.ExportGraphMl(graphMlPath);
+        }
+        finally
+        {
+            TryDelete(networkPath);
+        }
+
+        var workspace = new WorkspaceViewModel();
+        workspace.NodePlaceTypeText = "Stale place";
+        workspace.EdgeRouteTypeText = "Stale route";
+        workspace.ImportGraphMl(graphMlPath);
+
+        AssertTrue(!workspace.NodePlaceTypeSuggestions.Contains("Stale place"), "place type suggestions refresh after import");
+        AssertTrue(!workspace.EdgeRouteTypeSuggestions.Contains("Stale route"), "route type suggestions refresh after import");
+        AssertTrue(workspace.NodePlaceTypeSuggestions.Count >= 1, "place type suggestions are repopulated after import");
+        AssertTrue(workspace.EdgeRouteTypeSuggestions.Count >= 1, "route type suggestions are repopulated after import");
+    }
+    finally
+    {
+        TryDelete(graphMlPath);
     }
 }
 

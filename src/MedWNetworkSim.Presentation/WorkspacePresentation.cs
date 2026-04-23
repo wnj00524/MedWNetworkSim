@@ -1508,7 +1508,7 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     private void BuildSceneFromNetwork()
     {
-        RefreshInspectorSuggestionCollections();
+        RefreshAutocompleteSuggestions();
         Scene.Nodes.Clear();
         Scene.Edges.Clear();
         var zoomTier = graphRenderer.GetZoomTier(Viewport.Zoom);
@@ -2877,13 +2877,23 @@ public sealed class WorkspaceViewModel : ObservableObject
         }
     }
 
-    private void RefreshInspectorSuggestionCollections()
+    private void RefreshNodePlaceTypeSuggestions()
     {
-        ReplaceItems(NodePlaceTypeSuggestions, GetNodePlaceTypeSuggestions());
-        ReplaceItems(EdgeRouteTypeSuggestions, GetEdgeRouteTypeSuggestions());
+        ReplaceItems(NodePlaceTypeSuggestions, GetNodePlaceTypeSuggestionValues());
     }
 
-    private IReadOnlyList<string> GetNodePlaceTypeSuggestions()
+    private void RefreshEdgeRouteTypeSuggestions()
+    {
+        ReplaceItems(EdgeRouteTypeSuggestions, GetEdgeRouteTypeSuggestionValues());
+    }
+
+    private void RefreshAutocompleteSuggestions()
+    {
+        RefreshNodePlaceTypeSuggestions();
+        RefreshEdgeRouteTypeSuggestions();
+    }
+
+    private IReadOnlyList<string> GetNodePlaceTypeSuggestionValues()
     {
         return network.Nodes
             .Select(node => node.PlaceType)
@@ -2895,7 +2905,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             .ToList();
     }
 
-    private IReadOnlyList<string> GetEdgeRouteTypeSuggestions()
+    private IReadOnlyList<string> GetEdgeRouteTypeSuggestionValues()
     {
         return network.Edges
             .Select(edge => edge.RouteType)
@@ -3562,8 +3572,8 @@ public sealed class WorkspaceViewModel : ObservableObject
     private void RaiseAutoCompleteOptionsChanged()
     {
         Raise(nameof(TrafficTypeNameOptions));
-        Raise(nameof(PlaceTypeSuggestions));
-        Raise(nameof(RouteTypeSuggestions));
+        Raise(nameof(NodePlaceTypeSuggestions));
+        Raise(nameof(EdgeRouteTypeSuggestions));
         Raise(nameof(SubnetworkIdSuggestions));
         Raise(nameof(InterfaceNameSuggestions));
     }

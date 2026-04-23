@@ -1258,7 +1258,7 @@ public sealed class ShellWindow : Window
 
     private Border BuildEdgeEditorWorkspace(WorkspaceViewModel viewModel)
     {
-        var routeTypeEditor = BuildAutoCompleteTextBox("Route type", nameof(WorkspaceViewModel.RouteTypeSuggestions));
+        var routeTypeEditor = BuildAutoCompleteTextBox("Type or choose a route type", nameof(WorkspaceViewModel.EdgeRouteTypeSuggestions));
         routeTypeEditor.Bind(AutoCompleteTextBox.TextProperty, new Binding(nameof(WorkspaceViewModel.EdgeRouteTypeText), BindingMode.TwoWay));
         edgeEditorWorkspaceFocusTarget = routeTypeEditor;
 
@@ -1448,7 +1448,7 @@ public sealed class ShellWindow : Window
                 {
                     BuildSectionTitle("Quick Edit", "Keep fast access to the common node fields here, then open the full editor for schedules, recipes, and diagnostics."),
                     BuildLabeledTextBox("Name", nameof(WorkspaceViewModel.NodeNameText)),
-                    BuildLabeledAutoCompleteTextBox("Place type", nameof(WorkspaceViewModel.NodePlaceTypeText), nameof(WorkspaceViewModel.PlaceTypeSuggestions)),
+                    BuildLabeledAutoCompleteTextBox("Place type", nameof(WorkspaceViewModel.NodePlaceTypeText), nameof(WorkspaceViewModel.NodePlaceTypeSuggestions), "Type or choose a place type"),
                     BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.NodeTranshipmentCapacityText)),
                     BuildLabeledComboBox("Node shape", nameof(WorkspaceViewModel.NodeShapeOptions), nameof(WorkspaceViewModel.NodeShape)),
                     BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
@@ -1473,6 +1473,7 @@ public sealed class ShellWindow : Window
     {
         var openButton = BuildButton("Edit route", new RelayCommand(() => { }), isPrimary: true, toolTip: "Open the selected route in the dedicated route workspace.");
         openButton.Bind(Button.CommandProperty, new Binding(nameof(WorkspaceViewModel.OpenSelectedEdgeEditorCommand)));
+        var applyQuickChangesButton = BuildBoundButton("Apply quick changes", nameof(WorkspaceViewModel.ApplyInspectorCommand));
 
         var card = new Border
         {
@@ -1486,14 +1487,25 @@ public sealed class ShellWindow : Window
                 Spacing = 10,
                 Children =
                 {
-                    BuildSectionTitle("Route Summary", "Open the focused route in the main route workspace to edit everything in one place."),
+                    BuildSectionTitle("Route Summary", "Keep the route label in sync here, or open the full route workspace for detailed access rules."),
                     BuildReadOnlyRow("Route id", nameof(WorkspaceViewModel.SelectedEdgeIdText)),
                     BuildReadOnlyRow("Source", nameof(WorkspaceViewModel.SelectedEdgeSourceNodeText)),
                     BuildReadOnlyRow("Target", nameof(WorkspaceViewModel.SelectedEdgeTargetNodeText)),
+                    BuildLabeledAutoCompleteTextBox("Route type", nameof(WorkspaceViewModel.EdgeRouteTypeText), nameof(WorkspaceViewModel.EdgeRouteTypeSuggestions), "Type or choose a route type"),
                     BuildReadOnlyRow("Direction", nameof(WorkspaceViewModel.SelectedEdgeDirectionSummaryText)),
                     BuildReadOnlyRow("Rules", nameof(WorkspaceViewModel.SelectedEdgeRuleCountText)),
+                    BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
                     BuildValidationBlock(nameof(WorkspaceViewModel.EdgeEditorValidationText)),
-                    openButton
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 8,
+                        Children =
+                        {
+                            applyQuickChangesButton,
+                            openButton
+                        }
+                    }
                 }
             }
         };
@@ -1516,7 +1528,7 @@ public sealed class ShellWindow : Window
                 Children =
                 {
                     BuildSectionTitle("Bulk Edit", "Shared values for multi-node selections."),
-                    BuildLabeledAutoCompleteTextBox("Place type", nameof(WorkspaceViewModel.BulkPlaceTypeText), nameof(WorkspaceViewModel.PlaceTypeSuggestions)),
+                    BuildLabeledAutoCompleteTextBox("Place type", nameof(WorkspaceViewModel.BulkPlaceTypeText), nameof(WorkspaceViewModel.NodePlaceTypeSuggestions), "Type or choose a place type"),
                     BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.BulkTranshipmentCapacityText)),
                     BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
                     BuildBoundButton("Apply bulk changes", nameof(WorkspaceViewModel.ApplyInspectorCommand))
@@ -1737,7 +1749,7 @@ public sealed class ShellWindow : Window
                     BuildLabeledTextBox("Node id", nameof(WorkspaceViewModel.NodeIdText)),
                     BuildLabeledTextBox("Name", nameof(WorkspaceViewModel.NodeNameText)),
                     BuildCoordinateEditors(),
-                    BuildLabeledAutoCompleteTextBox("Place type", nameof(WorkspaceViewModel.NodePlaceTypeText), nameof(WorkspaceViewModel.PlaceTypeSuggestions)),
+                    BuildLabeledAutoCompleteTextBox("Place type", nameof(WorkspaceViewModel.NodePlaceTypeText), nameof(WorkspaceViewModel.NodePlaceTypeSuggestions), "Type or choose a place type"),
                     BuildLabeledTextBox("Description", nameof(WorkspaceViewModel.NodeDescriptionText)),
                     BuildLabeledTextBox("Controlling actor", nameof(WorkspaceViewModel.NodeControllingActorText)),
                     BuildLabeledTextBox("Tags", nameof(WorkspaceViewModel.NodeTagsText)),
@@ -2785,7 +2797,7 @@ public sealed class ShellWindow : Window
                 {
                     BuildSectionTitle("Node", "Edit node details and traffic roles."),
                     BuildLabeledTextBox("Name", nameof(WorkspaceViewModel.NodeNameText)),
-                    BuildLabeledAutoCompleteTextBox("Place type", nameof(WorkspaceViewModel.NodePlaceTypeText), nameof(WorkspaceViewModel.PlaceTypeSuggestions)),
+                    BuildLabeledAutoCompleteTextBox("Place type", nameof(WorkspaceViewModel.NodePlaceTypeText), nameof(WorkspaceViewModel.NodePlaceTypeSuggestions), "Type or choose a place type"),
                     BuildLabeledTextBox("Description", nameof(WorkspaceViewModel.NodeDescriptionText)),
                     BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.NodeTranshipmentCapacityText)),
                     BuildLabeledComboBox("Node shape", nameof(WorkspaceViewModel.NodeShapeOptions), nameof(WorkspaceViewModel.NodeShape)),
@@ -2830,7 +2842,7 @@ public sealed class ShellWindow : Window
                 Children =
                 {
                     BuildSectionTitle("Route", "Edit route values and access rules."),
-                    BuildLabeledAutoCompleteTextBox("Route label", nameof(WorkspaceViewModel.EdgeRouteTypeText), nameof(WorkspaceViewModel.RouteTypeSuggestions)),
+                    BuildLabeledAutoCompleteTextBox("Route label", nameof(WorkspaceViewModel.EdgeRouteTypeText), nameof(WorkspaceViewModel.EdgeRouteTypeSuggestions), "Type or choose a route type"),
                     BuildLabeledTextBox("Travel time", nameof(WorkspaceViewModel.EdgeTimeText)),
                     BuildLabeledTextBox("Travel cost", nameof(WorkspaceViewModel.EdgeCostText)),
                     BuildLabeledTextBox("Capacity", nameof(WorkspaceViewModel.EdgeCapacityText)),
@@ -2864,7 +2876,7 @@ public sealed class ShellWindow : Window
                 Children =
                 {
                     BuildSectionTitle("Bulk Edit", "Apply shared values across selected nodes."),
-                    BuildLabeledAutoCompleteTextBox("Place type", nameof(WorkspaceViewModel.BulkPlaceTypeText), nameof(WorkspaceViewModel.PlaceTypeSuggestions)),
+                    BuildLabeledAutoCompleteTextBox("Place type", nameof(WorkspaceViewModel.BulkPlaceTypeText), nameof(WorkspaceViewModel.NodePlaceTypeSuggestions), "Type or choose a place type"),
                     BuildLabeledTextBox("Transhipment capacity", nameof(WorkspaceViewModel.BulkTranshipmentCapacityText))
                 }
             }
@@ -3459,9 +3471,9 @@ public sealed class ShellWindow : Window
         return BuildLabeledRow(label, textBox);
     }
 
-    private static Control BuildLabeledAutoCompleteTextBox(string label, string propertyName, string suggestionsPropertyName)
+    private static Control BuildLabeledAutoCompleteTextBox(string label, string propertyName, string suggestionsPropertyName, string watermark)
     {
-        var textBox = BuildAutoCompleteTextBox(label, suggestionsPropertyName);
+        var textBox = BuildAutoCompleteTextBox(watermark, suggestionsPropertyName);
         textBox.Bind(AutoCompleteTextBox.TextProperty, new Binding(propertyName, BindingMode.TwoWay));
         return BuildLabeledRow(label, textBox);
     }

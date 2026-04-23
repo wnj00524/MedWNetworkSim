@@ -1,0 +1,231 @@
+using System.ComponentModel;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Data;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Threading;
+
+namespace MedWNetworkSim.UI.Controls;
+
+public sealed class AutoCompleteTextBox : UserControl
+{
+    public static readonly StyledProperty<string?> TextProperty =
+        AvaloniaProperty.Register<AutoCompleteTextBox, string?>(
+            nameof(Text),
+            defaultBindingMode: BindingMode.TwoWay);
+
+    public static readonly StyledProperty<IEnumerable<string>?> SuggestionsProperty =
+        AvaloniaProperty.Register<AutoCompleteTextBox, IEnumerable<string>?>(nameof(Suggestions));
+
+    public static readonly StyledProperty<string?> WatermarkProperty =
+        AvaloniaProperty.Register<AutoCompleteTextBox, string?>(nameof(Watermark));
+
+    private readonly AutoCompleteTextBoxViewModel viewModel = new();
+    private readonly TextBox inputBox;
+    private readonly Popup popup;
+    private readonly ListBox suggestionList;
+    private bool isSynchronizingText;
+
+    public AutoCompleteTextBox()
+    {
+        viewModel.PropertyChanged += HandleViewModelPropertyChanged;
+
+        inputBox = new TextBox
+        {
+            MinHeight = 40,
+            Padding = new Thickness(10, 8),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.InputBorder),
+            BorderThickness = new Thickness(1.2),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.InputBackground),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius
+        };
+        inputBox.Bind(TextBox.TextProperty, new Binding(nameof(AutoCompleteTextBoxViewModel.Text), BindingMode.TwoWay));
+        inputBox.Bind(TextBox.WatermarkProperty, new Binding(nameof(Watermark)) { Source = this });
+        inputBox.KeyDown += OnKeyDown;
+        inputBox.GotFocus += OnFocus;
+        inputBox.LostFocus += OnLostFocus;
+        inputBox.PropertyChanged += OnInputPropertyChanged;
+
+        suggestionList = new ListBox
+        {
+            MaxHeight = 220,
+            SelectionMode = SelectionMode.Single,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.InputBackground),
+            BorderThickness = new Thickness(0)
+        };
+        suggestionList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(AutoCompleteTextBoxViewModel.FilteredSuggestions)));
+        suggestionList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(AutoCompleteTextBoxViewModel.SelectedSuggestion), BindingMode.TwoWay));
+        suggestionList.PointerPressed += OnSuggestionPressed;
+
+        popup = new Popup
+        {
+            Placement = PlacementMode.Bottom,
+            PlacementTarget = inputBox,
+            IsLightDismissEnabled = true,
+            Child = new Border
+            {
+                Background = new SolidColorBrush(AvaloniaDashboardTheme.InputBackground),
+                BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.InputBorder),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(10),
+                Child = suggestionList
+            }
+        };
+        popup.Bind(Popup.IsOpenProperty, new Binding(nameof(AutoCompleteTextBoxViewModel.IsDropDownOpen)));
+
+        Content = new Grid
+        {
+            Children =
+            {
+                inputBox,
+                popup
+            }
+        };
+
+        DataContext = viewModel;
+        viewModel.SetSuggestions(Suggestions);
+        viewModel.Text = Text ?? string.Empty;
+    }
+
+    public string? Text
+    {
+        get => GetValue(TextProperty);
+        set => SetValue(TextProperty, value);
+    }
+
+    public IEnumerable<string>? Suggestions
+    {
+        get => GetValue(SuggestionsProperty);
+        set => SetValue(SuggestionsProperty, value);
+    }
+
+    public string? Watermark
+    {
+        get => GetValue(WatermarkProperty);
+        set => SetValue(WatermarkProperty, value);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+
+        if (change.Property == TextProperty && !isSynchronizingText)
+        {
+            viewModel.Text = change.GetNewValue<string?>() ?? string.Empty;
+        }
+
+        if (change.Property == SuggestionsProperty)
+        {
+            viewModel.SetSuggestions(change.GetNewValue<IEnumerable<string>?>());
+        }
+    }
+
+    private void OnFocus(object? sender, GotFocusEventArgs e) => viewModel.OpenDropDownIfAvailable();
+
+    private void OnLostFocus(object? sender, RoutedEventArgs e)
+    {
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (!inputBox.IsFocused)
+                {
+                    viewModel.CloseDropDown();
+                }
+            },
+            DispatcherPriority.Background);
+    }
+
+    private void OnSuggestionPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.Source is not Control control || control.DataContext is not string suggestion)
+        {
+            return;
+        }
+
+        viewModel.SelectedSuggestion = suggestion;
+        if (viewModel.AcceptSelection())
+        {
+            inputBox.Focus();
+            e.Handled = true;
+        }
+    }
+
+    private void OnInputPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property == TextBox.TextProperty && inputBox.IsFocused)
+        {
+            viewModel.OpenDropDownIfAvailable();
+        }
+
+        if (e.Property == BoundsProperty)
+        {
+            popup.Width = Math.Max(inputBox.Bounds.Width, 160d);
+        }
+    }
+
+    private void OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Down:
+                viewModel.MoveSelection(1);
+                e.Handled = true;
+                break;
+
+            case Key.Up:
+                viewModel.MoveSelection(-1);
+                e.Handled = true;
+                break;
+
+            case Key.Tab:
+                if (viewModel.IsDropDownOpen && viewModel.HasActiveSuggestion && viewModel.AcceptSelection())
+                {
+                    e.Handled = true;
+                }
+
+                break;
+
+            case Key.Enter:
+                if (viewModel.AcceptSelection())
+                {
+                    e.Handled = true;
+                }
+
+                break;
+
+            case Key.Escape:
+                viewModel.CloseDropDown();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void HandleViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(AutoCompleteTextBoxViewModel.Text))
+        {
+            return;
+        }
+
+        var normalized = string.IsNullOrEmpty(viewModel.Text) ? string.Empty : viewModel.Text;
+        var current = Text ?? string.Empty;
+        if (string.Equals(current, normalized, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        isSynchronizingText = true;
+        try
+        {
+            SetCurrentValue(TextProperty, normalized);
+        }
+        finally
+        {
+            isSynchronizingText = false;
+        }
+    }
+}

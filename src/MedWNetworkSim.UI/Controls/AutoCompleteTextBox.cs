@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
@@ -28,6 +29,7 @@ public sealed class AutoCompleteTextBox : UserControl
     private readonly Popup popup;
     private readonly ListBox suggestionList;
     private bool isSynchronizingText;
+    private INotifyCollectionChanged? suggestionCollection;
 
     public AutoCompleteTextBox()
     {
@@ -87,7 +89,7 @@ public sealed class AutoCompleteTextBox : UserControl
         };
 
         DataContext = viewModel;
-        viewModel.SetSuggestions(Suggestions);
+        AttachSuggestionsSource(Suggestions);
         viewModel.Text = Text ?? string.Empty;
     }
 
@@ -120,8 +122,14 @@ public sealed class AutoCompleteTextBox : UserControl
 
         if (change.Property == SuggestionsProperty)
         {
-            viewModel.SetSuggestions(change.GetNewValue<IEnumerable<string>?>());
+            AttachSuggestionsSource(change.GetNewValue<IEnumerable<string>?>());
         }
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        DetachSuggestionsSource();
+        base.OnDetachedFromVisualTree(e);
     }
 
     private void OnFocus(object? sender, GotFocusEventArgs e) => viewModel.OpenDropDownIfAvailable();
@@ -228,4 +236,36 @@ public sealed class AutoCompleteTextBox : UserControl
             isSynchronizingText = false;
         }
     }
+
+    private void AttachSuggestionsSource(IEnumerable<string>? suggestions)
+    {
+        if (ReferenceEquals(Suggestions, suggestions) && ReferenceEquals(suggestionCollection, suggestions as INotifyCollectionChanged))
+        {
+            viewModel.SetSuggestions(suggestions);
+            return;
+        }
+
+        DetachSuggestionsSource();
+        suggestionCollection = suggestions as INotifyCollectionChanged;
+        if (suggestionCollection is not null)
+        {
+            suggestionCollection.CollectionChanged += OnSuggestionsCollectionChanged;
+        }
+
+        viewModel.SetSuggestions(suggestions);
+    }
+
+    private void DetachSuggestionsSource()
+    {
+        if (suggestionCollection is null)
+        {
+            return;
+        }
+
+        suggestionCollection.CollectionChanged -= OnSuggestionsCollectionChanged;
+        suggestionCollection = null;
+    }
+
+    private void OnSuggestionsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
+        viewModel.SetSuggestions(Suggestions);
 }

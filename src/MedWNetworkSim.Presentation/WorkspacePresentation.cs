@@ -696,6 +696,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     private string edgeEditorValidationText = string.Empty;
     private bool isRefreshingEdgeEditorState;
     private bool isRefreshingInspectorDrafts;
+    private InspectorEditMode currentInspectorEditMode = InspectorEditMode.Network;
     private bool hasUnsavedChanges;
     private string? currentFilePath;
 
@@ -891,7 +892,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     public string TrafficDeliveredColumnLabel => lastTimelineStepResult is null ? "Delivered" : "Started this period";
     public string SelectionSummary => BuildSelectionSummary();
     public bool CanDeleteSelection => Scene.Selection.SelectedNodeIds.Count > 0 || Scene.Selection.SelectedEdgeIds.Count > 0;
-    public InspectorEditMode CurrentInspectorEditMode => GetInspectorEditMode();
+    public InspectorEditMode CurrentInspectorEditMode => currentInspectorEditMode;
     public bool IsEditingNetwork => CurrentInspectorEditMode == InspectorEditMode.Network;
     public bool IsEditingNode => CurrentInspectorEditMode == InspectorEditMode.Node;
     public bool IsEditingEdge => CurrentInspectorEditMode == InspectorEditMode.Edge;
@@ -2151,6 +2152,9 @@ public sealed class WorkspaceViewModel : ObservableObject
     private void RefreshInspector()
     {
         EnsureEdgeEditorSelectionState();
+        var selectedNodeIds = Scene.Selection.SelectedNodeIds.ToList();
+        var selectedEdgeIds = Scene.Selection.SelectedEdgeIds.ToList();
+        currentInspectorEditMode = ResolveInspectorEditMode(selectedNodeIds.Count, selectedEdgeIds.Count);
         Raise(nameof(SelectionSummary));
         Raise(nameof(SessionSubtitle));
         Raise(nameof(CurrentInspectorEditMode));
@@ -2182,9 +2186,6 @@ public sealed class WorkspaceViewModel : ObservableObject
         RaiseEdgeDisplayStateChanged();
 
         InspectorValidationText = string.Empty;
-        var selectedNodeIds = Scene.Selection.SelectedNodeIds.ToList();
-        var selectedEdgeIds = Scene.Selection.SelectedEdgeIds.ToList();
-
         if (selectedNodeIds.Count == 0 && selectedEdgeIds.Count == 0)
         {
             Inspector.Headline = "Network settings";
@@ -3245,20 +3246,20 @@ public sealed class WorkspaceViewModel : ObservableObject
         return "No selection";
     }
 
-    private InspectorEditMode GetInspectorEditMode()
+    private static InspectorEditMode ResolveInspectorEditMode(int selectedNodeCount, int selectedEdgeCount)
     {
-        var count = Scene.Selection.SelectedNodeIds.Count + Scene.Selection.SelectedEdgeIds.Count;
+        var count = selectedNodeCount + selectedEdgeCount;
         if (count == 0)
         {
             return InspectorEditMode.Network;
         }
 
-        if (Scene.Selection.SelectedNodeIds.Count == 1 && Scene.Selection.SelectedEdgeIds.Count == 0)
+        if (selectedNodeCount == 1 && selectedEdgeCount == 0)
         {
             return InspectorEditMode.Node;
         }
 
-        if (Scene.Selection.SelectedEdgeIds.Count == 1 && Scene.Selection.SelectedNodeIds.Count == 0)
+        if (selectedEdgeCount == 1 && selectedNodeCount == 0)
         {
             return InspectorEditMode.Edge;
         }

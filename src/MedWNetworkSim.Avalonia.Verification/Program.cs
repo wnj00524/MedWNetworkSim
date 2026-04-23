@@ -15,6 +15,7 @@ ScenarioModifierDragCreatesExpectedRouteDirection();
 ScenarioMultipleTrafficProfilesCanBeSwitched();
 ScenarioNodeTrafficRoleCanBeEditedInInspector();
 ScenarioSingleNodeInspectorApplyUsesLoadedNodeTarget();
+ScenarioSingleRouteInspectorApplyUsesLoadedEdgeTarget();
 ScenarioBulkSelectionApplyUsesLoadedSelectionTarget();
 ScenarioSwitchingFromSelectionModeToNodeModeDoesNotRetainBulkDraftBehavior();
 ScenarioNodeAndBulkDraftsStayIndependent();
@@ -340,6 +341,48 @@ static void ScenarioBulkSelectionApplyUsesLoadedSelectionTarget()
         AssertTextEqual("Market", saved.Nodes.Single(node => node.Id == "alpha").PlaceType!, "bulk apply updates first loaded selection node");
         AssertTextEqual("Market", saved.Nodes.Single(node => node.Id == "beta").PlaceType!, "bulk apply updates second loaded selection node");
         AssertTextEqual("Fort", saved.Nodes.Single(node => node.Id == "gamma").PlaceType!, "bulk apply leaves nodes outside loaded selection unchanged");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioSingleRouteInspectorApplyUsesLoadedEdgeTarget()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Single Route Apply",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "grain" }],
+        Nodes =
+        [
+            new NodeModel { Id = "alpha", Name = "Alpha", PlaceType = "Village", X = 0d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
+            new NodeModel { Id = "beta", Name = "Beta", PlaceType = "Town", X = 10d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] }
+        ],
+        Edges =
+        [
+            new EdgeModel { Id = "alpha->beta", FromNodeId = "alpha", ToNodeId = "beta", Time = 1d, Cost = 1d, IsBidirectional = true, RouteType = "Road" }
+        ]
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        workspace.SelectRouteForEdit("alpha->beta");
+        workspace.EdgeDraft.RouteTypeText = "Canal";
+
+        workspace.Scene.Selection.SelectedEdgeIds.Clear();
+        workspace.Scene.Selection.SelectedNodeIds.Clear();
+        workspace.Scene.Selection.SelectedNodeIds.Add("alpha");
+        workspace.Scene.Selection.SelectedNodeIds.Add("beta");
+
+        workspace.ApplyInspectorCommand.Execute(null);
+
+        var saved = SaveAndReload(workspace);
+        AssertTextEqual("Canal", saved.Edges.Single().RouteType!, "single-route apply updates loaded route target");
+        AssertTextEqual("Village", saved.Nodes.Single(node => node.Id == "alpha").PlaceType!, "single-route apply leaves first node unchanged");
+        AssertTextEqual("Town", saved.Nodes.Single(node => node.Id == "beta").PlaceType!, "single-route apply leaves second node unchanged");
     }
     finally
     {

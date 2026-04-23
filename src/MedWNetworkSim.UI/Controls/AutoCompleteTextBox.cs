@@ -45,7 +45,7 @@ public sealed class AutoCompleteTextBox : UserControl
             Background = new SolidColorBrush(AvaloniaDashboardTheme.InputBackground),
             CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius
         };
-        inputBox.Bind(TextBox.TextProperty, new Binding(nameof(AutoCompleteTextBoxViewModel.Text), BindingMode.TwoWay));
+        inputBox.Bind(TextBox.TextProperty, new Binding(nameof(AutoCompleteTextBoxViewModel.Text), BindingMode.TwoWay) { Source = viewModel });
         inputBox.Bind(TextBox.WatermarkProperty, new Binding(nameof(Watermark)) { Source = this });
         inputBox.KeyDown += OnKeyDown;
         inputBox.GotFocus += OnFocus;
@@ -59,8 +59,8 @@ public sealed class AutoCompleteTextBox : UserControl
             Background = new SolidColorBrush(AvaloniaDashboardTheme.InputBackground),
             BorderThickness = new Thickness(0)
         };
-        suggestionList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(AutoCompleteTextBoxViewModel.FilteredSuggestions)));
-        suggestionList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(AutoCompleteTextBoxViewModel.SelectedSuggestion), BindingMode.TwoWay));
+        suggestionList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(AutoCompleteTextBoxViewModel.FilteredSuggestions)) { Source = viewModel });
+        suggestionList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(AutoCompleteTextBoxViewModel.SelectedSuggestion), BindingMode.TwoWay) { Source = viewModel });
         suggestionList.PointerPressed += OnSuggestionPressed;
 
         popup = new Popup
@@ -77,7 +77,7 @@ public sealed class AutoCompleteTextBox : UserControl
                 Child = suggestionList
             }
         };
-        popup.Bind(Popup.IsOpenProperty, new Binding(nameof(AutoCompleteTextBoxViewModel.IsDropDownOpen)));
+        popup.Bind(Popup.IsOpenProperty, new Binding(nameof(AutoCompleteTextBoxViewModel.IsDropDownOpen)) { Source = viewModel });
 
         Content = new Grid
         {
@@ -88,7 +88,6 @@ public sealed class AutoCompleteTextBox : UserControl
             }
         };
 
-        DataContext = viewModel;
         AttachSuggestionsSource(Suggestions);
         viewModel.Text = Text ?? string.Empty;
     }

@@ -20,6 +20,7 @@ ScenarioBulkSelectionApplyUsesLoadedSelectionTarget();
 ScenarioSwitchingFromSelectionModeToNodeModeDoesNotRetainBulkDraftBehavior();
 ScenarioNodeAndBulkDraftsStayIndependent();
 ScenarioEdgeDraftDoesNotMirrorNodeDraft();
+ScenarioAutoCompleteTextBoxRespectsParentDataContextBindings();
 ScenarioPlaceTypeSuggestionsPopulateFromCurrentNetwork();
 ScenarioRouteTypeSuggestionsPopulateFromCurrentNetwork();
 ScenarioAutocompleteSuggestionsRefreshAfterInspectorEdits();
@@ -495,6 +496,30 @@ static void ScenarioEdgeDraftDoesNotMirrorNodeDraft()
     {
         TryDelete(path);
     }
+}
+
+static void ScenarioAutoCompleteTextBoxRespectsParentDataContextBindings()
+{
+    var host = new AutoCompleteBindingHost
+    {
+        PlaceType = "Village",
+        PlaceTypeSuggestions = ["Village", "Harbor"]
+    };
+
+    var control = new MedWNetworkSim.UI.Controls.AutoCompleteTextBox
+    {
+        DataContext = host
+    };
+
+    control.Bind(MedWNetworkSim.UI.Controls.AutoCompleteTextBox.TextProperty, new Avalonia.Data.Binding(nameof(AutoCompleteBindingHost.PlaceType), Avalonia.Data.BindingMode.TwoWay));
+    control.Bind(MedWNetworkSim.UI.Controls.AutoCompleteTextBox.SuggestionsProperty, new Avalonia.Data.Binding(nameof(AutoCompleteBindingHost.PlaceTypeSuggestions)));
+
+    AssertTextEqual("Village", control.Text!, "autocomplete text binding reads from parent data context");
+    AssertNumberEqual(2d, control.Suggestions!.Count(), "autocomplete suggestions binding reads from parent data context");
+
+    control.Text = "Harbor";
+
+    AssertTextEqual("Harbor", host.PlaceType, "autocomplete text binding writes back to parent data context");
 }
 
 static void ScenarioPlaceTypeSuggestionsPopulateFromCurrentNetwork()
@@ -1564,5 +1589,23 @@ static void AssertNumberNear(double expected, double actual, double tolerance, s
     if (Math.Abs(expected - actual) > tolerance)
     {
         throw new InvalidOperationException($"{scenario} expected {expected:0.###} but got {actual:0.###}.");
+    }
+}
+
+sealed class AutoCompleteBindingHost : ObservableObject
+{
+    private string placeType = string.Empty;
+    private IReadOnlyList<string> placeTypeSuggestions = [];
+
+    public string PlaceType
+    {
+        get => placeType;
+        set => SetProperty(ref placeType, value);
+    }
+
+    public IReadOnlyList<string> PlaceTypeSuggestions
+    {
+        get => placeTypeSuggestions;
+        set => SetProperty(ref placeTypeSuggestions, value);
     }
 }

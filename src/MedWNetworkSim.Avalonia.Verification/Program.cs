@@ -14,6 +14,11 @@ ScenarioDragAndConnectUseRenderedCoordinates();
 ScenarioModifierDragCreatesExpectedRouteDirection();
 ScenarioMultipleTrafficProfilesCanBeSwitched();
 ScenarioNodeTrafficRoleCanBeEditedInInspector();
+ScenarioSingleNodeInspectorApplyUsesLoadedNodeTarget();
+ScenarioBulkSelectionApplyUsesLoadedSelectionTarget();
+ScenarioSwitchingFromSelectionModeToNodeModeDoesNotRetainBulkDraftBehavior();
+ScenarioPlaceTypeSuggestionsPopulateFromCurrentNetwork();
+ScenarioRouteTypeSuggestionsPopulateFromCurrentNetwork();
 ScenarioRouteEditorWorkspaceModeTransitions();
 ScenarioRouteEditorCanAddTrafficRule();
 ScenarioRouteEditorValidationBlocksSave();
@@ -256,6 +261,178 @@ static void ScenarioNodeTrafficRoleCanBeEditedInInspector()
         AssertNumberEqual(0d, profile.Production, "saved edited role production");
         AssertNumberEqual(4d, profile.Consumption, "saved edited role consumption");
         AssertTrue(!profile.CanTransship, "saved edited role transshipment");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioSingleNodeInspectorApplyUsesLoadedNodeTarget()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Single Node Apply",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "grain" }],
+        Nodes =
+        [
+            new NodeModel { Id = "alpha", Name = "Alpha", PlaceType = "Village", X = 0d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
+            new NodeModel { Id = "beta", Name = "Beta", PlaceType = "Town", X = 10d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] }
+        ],
+        Edges = []
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        workspace.SelectNodeForEdit("alpha");
+        workspace.NodePlaceTypeText = "Harbor";
+
+        workspace.Scene.Selection.SelectedNodeIds.Clear();
+        workspace.Scene.Selection.SelectedNodeIds.Add("beta");
+
+        workspace.ApplyInspectorCommand.Execute(null);
+
+        var saved = SaveAndReload(workspace);
+        AssertTextEqual("Harbor", saved.Nodes.Single(node => node.Id == "alpha").PlaceType!, "single-node apply updates loaded target");
+        AssertTextEqual("Town", saved.Nodes.Single(node => node.Id == "beta").PlaceType!, "single-node apply leaves other node unchanged");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioBulkSelectionApplyUsesLoadedSelectionTarget()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Bulk Apply",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "grain" }],
+        Nodes =
+        [
+            new NodeModel { Id = "alpha", Name = "Alpha", PlaceType = "Village", X = 0d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
+            new NodeModel { Id = "beta", Name = "Beta", PlaceType = "Village", X = 10d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
+            new NodeModel { Id = "gamma", Name = "Gamma", PlaceType = "Fort", X = 20d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] }
+        ],
+        Edges = []
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        SetSelectedNodes(workspace, "alpha", "beta");
+        workspace.BulkPlaceTypeText = "Market";
+
+        workspace.Scene.Selection.SelectedNodeIds.Clear();
+        workspace.Scene.Selection.SelectedNodeIds.Add("beta");
+        workspace.Scene.Selection.SelectedNodeIds.Add("gamma");
+
+        workspace.ApplyInspectorCommand.Execute(null);
+
+        var saved = SaveAndReload(workspace);
+        AssertTextEqual("Market", saved.Nodes.Single(node => node.Id == "alpha").PlaceType!, "bulk apply updates first loaded selection node");
+        AssertTextEqual("Market", saved.Nodes.Single(node => node.Id == "beta").PlaceType!, "bulk apply updates second loaded selection node");
+        AssertTextEqual("Fort", saved.Nodes.Single(node => node.Id == "gamma").PlaceType!, "bulk apply leaves nodes outside loaded selection unchanged");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioSwitchingFromSelectionModeToNodeModeDoesNotRetainBulkDraftBehavior()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Switch Modes",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "grain" }],
+        Nodes =
+        [
+            new NodeModel { Id = "alpha", Name = "Alpha", PlaceType = "Village", X = 0d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
+            new NodeModel { Id = "beta", Name = "Beta", PlaceType = "Village", X = 10d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
+            new NodeModel { Id = "gamma", Name = "Gamma", PlaceType = "Fort", X = 20d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] }
+        ],
+        Edges = []
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        SetSelectedNodes(workspace, "alpha", "beta");
+        workspace.BulkPlaceTypeText = "Market";
+
+        workspace.SelectNodeForEdit("gamma");
+        workspace.NodePlaceTypeText = "Port";
+        workspace.ApplyInspectorCommand.Execute(null);
+
+        var saved = SaveAndReload(workspace);
+        AssertTextEqual("Village", saved.Nodes.Single(node => node.Id == "alpha").PlaceType!, "switching to node mode does not reuse bulk draft for alpha");
+        AssertTextEqual("Village", saved.Nodes.Single(node => node.Id == "beta").PlaceType!, "switching to node mode does not reuse bulk draft for beta");
+        AssertTextEqual("Port", saved.Nodes.Single(node => node.Id == "gamma").PlaceType!, "switching to node mode applies node draft only to selected node");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioPlaceTypeSuggestionsPopulateFromCurrentNetwork()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Place Suggestions",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "grain" }],
+        Nodes =
+        [
+            new NodeModel { Id = "alpha", Name = "Alpha", PlaceType = "Village", X = 0d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
+            new NodeModel { Id = "beta", Name = "Beta", PlaceType = "Harbor", X = 10d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] }
+        ],
+        Edges = []
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+
+        AssertTrue(workspace.NodePlaceTypeSuggestions.Contains("Village"), "place type suggestions include existing value");
+        AssertTrue(workspace.NodePlaceTypeSuggestions.Contains("Harbor"), "place type suggestions include second existing value");
+        AssertTrue(workspace.NodePlaceTypeSuggestions.Contains("Draft place"), "place type suggestions include default place value");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioRouteTypeSuggestionsPopulateFromCurrentNetwork()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Route Suggestions",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "grain" }],
+        Nodes =
+        [
+            new NodeModel { Id = "alpha", Name = "Alpha", X = 0d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
+            new NodeModel { Id = "beta", Name = "Beta", X = 10d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] }
+        ],
+        Edges =
+        [
+            new EdgeModel { Id = "alpha->beta", FromNodeId = "alpha", ToNodeId = "beta", Time = 1d, Cost = 1d, IsBidirectional = true, RouteType = "Canal" }
+        ]
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+
+        AssertTrue(workspace.EdgeRouteTypeSuggestions.Contains("Canal"), "route type suggestions include existing value");
+        AssertTrue(workspace.EdgeRouteTypeSuggestions.Contains("Proposed route"), "route type suggestions include default route value");
     }
     finally
     {
@@ -1109,6 +1286,25 @@ static void SelectFirstNode(WorkspaceViewModel workspace, GraphSize viewportSize
     var node = workspace.Scene.Nodes.First();
     var nodeCenter = workspace.Viewport.WorldToScreen(new GraphPoint(node.Bounds.CenterX, node.Bounds.CenterY), viewportSize);
     workspace.InteractionController.OnPointerPressed(context, GraphPointerButton.Left, nodeCenter, false, false, false);
+}
+
+static void SetSelectedNodes(WorkspaceViewModel workspace, params string[] nodeIds)
+{
+    workspace.Scene.Selection.SelectedEdgeIds.Clear();
+    workspace.Scene.Selection.SelectedNodeIds.Clear();
+    foreach (var nodeId in nodeIds)
+    {
+        workspace.Scene.Selection.SelectedNodeIds.Add(nodeId);
+    }
+
+    InvokePrivate(workspace, "RefreshInspector");
+}
+
+static void InvokePrivate(object instance, string methodName)
+{
+    var method = instance.GetType().GetMethod(methodName, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+        ?? throw new InvalidOperationException($"Unable to find private method '{methodName}'.");
+    method.Invoke(instance, null);
 }
 
 static void TryDelete(string path)

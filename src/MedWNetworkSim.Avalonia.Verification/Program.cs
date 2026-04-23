@@ -17,6 +17,8 @@ ScenarioNodeTrafficRoleCanBeEditedInInspector();
 ScenarioSingleNodeInspectorApplyUsesLoadedNodeTarget();
 ScenarioBulkSelectionApplyUsesLoadedSelectionTarget();
 ScenarioSwitchingFromSelectionModeToNodeModeDoesNotRetainBulkDraftBehavior();
+ScenarioNodeAndBulkDraftsStayIndependent();
+ScenarioEdgeDraftDoesNotMirrorNodeDraft();
 ScenarioPlaceTypeSuggestionsPopulateFromCurrentNetwork();
 ScenarioRouteTypeSuggestionsPopulateFromCurrentNetwork();
 ScenarioAutocompleteSuggestionsRefreshAfterInspectorEdits();
@@ -289,7 +291,7 @@ static void ScenarioSingleNodeInspectorApplyUsesLoadedNodeTarget()
         var workspace = new WorkspaceViewModel();
         workspace.OpenNetwork(path);
         workspace.SelectNodeForEdit("alpha");
-        workspace.NodePlaceTypeText = "Harbor";
+        workspace.NodeDraft.PlaceTypeText = "Harbor";
 
         workspace.Scene.Selection.SelectedNodeIds.Clear();
         workspace.Scene.Selection.SelectedNodeIds.Add("beta");
@@ -326,7 +328,7 @@ static void ScenarioBulkSelectionApplyUsesLoadedSelectionTarget()
         var workspace = new WorkspaceViewModel();
         workspace.OpenNetwork(path);
         SetSelectedNodes(workspace, "alpha", "beta");
-        workspace.BulkPlaceTypeText = "Market";
+        workspace.BulkDraft.PlaceTypeText = "Market";
 
         workspace.Scene.Selection.SelectedNodeIds.Clear();
         workspace.Scene.Selection.SelectedNodeIds.Add("beta");
@@ -365,16 +367,86 @@ static void ScenarioSwitchingFromSelectionModeToNodeModeDoesNotRetainBulkDraftBe
         var workspace = new WorkspaceViewModel();
         workspace.OpenNetwork(path);
         SetSelectedNodes(workspace, "alpha", "beta");
-        workspace.BulkPlaceTypeText = "Market";
+        workspace.BulkDraft.PlaceTypeText = "Market";
 
         workspace.SelectNodeForEdit("gamma");
-        workspace.NodePlaceTypeText = "Port";
+        workspace.NodeDraft.PlaceTypeText = "Port";
         workspace.ApplyInspectorCommand.Execute(null);
 
         var saved = SaveAndReload(workspace);
         AssertTextEqual("Village", saved.Nodes.Single(node => node.Id == "alpha").PlaceType!, "switching to node mode does not reuse bulk draft for alpha");
         AssertTextEqual("Village", saved.Nodes.Single(node => node.Id == "beta").PlaceType!, "switching to node mode does not reuse bulk draft for beta");
         AssertTextEqual("Port", saved.Nodes.Single(node => node.Id == "gamma").PlaceType!, "switching to node mode applies node draft only to selected node");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioNodeAndBulkDraftsStayIndependent()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Draft Independence",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "grain" }],
+        Nodes =
+        [
+            new NodeModel { Id = "alpha", Name = "Alpha", PlaceType = "Village", X = 0d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
+            new NodeModel { Id = "beta", Name = "Beta", PlaceType = "Town", X = 10d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] }
+        ],
+        Edges = []
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+
+        workspace.SelectNodeForEdit("alpha");
+        workspace.NodeDraft.PlaceTypeText = "Harbor";
+
+        SetSelectedNodes(workspace, "alpha", "beta");
+        workspace.BulkDraft.PlaceTypeText = "Market";
+
+        AssertTextEqual("Harbor", workspace.NodeDraft.PlaceTypeText, "node draft keeps its own place type text");
+        AssertTextEqual("Market", workspace.BulkDraft.PlaceTypeText, "bulk draft keeps its own place type text");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioEdgeDraftDoesNotMirrorNodeDraft()
+{
+    var path = WriteTempNetwork(new NetworkModel
+    {
+        Name = "Cross Draft Isolation",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "grain" }],
+        Nodes =
+        [
+            new NodeModel { Id = "alpha", Name = "Alpha", PlaceType = "Village", X = 0d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
+            new NodeModel { Id = "beta", Name = "Beta", PlaceType = "Town", X = 10d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] }
+        ],
+        Edges =
+        [
+            new EdgeModel { Id = "alpha->beta", FromNodeId = "alpha", ToNodeId = "beta", Time = 1d, Cost = 1d, IsBidirectional = true, RouteType = "Road" }
+        ]
+    });
+
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+
+        workspace.SelectNodeForEdit("alpha");
+        workspace.NodeDraft.PlaceTypeText = "Harbor";
+        workspace.SelectRouteForEdit("alpha->beta");
+        workspace.EdgeDraft.RouteTypeText = "Canal";
+
+        AssertTextEqual("Harbor", workspace.NodeDraft.PlaceTypeText, "edge draft updates do not overwrite node draft text");
+        AssertTextEqual("Canal", workspace.EdgeDraft.RouteTypeText, "edge draft keeps its own route type text");
     }
     finally
     {
@@ -403,10 +475,11 @@ static void ScenarioPlaceTypeSuggestionsPopulateFromCurrentNetwork()
         var workspace = new WorkspaceViewModel();
         workspace.OpenNetwork(path);
 
-        AssertTrue(workspace.NodePlaceTypeSuggestions.Contains("Village"), "place type suggestions include existing value");
-        AssertTrue(workspace.NodePlaceTypeSuggestions.Contains("Harbor"), "place type suggestions include second existing value");
-        AssertTrue(workspace.NodePlaceTypeSuggestions.Contains("Draft place"), "place type suggestions include default place value");
-        AssertNumberEqual(3d, workspace.NodePlaceTypeSuggestions.Count, "place type suggestions remove duplicate and blank values");
+        AssertTrue(workspace.NodeDraft.PlaceTypeSuggestions.Contains("Village"), "place type suggestions include existing value");
+        AssertTrue(workspace.NodeDraft.PlaceTypeSuggestions.Contains("Harbor"), "place type suggestions include second existing value");
+        AssertTrue(workspace.NodeDraft.PlaceTypeSuggestions.Contains("Draft place"), "place type suggestions include default place value");
+        AssertNumberEqual(3d, workspace.NodeDraft.PlaceTypeSuggestions.Count, "place type suggestions remove duplicate and blank values");
+        AssertTrue(workspace.BulkDraft.PlaceTypeSuggestions.Contains("Harbor"), "bulk draft place suggestions refresh with network values");
     }
     finally
     {
@@ -438,9 +511,9 @@ static void ScenarioRouteTypeSuggestionsPopulateFromCurrentNetwork()
         var workspace = new WorkspaceViewModel();
         workspace.OpenNetwork(path);
 
-        AssertTrue(workspace.EdgeRouteTypeSuggestions.Contains("Canal"), "route type suggestions include existing value");
-        AssertTrue(workspace.EdgeRouteTypeSuggestions.Contains("Proposed route"), "route type suggestions include default route value");
-        AssertNumberEqual(2d, workspace.EdgeRouteTypeSuggestions.Count, "route type suggestions remove duplicate and blank values");
+        AssertTrue(workspace.EdgeDraft.RouteTypeSuggestions.Contains("Canal"), "route type suggestions include existing value");
+        AssertTrue(workspace.EdgeDraft.RouteTypeSuggestions.Contains("Proposed route"), "route type suggestions include default route value");
+        AssertNumberEqual(2d, workspace.EdgeDraft.RouteTypeSuggestions.Count, "route type suggestions remove duplicate and blank values");
     }
     finally
     {
@@ -470,15 +543,16 @@ static void ScenarioAutocompleteSuggestionsRefreshAfterInspectorEdits()
         var workspace = new WorkspaceViewModel();
         workspace.OpenNetwork(path);
         workspace.SelectNodeForEdit("alpha");
-        workspace.NodePlaceTypeText = "Harbor";
+        workspace.NodeDraft.PlaceTypeText = "Harbor";
         workspace.ApplyInspectorCommand.Execute(null);
 
         workspace.SelectRouteForEdit("alpha->beta");
-        workspace.EdgeRouteTypeText = "Canal";
+        workspace.EdgeDraft.RouteTypeText = "Canal";
         workspace.ApplyInspectorCommand.Execute(null);
 
-        AssertTrue(workspace.NodePlaceTypeSuggestions.Contains("Harbor"), "place type suggestions refresh after inspector edit");
-        AssertTrue(workspace.EdgeRouteTypeSuggestions.Contains("Canal"), "route type suggestions refresh after inspector edit");
+        AssertTrue(workspace.NodeDraft.PlaceTypeSuggestions.Contains("Harbor"), "place type suggestions refresh after inspector edit");
+        AssertTrue(workspace.BulkDraft.PlaceTypeSuggestions.Contains("Harbor"), "bulk place type suggestions refresh after inspector edit");
+        AssertTrue(workspace.EdgeDraft.RouteTypeSuggestions.Contains("Canal"), "route type suggestions refresh after inspector edit");
     }
     finally
     {
@@ -522,14 +596,15 @@ static void ScenarioAutocompleteSuggestionsImportGraphMlRefreshesCollections()
         }
 
         var workspace = new WorkspaceViewModel();
-        workspace.NodePlaceTypeText = "Stale place";
-        workspace.EdgeRouteTypeText = "Stale route";
+        workspace.NodeDraft.PlaceTypeText = "Stale place";
+        workspace.EdgeDraft.RouteTypeText = "Stale route";
         workspace.ImportGraphMl(graphMlPath);
 
-        AssertTrue(!workspace.NodePlaceTypeSuggestions.Contains("Stale place"), "place type suggestions refresh after import");
-        AssertTrue(!workspace.EdgeRouteTypeSuggestions.Contains("Stale route"), "route type suggestions refresh after import");
-        AssertTrue(workspace.NodePlaceTypeSuggestions.Count >= 1, "place type suggestions are repopulated after import");
-        AssertTrue(workspace.EdgeRouteTypeSuggestions.Count >= 1, "route type suggestions are repopulated after import");
+        AssertTrue(!workspace.NodeDraft.PlaceTypeSuggestions.Contains("Stale place"), "place type suggestions refresh after import");
+        AssertTrue(!workspace.BulkDraft.PlaceTypeSuggestions.Contains("Stale place"), "bulk place suggestions refresh after import");
+        AssertTrue(!workspace.EdgeDraft.RouteTypeSuggestions.Contains("Stale route"), "route type suggestions refresh after import");
+        AssertTrue(workspace.NodeDraft.PlaceTypeSuggestions.Count >= 1, "place type suggestions are repopulated after import");
+        AssertTrue(workspace.EdgeDraft.RouteTypeSuggestions.Count >= 1, "route type suggestions are repopulated after import");
     }
     finally
     {
@@ -573,19 +648,19 @@ static void ScenarioRouteEditorWorkspaceModeTransitions()
         workspace.EnterEdgeEditor();
 
         AssertTrue(workspace.IsEdgeEditorWorkspaceMode, "route editor enters dedicated workspace mode");
-        workspace.EdgeRouteTypeText = "Updated Corridor";
-        workspace.EdgeTimeText = "5";
+        workspace.EdgeDraft.RouteTypeText = "Updated Corridor";
+        workspace.EdgeDraft.TimeText = "5";
         workspace.CancelEdgeEditorCommand.Execute(null);
 
         AssertTrue(workspace.IsNormalWorkspaceMode, "route editor cancel returns to normal workspace");
-        AssertTextEqual("Relief Corridor", workspace.EdgeRouteTypeText, "route editor cancel restores route label");
-        AssertTextEqual("2", workspace.EdgeTimeText, "route editor cancel restores travel time");
+        AssertTextEqual("Relief Corridor", workspace.EdgeDraft.RouteTypeText, "route editor cancel restores route label");
+        AssertTextEqual("2", workspace.EdgeDraft.TimeText, "route editor cancel restores travel time");
 
         workspace.EnterEdgeEditor();
-        workspace.EdgeRouteTypeText = "Updated Corridor";
-        workspace.EdgeTimeText = "5";
-        workspace.EdgeCostText = "7";
-        workspace.EdgeCapacityText = "12";
+        workspace.EdgeDraft.RouteTypeText = "Updated Corridor";
+        workspace.EdgeDraft.TimeText = "5";
+        workspace.EdgeDraft.CostText = "7";
+        workspace.EdgeDraft.CapacityText = "12";
         workspace.SaveEdgeEditorCommand.Execute(null);
 
         AssertTrue(workspace.IsNormalWorkspaceMode, "route editor save returns to normal workspace");
@@ -643,7 +718,7 @@ static void ScenarioRouteEditorValidationBlocksSave()
         AssertTextEqual("Set edge capacity before using a percentage limit.", row.ValidationMessage, "route editor percent limit requires capacity");
         AssertTrue(!workspace.CanSaveEdgeEditor, "route editor blocks save while permission rule is invalid");
 
-        workspace.EdgeCapacityText = "20";
+        workspace.EdgeDraft.CapacityText = "20";
         AssertTextEqual(string.Empty, row.ValidationMessage, "route editor clears permission validation after capacity is set");
         AssertTrue(workspace.CanSaveEdgeEditor, "route editor enables save once validation passes");
     }
@@ -864,10 +939,10 @@ static void ScenarioNodeEditsPersistThroughSaveLoad()
         var workspace = new WorkspaceViewModel();
         workspace.OpenNetwork(path);
         SelectFirstNode(workspace, new GraphSize(1000d, 700d));
-        workspace.NodeNameText = "Central Granary";
-        workspace.NodePlaceTypeText = "Storehouse";
-        workspace.NodeDescriptionText = "Feeds the market";
-        workspace.NodeTranshipmentCapacityText = "80";
+        workspace.NodeDraft.NodeNameText = "Central Granary";
+        workspace.NodeDraft.PlaceTypeText = "Storehouse";
+        workspace.NodeDraft.DescriptionText = "Feeds the market";
+        workspace.NodeDraft.TranshipmentCapacityText = "80";
         workspace.NodeTrafficRoleText = "Producer";
         workspace.NodeProductionText = "12";
         workspace.NodeConsumptionText = "0";
@@ -972,7 +1047,7 @@ static void ScenarioSelectedNodePreviewResizesAndKeepsCenter()
     var widthBefore = node.Bounds.Width;
     var heightBefore = node.Bounds.Height;
 
-    workspace.NodeNameText = "Emergency Logistics Node With A Much Longer Live Preview Name";
+    workspace.NodeDraft.NodeNameText = "Emergency Logistics Node With A Much Longer Live Preview Name";
 
     var updated = workspace.Scene.Nodes.Single();
     AssertTrue(updated.Bounds.Height >= heightBefore, "live preview height does not shrink with longer name");
@@ -1000,7 +1075,7 @@ static void ScenarioEdgeAnchorsAndHitTestingFollowResizedBounds()
     workspace.InteractionController.OnPointerReleased(connectContext, GraphPointerButton.Left, targetCenter, false);
 
     SelectFirstNode(workspace, viewportSize);
-    workspace.NodeNameText = "Source Hub With Long Preview Name That Forces A Wider Box";
+    workspace.NodeDraft.NodeNameText = "Source Hub With Long Preview Name That Forces A Wider Box";
 
     var resizedSource = workspace.Scene.Nodes.First(node => node.Id == sourceNode.Id);
     var anchor = GraphHitTester.GetEdgeAnchor(workspace.Scene, resizedSource.Id, targetNode.Id);

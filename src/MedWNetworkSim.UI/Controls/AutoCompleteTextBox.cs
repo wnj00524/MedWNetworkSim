@@ -8,6 +8,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
+using System.Windows.Input;
 
 namespace MedWNetworkSim.UI.Controls;
 
@@ -23,6 +24,9 @@ public sealed class AutoCompleteTextBox : UserControl
 
     public static readonly StyledProperty<string?> WatermarkProperty =
         AvaloniaProperty.Register<AutoCompleteTextBox, string?>(nameof(Watermark));
+
+    public static readonly StyledProperty<ICommand?> SubmitCommandProperty =
+        AvaloniaProperty.Register<AutoCompleteTextBox, ICommand?>(nameof(SubmitCommand));
 
     private readonly AutoCompleteTextBoxViewModel viewModel = new();
     private readonly TextBox inputBox;
@@ -108,6 +112,12 @@ public sealed class AutoCompleteTextBox : UserControl
     {
         get => GetValue(WatermarkProperty);
         set => SetValue(WatermarkProperty, value);
+    }
+
+    public ICommand? SubmitCommand
+    {
+        get => GetValue(SubmitCommandProperty);
+        set => SetValue(SubmitCommandProperty, value);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -197,7 +207,12 @@ public sealed class AutoCompleteTextBox : UserControl
                 break;
 
             case Key.Enter:
-                if (viewModel.AcceptSelection())
+                var acceptedSelection = viewModel.IsDropDownOpen && viewModel.HasActiveSuggestion && viewModel.AcceptSelection();
+                if (TrySubmit())
+                {
+                    e.Handled = true;
+                }
+                else if (acceptedSelection)
                 {
                     e.Handled = true;
                 }
@@ -267,4 +282,16 @@ public sealed class AutoCompleteTextBox : UserControl
 
     private void OnSuggestionsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
         viewModel.SetSuggestions(Suggestions);
+
+    private bool TrySubmit()
+    {
+        var command = SubmitCommand;
+        if (command is null || !command.CanExecute(null))
+        {
+            return false;
+        }
+
+        command.Execute(null);
+        return true;
+    }
 }

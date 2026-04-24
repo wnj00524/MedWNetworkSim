@@ -1260,6 +1260,7 @@ public sealed class ShellWindow : Window
     {
         var routeTypeEditor = BuildAutoCompleteTextBox("Type or choose a route type", "EdgeDraft.RouteTypeSuggestions");
         routeTypeEditor.Bind(AutoCompleteTextBox.TextProperty, new Binding("EdgeDraft.RouteTypeText", BindingMode.TwoWay));
+        routeTypeEditor.Bind(AutoCompleteTextBox.SubmitCommandProperty, new Binding(nameof(WorkspaceViewModel.ApplyInspectorCommand)));
         edgeEditorWorkspaceFocusTarget = routeTypeEditor;
 
         var timeEditor = BuildValidatedTextBox(
@@ -1448,7 +1449,7 @@ public sealed class ShellWindow : Window
                 {
                     BuildSectionTitle("Quick Edit", "Keep fast access to the common node fields here, then open the full editor for schedules, recipes, and diagnostics."),
                     BuildLabeledTextBox("Name", "NodeDraft.NodeNameText"),
-                    BuildLabeledAutoCompleteTextBox("Place type", "NodeDraft.PlaceTypeText", "NodeDraft.PlaceTypeSuggestions", "Type or choose a place type"),
+                    BuildLabeledAutoCompleteTextBox("Place type", "NodeDraft.PlaceTypeText", "NodeDraft.PlaceTypeSuggestions", "Type or choose a place type", nameof(WorkspaceViewModel.ApplyInspectorCommand)),
                     BuildLabeledTextBox("Transhipment capacity", "NodeDraft.TranshipmentCapacityText"),
                     BuildLabeledComboBox("Node shape", nameof(WorkspaceViewModel.NodeShapeOptions), "NodeDraft.Shape"),
                     BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
@@ -1491,7 +1492,7 @@ public sealed class ShellWindow : Window
                     BuildReadOnlyRow("Route id", nameof(WorkspaceViewModel.SelectedEdgeIdText)),
                     BuildReadOnlyRow("Source", nameof(WorkspaceViewModel.SelectedEdgeSourceNodeText)),
                     BuildReadOnlyRow("Target", nameof(WorkspaceViewModel.SelectedEdgeTargetNodeText)),
-                    BuildLabeledAutoCompleteTextBox("Route type", "EdgeDraft.RouteTypeText", "EdgeDraft.RouteTypeSuggestions", "Type or choose a route type"),
+                    BuildLabeledAutoCompleteTextBox("Route type", "EdgeDraft.RouteTypeText", "EdgeDraft.RouteTypeSuggestions", "Type or choose a route type", nameof(WorkspaceViewModel.ApplyInspectorCommand)),
                     BuildReadOnlyRow("Direction", nameof(WorkspaceViewModel.SelectedEdgeDirectionSummaryText)),
                     BuildReadOnlyRow("Rules", nameof(WorkspaceViewModel.SelectedEdgeRuleCountText)),
                     BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
@@ -1749,7 +1750,7 @@ public sealed class ShellWindow : Window
                     BuildLabeledTextBox("Node id", "NodeDraft.NodeIdText"),
                     BuildLabeledTextBox("Name", "NodeDraft.NodeNameText"),
                     BuildCoordinateEditors(),
-                    BuildLabeledAutoCompleteTextBox("Place type", "NodeDraft.PlaceTypeText", "NodeDraft.PlaceTypeSuggestions", "Type or choose a place type"),
+                    BuildLabeledAutoCompleteTextBox("Place type", "NodeDraft.PlaceTypeText", "NodeDraft.PlaceTypeSuggestions", "Type or choose a place type", nameof(WorkspaceViewModel.ApplyInspectorCommand)),
                     BuildLabeledTextBox("Description", "NodeDraft.DescriptionText"),
                     BuildLabeledTextBox("Controlling actor", "NodeDraft.ControllingActorText"),
                     BuildLabeledTextBox("Tags", "NodeDraft.TagsText"),
@@ -2842,7 +2843,7 @@ public sealed class ShellWindow : Window
                 Children =
                 {
                     BuildSectionTitle("Route", "Edit route values and access rules."),
-                    BuildLabeledAutoCompleteTextBox("Route label", "EdgeDraft.RouteTypeText", "EdgeDraft.RouteTypeSuggestions", "Type or choose a route type"),
+                    BuildLabeledAutoCompleteTextBox("Route label", "EdgeDraft.RouteTypeText", "EdgeDraft.RouteTypeSuggestions", "Type or choose a route type", nameof(WorkspaceViewModel.ApplyInspectorCommand)),
                     BuildLabeledTextBox("Travel time", "EdgeDraft.TimeText"),
                     BuildLabeledTextBox("Travel cost", "EdgeDraft.CostText"),
                     BuildLabeledTextBox("Capacity", "EdgeDraft.CapacityText"),
@@ -3471,10 +3472,15 @@ public sealed class ShellWindow : Window
         return BuildLabeledRow(label, textBox);
     }
 
-    private static Control BuildLabeledAutoCompleteTextBox(string label, string propertyName, string suggestionsPropertyName, string watermark)
+    private static Control BuildLabeledAutoCompleteTextBox(string label, string propertyName, string suggestionsPropertyName, string watermark, string? submitCommandPropertyName = null)
     {
         var textBox = BuildAutoCompleteTextBox(watermark, suggestionsPropertyName);
         textBox.Bind(AutoCompleteTextBox.TextProperty, new Binding(propertyName, BindingMode.TwoWay));
+        if (!string.IsNullOrWhiteSpace(submitCommandPropertyName))
+        {
+            textBox.Bind(AutoCompleteTextBox.SubmitCommandProperty, new Binding(submitCommandPropertyName));
+        }
+
         return BuildLabeledRow(label, textBox);
     }
 

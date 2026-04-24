@@ -28,12 +28,16 @@ public sealed class AutoCompleteTextBox : UserControl
     public static readonly StyledProperty<ICommand?> SubmitCommandProperty =
         AvaloniaProperty.Register<AutoCompleteTextBox, ICommand?>(nameof(SubmitCommand));
 
+    public static readonly StyledProperty<bool> RestoreTextOnEscapeProperty =
+        AvaloniaProperty.Register<AutoCompleteTextBox, bool>(nameof(RestoreTextOnEscape));
+
     private readonly AutoCompleteTextBoxViewModel viewModel = new();
     private readonly TextBox inputBox;
     private readonly Popup popup;
     private readonly ListBox suggestionList;
     private bool isSynchronizingText;
     private INotifyCollectionChanged? suggestionCollection;
+    private string textAtFocusStart = string.Empty;
 
     public AutoCompleteTextBox()
     {
@@ -120,6 +124,12 @@ public sealed class AutoCompleteTextBox : UserControl
         set => SetValue(SubmitCommandProperty, value);
     }
 
+    public bool RestoreTextOnEscape
+    {
+        get => GetValue(RestoreTextOnEscapeProperty);
+        set => SetValue(RestoreTextOnEscapeProperty, value);
+    }
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -141,7 +151,11 @@ public sealed class AutoCompleteTextBox : UserControl
         base.OnDetachedFromVisualTree(e);
     }
 
-    private void OnFocus(object? sender, GotFocusEventArgs e) => viewModel.OpenDropDownIfAvailable();
+    private void OnFocus(object? sender, GotFocusEventArgs e)
+    {
+        textAtFocusStart = Text ?? string.Empty;
+        viewModel.OpenDropDownIfAvailable();
+    }
 
     private void OnLostFocus(object? sender, RoutedEventArgs e)
     {
@@ -220,8 +234,17 @@ public sealed class AutoCompleteTextBox : UserControl
                 break;
 
             case Key.Escape:
-                viewModel.CloseDropDown();
-                e.Handled = true;
+                if (RestoreTextOnEscape)
+                {
+                    SetCurrentValue(TextProperty, textAtFocusStart);
+                    viewModel.CloseDropDown();
+                    e.Handled = true;
+                }
+                else
+                {
+                    viewModel.CloseDropDown();
+                    e.Handled = true;
+                }
                 break;
         }
     }

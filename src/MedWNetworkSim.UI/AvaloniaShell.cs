@@ -1448,10 +1448,10 @@ public sealed class ShellWindow : Window
                 Children =
                 {
                     BuildSectionTitle("Quick Edit", "Keep fast access to the common node fields here, then open the full editor for schedules, recipes, and diagnostics."),
-                    BuildLabeledTextBox("Name", "NodeDraft.NodeNameText"),
-                    BuildLabeledAutoCompleteTextBox("Place type", "NodeDraft.PlaceTypeText", "NodeDraft.PlaceTypeSuggestions", "Type or choose a place type", nameof(WorkspaceViewModel.ApplyInspectorCommand)),
-                    BuildLabeledTextBox("Transhipment capacity", "NodeDraft.TranshipmentCapacityText"),
-                    BuildLabeledComboBox("Node shape", nameof(WorkspaceViewModel.NodeShapeOptions), "NodeDraft.Shape"),
+                    BuildQuickEditLabeledTextBox("Name", "NodeDraft.NodeNameText"),
+                    BuildQuickEditLabeledAutoCompleteTextBox("Place type", "NodeDraft.PlaceTypeText", "NodeDraft.PlaceTypeSuggestions", "Type or choose a place type"),
+                    BuildQuickEditLabeledTextBox("Transhipment capacity", "NodeDraft.TranshipmentCapacityText"),
+                    BuildQuickEditLabeledComboBox("Node shape", nameof(WorkspaceViewModel.NodeShapeOptions), "NodeDraft.Shape"),
                     BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
                     new StackPanel
                     {
@@ -1492,7 +1492,7 @@ public sealed class ShellWindow : Window
                     BuildReadOnlyRow("Route id", nameof(WorkspaceViewModel.SelectedEdgeIdText)),
                     BuildReadOnlyRow("Source", nameof(WorkspaceViewModel.SelectedEdgeSourceNodeText)),
                     BuildReadOnlyRow("Target", nameof(WorkspaceViewModel.SelectedEdgeTargetNodeText)),
-                    BuildLabeledAutoCompleteTextBox("Route type", "EdgeDraft.RouteTypeText", "EdgeDraft.RouteTypeSuggestions", "Type or choose a route type", nameof(WorkspaceViewModel.ApplyInspectorCommand)),
+                    BuildQuickEditLabeledAutoCompleteTextBox("Route type", "EdgeDraft.RouteTypeText", "EdgeDraft.RouteTypeSuggestions", "Type or choose a route type"),
                     BuildReadOnlyRow("Direction", nameof(WorkspaceViewModel.SelectedEdgeDirectionSummaryText)),
                     BuildReadOnlyRow("Rules", nameof(WorkspaceViewModel.SelectedEdgeRuleCountText)),
                     BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
@@ -3484,6 +3484,32 @@ public sealed class ShellWindow : Window
         return BuildLabeledRow(label, textBox);
     }
 
+    private static Control BuildQuickEditLabeledTextBox(string label, string propertyName)
+    {
+        var textBox = BuildTextBox(label);
+        textBox.Bind(TextBox.TextProperty, new Binding(propertyName, BindingMode.TwoWay));
+        AttachQuickEditTextBoxBehavior(textBox);
+        return BuildLabeledRow(label, textBox);
+    }
+
+    private static Control BuildQuickEditLabeledAutoCompleteTextBox(string label, string propertyName, string suggestionsPropertyName, string watermark)
+    {
+        var textBox = BuildAutoCompleteTextBox(watermark, suggestionsPropertyName);
+        textBox.Bind(AutoCompleteTextBox.TextProperty, new Binding(propertyName, BindingMode.TwoWay));
+        textBox.Bind(AutoCompleteTextBox.SubmitCommandProperty, new Binding(nameof(WorkspaceViewModel.ApplyInspectorCommand)));
+        textBox.SetCurrentValue(AutoCompleteTextBox.RestoreTextOnEscapeProperty, true);
+        return BuildLabeledRow(label, textBox);
+    }
+
+    private static Control BuildQuickEditLabeledComboBox(string label, string itemsPropertyName, string selectedPropertyName)
+    {
+        var comboBox = BuildComboBox();
+        comboBox.Bind(ItemsControl.ItemsSourceProperty, new Binding(itemsPropertyName));
+        comboBox.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(selectedPropertyName, BindingMode.TwoWay));
+        AttachQuickEditComboBoxBehavior(comboBox);
+        return BuildLabeledRow(label, comboBox);
+    }
+
     private static Control BuildLabeledComboBox(string label, string itemsPropertyName, string selectedPropertyName)
     {
         var comboBox = BuildComboBox();
@@ -3534,6 +3560,46 @@ public sealed class ShellWindow : Window
         return textBox;
     }
 
+    private static void AttachQuickEditTextBoxBehavior(TextBox textBox)
+    {
+        var initialText = string.Empty;
+        textBox.GotFocus += (_, _) => initialText = textBox.Text ?? string.Empty;
+        textBox.KeyDown += (_, e) =>
+        {
+            switch (e.Key)
+            {
+                case Key.Enter when TryExecuteApplyInspectorCommand(textBox):
+                    e.Handled = true;
+                    break;
+
+                case Key.Escape:
+                    textBox.Text = initialText;
+                    e.Handled = true;
+                    break;
+            }
+        };
+    }
+
+    private static void AttachQuickEditComboBoxBehavior(ComboBox comboBox)
+    {
+        object? initialSelection = null;
+        comboBox.GotFocus += (_, _) => initialSelection = comboBox.SelectedItem;
+        comboBox.KeyDown += (_, e) =>
+        {
+            switch (e.Key)
+            {
+                case Key.Enter when TryExecuteApplyInspectorCommand(comboBox):
+                    e.Handled = true;
+                    break;
+
+                case Key.Escape:
+                    comboBox.SelectedItem = initialSelection;
+                    e.Handled = true;
+                    break;
+            }
+        };
+    }
+
     private static AutoCompleteTextBox BuildAutoCompleteTextBox(string watermark, string suggestionsPropertyName)
     {
         var textBox = new AutoCompleteTextBox
@@ -3543,6 +3609,17 @@ public sealed class ShellWindow : Window
         textBox.Bind(AutoCompleteTextBox.SuggestionsProperty, new Binding(suggestionsPropertyName));
         ApplyFocusVisual(textBox);
         return textBox;
+    }
+
+    private static bool TryExecuteApplyInspectorCommand(Control control)
+    {
+        if (control.DataContext is not WorkspaceViewModel viewModel || !viewModel.ApplyInspectorCommand.CanExecute(null))
+        {
+            return false;
+        }
+
+        viewModel.ApplyInspectorCommand.Execute(null);
+        return true;
     }
 
     private static ComboBox BuildComboBox()

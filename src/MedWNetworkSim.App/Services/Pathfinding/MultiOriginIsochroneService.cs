@@ -2,6 +2,12 @@ using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services.Pathfinding;
 
+public sealed class MultiOriginIsochroneOrigin
+{
+    public required NodeModel Origin { get; init; }
+    public required double MaxCost { get; init; }
+}
+
 public sealed class MultiOriginIsochroneService
 {
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
@@ -12,13 +18,27 @@ public sealed class MultiOriginIsochroneService
         IReadOnlyCollection<NodeModel> origins,
         double maxCost)
     {
-        var sanitizedMaxCost = Math.Max(0d, maxCost);
+        var originRequests = origins
+            .Select(origin => new MultiOriginIsochroneOrigin
+            {
+                Origin = origin,
+                MaxCost = maxCost
+            })
+            .ToList();
+        return Compute(allNodes, edges, originRequests);
+    }
+
+    public MultiOriginIsochroneResult Compute(
+        IReadOnlyCollection<NodeModel> allNodes,
+        IReadOnlyCollection<EdgeModel> edges,
+        IReadOnlyCollection<MultiOriginIsochroneOrigin> origins)
+    {
         var nodesById = allNodes
             .Where(node => !string.IsNullOrWhiteSpace(node.Id))
             .ToDictionary(node => node.Id, node => node, Comparer);
         var validOrigins = origins
-            .Where(origin => !string.IsNullOrWhiteSpace(origin.Id) && nodesById.ContainsKey(origin.Id))
-            .DistinctBy(origin => origin.Id, Comparer)
+            .Where(origin => !string.IsNullOrWhiteSpace(origin.Origin.Id) && nodesById.ContainsKey(origin.Origin.Id))
+            .DistinctBy(origin => origin.Origin.Id, Comparer)
             .ToList();
 
         if (validOrigins.Count == 0)
@@ -39,10 +59,11 @@ public sealed class MultiOriginIsochroneService
         var coveringOriginsById = new Dictionary<string, HashSet<string>>(Comparer);
         var adjacency = BuildAdjacency(edges);
 
-        foreach (var origin in validOrigins)
+        foreach (var originRequest in validOrigins)
         {
+            var origin = originRequest.Origin;
             var originId = origin.Id;
-            var costs = ComputeCostMap(originId, adjacency, sanitizedMaxCost);
+            var costs = ComputeCostMap(originId, adjacency, Math.Max(0d, originRequest.MaxCost));
             foreach (var (nodeId, cost) in costs)
             {
                 if (!coveringOriginsById.TryGetValue(nodeId, out var coveringOrigins))

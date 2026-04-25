@@ -306,7 +306,7 @@ public sealed class GraphCanvasControl : Control
         var cancelButton = new Button
         {
             Content = "Cancel",
-            Background = new SolidColorBrush(AvaloniaDashboardTheme.ButtonBackground),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ToolbarButtonBackground),
             Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
             Padding = new Thickness(14, 8)
         };

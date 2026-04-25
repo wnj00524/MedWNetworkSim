@@ -12,6 +12,6 @@
 
   <ItemGroup>
     <Compile Include="..\MedWNetworkSim.App\Models\*.cs" Link="Legacy\Models\%(Filename)%(Extension)" />
-    <Compile Include="..\MedWNetworkSim.App\Services\*.cs" Exclude="..\MedWNetworkSim.App\Services\AppThemeManager.cs" Link="Legacy\Services\%(Filename)%(Extension)" />
+    <Compile Include="..\MedWNetworkSim.App\Services\**\*.cs" Exclude="..\MedWNetworkSim.App\Services\AppThemeManager.cs" Link="Legacy\Services\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

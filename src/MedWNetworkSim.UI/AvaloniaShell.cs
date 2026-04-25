@@ -196,6 +196,14 @@ public sealed class GraphCanvasControl : Control
         }
 
         if (button == GraphPointerButton.Left &&
+            ViewModel.IsFacilityPlanningMode &&
+            TryToggleFacilitySelection(ViewModel, interactionContext, point))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (button == GraphPointerButton.Left &&
             ViewModel.IsIsochroneModeEnabled &&
             TryStartIsochroneSelection(ViewModel, interactionContext, point))
         {
@@ -249,6 +257,18 @@ public sealed class GraphCanvasControl : Control
             }
         });
         return true;
+    }
+
+    private bool TryToggleFacilitySelection(WorkspaceViewModel viewModel, GraphInteractionContext interactionContext, GraphPoint point)
+    {
+        var worldPoint = interactionContext.Viewport.ScreenToWorld(point, interactionContext.ViewportSize);
+        var hit = new GraphHitTester().HitTest(interactionContext.Scene, worldPoint);
+        if (string.IsNullOrWhiteSpace(hit.NodeId))
+        {
+            return false;
+        }
+
+        return viewModel.ToggleFacilityOriginById(hit.NodeId);
     }
 
     private async Task<double?> PromptIsochroneThresholdAsync(double currentThreshold)
@@ -1023,6 +1043,7 @@ public sealed class ShellWindow : Window
         var addNodeButton = BuildToolButton("Add Node", "Click the canvas to place a new node.", viewModel.AddNodeToolCommand);
         var connectButton = BuildToolButton("Connect", "Choose a source node, then a target node to create a route.", viewModel.ConnectToolCommand);
         var isochroneButton = BuildToolButton("Isochrone Mode", "Click a node and enter a minute threshold to highlight reachable nodes.", viewModel.ToggleIsochroneModeCommand);
+        var facilityButton = BuildToolButton("Facility Planning", "Select multiple facilities and run a shared budget analysis.", viewModel.ToggleFacilityPlanningModeCommand);
         var deleteButton = BuildToolButton("Delete", "Delete the current selection.", viewModel.DeleteSelectionCommand);
 
         void RefreshToolState()
@@ -1031,11 +1052,12 @@ public sealed class ShellWindow : Window
             ApplyToolButtonState(addNodeButton, viewModel.IsAddNodeToolActive);
             ApplyToolButtonState(connectButton, viewModel.IsConnectToolActive);
             ApplyToolButtonState(isochroneButton, viewModel.IsIsochroneModeEnabled);
+            ApplyToolButtonState(facilityButton, viewModel.IsFacilityPlanningMode);
         }
 
         viewModel.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(WorkspaceViewModel.IsSelectToolActive) or nameof(WorkspaceViewModel.IsAddNodeToolActive) or nameof(WorkspaceViewModel.IsConnectToolActive) or nameof(WorkspaceViewModel.IsIsochroneModeEnabled))
+            if (e.PropertyName is nameof(WorkspaceViewModel.IsSelectToolActive) or nameof(WorkspaceViewModel.IsAddNodeToolActive) or nameof(WorkspaceViewModel.IsConnectToolActive) or nameof(WorkspaceViewModel.IsIsochroneModeEnabled) or nameof(WorkspaceViewModel.IsFacilityPlanningMode))
             {
                 RefreshToolState();
             }
@@ -1044,7 +1066,7 @@ public sealed class ShellWindow : Window
 
         var content = new Grid
         {
-            RowDefinitions = new RowDefinitions("Auto,Auto,*"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*"),
             RowSpacing = AvaloniaDashboardTheme.SectionSpacing,
             MinHeight = 0
         };
@@ -1059,6 +1081,7 @@ public sealed class ShellWindow : Window
                 addNodeButton,
                 connectButton,
                 isochroneButton,
+                facilityButton,
                 deleteButton
             }
         });
@@ -1075,7 +1098,8 @@ public sealed class ShellWindow : Window
                 BuildQuickStat("Isochrone", nameof(WorkspaceViewModel.IsochroneLegendTitle)),
                 BuildQuickStat("Band A", nameof(WorkspaceViewModel.IsochroneLegendStrongLabel)),
                 BuildQuickStat("Band B", nameof(WorkspaceViewModel.IsochroneLegendMediumLabel)),
-                BuildQuickStat("Band C", nameof(WorkspaceViewModel.IsochroneLegendLightLabel))
+                BuildQuickStat("Band C", nameof(WorkspaceViewModel.IsochroneLegendLightLabel)),
+                BuildQuickStat("Facilities", nameof(WorkspaceViewModel.FacilitySelectionSummary))
             }
         };
         Grid.SetRow(quickAccess, 1);
@@ -1090,8 +1114,12 @@ public sealed class ShellWindow : Window
                 BuildTrafficWorkspaceLauncher()
             }
         };
-        Grid.SetRow(trafficLauncher, 2);
+        Grid.SetRow(trafficLauncher, 3);
         content.Children.Add(trafficLauncher);
+
+        var facilityPlanningPanel = BuildFacilityPlanningPanel(viewModel);
+        Grid.SetRow(facilityPlanningPanel, 2);
+        content.Children.Add(facilityPlanningPanel);
 
         var border = BuildDashboardPanel(
             content,
@@ -1213,6 +1241,100 @@ public sealed class ShellWindow : Window
         Grid.SetColumn(canvasHost, 1);
         Grid.SetRow(canvasHost, 0);
         return canvasHost;
+    }
+
+    private Control BuildFacilityPlanningPanel(WorkspaceViewModel viewModel)
+    {
+        var budgetInput = BuildBoundTextBox(nameof(WorkspaceViewModel.IsochroneBudget), "Budget");
+        budgetInput.Watermark = "Budget";
+
+        var facilitiesList = new ListBox
+        {
+            MinHeight = 86,
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.SelectedFacilityNodes)),
+            [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(WorkspaceViewModel.SelectedFacilityNodeItem), BindingMode.TwoWay),
+            ItemTemplate = new FuncDataTemplate<NodeModel>((item, _) => new TextBlock
+            {
+                Text = string.IsNullOrWhiteSpace(item.Name) ? item.Id : item.Name,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+            })
+        };
+        AttachFocusBorder(facilitiesList);
+
+        var summaryGrid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto"),
+            ColumnSpacing = 8,
+            RowSpacing = 4,
+            Children =
+            {
+                BuildReadOnlyRow("Reachable nodes", nameof(WorkspaceViewModel.ReachableNodeCountText)),
+                BuildReadOnlyRow("Uncovered nodes", nameof(WorkspaceViewModel.UncoveredNodeCountText)),
+                BuildReadOnlyRow("Overlap", nameof(WorkspaceViewModel.OverlapNodeCountText)),
+                BuildReadOnlyRow("Coverage percentage", nameof(WorkspaceViewModel.CoveragePercentageText)),
+                BuildReadOnlyRow("Average best travel time/cost", nameof(WorkspaceViewModel.AverageBestCostText))
+            }
+        };
+        Grid.SetColumn(summaryGrid.Children[1], 1);
+        Grid.SetRow(summaryGrid.Children[2], 1);
+        Grid.SetRow(summaryGrid.Children[3], 1);
+        Grid.SetColumn(summaryGrid.Children[3], 1);
+        Grid.SetRow(summaryGrid.Children[4], 2);
+        Grid.SetColumnSpan(summaryGrid.Children[4], 2);
+
+        var uncoveredList = new ItemsControl
+        {
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.UncoveredPlanningItems)),
+            ItemTemplate = new FuncDataTemplate<UncoveredNodePlanningItem>((item, _) => new TextBlock
+            {
+                Text = $"{item.NodeName} | Nearest: {item.NearestFacility} | Extra budget: {item.ExtraBudgetNeeded}",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
+            })
+        };
+
+        var comparisonList = new ItemsControl
+        {
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.FacilityComparisonRows)),
+            ItemTemplate = new FuncDataTemplate<FacilityComparisonRowViewModel>((item, _) => new TextBlock
+            {
+                Text = $"{item.Facility} | Covered {item.NodesCovered} | Unique {item.UniqueNodesCovered} | Avg {item.AverageCost} | Max {item.MaxCost}",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
+            })
+        };
+
+        return new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                BuildSectionTitle("Facility planning", "Facilities, budget, and shared coverage."),
+                BuildReadOnlyRow("Facilities", nameof(WorkspaceViewModel.FacilitySelectionCountText)),
+                budgetInput,
+                facilitiesList,
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 6,
+                    Children =
+                    {
+                        BuildButton("Run analysis", viewModel.RunMultiOriginIsochroneCommand, isPrimary: true),
+                        BuildButton("Add selected", viewModel.AddFacilityOriginCommand),
+                        BuildButton("Remove selected", viewModel.RemoveFacilityOriginCommand),
+                        BuildButton("Clear", viewModel.ClearFacilityOriginsCommand)
+                    }
+                },
+                BuildReadOnlyRow("Message", nameof(WorkspaceViewModel.FacilityPlanningValidationText)),
+                summaryGrid,
+                BuildSectionTitle("Facility comparison", "Facility | Nodes covered | Unique nodes covered | Average cost | Max cost"),
+                comparisonList,
+                BuildSectionTitle("Uncovered nodes", "Nodes outside current budget coverage."),
+                uncoveredList
+            }
+        };
     }
 
     private Border BuildCompactInspector(WorkspaceViewModel viewModel)

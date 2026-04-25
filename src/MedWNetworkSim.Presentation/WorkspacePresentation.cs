@@ -139,6 +139,47 @@ public sealed class FacilityComparisonRowViewModel
     public required string MaxCost { get; init; }
 }
 
+public sealed class FacilityOriginItem : ObservableObject
+{
+    private string maxTravelTimeText;
+
+    public FacilityOriginItem(NodeModel node, double maxTravelTime)
+    {
+        Node = node;
+        maxTravelTimeText = Math.Max(0d, maxTravelTime).ToString("0.##", CultureInfo.InvariantCulture);
+    }
+
+    public NodeModel Node { get; }
+    public string DisplayName => string.IsNullOrWhiteSpace(Node.Name) ? Node.Id : Node.Name;
+
+    public string MaxTravelTimeText
+    {
+        get => maxTravelTimeText;
+        set
+        {
+            if (SetProperty(ref maxTravelTimeText, value))
+            {
+                Raise(nameof(DisplaySummary));
+            }
+        }
+    }
+
+    public string DisplaySummary => $"{DisplayName} | Max {MaxTravelTimeText}";
+
+    public bool TryGetMaxTravelTime(out double maxTravelTime)
+    {
+        if ((double.TryParse(MaxTravelTimeText, NumberStyles.Float, CultureInfo.InvariantCulture, out maxTravelTime) ||
+             double.TryParse(MaxTravelTimeText, NumberStyles.Float, CultureInfo.CurrentCulture, out maxTravelTime)) &&
+            maxTravelTime >= 0d)
+        {
+            return true;
+        }
+
+        maxTravelTime = 0d;
+        return false;
+    }
+}
+
 public sealed class TrafficDefinitionListItem(TrafficTypeDefinition model)
 {
     public TrafficTypeDefinition Model { get; } = model;
@@ -730,7 +771,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     private double isochroneBudget = 15d;
     private MultiOriginIsochroneResult? currentMultiOriginIsochrone;
     private string facilityPlanningValidationText = string.Empty;
-    private NodeModel? selectedFacilityNodeItem;
+    private FacilityOriginItem? selectedFacilityNodeItem;
     private readonly Dictionary<string, Dictionary<string, double>> cachedFacilityDistances = new(Comparer);
 
     public WorkspaceViewModel()
@@ -778,15 +819,6 @@ public sealed class WorkspaceViewModel : ObservableObject
         DefaultTrafficPermissionRows = [];
         SelectedFacilityNodes = [];
         DefaultTrafficPermissionRows.CollectionChanged += (_, _) => RaiseTrafficTypeDisplayStateChanged();
-        SelectedFacilityNodes.CollectionChanged += (_, _) =>
-        {
-            Raise(nameof(FacilitySelectionSummary));
-            Raise(nameof(CoveragePercentageText));
-            Raise(nameof(FacilitySelectionCountText));
-            Raise(nameof(SelectedFacilityDisplayNames));
-            ClearFacilityOriginsCommand.NotifyCanExecuteChanged();
-            RunMultiOriginIsochroneCommand.NotifyCanExecuteChanged();
-        };
         NewCommand = new RelayCommand(CreateBlankNetwork);
         SimulateCommand = new RelayCommand(RunSimulation);
         StepCommand = new RelayCommand(AdvanceTimeline);
@@ -812,6 +844,16 @@ public sealed class WorkspaceViewModel : ObservableObject
         RemoveFacilityOriginCommand = new RelayCommand(RemoveSelectedFacilityOrigin, () => SelectedFacilityNodeItem is not null);
         ClearFacilityOriginsCommand = new RelayCommand(ClearFacilityOrigins, () => SelectedFacilityNodes.Count > 0);
         RunMultiOriginIsochroneCommand = new RelayCommand(() => RunMultiOriginIsochrone(), () => IsFacilityPlanningMode && SelectedFacilityNodes.Count > 0);
+        RunMultiOriginIsochroneCommand = new RelayCommand(RunMultiOriginIsochrone, () => IsFacilityPlanningMode && SelectedFacilityNodes.Count > 0);
+        SelectedFacilityNodes.CollectionChanged += (_, _) =>
+        {
+            Raise(nameof(FacilitySelectionSummary));
+            Raise(nameof(CoveragePercentageText));
+            Raise(nameof(FacilitySelectionCountText));
+            Raise(nameof(SelectedFacilityDisplayNames));
+            ClearFacilityOriginsCommand.NotifyCanExecuteChanged();
+            RunMultiOriginIsochroneCommand.NotifyCanExecuteChanged();
+        };
         DeleteSelectionCommand = new RelayCommand(DeleteSelection, () => CanDeleteSelection);
         ApplyInspectorCommand = new RelayCommand(ApplyInspectorEdits, () => CanApplyInspectorEdits);
         OpenSelectedEdgeEditorCommand = new RelayCommand(EnterEdgeEditor, () => CanOpenSelectedEdgeEditor);
@@ -854,7 +896,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     public ObservableCollection<PermissionRuleEditorRow> SelectedEdgePermissionRows { get; }
     public ObservableCollection<TrafficDefinitionListItem> TrafficDefinitions { get; }
     public ObservableCollection<PermissionRuleEditorRow> DefaultTrafficPermissionRows { get; }
-    public ObservableCollection<NodeModel> SelectedFacilityNodes { get; }
+    public ObservableCollection<FacilityOriginItem> SelectedFacilityNodes { get; }
     public NodeInspectorDraft NodeDraft { get; }
     public EdgeInspectorDraft EdgeDraft { get; }
     public BulkSelectionInspectorDraft BulkDraft { get; }
@@ -975,7 +1017,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             }
         }
     }
-    public NodeModel? SelectedFacilityNodeItem
+    public FacilityOriginItem? SelectedFacilityNodeItem
     {
         get => selectedFacilityNodeItem;
         set
@@ -1022,9 +1064,9 @@ public sealed class WorkspaceViewModel : ObservableObject
     }
     public string SelectedFacilityDisplayNames => SelectedFacilityNodes.Count == 0
         ? "None selected"
-        : string.Join(", ", SelectedFacilityNodes.Select(node => string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name));
+        : string.Join(", ", SelectedFacilityNodes.Select(facility => facility.DisplayName));
     public string FacilitySelectionSummary => CurrentMultiOriginIsochrone is null
-        ? "Pick facilities, set budget, then run analysis."
+        ? "Pick facilities, set max times, then run analysis."
         : $"Reachable nodes {ReachableNodeCountText}, uncovered {UncoveredNodeCountText}, overlap {OverlapNodeCountText}.";
     public HashSet<NodeModel> IsochroneNodes
     {
@@ -1804,7 +1846,17 @@ public sealed class WorkspaceViewModel : ObservableObject
         Raise(nameof(IsFacilityPlanningMode));
     }
 
-    public bool ToggleFacilityOriginById(string nodeId)
+    public bool IsFacilityOriginSelected(string nodeId) =>
+        !string.IsNullOrWhiteSpace(nodeId) &&
+        SelectedFacilityNodes.Any(candidate => Comparer.Equals(candidate.Node.Id, nodeId));
+
+    public string GetFacilityNodeDisplayName(string nodeId)
+    {
+        var node = network.Nodes.FirstOrDefault(candidate => Comparer.Equals(candidate.Id, nodeId));
+        return node is null || string.IsNullOrWhiteSpace(node.Name) ? nodeId : node.Name;
+    }
+
+    public bool ToggleFacilityOriginById(string nodeId, double? maxTravelTime = null)
     {
         if (!IsFacilityPlanningMode || string.IsNullOrWhiteSpace(nodeId))
         {
@@ -1817,15 +1869,20 @@ public sealed class WorkspaceViewModel : ObservableObject
             return false;
         }
 
-        var existing = SelectedFacilityNodes.FirstOrDefault(candidate => Comparer.Equals(candidate.Id, nodeId));
+        var existing = SelectedFacilityNodes.FirstOrDefault(candidate => Comparer.Equals(candidate.Node.Id, nodeId));
         if (existing is null)
         {
-            SelectedFacilityNodes.Add(node);
+            SelectedFacilityNodes.Add(new FacilityOriginItem(node, maxTravelTime ?? IsochroneBudget));
             StatusText = $"Added facility '{(string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name)}'.";
         }
         else
         {
             SelectedFacilityNodes.Remove(existing);
+            if (ReferenceEquals(SelectedFacilityNodeItem, existing))
+            {
+                SelectedFacilityNodeItem = null;
+            }
+
             StatusText = $"Removed facility '{(string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name)}'.";
         }
 
@@ -1834,37 +1891,51 @@ public sealed class WorkspaceViewModel : ObservableObject
         return true;
     }
 
-    public bool RunMultiOriginIsochrone()
+    public void RunMultiOriginIsochrone()
     {
         if (!IsFacilityPlanningMode)
         {
-            return false;
+            return;
         }
 
         if (SelectedFacilityNodes.Count == 0)
         {
             FacilityPlanningValidationText = "Select at least one facility before running analysis.";
-            return false;
+            return;
         }
 
         if (IsochroneBudget < 0d)
         {
             FacilityPlanningValidationText = "Budget must be 0 or higher. Enter a valid number and run again.";
-            return false;
+            return;
+        }
+
+        var origins = new List<MultiOriginIsochroneOrigin>();
+        foreach (var facility in SelectedFacilityNodes)
+        {
+            if (!facility.TryGetMaxTravelTime(out var maxTravelTime))
+            {
+                FacilityPlanningValidationText = $"Max time for '{facility.DisplayName}' must be 0 or higher.";
+                return;
+            }
+
+            origins.Add(new MultiOriginIsochroneOrigin
+            {
+                Origin = facility.Node,
+                MaxCost = maxTravelTime
+            });
         }
 
         FacilityPlanningValidationText = string.Empty;
         CurrentMultiOriginIsochrone = multiOriginIsochroneService.Compute(
             network.Nodes,
             network.Edges,
-            SelectedFacilityNodes,
-            IsochroneBudget);
+            origins);
         BuildUncoveredPlanningItems();
         BuildFacilityComparisonRows();
         ApplyIsochroneVisuals();
         NotifyVisualChanged();
-        StatusText = $"Facility planning analysis ran with budget {IsochroneBudget:0.##}.";
-        return true;
+        StatusText = $"Facility planning analysis ran for {SelectedFacilityNodes.Count} facilities.";
     }
 
     public void ClearFacilityOrigins()
@@ -4412,8 +4483,8 @@ public sealed class WorkspaceViewModel : ObservableObject
             .Where(node => !string.IsNullOrWhiteSpace(node.Id))
             .ToDictionary(node => node.Id, node => node, Comparer);
         var selectedFacilityIds = SelectedFacilityNodes
-            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
-            .Select(node => node.Id)
+            .Where(facility => !string.IsNullOrWhiteSpace(facility.Node.Id))
+            .Select(facility => facility.Node.Id)
             .ToHashSet(Comparer);
         var reachableIds = (CurrentMultiOriginIsochrone?.ReachableNodes ?? [])
             .Where(node => !string.IsNullOrWhiteSpace(node.Id))
@@ -4528,6 +4599,9 @@ public sealed class WorkspaceViewModel : ObservableObject
         return $"{baseText}{Environment.NewLine}{Environment.NewLine}Isochrone: {distance:0.##} minutes from origin. {band}.";
     }
 
+    private double GetFacilityMaxTravelTime(FacilityOriginItem facility) =>
+        facility.TryGetMaxTravelTime(out var maxTravelTime) ? maxTravelTime : IsochroneBudget;
+
     private void BuildUncoveredPlanningItems()
     {
         UncoveredPlanningItems.Clear();
@@ -4541,8 +4615,10 @@ public sealed class WorkspaceViewModel : ObservableObject
             var nearest = "N/A";
             var extraBudgetNeeded = "N/A";
             var bestDistance = double.PositiveInfinity;
-            foreach (var origin in SelectedFacilityNodes)
+            var nearestLimit = IsochroneBudget;
+            foreach (var facility in SelectedFacilityNodes)
             {
+                var origin = facility.Node;
                 if (string.IsNullOrWhiteSpace(origin.Id))
                 {
                     continue;
@@ -4565,13 +4641,14 @@ public sealed class WorkspaceViewModel : ObservableObject
                 if (distance < bestDistance)
                 {
                     bestDistance = distance;
+                    nearestLimit = GetFacilityMaxTravelTime(facility);
                     nearest = string.IsNullOrWhiteSpace(origin.Name) ? origin.Id : origin.Name;
                 }
             }
 
             if (!double.IsPositiveInfinity(bestDistance))
             {
-                var extra = Math.Max(0d, bestDistance - IsochroneBudget);
+                var extra = Math.Max(0d, bestDistance - nearestLimit);
                 extraBudgetNeeded = extra.ToString("0.##", CultureInfo.InvariantCulture);
             }
 
@@ -4592,9 +4669,10 @@ public sealed class WorkspaceViewModel : ObservableObject
             return;
         }
 
-        foreach (var origin in SelectedFacilityNodes)
+        foreach (var facility in SelectedFacilityNodes)
         {
-            var costs = multiOriginIsochroneService.ComputeCostsFromOrigin(origin, network.Nodes, network.Edges, IsochroneBudget);
+            var origin = facility.Node;
+            var costs = multiOriginIsochroneService.ComputeCostsFromOrigin(origin, network.Nodes, network.Edges, GetFacilityMaxTravelTime(facility));
             var coveredNodes = costs.Keys.ToList();
             var uniqueCoveredCount = coveredNodes.Count(node =>
                 CurrentMultiOriginIsochrone.CoveringOriginsByNode.TryGetValue(node, out var coveringOrigins) &&
@@ -4602,7 +4680,7 @@ public sealed class WorkspaceViewModel : ObservableObject
                 coveringOrigins.Any(candidate => Comparer.Equals(candidate.Id, origin.Id)));
             FacilityComparisonRows.Add(new FacilityComparisonRowViewModel
             {
-                Facility = string.IsNullOrWhiteSpace(origin.Name) ? origin.Id : origin.Name,
+                Facility = facility.DisplayName,
                 NodesCovered = coveredNodes.Count.ToString(CultureInfo.InvariantCulture),
                 UniqueNodesCovered = uniqueCoveredCount.ToString(CultureInfo.InvariantCulture),
                 AverageCost = (costs.Count == 0 ? 0d : costs.Values.Average()).ToString("0.##", CultureInfo.InvariantCulture),

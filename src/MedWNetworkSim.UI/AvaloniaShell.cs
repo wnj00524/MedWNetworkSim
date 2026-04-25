@@ -66,6 +66,129 @@ public readonly record struct GraphCanvasCoordinateTransform(GraphSize LogicalVi
     }
 }
 
+internal static class FacilityPlanningDialogs
+{
+    public static async Task<double?> PromptMaxTravelTimeAsync(Control ownerControl, string facilityName, double currentValue)
+    {
+        var owner = ownerControl.GetVisualRoot() as Window;
+        if (owner is null)
+        {
+            return null;
+        }
+
+        var result = (double?)null;
+        var dialog = new Window
+        {
+            Width = 430,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            SystemDecorations = SystemDecorations.None,
+            ExtendClientAreaToDecorationsHint = true,
+            ExtendClientAreaChromeHints = ExtendClientAreaChromeHints.NoChrome,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            Title = "Facility max time"
+        };
+
+        var input = new TextBox
+        {
+            Watermark = "Max time",
+            Text = Math.Max(0d, currentValue).ToString("0.##", CultureInfo.InvariantCulture),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.InputBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.InputBorder),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            Padding = new Thickness(10, 6)
+        };
+        var helper = new TextBlock
+        {
+            Text = $"Enter the maximum travel time for {facilityName}.",
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+            TextWrapping = TextWrapping.Wrap
+        };
+        var validation = new TextBlock
+        {
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.Danger),
+            TextWrapping = TextWrapping.Wrap
+        };
+
+        void Apply()
+        {
+            if ((double.TryParse(input.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ||
+                 double.TryParse(input.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out parsed)) &&
+                parsed >= 0d)
+            {
+                result = parsed;
+                dialog.Close();
+                return;
+            }
+
+            validation.Text = "Enter a number of 0 or greater.";
+        }
+
+        input.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter)
+            {
+                Apply();
+                e.Handled = true;
+            }
+        };
+
+        var applyButton = new Button
+        {
+            Content = "Add facility",
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.Accent),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            Padding = new Thickness(14, 8)
+        };
+        applyButton.Click += (_, _) => Apply();
+        var cancelButton = new Button
+        {
+            Content = "Cancel",
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ToolbarButtonBackground),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            Padding = new Thickness(14, 8)
+        };
+        cancelButton.Click += (_, _) => dialog.Close();
+
+        dialog.Content = new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(16),
+            Padding = new Thickness(18),
+            Child = new StackPanel
+            {
+                Spacing = 12,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "Facility Max Time",
+                        FontSize = 20,
+                        FontWeight = FontWeight.Bold,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                    },
+                    helper,
+                    input,
+                    validation,
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Spacing = 8,
+                        Children = { applyButton, cancelButton }
+                    }
+                }
+            }
+        };
+
+        dialog.Opened += (_, _) => input.Focus();
+        await dialog.ShowDialog(owner);
+        return result;
+    }
+}
+
 public sealed class GraphCanvasControl : Control
 {
     public static readonly StyledProperty<WorkspaceViewModel?> ViewModelProperty =
@@ -268,7 +391,29 @@ public sealed class GraphCanvasControl : Control
             return false;
         }
 
-        return viewModel.ToggleFacilityOriginById(hit.NodeId);
+        if (viewModel.IsFacilityOriginSelected(hit.NodeId))
+        {
+            return viewModel.ToggleFacilityOriginById(hit.NodeId);
+        }
+
+        _ = Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var maxTravelTime = await FacilityPlanningDialogs.PromptMaxTravelTimeAsync(
+                this,
+                viewModel.GetFacilityNodeDisplayName(hit.NodeId),
+                viewModel.IsochroneBudget);
+            if (!maxTravelTime.HasValue)
+            {
+                return;
+            }
+
+            if (viewModel.ToggleFacilityOriginById(hit.NodeId, maxTravelTime.Value))
+            {
+                viewModel.NotifyVisualChanged();
+                InvalidateVisual();
+            }
+        });
+        return true;
     }
 
     private async Task<double?> PromptIsochroneThresholdAsync(double currentThreshold)
@@ -1238,19 +1383,50 @@ public sealed class ShellWindow : Window
 
     private Control BuildFacilityPlanningPanel(WorkspaceViewModel viewModel)
     {
-        var budgetInput = BuildBoundTextBox(nameof(WorkspaceViewModel.IsochroneBudget), "Budget");
-        budgetInput.Watermark = "Budget";
+        var budgetInput = BuildBoundTextBox(nameof(WorkspaceViewModel.IsochroneBudget), "Default max time");
+        var addSelectedCommand = new RelayCommand(
+            () => _ = AddSelectedFacilityOriginWithPromptAsync(viewModel),
+            () => viewModel.AddFacilityOriginCommand.CanExecute(null));
+        viewModel.AddFacilityOriginCommand.CanExecuteChanged += (_, _) => addSelectedCommand.NotifyCanExecuteChanged();
 
         var facilitiesList = new ListBox
         {
             MinHeight = 86,
             [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.SelectedFacilityNodes)),
             [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(WorkspaceViewModel.SelectedFacilityNodeItem), BindingMode.TwoWay),
-            ItemTemplate = new FuncDataTemplate<NodeModel>((item, _) => new TextBlock
+            ItemTemplate = new FuncDataTemplate<FacilityOriginItem>((item, _) =>
             {
-                Text = string.IsNullOrWhiteSpace(item.Name) ? item.Id : item.Name,
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                if (item is null)
+                {
+                    return new TextBlock();
+                }
+
+                var maxTimeInput = BuildTextBox("Max time");
+                maxTimeInput.MinHeight = 32;
+                maxTimeInput.Width = 98;
+                maxTimeInput.Padding = new Thickness(8, 5);
+                maxTimeInput.Bind(TextBox.TextProperty, new Binding(nameof(FacilityOriginItem.MaxTravelTimeText), BindingMode.TwoWay) { Source = item });
+
+                var name = new TextBlock
+                {
+                    Text = item.DisplayName,
+                    TextWrapping = TextWrapping.Wrap,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                };
+
+                var row = new Grid
+                {
+                    ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+                    ColumnSpacing = 8,
+                    Children =
+                    {
+                        name,
+                        maxTimeInput
+                    }
+                };
+                Grid.SetColumn(maxTimeInput, 1);
+                return row;
             })
         };
         AttachFocusBorder(facilitiesList);
@@ -1282,7 +1458,7 @@ public sealed class ShellWindow : Window
             [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.UncoveredPlanningItems)),
             ItemTemplate = new FuncDataTemplate<UncoveredNodePlanningItem>((item, _) => new TextBlock
             {
-                Text = $"{item.NodeName} | Nearest: {item.NearestFacility} | Extra budget: {item.ExtraBudgetNeeded}",
+                Text = item is null ? string.Empty : $"{item.NodeName} | Nearest: {item.NearestFacility} | Extra time: {item.ExtraBudgetNeeded}",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
             })
@@ -1293,7 +1469,7 @@ public sealed class ShellWindow : Window
             [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.FacilityComparisonRows)),
             ItemTemplate = new FuncDataTemplate<FacilityComparisonRowViewModel>((item, _) => new TextBlock
             {
-                Text = $"{item.Facility} | Covered {item.NodesCovered} | Unique {item.UniqueNodesCovered} | Avg {item.AverageCost} | Max {item.MaxCost}",
+                Text = item is null ? string.Empty : $"{item.Facility} | Covered {item.NodesCovered} | Unique {item.UniqueNodesCovered} | Avg {item.AverageCost} | Max {item.MaxCost}",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
             })
@@ -1304,9 +1480,9 @@ public sealed class ShellWindow : Window
             Spacing = 8,
             Children =
             {
-                BuildSectionTitle("Facility planning", "Facilities, budget, and shared coverage."),
+                BuildSectionTitle("Facility planning", "Facilities, per-origin max time, and coverage."),
                 BuildReadOnlyRow("Facilities", nameof(WorkspaceViewModel.FacilitySelectionCountText)),
-                budgetInput,
+                BuildLabeledRow("Default max time", budgetInput),
                 facilitiesList,
                 new StackPanel
                 {
@@ -1315,7 +1491,7 @@ public sealed class ShellWindow : Window
                     Children =
                     {
                         BuildButton("Run analysis", viewModel.RunMultiOriginIsochroneCommand, isPrimary: true),
-                        BuildButton("Add selected", viewModel.AddFacilityOriginCommand),
+                        BuildButton("Add selected", addSelectedCommand),
                         BuildButton("Remove selected", viewModel.RemoveFacilityOriginCommand),
                         BuildButton("Clear", viewModel.ClearFacilityOriginsCommand)
                     }
@@ -1328,6 +1504,36 @@ public sealed class ShellWindow : Window
                 uncoveredList
             }
         };
+    }
+
+    private async Task AddSelectedFacilityOriginWithPromptAsync(WorkspaceViewModel viewModel)
+    {
+        var nodeId = viewModel.Scene.Selection.SelectedNodeIds.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(nodeId))
+        {
+            return;
+        }
+
+        if (viewModel.IsFacilityOriginSelected(nodeId))
+        {
+            viewModel.ToggleFacilityOriginById(nodeId);
+            viewModel.NotifyVisualChanged();
+            return;
+        }
+
+        var maxTravelTime = await FacilityPlanningDialogs.PromptMaxTravelTimeAsync(
+            this,
+            viewModel.GetFacilityNodeDisplayName(nodeId),
+            viewModel.IsochroneBudget);
+        if (!maxTravelTime.HasValue)
+        {
+            return;
+        }
+
+        if (viewModel.ToggleFacilityOriginById(nodeId, maxTravelTime.Value))
+        {
+            viewModel.NotifyVisualChanged();
+        }
     }
 
     private Border BuildCompactInspector(WorkspaceViewModel viewModel)
@@ -3698,6 +3904,13 @@ public sealed class ShellWindow : Window
         return BuildLabeledRow(label, textBox);
     }
 
+    private static TextBox BuildBoundTextBox(string propertyName, string watermark)
+    {
+        var textBox = BuildTextBox(watermark);
+        textBox.Bind(TextBox.TextProperty, new Binding(propertyName, BindingMode.TwoWay));
+        return textBox;
+    }
+
     private static Control BuildValidatedTextBox(string label, string propertyName, string validationPropertyName)
     {
         var textBox = BuildTextBox(label);
@@ -4093,6 +4306,8 @@ public sealed class ShellWindow : Window
         control.GotFocus += (_, _) => Apply(true);
         control.LostFocus += (_, _) => Apply(false);
     }
+
+    private static void AttachFocusBorder(Control control) => ApplyFocusVisual(control);
 
     private static Control BuildQuickStat(string label, string bindingProperty)
     {

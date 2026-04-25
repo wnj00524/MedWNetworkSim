@@ -1,6 +1,7 @@
 using Avalonia;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Services;
+using MedWNetworkSim.App.Services.Pathfinding;
 using MedWNetworkSim.Interaction;
 using MedWNetworkSim.Presentation;
 using MedWNetworkSim.Rendering;
@@ -42,6 +43,14 @@ ScenarioEdgeTooltipIncludesRouteDetails();
 ScenarioPressureExplanationAppearsInNodeDetails();
 ScenarioTimelineStepUsesEdgeOccupancyForVisualState();
 ScenarioReportsPopulateAndResetAroundTimeline();
+ScenarioFacilityIso_EmptyOriginsReturnsNoReachableNodes();
+ScenarioFacilityIso_SingleOriginMatchesLegacyIsochrone();
+ScenarioFacilityIso_MultipleOriginsCombineCoverage();
+ScenarioFacilityIso_BestOriginChoosesLowestCost();
+ScenarioFacilityIso_OverlapIncludesMultiCoveredNodes();
+ScenarioFacilityIso_UncoveredExcludesReachable();
+ScenarioFacilityIso_BudgetLimitExcludesOverBudgetNodes();
+ScenarioFacilityIso_DirectedEdgesRespected();
 
 Console.WriteLine("Avalonia verification passed.");
 
@@ -1608,4 +1617,129 @@ sealed class AutoCompleteBindingHost : ObservableObject
         get => placeTypeSuggestions;
         set => SetProperty(ref placeTypeSuggestions, value);
     }
+}
+
+static void ScenarioFacilityIso_EmptyOriginsReturnsNoReachableNodes()
+{
+    var network = CreateFacilityIsoNetwork();
+    var service = new MultiOriginIsochroneService();
+
+    var result = service.Compute(network.Nodes, network.Edges, [], 4d);
+
+    AssertEqual(0, result.ReachableNodes.Count, "facility iso empty origins reachable");
+    AssertEqual(network.Nodes.Count, result.UncoveredNodes.Count, "facility iso empty origins uncovered");
+}
+
+static void ScenarioFacilityIso_SingleOriginMatchesLegacyIsochrone()
+{
+    var network = CreateFacilityIsoNetwork();
+    var origin = network.Nodes.Single(node => node.Id == "A");
+    var legacy = new IsochroneService();
+    var multi = new MultiOriginIsochroneService();
+
+    var legacyNodes = legacy.ComputeIsochrone(origin, 4d, network.Nodes, network.Edges, IsochroneService.CostMetric.Time, out _);
+    var multiResult = multi.Compute(network.Nodes, network.Edges, [origin], 4d);
+
+    AssertEqual(legacyNodes.Count, multiResult.ReachableNodes.Count, "facility iso single origin count");
+}
+
+static void ScenarioFacilityIso_MultipleOriginsCombineCoverage()
+{
+    var network = CreateFacilityIsoNetwork();
+    var service = new MultiOriginIsochroneService();
+    var origins = network.Nodes.Where(node => node.Id is "A" or "E").ToList();
+
+    var result = service.Compute(network.Nodes, network.Edges, origins, 2d);
+
+    AssertTrue(result.ReachableNodes.Count >= 4, "facility iso multiple origins combine coverage");
+}
+
+static void ScenarioFacilityIso_BestOriginChoosesLowestCost()
+{
+    var network = CreateFacilityIsoNetwork();
+    var service = new MultiOriginIsochroneService();
+    var originA = network.Nodes.Single(node => node.Id == "A");
+    var originE = network.Nodes.Single(node => node.Id == "E");
+    var nodeD = network.Nodes.Single(node => node.Id == "D");
+
+    var result = service.Compute(network.Nodes, network.Edges, [originA, originE], 6d);
+
+    AssertTextEqual("E", result.BestOriginByNode[nodeD].Id, "facility iso best origin by cost");
+}
+
+static void ScenarioFacilityIso_OverlapIncludesMultiCoveredNodes()
+{
+    var network = CreateFacilityIsoNetwork();
+    var service = new MultiOriginIsochroneService();
+    var origins = network.Nodes.Where(node => node.Id is "A" or "E").ToList();
+
+    var result = service.Compute(network.Nodes, network.Edges, origins, 6d);
+
+    AssertTrue(result.OverlapNodes.Any(node => node.Id == "C"), "facility iso overlap includes shared node");
+}
+
+static void ScenarioFacilityIso_UncoveredExcludesReachable()
+{
+    var network = CreateFacilityIsoNetwork();
+    var service = new MultiOriginIsochroneService();
+    var origins = [network.Nodes.Single(node => node.Id == "A")];
+
+    var result = service.Compute(network.Nodes, network.Edges, origins, 1d);
+
+    AssertTrue(result.UncoveredNodes.All(node => !result.ReachableNodes.Contains(node)), "facility iso uncovered excludes reachable");
+}
+
+static void ScenarioFacilityIso_BudgetLimitExcludesOverBudgetNodes()
+{
+    var network = CreateFacilityIsoNetwork();
+    var service = new MultiOriginIsochroneService();
+    var origins = [network.Nodes.Single(node => node.Id == "A")];
+
+    var result = service.Compute(network.Nodes, network.Edges, origins, 1.5d);
+
+    AssertTrue(result.ReachableNodes.All(node => node.Id is not "D" and not "E"), "facility iso excludes over budget nodes");
+}
+
+static void ScenarioFacilityIso_DirectedEdgesRespected()
+{
+    var network = new NetworkModel
+    {
+        Nodes =
+        [
+            new NodeModel { Id = "X", Name = "X", TrafficProfiles = [new NodeTrafficProfile { TrafficType = "med" }] },
+            new NodeModel { Id = "Y", Name = "Y", TrafficProfiles = [new NodeTrafficProfile { TrafficType = "med" }] }
+        ],
+        Edges =
+        [
+            new EdgeModel { Id = "X->Y", FromNodeId = "X", ToNodeId = "Y", Time = 1d, Cost = 1d, IsBidirectional = false }
+        ]
+    };
+
+    var service = new MultiOriginIsochroneService();
+    var fromY = service.Compute(network.Nodes, network.Edges, [network.Nodes[1]], 2d);
+
+    AssertTrue(fromY.ReachableNodes.All(node => node.Id != "X"), "facility iso directed edges respected");
+}
+
+static NetworkModel CreateFacilityIsoNetwork()
+{
+    return new NetworkModel
+    {
+        Nodes =
+        [
+            new NodeModel { Id = "A", Name = "A", TrafficProfiles = [new NodeTrafficProfile { TrafficType = "med" }] },
+            new NodeModel { Id = "B", Name = "B", TrafficProfiles = [new NodeTrafficProfile { TrafficType = "med" }] },
+            new NodeModel { Id = "C", Name = "C", TrafficProfiles = [new NodeTrafficProfile { TrafficType = "med" }] },
+            new NodeModel { Id = "D", Name = "D", TrafficProfiles = [new NodeTrafficProfile { TrafficType = "med" }] },
+            new NodeModel { Id = "E", Name = "E", TrafficProfiles = [new NodeTrafficProfile { TrafficType = "med" }] }
+        ],
+        Edges =
+        [
+            new EdgeModel { Id = "A-B", FromNodeId = "A", ToNodeId = "B", Time = 1d, Cost = 1d, IsBidirectional = true },
+            new EdgeModel { Id = "B-C", FromNodeId = "B", ToNodeId = "C", Time = 1d, Cost = 1d, IsBidirectional = true },
+            new EdgeModel { Id = "C-D", FromNodeId = "C", ToNodeId = "D", Time = 2d, Cost = 1d, IsBidirectional = true },
+            new EdgeModel { Id = "D-E", FromNodeId = "D", ToNodeId = "E", Time = 1d, Cost = 1d, IsBidirectional = true },
+            new EdgeModel { Id = "E-C", FromNodeId = "E", ToNodeId = "C", Time = 1d, Cost = 1d, IsBidirectional = true }
+        ]
+    };
 }

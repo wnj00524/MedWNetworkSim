@@ -123,6 +123,22 @@ public sealed class NodePressureReportRowViewModel
     public required string UnmetNeed { get; init; }
 }
 
+public sealed class UncoveredNodePlanningItem
+{
+    public required string NodeName { get; init; }
+    public required string NearestFacility { get; init; }
+    public required string ExtraBudgetNeeded { get; init; }
+}
+
+public sealed class FacilityComparisonRowViewModel
+{
+    public required string Facility { get; init; }
+    public required string NodesCovered { get; init; }
+    public required string UniqueNodesCovered { get; init; }
+    public required string AverageCost { get; init; }
+    public required string MaxCost { get; init; }
+}
+
 public sealed class TrafficDefinitionListItem(TrafficTypeDefinition model)
 {
     public TrafficTypeDefinition Model { get; } = model;
@@ -642,6 +658,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     private readonly GraphInteractionController interactionController = new();
     private readonly GraphRenderer graphRenderer = new();
     private readonly IsochroneService isochroneService = new();
+    private readonly MultiOriginIsochroneService multiOriginIsochroneService = new();
 
     private NetworkModel network = new();
     private TemporalNetworkSimulationEngine.TemporalSimulationState? temporalState;
@@ -709,6 +726,12 @@ public sealed class WorkspaceViewModel : ObservableObject
     private double? cachedIsochroneThreshold;
     private int networkRevision;
     private int cachedIsochroneNetworkRevision = -1;
+    private bool isFacilityPlanningMode;
+    private double isochroneBudget = 15d;
+    private MultiOriginIsochroneResult? currentMultiOriginIsochrone;
+    private string facilityPlanningValidationText = string.Empty;
+    private NodeModel? selectedFacilityNodeItem;
+    private readonly Dictionary<string, Dictionary<string, double>> cachedFacilityDistances = new(Comparer);
 
     public WorkspaceViewModel()
     {
@@ -719,6 +742,8 @@ public sealed class WorkspaceViewModel : ObservableObject
         TrafficReports = [];
         RouteReports = [];
         NodePressureReports = [];
+        UncoveredPlanningItems = [];
+        FacilityComparisonRows = [];
         SelectedNodeTrafficProfiles = [];
         SelectedNodeProductionWindows = [];
         SelectedNodeConsumptionWindows = [];
@@ -751,7 +776,17 @@ public sealed class WorkspaceViewModel : ObservableObject
         };
         TrafficDefinitions = [];
         DefaultTrafficPermissionRows = [];
+        SelectedFacilityNodes = [];
         DefaultTrafficPermissionRows.CollectionChanged += (_, _) => RaiseTrafficTypeDisplayStateChanged();
+        SelectedFacilityNodes.CollectionChanged += (_, _) =>
+        {
+            Raise(nameof(FacilitySelectionSummary));
+            Raise(nameof(CoveragePercentageText));
+            Raise(nameof(FacilitySelectionCountText));
+            Raise(nameof(SelectedFacilityDisplayNames));
+            ClearFacilityOriginsCommand.NotifyCanExecuteChanged();
+            RunMultiOriginIsochroneCommand.NotifyCanExecuteChanged();
+        };
         NewCommand = new RelayCommand(CreateBlankNetwork);
         SimulateCommand = new RelayCommand(RunSimulation);
         StepCommand = new RelayCommand(AdvanceTimeline);
@@ -772,6 +807,11 @@ public sealed class WorkspaceViewModel : ObservableObject
         AddNodeToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.AddNode));
         ConnectToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.Connect));
         ToggleIsochroneModeCommand = new RelayCommand(() => SetIsochroneMode(!IsIsochroneModeEnabled));
+        ToggleFacilityPlanningModeCommand = new RelayCommand(() => SetFacilityPlanningMode(!IsFacilityPlanningMode));
+        AddFacilityOriginCommand = new RelayCommand(AddSelectedNodeAsFacilityOrigin, () => Scene.Selection.SelectedNodeIds.Count == 1);
+        RemoveFacilityOriginCommand = new RelayCommand(RemoveSelectedFacilityOrigin, () => SelectedFacilityNodeItem is not null);
+        ClearFacilityOriginsCommand = new RelayCommand(ClearFacilityOrigins, () => SelectedFacilityNodes.Count > 0);
+        RunMultiOriginIsochroneCommand = new RelayCommand(RunMultiOriginIsochrone, () => IsFacilityPlanningMode && SelectedFacilityNodes.Count > 0);
         DeleteSelectionCommand = new RelayCommand(DeleteSelection, () => CanDeleteSelection);
         ApplyInspectorCommand = new RelayCommand(ApplyInspectorEdits, () => CanApplyInspectorEdits);
         OpenSelectedEdgeEditorCommand = new RelayCommand(EnterEdgeEditor, () => CanOpenSelectedEdgeEditor);
@@ -805,6 +845,8 @@ public sealed class WorkspaceViewModel : ObservableObject
     public ObservableCollection<TrafficReportRowViewModel> TrafficReports { get; }
     public ObservableCollection<RouteReportRowViewModel> RouteReports { get; }
     public ObservableCollection<NodePressureReportRowViewModel> NodePressureReports { get; }
+    public ObservableCollection<UncoveredNodePlanningItem> UncoveredPlanningItems { get; }
+    public ObservableCollection<FacilityComparisonRowViewModel> FacilityComparisonRows { get; }
     public ObservableCollection<NodeTrafficProfileListItem> SelectedNodeTrafficProfiles { get; }
     public ObservableCollection<PeriodWindowEditorRow> SelectedNodeProductionWindows { get; }
     public ObservableCollection<PeriodWindowEditorRow> SelectedNodeConsumptionWindows { get; }
@@ -812,6 +854,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     public ObservableCollection<PermissionRuleEditorRow> SelectedEdgePermissionRows { get; }
     public ObservableCollection<TrafficDefinitionListItem> TrafficDefinitions { get; }
     public ObservableCollection<PermissionRuleEditorRow> DefaultTrafficPermissionRows { get; }
+    public ObservableCollection<NodeModel> SelectedFacilityNodes { get; }
     public NodeInspectorDraft NodeDraft { get; }
     public EdgeInspectorDraft EdgeDraft { get; }
     public BulkSelectionInspectorDraft BulkDraft { get; }
@@ -836,6 +879,11 @@ public sealed class WorkspaceViewModel : ObservableObject
     public RelayCommand AddNodeToolCommand { get; }
     public RelayCommand ConnectToolCommand { get; }
     public RelayCommand ToggleIsochroneModeCommand { get; }
+    public RelayCommand ToggleFacilityPlanningModeCommand { get; }
+    public RelayCommand AddFacilityOriginCommand { get; }
+    public RelayCommand RemoveFacilityOriginCommand { get; }
+    public RelayCommand ClearFacilityOriginsCommand { get; }
+    public RelayCommand RunMultiOriginIsochroneCommand { get; }
     public RelayCommand DeleteSelectionCommand { get; }
     public RelayCommand ApplyInspectorCommand { get; }
     public RelayCommand OpenSelectedEdgeEditorCommand { get; }
@@ -897,6 +945,87 @@ public sealed class WorkspaceViewModel : ObservableObject
     public bool IsAddNodeToolActive => ActiveToolMode == GraphToolMode.AddNode;
     public bool IsConnectToolActive => ActiveToolMode == GraphToolMode.Connect;
     public bool IsIsochroneModeEnabled => isIsochroneModeEnabled;
+    public bool IsFacilityPlanningMode => isFacilityPlanningMode;
+    public double IsochroneBudget
+    {
+        get => isochroneBudget;
+        set
+        {
+            var sanitized = Math.Max(0d, value);
+            if (SetProperty(ref isochroneBudget, sanitized))
+            {
+                Raise(nameof(CoveragePercentageText));
+            }
+        }
+    }
+    public MultiOriginIsochroneResult? CurrentMultiOriginIsochrone
+    {
+        get => currentMultiOriginIsochrone;
+        private set
+        {
+            if (SetProperty(ref currentMultiOriginIsochrone, value))
+            {
+                Raise(nameof(ReachableNodeCountText));
+                Raise(nameof(UncoveredNodeCountText));
+                Raise(nameof(OverlapNodeCountText));
+                Raise(nameof(CoveragePercentageText));
+                Raise(nameof(AverageBestCostText));
+                Raise(nameof(FacilitySelectionSummary));
+                Raise(nameof(FacilityPlanningValidationText));
+            }
+        }
+    }
+    public NodeModel? SelectedFacilityNodeItem
+    {
+        get => selectedFacilityNodeItem;
+        set
+        {
+            if (SetProperty(ref selectedFacilityNodeItem, value))
+            {
+                RemoveFacilityOriginCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+    public string FacilityPlanningValidationText
+    {
+        get => facilityPlanningValidationText;
+        private set => SetProperty(ref facilityPlanningValidationText, value);
+    }
+    public string FacilitySelectionCountText => $"{SelectedFacilityNodes.Count} selected";
+    public string ReachableNodeCountText => (CurrentMultiOriginIsochrone?.ReachableNodes.Count ?? 0).ToString(CultureInfo.InvariantCulture);
+    public string UncoveredNodeCountText => (CurrentMultiOriginIsochrone?.UncoveredNodes.Count ?? network.Nodes.Count).ToString(CultureInfo.InvariantCulture);
+    public string OverlapNodeCountText => (CurrentMultiOriginIsochrone?.OverlapNodes.Count ?? 0).ToString(CultureInfo.InvariantCulture);
+    public string CoveragePercentageText
+    {
+        get
+        {
+            if (network.Nodes.Count == 0 || CurrentMultiOriginIsochrone is null)
+            {
+                return "0%";
+            }
+
+            var percentage = (CurrentMultiOriginIsochrone.ReachableNodes.Count / (double)network.Nodes.Count) * 100d;
+            return $"{percentage:0.#}%";
+        }
+    }
+    public string AverageBestCostText
+    {
+        get
+        {
+            if (CurrentMultiOriginIsochrone is null || CurrentMultiOriginIsochrone.BestCostByNode.Count == 0)
+            {
+                return "0";
+            }
+
+            return CurrentMultiOriginIsochrone.BestCostByNode.Values.Average().ToString("0.##", CultureInfo.InvariantCulture);
+        }
+    }
+    public string SelectedFacilityDisplayNames => SelectedFacilityNodes.Count == 0
+        ? "None selected"
+        : string.Join(", ", SelectedFacilityNodes.Select(node => string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name));
+    public string FacilitySelectionSummary => CurrentMultiOriginIsochrone is null
+        ? "Pick facilities, set budget, then run analysis."
+        : $"Reachable nodes {ReachableNodeCountText}, uncovered {UncoveredNodeCountText}, overlap {OverlapNodeCountText}.";
     public HashSet<NodeModel> IsochroneNodes
     {
         get => isochroneNodes;
@@ -1618,6 +1747,8 @@ public sealed class WorkspaceViewModel : ObservableObject
         Raise(nameof(IsAddNodeToolActive));
         Raise(nameof(IsConnectToolActive));
         Raise(nameof(IsIsochroneModeEnabled));
+        Raise(nameof(IsFacilityPlanningMode));
+        RunMultiOriginIsochroneCommand.NotifyCanExecuteChanged();
     }
 
     public void SetIsochroneMode(bool enabled)
@@ -1637,11 +1768,146 @@ public sealed class WorkspaceViewModel : ObservableObject
         }
         else
         {
+            if (isFacilityPlanningMode)
+            {
+                SetFacilityPlanningMode(false);
+            }
             StatusText = "Isochrone mode enabled. Click a node and enter a threshold.";
         }
 
         Raise(nameof(IsIsochroneModeEnabled));
         Raise(nameof(IsochroneLegendTitle));
+    }
+
+    public void SetFacilityPlanningMode(bool enabled)
+    {
+        if (isFacilityPlanningMode == enabled)
+        {
+            return;
+        }
+
+        isFacilityPlanningMode = enabled;
+        if (enabled)
+        {
+            SetIsochroneMode(false);
+            StatusText = "Facility planning mode enabled. Click nodes to toggle facilities.";
+        }
+        else
+        {
+            CurrentMultiOriginIsochrone = null;
+            FacilityPlanningValidationText = string.Empty;
+            BuildSceneFromNetwork();
+            NotifyVisualChanged();
+            StatusText = "Facility planning mode disabled.";
+        }
+
+        Raise(nameof(IsFacilityPlanningMode));
+    }
+
+    public bool ToggleFacilityOriginById(string nodeId)
+    {
+        if (!IsFacilityPlanningMode || string.IsNullOrWhiteSpace(nodeId))
+        {
+            return false;
+        }
+
+        var node = network.Nodes.FirstOrDefault(candidate => Comparer.Equals(candidate.Id, nodeId));
+        if (node is null)
+        {
+            return false;
+        }
+
+        var existing = SelectedFacilityNodes.FirstOrDefault(candidate => Comparer.Equals(candidate.Id, nodeId));
+        if (existing is null)
+        {
+            SelectedFacilityNodes.Add(node);
+            StatusText = $"Added facility '{(string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name)}'.";
+        }
+        else
+        {
+            SelectedFacilityNodes.Remove(existing);
+            StatusText = $"Removed facility '{(string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name)}'.";
+        }
+
+        ApplyIsochroneVisuals();
+        NotifyVisualChanged();
+        return true;
+    }
+
+    public bool RunMultiOriginIsochrone()
+    {
+        if (!IsFacilityPlanningMode)
+        {
+            return false;
+        }
+
+        if (SelectedFacilityNodes.Count == 0)
+        {
+            FacilityPlanningValidationText = "Select at least one facility before running analysis.";
+            return false;
+        }
+
+        if (IsochroneBudget < 0d)
+        {
+            FacilityPlanningValidationText = "Budget must be 0 or higher. Enter a valid number and run again.";
+            return false;
+        }
+
+        FacilityPlanningValidationText = string.Empty;
+        CurrentMultiOriginIsochrone = multiOriginIsochroneService.Compute(
+            network.Nodes,
+            network.Edges,
+            SelectedFacilityNodes,
+            IsochroneBudget);
+        BuildUncoveredPlanningItems();
+        BuildFacilityComparisonRows();
+        ApplyIsochroneVisuals();
+        NotifyVisualChanged();
+        StatusText = $"Facility planning analysis ran with budget {IsochroneBudget:0.##}.";
+        return true;
+    }
+
+    public void ClearFacilityOrigins()
+    {
+        SelectedFacilityNodes.Clear();
+        SelectedFacilityNodeItem = null;
+        UncoveredPlanningItems.Clear();
+        FacilityComparisonRows.Clear();
+        CurrentMultiOriginIsochrone = null;
+        FacilityPlanningValidationText = string.Empty;
+        cachedFacilityDistances.Clear();
+        ApplyIsochroneVisuals();
+        NotifyVisualChanged();
+        StatusText = "Cleared selected facilities.";
+    }
+
+    public void RemoveSelectedFacilityOrigin()
+    {
+        if (SelectedFacilityNodeItem is null)
+        {
+            return;
+        }
+
+        SelectedFacilityNodes.Remove(SelectedFacilityNodeItem);
+        SelectedFacilityNodeItem = null;
+        if (SelectedFacilityNodes.Count == 0)
+        {
+            CurrentMultiOriginIsochrone = null;
+            UncoveredPlanningItems.Clear();
+            FacilityComparisonRows.Clear();
+        }
+
+        ApplyIsochroneVisuals();
+        NotifyVisualChanged();
+    }
+
+    private void AddSelectedNodeAsFacilityOrigin()
+    {
+        var nodeId = Scene.Selection.SelectedNodeIds.FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(nodeId))
+        {
+            ToggleFacilityOriginById(nodeId);
+        }
     }
 
     public bool ComputeIsochrone(string originNodeId, double thresholdMinutes)
@@ -1753,6 +2019,13 @@ public sealed class WorkspaceViewModel : ObservableObject
         Scene.Simulation.ShowAnimatedFlows = true;
         Scene.Simulation.ReducedMotion = ReducedMotion;
         ClearIsochroneState();
+        SelectedFacilityNodes.Clear();
+        SelectedFacilityNodeItem = null;
+        CurrentMultiOriginIsochrone = null;
+        FacilityPlanningValidationText = string.Empty;
+        UncoveredPlanningItems.Clear();
+        FacilityComparisonRows.Clear();
+        cachedFacilityDistances.Clear();
         ClearDynamicReports();
         CurrentFilePath = currentFilePath;
         HasUnsavedChanges = false;
@@ -2303,6 +2576,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         RemoveSelectedNodeConsumptionWindowCommand.NotifyCanExecuteChanged();
         AddNodeInputRequirementCommand.NotifyCanExecuteChanged();
         RemoveSelectedNodeInputRequirementCommand.NotifyCanExecuteChanged();
+        AddFacilityOriginCommand.NotifyCanExecuteChanged();
         ApplyInspectorCommand.NotifyCanExecuteChanged();
         Raise(nameof(ApplyInspectorLabel));
         Raise(nameof(CanApplyInspectorEdits));
@@ -4077,6 +4351,12 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     private void ApplyIsochroneVisuals()
     {
+        if (IsFacilityPlanningMode)
+        {
+            ApplyFacilityPlanningVisuals();
+            return;
+        }
+
         if (!IsIsochroneModeEnabled || IsochroneNodes.Count == 0 || IsochroneThresholdMinutes <= 0d)
         {
             foreach (var node in Scene.Nodes)
@@ -4126,6 +4406,117 @@ public sealed class WorkspaceViewModel : ObservableObject
         }
     }
 
+    private void ApplyFacilityPlanningVisuals()
+    {
+        var baseNodesById = network.Nodes
+            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
+            .ToDictionary(node => node.Id, node => node, Comparer);
+        var selectedFacilityIds = SelectedFacilityNodes
+            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
+            .Select(node => node.Id)
+            .ToHashSet(Comparer);
+        var reachableIds = (CurrentMultiOriginIsochrone?.ReachableNodes ?? [])
+            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
+            .Select(node => node.Id)
+            .ToHashSet(Comparer);
+        var overlapIds = (CurrentMultiOriginIsochrone?.OverlapNodes ?? [])
+            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
+            .Select(node => node.Id)
+            .ToHashSet(Comparer);
+
+        foreach (var sceneNode in Scene.Nodes)
+        {
+            sceneNode.FillColor = SKColor.Parse("#163149");
+            sceneNode.StrokeColor = SKColor.Parse("#6AAED6");
+            sceneNode.VisualOpacity = 1d;
+            if (!baseNodesById.TryGetValue(sceneNode.Id, out var model))
+            {
+                continue;
+            }
+
+            var badges = BuildNodeBadges(model).ToList();
+            var isFacility = selectedFacilityIds.Contains(sceneNode.Id);
+            var isReachable = reachableIds.Contains(sceneNode.Id);
+            var isOverlap = overlapIds.Contains(sceneNode.Id);
+
+            if (isFacility)
+            {
+                sceneNode.StrokeColor = SKColor.Parse("#F4A261");
+                badges.Add("Facility");
+            }
+
+            if (CurrentMultiOriginIsochrone is not null)
+            {
+                if (!isReachable)
+                {
+                    sceneNode.VisualOpacity = 0.22d;
+                    sceneNode.StrokeColor = SKColor.Parse("#46657F");
+                    badges.Add("Uncovered");
+                }
+                else
+                {
+                    sceneNode.StrokeColor = SKColor.Parse("#45E07A");
+                    badges.Add("Reachable");
+                }
+            }
+
+            if (isOverlap)
+            {
+                sceneNode.StrokeColor = SKColor.Parse("#EFCB68");
+                badges.Add("Overlap");
+            }
+
+            sceneNode.Badges = badges.Distinct(Comparer).ToList();
+            sceneNode.ToolTipText = BuildFacilityPlanningToolTip(model, sceneNode.DetailLines);
+        }
+
+        foreach (var edge in Scene.Edges)
+        {
+            if (CurrentMultiOriginIsochrone is null)
+            {
+                edge.VisualOpacity = 1d;
+                continue;
+            }
+
+            edge.VisualOpacity = reachableIds.Contains(edge.FromNodeId) && reachableIds.Contains(edge.ToNodeId) ? 1d : 0.18d;
+        }
+    }
+
+    private string BuildFacilityPlanningToolTip(NodeModel node, IReadOnlyList<GraphNodeTextLine> detailLines)
+    {
+        var baseText = BuildNodeToolTipText(node, detailLines, null);
+        if (CurrentMultiOriginIsochrone is null)
+        {
+            return $"{baseText}{Environment.NewLine}{Environment.NewLine}Facility planning: pending analysis.";
+        }
+
+        var isReachable = CurrentMultiOriginIsochrone.BestCostByNode.TryGetValue(node, out var bestCost);
+        var coveringOrigins = CurrentMultiOriginIsochrone.CoveringOriginsByNode.TryGetValue(node, out var origins)
+            ? origins
+            : [];
+        var bestFacility = CurrentMultiOriginIsochrone.BestOriginByNode.TryGetValue(node, out var originNode)
+            ? (string.IsNullOrWhiteSpace(originNode.Name) ? originNode.Id : originNode.Name)
+            : "N/A";
+        var coveringNames = coveringOrigins.Count == 0
+            ? "None"
+            : string.Join(", ", coveringOrigins.Select(origin => string.IsNullOrWhiteSpace(origin.Name) ? origin.Id : origin.Name));
+        var summary = isReachable
+            ? $"Reachable from {coveringOrigins.Count} facilities. Closest: {bestFacility}, {bestCost:0.##} minutes."
+            : "Reachable: no";
+
+        return string.Join(Environment.NewLine, new[]
+        {
+            baseText,
+            string.Empty,
+            $"Reachable: {(isReachable ? "yes" : "no")}",
+            $"Best facility: {bestFacility}",
+            $"Best cost: {(isReachable ? bestCost.ToString("0.##", CultureInfo.InvariantCulture) : "N/A")}",
+            $"Covering facilities: {coveringOrigins.Count}",
+            $"Facilities: {coveringNames}",
+            summary
+        });
+    }
+
     private static string AppendIsochroneText(string original, double distance, double ratio)
     {
         var baseText = original.Split($"{Environment.NewLine}{Environment.NewLine}Isochrone:", StringSplitOptions.None)[0];
@@ -4135,6 +4526,89 @@ public sealed class WorkspaceViewModel : ObservableObject
                 ? "Band: 25–50%"
                 : "Band: 50–100%";
         return $"{baseText}{Environment.NewLine}{Environment.NewLine}Isochrone: {distance:0.##} minutes from origin. {band}.";
+    }
+
+    private void BuildUncoveredPlanningItems()
+    {
+        UncoveredPlanningItems.Clear();
+        if (CurrentMultiOriginIsochrone is null || SelectedFacilityNodes.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var uncovered in CurrentMultiOriginIsochrone.UncoveredNodes.OrderBy(node => node.Name, Comparer))
+        {
+            var nearest = "N/A";
+            var extraBudgetNeeded = "N/A";
+            var bestDistance = double.PositiveInfinity;
+            foreach (var origin in SelectedFacilityNodes)
+            {
+                if (string.IsNullOrWhiteSpace(origin.Id))
+                {
+                    continue;
+                }
+
+                if (!cachedFacilityDistances.TryGetValue(origin.Id, out var map))
+                {
+                    map = multiOriginIsochroneService
+                        .ComputeCostsFromOrigin(origin, network.Nodes, network.Edges, double.MaxValue)
+                        .Where(pair => !string.IsNullOrWhiteSpace(pair.Key.Id))
+                        .ToDictionary(pair => pair.Key.Id, pair => pair.Value, Comparer);
+                    cachedFacilityDistances[origin.Id] = map;
+                }
+
+                if (string.IsNullOrWhiteSpace(uncovered.Id) || !map.TryGetValue(uncovered.Id, out var distance))
+                {
+                    continue;
+                }
+
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    nearest = string.IsNullOrWhiteSpace(origin.Name) ? origin.Id : origin.Name;
+                }
+            }
+
+            if (!double.IsPositiveInfinity(bestDistance))
+            {
+                var extra = Math.Max(0d, bestDistance - IsochroneBudget);
+                extraBudgetNeeded = extra.ToString("0.##", CultureInfo.InvariantCulture);
+            }
+
+            UncoveredPlanningItems.Add(new UncoveredNodePlanningItem
+            {
+                NodeName = string.IsNullOrWhiteSpace(uncovered.Name) ? uncovered.Id : uncovered.Name,
+                NearestFacility = nearest,
+                ExtraBudgetNeeded = extraBudgetNeeded
+            });
+        }
+    }
+
+    private void BuildFacilityComparisonRows()
+    {
+        FacilityComparisonRows.Clear();
+        if (CurrentMultiOriginIsochrone is null || SelectedFacilityNodes.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var origin in SelectedFacilityNodes)
+        {
+            var costs = multiOriginIsochroneService.ComputeCostsFromOrigin(origin, network.Nodes, network.Edges, IsochroneBudget);
+            var coveredNodes = costs.Keys.ToList();
+            var uniqueCoveredCount = coveredNodes.Count(node =>
+                CurrentMultiOriginIsochrone.CoveringOriginsByNode.TryGetValue(node, out var coveringOrigins) &&
+                coveringOrigins.Count == 1 &&
+                coveringOrigins.Any(candidate => Comparer.Equals(candidate.Id, origin.Id)));
+            FacilityComparisonRows.Add(new FacilityComparisonRowViewModel
+            {
+                Facility = string.IsNullOrWhiteSpace(origin.Name) ? origin.Id : origin.Name,
+                NodesCovered = coveredNodes.Count.ToString(CultureInfo.InvariantCulture),
+                UniqueNodesCovered = uniqueCoveredCount.ToString(CultureInfo.InvariantCulture),
+                AverageCost = (costs.Count == 0 ? 0d : costs.Values.Average()).ToString("0.##", CultureInfo.InvariantCulture),
+                MaxCost = (costs.Count == 0 ? 0d : costs.Values.Max()).ToString("0.##", CultureInfo.InvariantCulture)
+            });
+        }
     }
 
     private static IReadOnlyList<string> BuildNodeBadges(NodeModel node)

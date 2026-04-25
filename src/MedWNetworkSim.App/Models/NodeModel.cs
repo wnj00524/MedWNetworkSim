@@ -63,6 +63,18 @@ public sealed class NodeModel
     public double? TranshipmentCapacity { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether this node acts as a facility origin in facility mode.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool IsFacility { get; set; }
+
+    /// <summary>
+    /// Gets or sets the optional total demand this facility can serve across its catchment.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? FacilityCapacity { get; set; }
+
+    /// <summary>
     /// Gets or sets the optional worldbuilder place category for this node.
     /// </summary>
     public string? PlaceType { get; set; }

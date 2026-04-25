@@ -34,6 +34,19 @@ public sealed class NetworkModel
     public int SimulationSeed { get; set; } = 12345;
 
     /// <summary>
+    /// Gets or sets a value indicating whether simulations should use facility catchments.
+    /// When enabled, demand is assigned to the nearest reachable facility before routing.
+    /// </summary>
+    public bool FacilityModeEnabled { get; set; }
+
+    /// <summary>
+    /// Gets or sets the optional maximum travel-time budget for facility catchments.
+    /// Null or non-positive values mean unlimited reachability.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? FacilityCoverageThreshold { get; set; }
+
+    /// <summary>
     /// Gets or sets the declared traffic types that can move through the network.
     /// </summary>
     public List<TrafficTypeDefinition> TrafficTypes { get; set; } = [];

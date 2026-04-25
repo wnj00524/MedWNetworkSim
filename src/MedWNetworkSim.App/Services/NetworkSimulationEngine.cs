@@ -1,4 +1,5 @@
 using MedWNetworkSim.App.Models;
+using MedWNetworkSim.App.Services.Facility;
 
 namespace MedWNetworkSim.App.Services;
 
@@ -19,6 +20,11 @@ public sealed class NetworkSimulationEngine
     {
         ArgumentNullException.ThrowIfNull(network);
         network = HierarchicalNetworkProjection.ProjectForSimulation(network);
+
+        if (network.FacilityModeEnabled)
+        {
+            return new FacilityModeSimulationEngine(this).Simulate(network);
+        }
 
         var hasRecipeDependencies = HasStaticRecipeDependencies(network);
         var contexts = MixedRoutingAllocator.BuildStaticContexts(network, applyLocalAllocations: !hasRecipeDependencies).ToList();

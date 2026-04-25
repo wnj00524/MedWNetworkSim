@@ -742,6 +742,7 @@ public sealed class ShellWindow : Window
     private DashboardLayoutState dashboardLayoutState = DashboardLayoutState.Normal;
     private DashboardLayoutState previousDashboardLayoutState = DashboardLayoutState.Normal;
     private ShellWorkspaceMode shellWorkspaceMode = ShellWorkspaceMode.Standard;
+    private Action? refreshToolRailState;
 
     private enum DashboardLayoutState
     {
@@ -1042,6 +1043,7 @@ public sealed class ShellWindow : Window
         var selectButton = BuildToolButton("Select", "Click to select items, drag selected nodes, and marquee select.", viewModel.SelectToolCommand);
         var addNodeButton = BuildToolButton("Add Node", "Click the canvas to place a new node.", viewModel.AddNodeToolCommand);
         var connectButton = BuildToolButton("Connect", "Choose a source node, then a target node to create a route.", viewModel.ConnectToolCommand);
+        var trafficTypesButton = BuildToolButton("Traffic Types", "Edit traffic types used by nodes and routes", new RelayCommand(EnterTrafficTypeWorkspace));
         var isochroneButton = BuildToolButton("Isochrone Mode", "Click a node and enter a minute threshold to highlight reachable nodes.", viewModel.ToggleIsochroneModeCommand);
         var facilityButton = BuildToolButton("Facility Planning", "Select multiple facilities and run a shared budget analysis.", viewModel.ToggleFacilityPlanningModeCommand);
         var deleteButton = BuildToolButton("Delete", "Delete the current selection.", viewModel.DeleteSelectionCommand);
@@ -1051,9 +1053,11 @@ public sealed class ShellWindow : Window
             ApplyToolButtonState(selectButton, viewModel.IsSelectToolActive);
             ApplyToolButtonState(addNodeButton, viewModel.IsAddNodeToolActive);
             ApplyToolButtonState(connectButton, viewModel.IsConnectToolActive);
+            ApplyToolButtonState(trafficTypesButton, shellWorkspaceMode == ShellWorkspaceMode.TrafficTypes);
             ApplyToolButtonState(isochroneButton, viewModel.IsIsochroneModeEnabled);
             ApplyToolButtonState(facilityButton, viewModel.IsFacilityPlanningMode);
         }
+        refreshToolRailState = RefreshToolState;
 
         viewModel.PropertyChanged += (_, e) =>
         {
@@ -1066,7 +1070,7 @@ public sealed class ShellWindow : Window
 
         var content = new Grid
         {
-            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,*"),
             RowSpacing = AvaloniaDashboardTheme.SectionSpacing,
             MinHeight = 0
         };
@@ -1080,6 +1084,7 @@ public sealed class ShellWindow : Window
                 selectButton,
                 addNodeButton,
                 connectButton,
+                trafficTypesButton,
                 isochroneButton,
                 facilityButton,
                 deleteButton
@@ -1104,18 +1109,6 @@ public sealed class ShellWindow : Window
         };
         Grid.SetRow(quickAccess, 1);
         content.Children.Add(quickAccess);
-
-        var trafficLauncher = new StackPanel
-        {
-            Spacing = AvaloniaDashboardTheme.SectionSpacing,
-            Children =
-            {
-                BuildSectionTitle("Traffic", "Open a dedicated workspace to manage traffic types."),
-                BuildTrafficWorkspaceLauncher()
-            }
-        };
-        Grid.SetRow(trafficLauncher, 3);
-        content.Children.Add(trafficLauncher);
 
         var facilityPlanningPanel = BuildFacilityPlanningPanel(viewModel);
         Grid.SetRow(facilityPlanningPanel, 2);
@@ -1367,15 +1360,6 @@ public sealed class ShellWindow : Window
         return border;
     }
 
-    private Control BuildTrafficWorkspaceLauncher()
-    {
-        return BuildButton(
-            "Edit Traffic Types",
-            new RelayCommand(EnterTrafficTypeWorkspace),
-            isPrimary: true,
-            toolTip: "Switch to the dedicated traffic-type workspace.");
-    }
-
     private Border BuildTrafficTypeWorkspace(WorkspaceViewModel viewModel)
     {
         Control editorFocusTarget;
@@ -1472,7 +1456,7 @@ public sealed class ShellWindow : Window
             FocusTrafficTypeWorkspaceEditor();
         }));
         var applyTypeButton = BuildBoundButton("Apply traffic type", nameof(WorkspaceViewModel.ApplyTrafficDefinitionCommand));
-        var cancelButton = BuildButton("Cancel", new RelayCommand(ExitTrafficTypeWorkspace));
+        var cancelButton = BuildButton("Back to Network", new RelayCommand(ExitTrafficTypeWorkspace));
         var doneButton = BuildButton("Done", new RelayCommand(ExitTrafficTypeWorkspace), isPrimary: true);
         Grid.SetColumn(addTypeButton, 1);
         Grid.SetColumn(applyTypeButton, 2);
@@ -2591,6 +2575,7 @@ public sealed class ShellWindow : Window
         standardWorkspaceHost.IsVisible = !isTrafficTypeWorkspace && !isEdgeEditorWorkspace;
         trafficTypeWorkspaceHost.IsVisible = isTrafficTypeWorkspace;
         edgeEditorWorkspaceHost.IsVisible = isEdgeEditorWorkspace;
+        refreshToolRailState?.Invoke();
     }
 
     private void FocusTrafficTypeWorkspaceEditor()
@@ -3687,6 +3672,7 @@ public sealed class ShellWindow : Window
         var button = new Button
         {
             Content = text,
+            Tag = text,
             Command = command,
             FontWeight = FontWeight.Bold,
             CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius
@@ -3699,6 +3685,9 @@ public sealed class ShellWindow : Window
 
     private static void ApplyToolButtonState(Button button, bool isActive)
     {
+        var label = button.Tag as string ?? button.Content?.ToString() ?? string.Empty;
+        button.Content = isActive ? $"● {label}" : label;
+        button.FontWeight = isActive ? FontWeight.ExtraBold : FontWeight.Bold;
         button.Classes.Set("active", isActive);
     }
 

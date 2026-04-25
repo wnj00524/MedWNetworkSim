@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Services;
+using MedWNetworkSim.App.Services.Pathfinding;
 using MedWNetworkSim.Interaction;
 using MedWNetworkSim.Rendering;
 using SkiaSharp;
@@ -640,6 +641,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     private readonly EdgeTrafficPermissionResolver edgeTrafficPermissionResolver = new();
     private readonly GraphInteractionController interactionController = new();
     private readonly GraphRenderer graphRenderer = new();
+    private readonly IsochroneService isochroneService = new();
 
     private NetworkModel network = new();
     private TemporalNetworkSimulationEngine.TemporalSimulationState? temporalState;
@@ -699,6 +701,14 @@ public sealed class WorkspaceViewModel : ObservableObject
     private InspectorEditMode currentInspectorEditMode = InspectorEditMode.Network;
     private bool hasUnsavedChanges;
     private string? currentFilePath;
+    private bool isIsochroneModeEnabled;
+    private double isochroneThresholdMinutes = 15d;
+    private HashSet<NodeModel> isochroneNodes = [];
+    private Dictionary<string, double> isochroneDistances = new(Comparer);
+    private string? cachedIsochroneOriginId;
+    private double? cachedIsochroneThreshold;
+    private int networkRevision;
+    private int cachedIsochroneNetworkRevision = -1;
 
     public WorkspaceViewModel()
     {
@@ -761,6 +771,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         SelectToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.Select));
         AddNodeToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.AddNode));
         ConnectToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.Connect));
+        ToggleIsochroneModeCommand = new RelayCommand(() => SetIsochroneMode(!IsIsochroneModeEnabled));
         DeleteSelectionCommand = new RelayCommand(DeleteSelection, () => CanDeleteSelection);
         ApplyInspectorCommand = new RelayCommand(ApplyInspectorEdits, () => CanApplyInspectorEdits);
         OpenSelectedEdgeEditorCommand = new RelayCommand(EnterEdgeEditor, () => CanOpenSelectedEdgeEditor);
@@ -824,6 +835,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     public RelayCommand SelectToolCommand { get; }
     public RelayCommand AddNodeToolCommand { get; }
     public RelayCommand ConnectToolCommand { get; }
+    public RelayCommand ToggleIsochroneModeCommand { get; }
     public RelayCommand DeleteSelectionCommand { get; }
     public RelayCommand ApplyInspectorCommand { get; }
     public RelayCommand OpenSelectedEdgeEditorCommand { get; }
@@ -884,6 +896,30 @@ public sealed class WorkspaceViewModel : ObservableObject
     public bool IsSelectToolActive => ActiveToolMode == GraphToolMode.Select;
     public bool IsAddNodeToolActive => ActiveToolMode == GraphToolMode.AddNode;
     public bool IsConnectToolActive => ActiveToolMode == GraphToolMode.Connect;
+    public bool IsIsochroneModeEnabled => isIsochroneModeEnabled;
+    public HashSet<NodeModel> IsochroneNodes
+    {
+        get => isochroneNodes;
+        set => SetProperty(ref isochroneNodes, value);
+    }
+    public string IsochroneLegendTitle => IsochroneNodes.Count == 0
+        ? "Isochrone mode: select an origin node."
+        : $"Reachable within {IsochroneThresholdMinutes:0.##} minutes";
+    public string IsochroneLegendStrongLabel => "0–25% of threshold (strong highlight)";
+    public string IsochroneLegendMediumLabel => "25–50% of threshold (medium highlight)";
+    public string IsochroneLegendLightLabel => "50–100% of threshold (light highlight)";
+    public double IsochroneThresholdMinutes
+    {
+        get => isochroneThresholdMinutes;
+        set
+        {
+            var sanitized = Math.Max(0d, value);
+            if (SetProperty(ref isochroneThresholdMinutes, sanitized))
+            {
+                Raise(nameof(IsochroneLegendTitle));
+            }
+        }
+    }
     public bool ReducedMotion { get => reducedMotion; set => SetProperty(ref reducedMotion, value); }
     public int CurrentPeriod { get => currentPeriod; private set => SetProperty(ref currentPeriod, value); }
     public int TimelineMaximum { get => timelineMaximum; private set => SetProperty(ref timelineMaximum, value); }
@@ -1497,6 +1533,8 @@ public sealed class WorkspaceViewModel : ObservableObject
     private void MarkDirty()
     {
         HasUnsavedChanges = true;
+        networkRevision++;
+        cachedIsochroneNetworkRevision = -1;
     }
 
     private string BuildSuggestedFileName()
@@ -1579,6 +1617,87 @@ public sealed class WorkspaceViewModel : ObservableObject
         Raise(nameof(IsSelectToolActive));
         Raise(nameof(IsAddNodeToolActive));
         Raise(nameof(IsConnectToolActive));
+        Raise(nameof(IsIsochroneModeEnabled));
+    }
+
+    public void SetIsochroneMode(bool enabled)
+    {
+        if (isIsochroneModeEnabled == enabled)
+        {
+            return;
+        }
+
+        isIsochroneModeEnabled = enabled;
+        if (!enabled)
+        {
+            ClearIsochroneState();
+            BuildSceneFromNetwork();
+            NotifyVisualChanged();
+            StatusText = "Isochrone mode disabled.";
+        }
+        else
+        {
+            StatusText = "Isochrone mode enabled. Click a node and enter a threshold.";
+        }
+
+        Raise(nameof(IsIsochroneModeEnabled));
+        Raise(nameof(IsochroneLegendTitle));
+    }
+
+    public bool ComputeIsochrone(string originNodeId, double thresholdMinutes)
+    {
+        if (!IsIsochroneModeEnabled || string.IsNullOrWhiteSpace(originNodeId))
+        {
+            return false;
+        }
+
+        var origin = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, originNodeId));
+        if (origin is null)
+        {
+            return false;
+        }
+
+        var sanitizedThreshold = Math.Max(0d, thresholdMinutes);
+        IsochroneThresholdMinutes = sanitizedThreshold;
+        if (cachedIsochroneNetworkRevision == networkRevision &&
+            Comparer.Equals(cachedIsochroneOriginId, originNodeId) &&
+            cachedIsochroneThreshold.HasValue &&
+            Math.Abs(cachedIsochroneThreshold.Value - sanitizedThreshold) < 0.0001d)
+        {
+            ApplyIsochroneVisuals();
+            NotifyVisualChanged();
+            return true;
+        }
+
+        IsochroneNodes = isochroneService.ComputeIsochrone(
+            origin,
+            sanitizedThreshold,
+            network.Nodes,
+            network.Edges,
+            IsochroneService.CostMetric.Time,
+            out var distances);
+        isochroneDistances = distances;
+        cachedIsochroneOriginId = originNodeId;
+        cachedIsochroneThreshold = sanitizedThreshold;
+        cachedIsochroneNetworkRevision = networkRevision;
+        Raise(nameof(IsochroneNodes));
+        Raise(nameof(IsochroneLegendTitle));
+
+        ApplyIsochroneVisuals();
+        NotifyVisualChanged();
+        StatusText = $"Isochrone computed from '{origin.Name}' within {sanitizedThreshold:0.##} minutes.";
+        return true;
+    }
+
+    private void ClearIsochroneState()
+    {
+        IsochroneNodes = [];
+        isochroneDistances = new Dictionary<string, double>(Comparer);
+        cachedIsochroneOriginId = null;
+        cachedIsochroneThreshold = null;
+        cachedIsochroneNetworkRevision = -1;
+        Raise(nameof(IsochroneNodes));
+        Raise(nameof(IsochroneLegendTitle));
     }
 
     private void CreateBlankNetwork()
@@ -1633,6 +1752,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         Scene.Transient.DragStartWorld = null;
         Scene.Simulation.ShowAnimatedFlows = true;
         Scene.Simulation.ReducedMotion = ReducedMotion;
+        ClearIsochroneState();
         ClearDynamicReports();
         CurrentFilePath = currentFilePath;
         HasUnsavedChanges = false;
@@ -1691,6 +1811,8 @@ public sealed class WorkspaceViewModel : ObservableObject
                 HasWarning = false
             });
         }
+
+        ApplyIsochroneVisuals();
     }
 
     private bool CreateEdge(string sourceId, string targetId, bool isBidirectional)
@@ -1883,6 +2005,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             node.HasWarning = false;
         }
 
+        ApplyIsochroneVisuals();
         ClearDynamicReports();
         RefreshInspector();
         NotifyVisualChanged();
@@ -1945,6 +2068,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         PopulateRouteReports(timeline, edgeLoads);
         PopulateNodePressureReports(timeline);
         PopulateQuickMetrics(timeline, edgeLoads);
+        ApplyIsochroneVisuals();
         RefreshInspector();
         NotifyVisualChanged();
     }
@@ -3949,6 +4073,68 @@ public sealed class WorkspaceViewModel : ObservableObject
         }
 
         return $"Unmet need {backlog.Sum(item => item.Value):0.##}";
+    }
+
+    private void ApplyIsochroneVisuals()
+    {
+        if (!IsIsochroneModeEnabled || IsochroneNodes.Count == 0 || IsochroneThresholdMinutes <= 0d)
+        {
+            foreach (var node in Scene.Nodes)
+            {
+                node.VisualOpacity = 1d;
+                node.StrokeColor = SKColor.Parse("#6AAED6");
+                node.FillColor = SKColor.Parse("#163149");
+            }
+
+            foreach (var edge in Scene.Edges)
+            {
+                edge.VisualOpacity = 1d;
+            }
+
+            return;
+        }
+
+        var reachableIds = IsochroneNodes
+            .Select(node => node.Id)
+            .Where(nodeId => !string.IsNullOrWhiteSpace(nodeId))
+            .ToHashSet(Comparer);
+
+        foreach (var node in Scene.Nodes)
+        {
+            node.FillColor = SKColor.Parse("#163149");
+            if (!reachableIds.Contains(node.Id))
+            {
+                node.VisualOpacity = 0.25d;
+                node.StrokeColor = SKColor.Parse("#46657F");
+                continue;
+            }
+
+            var distance = isochroneDistances.GetValueOrDefault(node.Id, IsochroneThresholdMinutes);
+            var ratio = IsochroneThresholdMinutes <= 0d ? 1d : Math.Clamp(distance / IsochroneThresholdMinutes, 0d, 1d);
+            node.VisualOpacity = 1d;
+            node.StrokeColor = ratio <= 0.25d
+                ? SKColor.Parse("#45E07A")
+                : ratio <= 0.5d
+                    ? SKColor.Parse("#8EE978")
+                    : SKColor.Parse("#B8F0A2");
+            node.ToolTipText = AppendIsochroneText(node.ToolTipText, distance, ratio);
+        }
+
+        foreach (var edge in Scene.Edges)
+        {
+            edge.VisualOpacity = reachableIds.Contains(edge.FromNodeId) && reachableIds.Contains(edge.ToNodeId) ? 1d : 0.18d;
+        }
+    }
+
+    private static string AppendIsochroneText(string original, double distance, double ratio)
+    {
+        var baseText = original.Split($"{Environment.NewLine}{Environment.NewLine}Isochrone:", StringSplitOptions.None)[0];
+        var band = ratio <= 0.25d
+            ? "Band: 0–25%"
+            : ratio <= 0.5d
+                ? "Band: 25–50%"
+                : "Band: 50–100%";
+        return $"{baseText}{Environment.NewLine}{Environment.NewLine}Isochrone: {distance:0.##} minutes from origin. {band}.";
     }
 
     private static IReadOnlyList<string> BuildNodeBadges(NodeModel node)

@@ -26,10 +26,10 @@ public sealed class FacilityAssignmentEngine
         {
             return new FacilityAssignmentResult(
                 trafficType,
-                [],
-                [],
-                [],
-                [],
+                new Dictionary<string, string>(Comparer),
+                new Dictionary<string, double>(Comparer),
+                new Dictionary<string, double>(Comparer),
+                new Dictionary<string, double>(Comparer),
                 network.Nodes
                     .Where(node => GetDemand(node, trafficType) > Epsilon)
                     .Select(node => node.Id)

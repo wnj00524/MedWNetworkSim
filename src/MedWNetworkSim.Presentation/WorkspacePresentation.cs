@@ -811,7 +811,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         AddFacilityOriginCommand = new RelayCommand(AddSelectedNodeAsFacilityOrigin, () => Scene.Selection.SelectedNodeIds.Count == 1);
         RemoveFacilityOriginCommand = new RelayCommand(RemoveSelectedFacilityOrigin, () => SelectedFacilityNodeItem is not null);
         ClearFacilityOriginsCommand = new RelayCommand(ClearFacilityOrigins, () => SelectedFacilityNodes.Count > 0);
-        RunMultiOriginIsochroneCommand = new RelayCommand(RunMultiOriginIsochrone, () => IsFacilityPlanningMode && SelectedFacilityNodes.Count > 0);
+        RunMultiOriginIsochroneCommand = new RelayCommand(() => RunMultiOriginIsochrone(), () => IsFacilityPlanningMode && SelectedFacilityNodes.Count > 0);
         DeleteSelectionCommand = new RelayCommand(DeleteSelection, () => CanDeleteSelection);
         ApplyInspectorCommand = new RelayCommand(ApplyInspectorEdits, () => CanApplyInspectorEdits);
         OpenSelectedEdgeEditorCommand = new RelayCommand(EnterEdgeEditor, () => CanOpenSelectedEdgeEditor);

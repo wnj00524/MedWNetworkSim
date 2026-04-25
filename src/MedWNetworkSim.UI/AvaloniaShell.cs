@@ -195,6 +195,14 @@ public sealed class GraphCanvasControl : Control
             return;
         }
 
+        if (button == GraphPointerButton.Left &&
+            ViewModel.IsIsochroneModeEnabled &&
+            TryStartIsochroneSelection(ViewModel, interactionContext, point))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (button == GraphPointerButton.Left && e.ClickCount >= 2 && TryHandleWorkspaceDoubleClick(interactionContext, point))
         {
             ViewModel.NotifyVisualChanged();
@@ -215,6 +223,129 @@ public sealed class GraphCanvasControl : Control
         RefreshEditorSummaries(ViewModel);
         InvalidateVisual();
         e.Handled = true;
+    }
+
+    private bool TryStartIsochroneSelection(WorkspaceViewModel viewModel, GraphInteractionContext interactionContext, GraphPoint point)
+    {
+        var worldPoint = interactionContext.Viewport.ScreenToWorld(point, interactionContext.ViewportSize);
+        var hit = new GraphHitTester().HitTest(interactionContext.Scene, worldPoint);
+        if (string.IsNullOrWhiteSpace(hit.NodeId))
+        {
+            return false;
+        }
+
+        _ = Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var threshold = await PromptIsochroneThresholdAsync(viewModel.IsochroneThresholdMinutes);
+            if (!threshold.HasValue)
+            {
+                return;
+            }
+
+            if (viewModel.ComputeIsochrone(hit.NodeId, threshold.Value))
+            {
+                viewModel.NotifyVisualChanged();
+                InvalidateVisual();
+            }
+        });
+        return true;
+    }
+
+    private async Task<double?> PromptIsochroneThresholdAsync(double currentThreshold)
+    {
+        var owner = this.GetVisualRoot() as Window;
+        if (owner is null)
+        {
+            return null;
+        }
+
+        var result = (double?)null;
+        var dialog = new Window
+        {
+            Width = 420,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            SystemDecorations = SystemDecorations.None,
+            ExtendClientAreaToDecorationsHint = true,
+            ExtendClientAreaChromeHints = ExtendClientAreaChromeHints.NoChrome,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            Title = "Isochrone threshold"
+        };
+
+        var input = new TextBox
+        {
+            Watermark = "Minutes",
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.InputBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.InputBorder),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            Padding = new Thickness(10, 6)
+        };
+        input.Text = currentThreshold.ToString("0.##", CultureInfo.InvariantCulture);
+        var helper = new TextBlock
+        {
+            Text = "Enter threshold in minutes (must be 0 or greater).",
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+            TextWrapping = TextWrapping.Wrap
+        };
+
+        var applyButton = new Button
+        {
+            Content = "Compute",
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.Accent),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            Padding = new Thickness(14, 8)
+        };
+        applyButton.Click += (_, _) =>
+        {
+            if (double.TryParse(input.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && parsed >= 0d)
+            {
+                result = parsed;
+                dialog.Close();
+            }
+        };
+        var cancelButton = new Button
+        {
+            Content = "Cancel",
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ButtonBackground),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            Padding = new Thickness(14, 8)
+        };
+        cancelButton.Click += (_, _) => dialog.Close();
+
+        dialog.Content = new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(16),
+            Padding = new Thickness(18),
+            Child = new StackPanel
+            {
+                Spacing = 12,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "Isochrone Mode",
+                        FontSize = 20,
+                        FontWeight = FontWeight.Bold,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                    },
+                    helper,
+                    input,
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Spacing = 8,
+                        Children = { applyButton, cancelButton }
+                    }
+                }
+            }
+        };
+
+        await dialog.ShowDialog(owner);
+        return result;
     }
 
     public bool TryHandleWorkspaceDoubleClick(GraphInteractionContext interactionContext, GraphPoint point)
@@ -891,6 +1022,7 @@ public sealed class ShellWindow : Window
         var selectButton = BuildToolButton("Select", "Click to select items, drag selected nodes, and marquee select.", viewModel.SelectToolCommand);
         var addNodeButton = BuildToolButton("Add Node", "Click the canvas to place a new node.", viewModel.AddNodeToolCommand);
         var connectButton = BuildToolButton("Connect", "Choose a source node, then a target node to create a route.", viewModel.ConnectToolCommand);
+        var isochroneButton = BuildToolButton("Isochrone Mode", "Click a node and enter a minute threshold to highlight reachable nodes.", viewModel.ToggleIsochroneModeCommand);
         var deleteButton = BuildToolButton("Delete", "Delete the current selection.", viewModel.DeleteSelectionCommand);
 
         void RefreshToolState()
@@ -898,11 +1030,12 @@ public sealed class ShellWindow : Window
             ApplyToolButtonState(selectButton, viewModel.IsSelectToolActive);
             ApplyToolButtonState(addNodeButton, viewModel.IsAddNodeToolActive);
             ApplyToolButtonState(connectButton, viewModel.IsConnectToolActive);
+            ApplyToolButtonState(isochroneButton, viewModel.IsIsochroneModeEnabled);
         }
 
         viewModel.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(WorkspaceViewModel.IsSelectToolActive) or nameof(WorkspaceViewModel.IsAddNodeToolActive) or nameof(WorkspaceViewModel.IsConnectToolActive))
+            if (e.PropertyName is nameof(WorkspaceViewModel.IsSelectToolActive) or nameof(WorkspaceViewModel.IsAddNodeToolActive) or nameof(WorkspaceViewModel.IsConnectToolActive) or nameof(WorkspaceViewModel.IsIsochroneModeEnabled))
             {
                 RefreshToolState();
             }
@@ -925,6 +1058,7 @@ public sealed class ShellWindow : Window
                 selectButton,
                 addNodeButton,
                 connectButton,
+                isochroneButton,
                 deleteButton
             }
         });
@@ -937,7 +1071,11 @@ public sealed class ShellWindow : Window
                 BuildSectionTitle("Quick Access", "Current network at a glance."),
                 BuildQuickStat("Status", nameof(WorkspaceViewModel.StatusText)),
                 BuildQuickStat("Selection", nameof(WorkspaceViewModel.SelectionSummary)),
-                BuildQuickStat("Simulation", nameof(WorkspaceViewModel.SimulationSummary))
+                BuildQuickStat("Simulation", nameof(WorkspaceViewModel.SimulationSummary)),
+                BuildQuickStat("Isochrone", nameof(WorkspaceViewModel.IsochroneLegendTitle)),
+                BuildQuickStat("Band A", nameof(WorkspaceViewModel.IsochroneLegendStrongLabel)),
+                BuildQuickStat("Band B", nameof(WorkspaceViewModel.IsochroneLegendMediumLabel)),
+                BuildQuickStat("Band C", nameof(WorkspaceViewModel.IsochroneLegendLightLabel))
             }
         };
         Grid.SetRow(quickAccess, 1);

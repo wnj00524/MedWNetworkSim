@@ -107,6 +107,7 @@ public sealed class GraphNodeSceneItem
     public required IReadOnlyList<string> Badges { get; set; }
     public string ToolTipText { get; set; } = string.Empty;
     public required bool HasWarning { get; set; }
+    public double VisualOpacity { get; set; } = 1d;
     public string? LayoutContentKey { get; set; }
     public ZoomTier? LayoutZoomTier { get; set; }
     public GraphNodeTextLayoutResult? CachedLayout { get; set; }
@@ -128,6 +129,7 @@ public sealed class GraphEdgeSceneItem
     public required double FlowRate { get; set; }
     public string ToolTipText { get; set; } = string.Empty;
     public required bool HasWarning { get; set; }
+    public double VisualOpacity { get; set; } = 1d;
 }
 
 public sealed class GraphTransientState
@@ -458,7 +460,8 @@ public sealed class GraphRenderer
         {
             var start = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId), viewportSize);
             var end = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId), viewportSize);
-            edgePaint.Color = edge.HasWarning ? WarningColor.WithAlpha(190) : EdgeColor.WithAlpha(180);
+            var edgeAlpha = (byte)Math.Clamp(Math.Round((edge.HasWarning ? 190d : 180d) * edge.VisualOpacity), 15d, 255d);
+            edgePaint.Color = edge.HasWarning ? WarningColor.WithAlpha(edgeAlpha) : EdgeColor.WithAlpha(edgeAlpha);
             edgePaint.StrokeWidth = (float)(2.4d + (edge.LoadRatio * 1.6d));
             canvas.DrawLine((float)start.X, (float)start.Y, (float)end.X, (float)end.Y, edgePaint);
             if (!edge.IsBidirectional)
@@ -509,10 +512,11 @@ public sealed class GraphRenderer
         {
             var screenRect = GetNodeScreenRect(node, viewport, viewportSize);
 
-            using var fill = new SKPaint { Color = node.FillColor, IsAntialias = true };
+            var nodeAlpha = (byte)Math.Clamp(Math.Round(255d * node.VisualOpacity), 32d, 255d);
+            using var fill = new SKPaint { Color = node.FillColor.WithAlpha(nodeAlpha), IsAntialias = true };
             using var stroke = new SKPaint
             {
-                Color = scene.Selection.SelectedNodeIds.Contains(node.Id) ? FocusColor : node.StrokeColor,
+                Color = (scene.Selection.SelectedNodeIds.Contains(node.Id) ? FocusColor : node.StrokeColor).WithAlpha(nodeAlpha),
                 IsAntialias = true,
                 StrokeWidth = scene.Selection.SelectedNodeIds.Contains(node.Id) ? 3.2f : 1.6f,
                 Style = SKPaintStyle.Stroke

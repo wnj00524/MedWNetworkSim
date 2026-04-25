@@ -773,6 +773,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     private string facilityPlanningValidationText = string.Empty;
     private FacilityOriginItem? selectedFacilityNodeItem;
     private readonly Dictionary<string, Dictionary<string, double>> cachedFacilityDistances = new(Comparer);
+    private Dictionary<string, List<FacilityCoverageInfo>> facilityCoverageByNodeId = new(Comparer);
 
     public WorkspaceViewModel()
     {
@@ -843,16 +844,33 @@ public sealed class WorkspaceViewModel : ObservableObject
         AddFacilityOriginCommand = new RelayCommand(AddSelectedNodeAsFacilityOrigin, () => Scene.Selection.SelectedNodeIds.Count == 1);
         RemoveFacilityOriginCommand = new RelayCommand(RemoveSelectedFacilityOrigin, () => SelectedFacilityNodeItem is not null);
         ClearFacilityOriginsCommand = new RelayCommand(ClearFacilityOrigins, () => SelectedFacilityNodes.Count > 0);
-        RunMultiOriginIsochroneCommand = new RelayCommand(() => RunMultiOriginIsochrone(), () => IsFacilityPlanningMode && SelectedFacilityNodes.Count > 0);
         RunMultiOriginIsochroneCommand = new RelayCommand(RunMultiOriginIsochrone, () => IsFacilityPlanningMode && SelectedFacilityNodes.Count > 0);
-        SelectedFacilityNodes.CollectionChanged += (_, _) =>
+        SelectedFacilityNodes.CollectionChanged += (_, e) =>
         {
+            if (e.OldItems is not null)
+            {
+                foreach (var facility in e.OldItems.OfType<FacilityOriginItem>())
+                {
+                    facility.PropertyChanged -= HandleFacilityOriginChanged;
+                    cachedFacilityDistances.Remove(facility.Node.Id);
+                }
+            }
+
+            if (e.NewItems is not null)
+            {
+                foreach (var facility in e.NewItems.OfType<FacilityOriginItem>())
+                {
+                    facility.PropertyChanged += HandleFacilityOriginChanged;
+                }
+            }
+
             Raise(nameof(FacilitySelectionSummary));
             Raise(nameof(CoveragePercentageText));
             Raise(nameof(FacilitySelectionCountText));
             Raise(nameof(SelectedFacilityDisplayNames));
             ClearFacilityOriginsCommand.NotifyCanExecuteChanged();
             RunMultiOriginIsochroneCommand.NotifyCanExecuteChanged();
+            RefreshFacilityCoverageIfActive(updateStatusText: false);
         };
         DeleteSelectionCommand = new RelayCommand(DeleteSelection, () => CanDeleteSelection);
         ApplyInspectorCommand = new RelayCommand(ApplyInspectorEdits, () => CanApplyInspectorEdits);
@@ -1833,11 +1851,13 @@ public sealed class WorkspaceViewModel : ObservableObject
         {
             SetIsochroneMode(false);
             StatusText = "Facility planning mode enabled. Click nodes to toggle facilities.";
+            RefreshFacilityCoverageIfActive(updateStatusText: false);
         }
         else
         {
             CurrentMultiOriginIsochrone = null;
             FacilityPlanningValidationText = string.Empty;
+            facilityCoverageByNodeId = new Dictionary<string, List<FacilityCoverageInfo>>(Comparer);
             BuildSceneFromNetwork();
             NotifyVisualChanged();
             StatusText = "Facility planning mode disabled.";
@@ -1886,56 +1906,13 @@ public sealed class WorkspaceViewModel : ObservableObject
             StatusText = $"Removed facility '{(string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name)}'.";
         }
 
-        ApplyIsochroneVisuals();
-        NotifyVisualChanged();
+        RefreshFacilityCoverageIfActive(updateStatusText: false);
         return true;
     }
 
     public void RunMultiOriginIsochrone()
     {
-        if (!IsFacilityPlanningMode)
-        {
-            return;
-        }
-
-        if (SelectedFacilityNodes.Count == 0)
-        {
-            FacilityPlanningValidationText = "Select at least one facility before running analysis.";
-            return;
-        }
-
-        if (IsochroneBudget < 0d)
-        {
-            FacilityPlanningValidationText = "Budget must be 0 or higher. Enter a valid number and run again.";
-            return;
-        }
-
-        var origins = new List<MultiOriginIsochroneOrigin>();
-        foreach (var facility in SelectedFacilityNodes)
-        {
-            if (!facility.TryGetMaxTravelTime(out var maxTravelTime))
-            {
-                FacilityPlanningValidationText = $"Max time for '{facility.DisplayName}' must be 0 or higher.";
-                return;
-            }
-
-            origins.Add(new MultiOriginIsochroneOrigin
-            {
-                Origin = facility.Node,
-                MaxCost = maxTravelTime
-            });
-        }
-
-        FacilityPlanningValidationText = string.Empty;
-        CurrentMultiOriginIsochrone = multiOriginIsochroneService.Compute(
-            network.Nodes,
-            network.Edges,
-            origins);
-        BuildUncoveredPlanningItems();
-        BuildFacilityComparisonRows();
-        ApplyIsochroneVisuals();
-        NotifyVisualChanged();
-        StatusText = $"Facility planning analysis ran for {SelectedFacilityNodes.Count} facilities.";
+        RefreshFacilityCoverageIfActive(updateStatusText: true);
     }
 
     public void ClearFacilityOrigins()
@@ -1947,6 +1924,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         CurrentMultiOriginIsochrone = null;
         FacilityPlanningValidationText = string.Empty;
         cachedFacilityDistances.Clear();
+        facilityCoverageByNodeId = new Dictionary<string, List<FacilityCoverageInfo>>(Comparer);
         ApplyIsochroneVisuals();
         NotifyVisualChanged();
         StatusText = "Cleared selected facilities.";
@@ -1968,8 +1946,21 @@ public sealed class WorkspaceViewModel : ObservableObject
             FacilityComparisonRows.Clear();
         }
 
-        ApplyIsochroneVisuals();
-        NotifyVisualChanged();
+        RefreshFacilityCoverageIfActive(updateStatusText: false);
+    }
+
+    private void HandleFacilityOriginChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is not FacilityOriginItem facility)
+        {
+            return;
+        }
+
+        if (e.PropertyName is nameof(FacilityOriginItem.MaxTravelTimeText))
+        {
+            cachedFacilityDistances.Remove(facility.Node.Id);
+            RefreshFacilityCoverageIfActive(updateStatusText: false);
+        }
     }
 
     private void AddSelectedNodeAsFacilityOrigin()
@@ -1979,6 +1970,171 @@ public sealed class WorkspaceViewModel : ObservableObject
         {
             ToggleFacilityOriginById(nodeId);
         }
+    }
+
+    private void RefreshFacilityCoverageIfActive(bool updateStatusText)
+    {
+        if (!IsFacilityPlanningMode)
+        {
+            return;
+        }
+
+        if (SelectedFacilityNodes.Count == 0)
+        {
+            FacilityPlanningValidationText = "Select at least one facility before running analysis.";
+            CurrentMultiOriginIsochrone = null;
+            facilityCoverageByNodeId = new Dictionary<string, List<FacilityCoverageInfo>>(Comparer);
+            UncoveredPlanningItems.Clear();
+            FacilityComparisonRows.Clear();
+            ApplyIsochroneVisuals();
+            NotifyVisualChanged();
+            return;
+        }
+
+        if (!TryRebuildFacilityCoverageState())
+        {
+            return;
+        }
+
+        ApplyIsochroneVisuals();
+        NotifyVisualChanged();
+        if (updateStatusText)
+        {
+            StatusText = $"Facility planning analysis ran for {SelectedFacilityNodes.Count} facilities.";
+        }
+    }
+
+    private bool TryRebuildFacilityCoverageState()
+    {
+        var nodesById = network.Nodes
+            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
+            .ToDictionary(node => node.Id, node => node, Comparer);
+
+        var refreshedDistances = new Dictionary<string, Dictionary<string, double>>(Comparer);
+        foreach (var facility in SelectedFacilityNodes)
+        {
+            if (!facility.TryGetMaxTravelTime(out var maxTravelTime))
+            {
+                FacilityPlanningValidationText = $"Max time for '{facility.DisplayName}' must be 0 or higher.";
+                return false;
+            }
+
+            refreshedDistances[facility.Node.Id] = ComputeReachableNodeDistances(facility.Node.Id, maxTravelTime);
+        }
+
+        cachedFacilityDistances.Clear();
+        foreach (var pair in refreshedDistances)
+        {
+            cachedFacilityDistances[pair.Key] = pair.Value;
+        }
+
+        var coverage = new Dictionary<string, List<FacilityCoverageInfo>>(Comparer);
+        foreach (var facility in SelectedFacilityNodes)
+        {
+            if (!cachedFacilityDistances.TryGetValue(facility.Node.Id, out var map))
+            {
+                continue;
+            }
+
+            foreach (var (coveredNodeId, travelTime) in map)
+            {
+                if (!coverage.TryGetValue(coveredNodeId, out var list))
+                {
+                    list = [];
+                    coverage[coveredNodeId] = list;
+                }
+
+                list.Add(new FacilityCoverageInfo
+                {
+                    FacilityNodeId = facility.Node.Id,
+                    FacilityDisplayName = facility.DisplayName,
+                    TravelTime = travelTime,
+                    IsPrimaryFacility = false
+                });
+            }
+        }
+
+        foreach (var (nodeId, list) in coverage)
+        {
+            var primaryId = list
+                .OrderBy(candidate => candidate.TravelTime)
+                .ThenBy(candidate => candidate.FacilityDisplayName, Comparer)
+                .Select(candidate => candidate.FacilityNodeId)
+                .FirstOrDefault();
+            for (var index = 0; index < list.Count; index++)
+            {
+                var candidate = list[index];
+                list[index] = new FacilityCoverageInfo
+                {
+                    FacilityNodeId = candidate.FacilityNodeId,
+                    FacilityDisplayName = candidate.FacilityDisplayName,
+                    TravelTime = candidate.TravelTime,
+                    IsPrimaryFacility = Comparer.Equals(candidate.FacilityNodeId, primaryId)
+                };
+            }
+        }
+
+        facilityCoverageByNodeId = coverage;
+        FacilityPlanningValidationText = string.Empty;
+        BuildFacilityPlanningResultSnapshot(nodesById, coverage);
+        BuildUncoveredPlanningItems();
+        BuildFacilityComparisonRows();
+        return true;
+    }
+
+    private void BuildFacilityPlanningResultSnapshot(
+        IReadOnlyDictionary<string, NodeModel> nodesById,
+        IReadOnlyDictionary<string, List<FacilityCoverageInfo>> coverage)
+    {
+        var bestCostByNode = new Dictionary<NodeModel, double>();
+        var bestOriginByNode = new Dictionary<NodeModel, NodeModel>();
+        var coveringOriginsByNode = new Dictionary<NodeModel, IReadOnlyList<NodeModel>>();
+
+        foreach (var (nodeId, facilityCoverage) in coverage)
+        {
+            if (!nodesById.TryGetValue(nodeId, out var nodeModel))
+            {
+                continue;
+            }
+
+            var sorted = facilityCoverage
+                .OrderBy(candidate => candidate.TravelTime)
+                .ThenBy(candidate => candidate.FacilityDisplayName, Comparer)
+                .ToList();
+            if (sorted.Count == 0)
+            {
+                continue;
+            }
+
+            bestCostByNode[nodeModel] = sorted[0].TravelTime;
+            var coveringNodes = SelectedFacilityNodes
+                .Where(candidate => sorted.Any(coverageItem => Comparer.Equals(coverageItem.FacilityNodeId, candidate.Node.Id)))
+                .Select(candidate => candidate.Node)
+                .ToList();
+            if (coveringNodes.Count > 0)
+            {
+                coveringOriginsByNode[nodeModel] = coveringNodes;
+                bestOriginByNode[nodeModel] = coveringNodes.FirstOrDefault(origin => Comparer.Equals(origin.Id, sorted[0].FacilityNodeId)) ?? coveringNodes[0];
+            }
+        }
+
+        var reachableNodes = bestCostByNode.Keys.ToList();
+        var uncoveredNodes = network.Nodes
+            .Where(node => string.IsNullOrWhiteSpace(node.Id) || !coverage.ContainsKey(node.Id))
+            .ToList();
+        var overlapNodes = network.Nodes
+            .Where(node => !string.IsNullOrWhiteSpace(node.Id) && coverage.TryGetValue(node.Id, out var list) && list.Count > 1)
+            .ToList();
+
+        CurrentMultiOriginIsochrone = new MultiOriginIsochroneResult
+        {
+            BestCostByNode = bestCostByNode,
+            BestOriginByNode = bestOriginByNode,
+            CoveringOriginsByNode = coveringOriginsByNode,
+            ReachableNodes = reachableNodes,
+            UncoveredNodes = uncoveredNodes,
+            OverlapNodes = overlapNodes
+        };
     }
 
     public bool ComputeIsochrone(string originNodeId, double thresholdMinutes)
@@ -2006,14 +2162,11 @@ public sealed class WorkspaceViewModel : ObservableObject
             return true;
         }
 
-        IsochroneNodes = isochroneService.ComputeIsochrone(
-            origin,
-            sanitizedThreshold,
-            network.Nodes,
-            network.Edges,
-            IsochroneService.CostMetric.Time,
-            out var distances);
-        isochroneDistances = distances;
+        isochroneDistances = ComputeReachableNodeDistances(originNodeId, sanitizedThreshold);
+        var reachableIds = isochroneDistances.Keys.ToHashSet(Comparer);
+        IsochroneNodes = network.Nodes
+            .Where(node => !string.IsNullOrWhiteSpace(node.Id) && reachableIds.Contains(node.Id))
+            .ToHashSet();
         cachedIsochroneOriginId = originNodeId;
         cachedIsochroneThreshold = sanitizedThreshold;
         cachedIsochroneNetworkRevision = networkRevision;
@@ -2024,6 +2177,29 @@ public sealed class WorkspaceViewModel : ObservableObject
         NotifyVisualChanged();
         StatusText = $"Isochrone computed from '{origin.Name}' within {sanitizedThreshold:0.##} minutes.";
         return true;
+    }
+
+    private Dictionary<string, double> ComputeReachableNodeDistances(string originNodeId, double maxTravelTime)
+    {
+        if (string.IsNullOrWhiteSpace(originNodeId))
+        {
+            return new Dictionary<string, double>(Comparer);
+        }
+
+        var origin = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, originNodeId));
+        if (origin is null)
+        {
+            return new Dictionary<string, double>(Comparer);
+        }
+
+        _ = isochroneService.ComputeIsochrone(
+            origin,
+            Math.Max(0d, maxTravelTime),
+            network.Nodes,
+            network.Edges,
+            IsochroneService.CostMetric.Time,
+            out var distances);
+        return distances;
     }
 
     private void ClearIsochroneState()
@@ -2097,6 +2273,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         UncoveredPlanningItems.Clear();
         FacilityComparisonRows.Clear();
         cachedFacilityDistances.Clear();
+        facilityCoverageByNodeId = new Dictionary<string, List<FacilityCoverageInfo>>(Comparer);
         ClearDynamicReports();
         CurrentFilePath = currentFilePath;
         HasUnsavedChanges = false;
@@ -2108,6 +2285,10 @@ public sealed class WorkspaceViewModel : ObservableObject
     private void BuildSceneFromNetwork()
     {
         RefreshDraftSuggestions();
+        if (IsFacilityPlanningMode && SelectedFacilityNodes.Count > 0)
+        {
+            TryRebuildFacilityCoverageState();
+        }
         Scene.Nodes.Clear();
         Scene.Edges.Clear();
         var zoomTier = graphRenderer.GetZoomTier(Viewport.Zoom);
@@ -2130,7 +2311,12 @@ public sealed class WorkspaceViewModel : ObservableObject
                 StrokeColor = SKColor.Parse("#6AAED6"),
                 Badges = BuildNodeBadges(node),
                 ToolTipText = BuildNodeToolTipText(node, detailLines, null),
-                HasWarning = false
+                HasWarning = false,
+                CoveringFacilities = [],
+                IsFacilityCovered = false,
+                IsMultiFacilityCovered = false,
+                PrimaryFacilityId = null,
+                PrimaryFacilityTravelTime = null
             };
             var layout = GraphRenderer.GetOrBuildNodeLayout(sceneNode, zoomTier);
             GraphRenderer.ApplyLayoutBoundsKeepingCenter(sceneNode, layout);
@@ -4486,13 +4672,10 @@ public sealed class WorkspaceViewModel : ObservableObject
             .Where(facility => !string.IsNullOrWhiteSpace(facility.Node.Id))
             .Select(facility => facility.Node.Id)
             .ToHashSet(Comparer);
-        var reachableIds = (CurrentMultiOriginIsochrone?.ReachableNodes ?? [])
-            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
-            .Select(node => node.Id)
-            .ToHashSet(Comparer);
-        var overlapIds = (CurrentMultiOriginIsochrone?.OverlapNodes ?? [])
-            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
-            .Select(node => node.Id)
+        var reachableIds = facilityCoverageByNodeId.Keys.ToHashSet(Comparer);
+        var overlapIds = facilityCoverageByNodeId
+            .Where(pair => pair.Value.Count > 1)
+            .Select(pair => pair.Key)
             .ToHashSet(Comparer);
 
         foreach (var sceneNode in Scene.Nodes)
@@ -4500,6 +4683,11 @@ public sealed class WorkspaceViewModel : ObservableObject
             sceneNode.FillColor = SKColor.Parse("#163149");
             sceneNode.StrokeColor = SKColor.Parse("#6AAED6");
             sceneNode.VisualOpacity = 1d;
+            sceneNode.CoveringFacilities = [];
+            sceneNode.IsFacilityCovered = false;
+            sceneNode.IsMultiFacilityCovered = false;
+            sceneNode.PrimaryFacilityId = null;
+            sceneNode.PrimaryFacilityTravelTime = null;
             if (!baseNodesById.TryGetValue(sceneNode.Id, out var model))
             {
                 continue;
@@ -4509,6 +4697,16 @@ public sealed class WorkspaceViewModel : ObservableObject
             var isFacility = selectedFacilityIds.Contains(sceneNode.Id);
             var isReachable = reachableIds.Contains(sceneNode.Id);
             var isOverlap = overlapIds.Contains(sceneNode.Id);
+            var coverages = facilityCoverageByNodeId.TryGetValue(sceneNode.Id, out var coveringFacilities)
+                ? coveringFacilities.OrderBy(candidate => candidate.TravelTime).ThenBy(candidate => candidate.FacilityDisplayName, Comparer).ToList()
+                : [];
+            var primary = coverages.FirstOrDefault(candidate => candidate.IsPrimaryFacility) ?? coverages.FirstOrDefault();
+
+            sceneNode.CoveringFacilities = coverages;
+            sceneNode.IsFacilityCovered = coverages.Count > 0;
+            sceneNode.IsMultiFacilityCovered = coverages.Count > 1;
+            sceneNode.PrimaryFacilityId = primary?.FacilityNodeId;
+            sceneNode.PrimaryFacilityTravelTime = primary?.TravelTime;
 
             if (isFacility)
             {
@@ -4516,7 +4714,7 @@ public sealed class WorkspaceViewModel : ObservableObject
                 badges.Add("Facility");
             }
 
-            if (CurrentMultiOriginIsochrone is not null)
+            if (SelectedFacilityNodes.Count > 0)
             {
                 if (!isReachable)
                 {
@@ -4538,7 +4736,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             }
 
             sceneNode.Badges = badges.Distinct(Comparer).ToList();
-            sceneNode.ToolTipText = BuildFacilityPlanningToolTip(model, sceneNode.DetailLines);
+            sceneNode.ToolTipText = BuildFacilityPlanningToolTip(model, sceneNode.DetailLines, sceneNode.CoveringFacilities);
         }
 
         foreach (var edge in Scene.Edges)
@@ -4553,39 +4751,31 @@ public sealed class WorkspaceViewModel : ObservableObject
         }
     }
 
-    private string BuildFacilityPlanningToolTip(NodeModel node, IReadOnlyList<GraphNodeTextLine> detailLines)
+    private string BuildFacilityPlanningToolTip(
+        NodeModel node,
+        IReadOnlyList<GraphNodeTextLine> detailLines,
+        IReadOnlyList<FacilityCoverageInfo> coverages)
     {
         var baseText = BuildNodeToolTipText(node, detailLines, null);
-        if (CurrentMultiOriginIsochrone is null)
+        if (coverages.Count == 0)
         {
-            return $"{baseText}{Environment.NewLine}{Environment.NewLine}Facility planning: pending analysis.";
+            return $"{baseText}{Environment.NewLine}{Environment.NewLine}Facility planning: uncovered.";
         }
 
-        var isReachable = CurrentMultiOriginIsochrone.BestCostByNode.TryGetValue(node, out var bestCost);
-        var coveringOrigins = CurrentMultiOriginIsochrone.CoveringOriginsByNode.TryGetValue(node, out var origins)
-            ? origins
-            : [];
-        var bestFacility = CurrentMultiOriginIsochrone.BestOriginByNode.TryGetValue(node, out var originNode)
-            ? (string.IsNullOrWhiteSpace(originNode.Name) ? originNode.Id : originNode.Name)
-            : "N/A";
-        var coveringNames = coveringOrigins.Count == 0
-            ? "None"
-            : string.Join(", ", coveringOrigins.Select(origin => string.IsNullOrWhiteSpace(origin.Name) ? origin.Id : origin.Name));
-        var summary = isReachable
-            ? $"Reachable from {coveringOrigins.Count} facilities. Closest: {bestFacility}, {bestCost:0.##} minutes."
-            : "Reachable: no";
-
-        return string.Join(Environment.NewLine, new[]
+        var ordered = coverages
+            .OrderBy(candidate => candidate.TravelTime)
+            .ThenBy(candidate => candidate.FacilityDisplayName, Comparer)
+            .ToList();
+        var primary = ordered.FirstOrDefault(candidate => candidate.IsPrimaryFacility) ?? ordered[0];
+        var lines = new List<string>
         {
             baseText,
             string.Empty,
-            $"Reachable: {(isReachable ? "yes" : "no")}",
-            $"Best facility: {bestFacility}",
-            $"Best cost: {(isReachable ? bestCost.ToString("0.##", CultureInfo.InvariantCulture) : "N/A")}",
-            $"Covering facilities: {coveringOrigins.Count}",
-            $"Facilities: {coveringNames}",
-            summary
-        });
+            "Covered by:"
+        };
+        lines.AddRange(ordered.Select(candidate => $"- {candidate.FacilityDisplayName}: {candidate.TravelTime:0.##}"));
+        lines.Add($"Primary: {primary.FacilityDisplayName}");
+        return string.Join(Environment.NewLine, lines);
     }
 
     private static string AppendIsochroneText(string original, double distance, double ratio)
@@ -4605,12 +4795,14 @@ public sealed class WorkspaceViewModel : ObservableObject
     private void BuildUncoveredPlanningItems()
     {
         UncoveredPlanningItems.Clear();
-        if (CurrentMultiOriginIsochrone is null || SelectedFacilityNodes.Count == 0)
+        if (SelectedFacilityNodes.Count == 0)
         {
             return;
         }
 
-        foreach (var uncovered in CurrentMultiOriginIsochrone.UncoveredNodes.OrderBy(node => node.Name, Comparer))
+        foreach (var uncovered in network.Nodes
+                     .Where(node => string.IsNullOrWhiteSpace(node.Id) || !facilityCoverageByNodeId.ContainsKey(node.Id))
+                     .OrderBy(node => node.Name, Comparer))
         {
             var nearest = "N/A";
             var extraBudgetNeeded = "N/A";
@@ -4626,10 +4818,7 @@ public sealed class WorkspaceViewModel : ObservableObject
 
                 if (!cachedFacilityDistances.TryGetValue(origin.Id, out var map))
                 {
-                    map = multiOriginIsochroneService
-                        .ComputeCostsFromOrigin(origin, network.Nodes, network.Edges, double.MaxValue)
-                        .Where(pair => !string.IsNullOrWhiteSpace(pair.Key.Id))
-                        .ToDictionary(pair => pair.Key.Id, pair => pair.Value, Comparer);
+                    map = ComputeReachableNodeDistances(origin.Id, double.MaxValue);
                     cachedFacilityDistances[origin.Id] = map;
                 }
 
@@ -4664,7 +4853,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     private void BuildFacilityComparisonRows()
     {
         FacilityComparisonRows.Clear();
-        if (CurrentMultiOriginIsochrone is null || SelectedFacilityNodes.Count == 0)
+        if (SelectedFacilityNodes.Count == 0)
         {
             return;
         }
@@ -4672,16 +4861,21 @@ public sealed class WorkspaceViewModel : ObservableObject
         foreach (var facility in SelectedFacilityNodes)
         {
             var origin = facility.Node;
-            var costs = multiOriginIsochroneService.ComputeCostsFromOrigin(origin, network.Nodes, network.Edges, GetFacilityMaxTravelTime(facility));
-            var coveredNodes = costs.Keys.ToList();
-            var uniqueCoveredCount = coveredNodes.Count(node =>
-                CurrentMultiOriginIsochrone.CoveringOriginsByNode.TryGetValue(node, out var coveringOrigins) &&
+            if (!cachedFacilityDistances.TryGetValue(origin.Id, out var costs))
+            {
+                costs = ComputeReachableNodeDistances(origin.Id, GetFacilityMaxTravelTime(facility));
+                cachedFacilityDistances[origin.Id] = costs;
+            }
+
+            var coveredNodeIds = costs.Keys.ToList();
+            var uniqueCoveredCount = coveredNodeIds.Count(nodeId =>
+                facilityCoverageByNodeId.TryGetValue(nodeId, out var coveringOrigins) &&
                 coveringOrigins.Count == 1 &&
-                coveringOrigins.Any(candidate => Comparer.Equals(candidate.Id, origin.Id)));
+                coveringOrigins.Any(candidate => Comparer.Equals(candidate.FacilityNodeId, origin.Id)));
             FacilityComparisonRows.Add(new FacilityComparisonRowViewModel
             {
                 Facility = facility.DisplayName,
-                NodesCovered = coveredNodes.Count.ToString(CultureInfo.InvariantCulture),
+                NodesCovered = coveredNodeIds.Count.ToString(CultureInfo.InvariantCulture),
                 UniqueNodesCovered = uniqueCoveredCount.ToString(CultureInfo.InvariantCulture),
                 AverageCost = (costs.Count == 0 ? 0d : costs.Values.Average()).ToString("0.##", CultureInfo.InvariantCulture),
                 MaxCost = (costs.Count == 0 ? 0d : costs.Values.Max()).ToString("0.##", CultureInfo.InvariantCulture)

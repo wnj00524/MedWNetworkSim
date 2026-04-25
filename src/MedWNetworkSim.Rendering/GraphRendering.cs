@@ -1,4 +1,5 @@
 using SkiaSharp;
+using System.Globalization;
 
 namespace MedWNetworkSim.Rendering;
 
@@ -94,6 +95,14 @@ public enum ZoomTier
 
 public readonly record struct GraphNodeTextLine(string Text, bool IsEmphasized, bool IsWarning);
 
+public sealed class FacilityCoverageInfo
+{
+    public required string FacilityNodeId { get; init; }
+    public required string FacilityDisplayName { get; init; }
+    public required double TravelTime { get; init; }
+    public required bool IsPrimaryFacility { get; init; }
+}
+
 public sealed class GraphNodeSceneItem
 {
     public required string Id { get; init; }
@@ -108,6 +117,11 @@ public sealed class GraphNodeSceneItem
     public string ToolTipText { get; set; } = string.Empty;
     public required bool HasWarning { get; set; }
     public double VisualOpacity { get; set; } = 1d;
+    public IReadOnlyList<FacilityCoverageInfo> CoveringFacilities { get; set; } = [];
+    public bool IsFacilityCovered { get; set; }
+    public bool IsMultiFacilityCovered { get; set; }
+    public string? PrimaryFacilityId { get; set; }
+    public double? PrimaryFacilityTravelTime { get; set; }
     public string? LayoutContentKey { get; set; }
     public ZoomTier? LayoutZoomTier { get; set; }
     public GraphNodeTextLayoutResult? CachedLayout { get; set; }
@@ -524,7 +538,74 @@ public sealed class GraphRenderer
 
             canvas.DrawRoundRect(screenRect, NodeCornerRadius, NodeCornerRadius, fill);
             canvas.DrawRoundRect(screenRect, NodeCornerRadius, NodeCornerRadius, stroke);
+            DrawFacilityCoverageOverlay(canvas, node, screenRect, nodeAlpha);
         }
+    }
+
+    private static void DrawFacilityCoverageOverlay(SKCanvas canvas, GraphNodeSceneItem node, SKRect screenRect, byte nodeAlpha)
+    {
+        if (!node.IsFacilityCovered || node.CoveringFacilities.Count == 0)
+        {
+            return;
+        }
+
+        var outerRect = new SKRect(screenRect.Left - 5f, screenRect.Top - 5f, screenRect.Right + 5f, screenRect.Bottom + 5f);
+        if (node.CoveringFacilities.Count == 1)
+        {
+            using var singleStroke = new SKPaint
+            {
+                IsAntialias = true,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 2.3f,
+                Color = SKColor.Parse("#E9FFF0").WithAlpha(nodeAlpha)
+            };
+            canvas.DrawRoundRect(outerRect, NodeCornerRadius + 4f, NodeCornerRadius + 4f, singleStroke);
+
+            using var marker = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill, Color = SKColor.Parse("#E9FFF0").WithAlpha(nodeAlpha) };
+            var markerSize = 5f;
+            var markerX = outerRect.Right - 10f;
+            var markerY = outerRect.Top + 10f;
+            using var path = new SKPath();
+            path.MoveTo(markerX, markerY - markerSize);
+            path.LineTo(markerX + markerSize, markerY);
+            path.LineTo(markerX, markerY + markerSize);
+            path.LineTo(markerX - markerSize, markerY);
+            path.Close();
+            canvas.DrawPath(path, marker);
+            return;
+        }
+
+        using var segmentStroke = new SKPaint
+        {
+            IsAntialias = true,
+            Style = SKPaintStyle.Stroke,
+            StrokeCap = SKStrokeCap.Round,
+            StrokeWidth = 2.5f,
+            Color = SKColor.Parse("#FFD166").WithAlpha(nodeAlpha)
+        };
+        var cx = outerRect.MidX;
+        var cy = outerRect.MidY;
+        var radius = Math.Min(outerRect.Width, outerRect.Height) * 0.56f;
+        var segmentCount = Math.Min(6, node.CoveringFacilities.Count);
+        var sweep = 300f / segmentCount;
+        var gap = 60f / segmentCount;
+        var circle = new SKRect(cx - radius, cy - radius, cx + radius, cy + radius);
+        for (var index = 0; index < segmentCount; index++)
+        {
+            var startAngle = -90f + (index * (sweep + gap));
+            canvas.DrawArc(circle, startAngle, sweep, false, segmentStroke);
+        }
+
+        var badgeCenter = new SKPoint(outerRect.Right - 2f, outerRect.Top + 2f);
+        using var badgeFill = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill, Color = SKColor.Parse("#FFF4B5").WithAlpha(nodeAlpha) };
+        using var badgeStroke = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.4f, Color = SKColor.Parse("#1F2933").WithAlpha(nodeAlpha) };
+        canvas.DrawCircle(badgeCenter, 8f, badgeFill);
+        canvas.DrawCircle(badgeCenter, 8f, badgeStroke);
+
+        using var badgeTypeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold);
+        using var badgeFont = new SKFont(badgeTypeface, 9f);
+        using var badgeText = new SKPaint { IsAntialias = true, Color = SKColor.Parse("#1F2933").WithAlpha(nodeAlpha), TextAlign = SKTextAlign.Center };
+        canvas.DrawText(node.CoveringFacilities.Count.ToString(CultureInfo.InvariantCulture), badgeCenter.X, badgeCenter.Y + 3.1f, SKTextAlign.Center, badgeFont, badgeText);
     }
 
     private void DrawLabels(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize)

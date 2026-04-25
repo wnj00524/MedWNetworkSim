@@ -8,6 +8,7 @@ using MedWNetworkSim.Interaction;
 using MedWNetworkSim.Presentation;
 using MedWNetworkSim.Rendering;
 using MedWNetworkSim.UI;
+using System.Globalization;
 using System.Reflection;
 
 ScenarioCoordinateTransformPreservesLogicalInput();
@@ -55,6 +56,12 @@ ScenarioFacilityIso_OverlapIncludesMultiCoveredNodes();
 ScenarioFacilityIso_UncoveredExcludesReachable();
 ScenarioFacilityIso_BudgetLimitExcludesOverBudgetNodes();
 ScenarioFacilityIso_DirectedEdgesRespected();
+ScenarioFacilityPlanning_SingleFacilityCoversReachableNodes();
+ScenarioFacilityPlanning_MultipleFacilitiesShareCoverage();
+ScenarioFacilityPlanning_UniqueCoverageExcludesSharedNodes();
+ScenarioFacilityPlanning_RemovingFacilityPreservesOtherCoverage();
+ScenarioFacilityPlanning_ChangingMaxTravelTimeRecomputesCoverage();
+ScenarioFacilityPlanning_ComputeIsochroneStillWorks();
 
 Console.WriteLine("Avalonia verification passed.");
 
@@ -1597,6 +1604,16 @@ static void InvokePrivate(object instance, string methodName)
     method.Invoke(instance, null);
 }
 
+static void InvokePrivate(object instance, string methodName, params object?[] args)
+{
+    var methods = instance.GetType().GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+        .Where(candidate => string.Equals(candidate.Name, methodName, StringComparison.Ordinal))
+        .ToList();
+    var method = methods.FirstOrDefault(candidate => candidate.GetParameters().Length == args.Length)
+        ?? throw new InvalidOperationException($"Unable to find private method '{methodName}' with {args.Length} args.");
+    method.Invoke(instance, args);
+}
+
 static void TryDelete(string path)
 {
     if (File.Exists(path))
@@ -1679,8 +1696,8 @@ static void ScenarioFacilityIso_EmptyOriginsReturnsNoReachableNodes()
 
     var result = service.Compute(network.Nodes, network.Edges, [], 4d);
 
-    AssertEqual(0, result.ReachableNodes.Count, "facility iso empty origins reachable");
-    AssertEqual(network.Nodes.Count, result.UncoveredNodes.Count, "facility iso empty origins uncovered");
+    AssertTrue(result.ReachableNodes.Count == 0, "facility iso empty origins reachable");
+    AssertTrue(result.UncoveredNodes.Count == network.Nodes.Count, "facility iso empty origins uncovered");
 }
 
 static void ScenarioFacilityIso_SingleOriginMatchesLegacyIsochrone()
@@ -1693,7 +1710,7 @@ static void ScenarioFacilityIso_SingleOriginMatchesLegacyIsochrone()
     var legacyNodes = legacy.ComputeIsochrone(origin, 4d, network.Nodes, network.Edges, IsochroneService.CostMetric.Time, out _);
     var multiResult = multi.Compute(network.Nodes, network.Edges, [origin], 4d);
 
-    AssertEqual(legacyNodes.Count, multiResult.ReachableNodes.Count, "facility iso single origin count");
+    AssertTrue(legacyNodes.Count == multiResult.ReachableNodes.Count, "facility iso single origin count");
 }
 
 static void ScenarioFacilityIso_MultipleOriginsCombineCoverage()
@@ -1772,6 +1789,87 @@ static void ScenarioFacilityIso_DirectedEdgesRespected()
     var fromY = service.Compute(network.Nodes, network.Edges, [network.Nodes[1]], 2d);
 
     AssertTrue(fromY.ReachableNodes.All(node => node.Id != "X"), "facility iso directed edges respected");
+}
+
+static void ScenarioFacilityPlanning_SingleFacilityCoversReachableNodes()
+{
+    var workspace = BuildFacilityPlanningWorkspace();
+    workspace.SetFacilityPlanningMode(true);
+    workspace.ToggleFacilityOriginById("A");
+
+    AssertTrue(workspace.CurrentMultiOriginIsochrone is not null, "facility planning single coverage result exists");
+    AssertTrue(workspace.CurrentMultiOriginIsochrone!.ReachableNodes.Any(node => node.Id == "C"), "facility planning single coverage reaches C");
+}
+
+static void ScenarioFacilityPlanning_MultipleFacilitiesShareCoverage()
+{
+    var workspace = BuildFacilityPlanningWorkspace();
+    workspace.SetFacilityPlanningMode(true);
+    workspace.ToggleFacilityOriginById("A");
+    workspace.ToggleFacilityOriginById("E");
+
+    var nodeC = workspace.Scene.Nodes.Single(node => node.Id == "C");
+    AssertTrue(nodeC.CoveringFacilities.Count >= 2, "facility planning shared node has multiple coverings");
+    AssertTrue(nodeC.IsMultiFacilityCovered, "facility planning shared node flag");
+}
+
+static void ScenarioFacilityPlanning_UniqueCoverageExcludesSharedNodes()
+{
+    var workspace = BuildFacilityPlanningWorkspace();
+    workspace.SetFacilityPlanningMode(true);
+    workspace.ToggleFacilityOriginById("A");
+    workspace.ToggleFacilityOriginById("E");
+    workspace.RunMultiOriginIsochrone();
+
+    var rowForA = workspace.FacilityComparisonRows.Single(row => row.Facility == "A");
+    var rowForE = workspace.FacilityComparisonRows.Single(row => row.Facility == "E");
+    AssertTrue(double.Parse(rowForA.UniqueNodesCovered, CultureInfo.InvariantCulture) < double.Parse(rowForA.NodesCovered, CultureInfo.InvariantCulture), "facility planning unique excludes overlap A");
+    AssertTrue(double.Parse(rowForE.UniqueNodesCovered, CultureInfo.InvariantCulture) < double.Parse(rowForE.NodesCovered, CultureInfo.InvariantCulture), "facility planning unique excludes overlap E");
+}
+
+static void ScenarioFacilityPlanning_RemovingFacilityPreservesOtherCoverage()
+{
+    var workspace = BuildFacilityPlanningWorkspace();
+    workspace.SetFacilityPlanningMode(true);
+    workspace.ToggleFacilityOriginById("A");
+    workspace.ToggleFacilityOriginById("E");
+    workspace.ToggleFacilityOriginById("E");
+
+    var nodeC = workspace.Scene.Nodes.Single(node => node.Id == "C");
+    AssertTextEqual("A", nodeC.PrimaryFacilityId ?? string.Empty, "facility planning remove keeps remaining primary");
+    AssertTrue(nodeC.CoveringFacilities.Count == 1, "facility planning remove keeps one covering");
+}
+
+static void ScenarioFacilityPlanning_ChangingMaxTravelTimeRecomputesCoverage()
+{
+    var workspace = BuildFacilityPlanningWorkspace();
+    workspace.SetFacilityPlanningMode(true);
+    workspace.ToggleFacilityOriginById("A");
+
+    var facility = workspace.SelectedFacilityNodes.Single();
+    facility.MaxTravelTimeText = "1";
+    AssertTrue(workspace.Scene.Nodes.Single(node => node.Id == "D").IsFacilityCovered is false, "facility planning low budget excludes D");
+
+    facility.MaxTravelTimeText = "5";
+    AssertTrue(workspace.Scene.Nodes.Single(node => node.Id == "D").IsFacilityCovered, "facility planning increased budget includes D");
+}
+
+static void ScenarioFacilityPlanning_ComputeIsochroneStillWorks()
+{
+    var workspace = BuildFacilityPlanningWorkspace();
+    workspace.SetIsochroneMode(true);
+
+    var success = workspace.ComputeIsochrone("A", 2d);
+    AssertTrue(success, "facility planning compute isochrone still succeeds");
+    AssertTrue(workspace.IsochroneNodes.Any(node => node.Id == "C"), "facility planning compute isochrone reaches C");
+}
+
+static WorkspaceViewModel BuildFacilityPlanningWorkspace()
+{
+    var workspace = new WorkspaceViewModel();
+    var network = CreateFacilityIsoNetwork();
+    InvokePrivate(workspace, "LoadNetwork", network, "Loaded for facility planning verification.", null);
+    return workspace;
 }
 
 static NetworkModel CreateFacilityIsoNetwork()

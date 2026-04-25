@@ -1,4 +1,6 @@
 using Avalonia;
+using Avalonia.Controls;
+using Avalonia.VisualTree;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Services;
 using MedWNetworkSim.App.Services.Pathfinding;
@@ -6,6 +8,7 @@ using MedWNetworkSim.Interaction;
 using MedWNetworkSim.Presentation;
 using MedWNetworkSim.Rendering;
 using MedWNetworkSim.UI;
+using System.Reflection;
 
 ScenarioCoordinateTransformPreservesLogicalInput();
 ScenarioCoordinateTransformClampsPointerOutsideCanvas();
@@ -30,6 +33,7 @@ ScenarioRouteEditorWorkspaceModeTransitions();
 ScenarioRouteEditorCanAddTrafficRule();
 ScenarioRouteEditorValidationBlocksSave();
 ScenarioRouteEditorDeleteReturnsToNormalWorkspace();
+ScenarioTrafficTypesRailButtonOpensAndClosesTrafficWorkspace();
 ScenarioTrafficDefinitionRenameAndRemovalPropagate();
 ScenarioNodeEditsPersistThroughSaveLoad();
 ScenarioToolCommandsReflectRealModes();
@@ -903,6 +907,43 @@ static void ScenarioRouteEditorDeleteReturnsToNormalWorkspace()
     }
 }
 
+static void ScenarioTrafficTypesRailButtonOpensAndClosesTrafficWorkspace()
+{
+    var shell = new ShellWindow();
+    var trafficButton = shell
+        .GetVisualDescendants()
+        .OfType<Button>()
+        .FirstOrDefault(button => NormalizeButtonLabel(button.Content) == "Traffic Types");
+
+    AssertTrue(trafficButton is not null, "traffic types rail button exists");
+    AssertTrue(trafficButton!.Focusable, "traffic types rail button is keyboard focusable");
+    AssertTextEqual(
+        "Edit traffic types used by nodes and routes",
+        ToolTip.GetTip(trafficButton)?.ToString() ?? string.Empty,
+        "traffic types rail button tooltip");
+
+    trafficButton.Command?.Execute(null);
+
+    var trafficHost = GetPrivateField<Border>(shell, "trafficTypeWorkspaceHost");
+    var standardHost = GetPrivateField<Grid>(shell, "standardWorkspaceHost");
+    var shellWorkspaceMode = GetPrivateField<object>(shell, "shellWorkspaceMode");
+    AssertTrue(trafficHost?.IsVisible == true, "traffic types rail button opens traffic workspace");
+    AssertTrue(standardHost?.IsVisible == false, "traffic types workspace hides standard workspace");
+    AssertTextEqual("TrafficTypes", shellWorkspaceMode?.ToString() ?? string.Empty, "traffic types workspace mode");
+
+    var backButton = trafficHost!
+        .GetVisualDescendants()
+        .OfType<Button>()
+        .FirstOrDefault(button => NormalizeButtonLabel(button.Content) == "Back to Network");
+    AssertTrue(backButton is not null, "traffic types workspace back button exists");
+    backButton!.Command?.Execute(null);
+
+    shellWorkspaceMode = GetPrivateField<object>(shell, "shellWorkspaceMode");
+    AssertTrue(trafficHost.IsVisible == false, "traffic workspace back button closes traffic workspace");
+    AssertTrue(standardHost?.IsVisible == true, "traffic workspace back button restores standard workspace");
+    AssertTextEqual("Standard", shellWorkspaceMode?.ToString() ?? string.Empty, "traffic workspace returns to standard mode");
+}
+
 static void ScenarioTrafficDefinitionRenameAndRemovalPropagate()
 {
     var path = WriteTempNetwork(new NetworkModel
@@ -1599,6 +1640,18 @@ static void AssertNumberNear(double expected, double actual, double tolerance, s
     {
         throw new InvalidOperationException($"{scenario} expected {expected:0.###} but got {actual:0.###}.");
     }
+}
+
+static string NormalizeButtonLabel(object? content)
+{
+    var text = content?.ToString() ?? string.Empty;
+    return text.StartsWith("● ", StringComparison.Ordinal) ? text[2..].TrimStart() : text;
+}
+
+static T? GetPrivateField<T>(object instance, string fieldName) where T : class
+{
+    var field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+    return field?.GetValue(instance) as T;
 }
 
 sealed class AutoCompleteBindingHost : ObservableObject

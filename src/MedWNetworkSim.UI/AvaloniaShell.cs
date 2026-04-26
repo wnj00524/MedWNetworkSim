@@ -2665,10 +2665,12 @@ public sealed class ShellWindow : Window
         list.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedLayerItem), BindingMode.TwoWay));
         list.ItemTemplate = new FuncDataTemplate<LayerListItemViewModel>((item, _) => new StackPanel
         {
+            Spacing = 2,
             Children =
             {
                 new TextBlock { Text = $"{item.Name} ({item.TypeLabel})" },
-                new TextBlock { Text = $"Nodes {item.NodeCount} · Edges {item.EdgeCount} · {item.VisibilityLabel} · {item.LockLabel}", FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
+                new TextBlock { Text = $"Nodes {item.NodeCount} · Edges {item.EdgeCount}", FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) },
+                new TextBlock { Text = $"Visible: {item.VisibilityLabel} · Locked: {item.LockLabel}", FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
             }
         });
 
@@ -2679,16 +2681,34 @@ public sealed class ShellWindow : Window
             {
                 new TextBlock { [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.SelectedLayerHelperText)), TextWrapping = TextWrapping.Wrap },
                 list,
+                BuildLabeledInput("Selected layer name", nameof(WorkspaceViewModel.SelectedLayerNameText)),
                 new StackPanel
                 {
                     Orientation = Orientation.Horizontal,
                     Spacing = 6,
                     Children =
                     {
-                        BuildButton("Add layer", viewModel.AddLayerCommand),
+                        BuildButton("Add Physical layer", viewModel.AddPhysicalLayerCommand, toolTip: "Physical layers model real routes such as roads, rail, or paths."),
+                        BuildButton("Add Logical layer", viewModel.AddLogicalLayerCommand, toolTip: "Logical layers model supply and demand relationships."),
+                        BuildButton("Add Policy layer", viewModel.AddPolicyLayerCommand, toolTip: "Policy layers model rules that block, allow, or change movement."),
+                        BuildButton("Rename selected layer", viewModel.RenameLayerCommand),
                         BuildButton("Delete layer", viewModel.DeleteLayerCommand),
+                        BuildButton("Toggle visibility", viewModel.ToggleLayerVisibilityCommand),
+                        BuildButton("Toggle lock", viewModel.ToggleLayerLockCommand)
+                    }
+                },
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 6,
+                    Children =
+                    {
                         BuildButton("Set selected node(s) to layer", viewModel.AssignSelectedNodesToLayerCommand),
-                        BuildButton("Set selected edge(s) to layer", viewModel.AssignSelectedEdgesToLayerCommand)
+                        BuildButton("Set selected edge(s) to layer", viewModel.AssignSelectedEdgesToLayerCommand),
+                        BuildButton("Show all layers", viewModel.ShowAllLayersCommand),
+                        BuildButton("Hide non-selected", viewModel.HideNonSelectedLayersCommand),
+                        BuildButton("Lock non-selected", viewModel.LockNonSelectedLayersCommand),
+                        BuildButton("Unlock all layers", viewModel.UnlockAllLayersCommand)
                     }
                 }
             }
@@ -2703,6 +2723,14 @@ public sealed class ShellWindow : Window
         var eventList = new ListBox { MinHeight = 140 };
         eventList.Bind(ItemsControl.ItemsSourceProperty, new Binding("SelectedScenarioDefinition.Events"));
         eventList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedScenarioEvent), BindingMode.TwoWay));
+        eventList.ItemTemplate = new FuncDataTemplate<ScenarioEventModel>((item, _) => new StackPanel
+        {
+            Children =
+            {
+                new TextBlock { Text = $"{(item.IsEnabled ? "☑" : "☐")} {item.Kind} · {item.Name}", FontWeight = FontWeight.SemiBold },
+                new TextBlock { Text = $"Target {item.TargetId ?? "None"} · Start {item.Time:0.##} · End {(item.EndTime?.ToString("0.##") ?? "None")} · Value {item.Value:0.##}", FontSize = 11 }
+            }
+        });
         return new StackPanel
         {
             Spacing = 8,
@@ -2710,8 +2738,24 @@ public sealed class ShellWindow : Window
             {
                 new TextBlock { Text = "Scenarios test what happens when demand, cost, or network availability changes.", TextWrapping = TextWrapping.Wrap },
                 scenarioList,
+                BuildLabeledInput("Scenario name", "SelectedScenarioDefinition.Name"),
+                BuildLabeledInput("Description", "SelectedScenarioDefinition.Description"),
+                BuildLabeledTextBox("Start time", "SelectedScenarioDefinition.StartTime"),
+                BuildLabeledTextBox("End time", "SelectedScenarioDefinition.EndTime"),
+                BuildLabeledTextBox("Step size", "SelectedScenarioDefinition.DeltaTime"),
+                BuildLabeledCheckBox("Enable adaptive routing", "SelectedScenarioDefinition.EnableAdaptiveRouting"),
                 eventList,
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { BuildButton("Create scenario", viewModel.CreateScenarioCommand), BuildButton("Add event", viewModel.AddScenarioEventCommand), BuildButton("Delete event", viewModel.DeleteScenarioEventCommand), BuildButton("Run scenario", viewModel.RunScenarioCommand, isPrimary: true) } },
+                BuildLabeledInput("Event name", "SelectedScenarioEvent.Name"),
+                BuildLabeledComboBox("Event type", nameof(WorkspaceViewModel.ScenarioEventKindOptions), "SelectedScenarioEvent.Kind"),
+                BuildLabeledComboBox("Target kind", nameof(WorkspaceViewModel.ScenarioTargetKindOptions), "SelectedScenarioEvent.TargetKind"),
+                BuildLabeledInput("Target node/edge id", "SelectedScenarioEvent.TargetId"),
+                BuildLabeledInput("Traffic type", "SelectedScenarioEvent.TrafficTypeIdOrName"),
+                BuildLabeledTextBox("Start", "SelectedScenarioEvent.Time"),
+                BuildLabeledTextBox("End", "SelectedScenarioEvent.EndTime"),
+                BuildLabeledTextBox("Value", "SelectedScenarioEvent.Value"),
+                BuildLabeledCheckBox("Enabled", "SelectedScenarioEvent.IsEnabled"),
+                BuildLabeledInput("Notes", "SelectedScenarioEvent.Notes"),
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { BuildButton("Create scenario", viewModel.CreateScenarioCommand), BuildButton("Rename scenario", viewModel.RenameScenarioCommand), BuildButton("Duplicate scenario", viewModel.DuplicateScenarioCommand), BuildButton("Delete scenario", viewModel.DeleteScenarioCommand), BuildButton("Add event", viewModel.AddScenarioEventCommand), BuildButton("Delete event", viewModel.DeleteScenarioEventCommand), BuildButton("Run scenario", viewModel.RunScenarioCommand, isPrimary: true) } },
                 BuildQuickStat("Result", nameof(WorkspaceViewModel.ScenarioResultSummary)),
                 new ItemsControl { [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ScenarioWarnings)) }
             }
@@ -2727,13 +2771,13 @@ public sealed class ShellWindow : Window
         {
             Children =
             {
-                new TextBlock { Text = $"{item.SeverityLabel} · {item.IssueTitle}", FontWeight = FontWeight.Bold },
+                new TextBlock { Text = $"{item.SeverityIcon} {item.SeverityLabel} · {item.IssueTitle}", FontWeight = FontWeight.Bold },
                 new TextBlock { Text = item.TargetName },
                 new TextBlock { Text = item.Explanation, TextWrapping = TextWrapping.Wrap },
                 new TextBlock { Text = $"Suggested: {item.SuggestedAction}", TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
             }
         });
-        return new StackPanel { Spacing = 8, Children = { list, BuildButton("Select", viewModel.SelectIssueCommand) } };
+        return new StackPanel { Spacing = 8, Children = { list, BuildButton("Select", viewModel.SelectIssueCommand), BuildButton("Show on canvas", viewModel.SelectIssueCommand) } };
     }
 
     private static Control BuildExplanationPanel()
@@ -2743,9 +2787,11 @@ public sealed class ShellWindow : Window
             Spacing = 6,
             Children =
             {
+                BuildQuickStat("Section", nameof(WorkspaceViewModel.ExplanationTitle)),
                 BuildQuickStat("Summary", nameof(WorkspaceViewModel.ExplanationSummary)),
                 new ItemsControl { [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ExplanationCauses)) },
-                new ItemsControl { [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ExplanationActions)) }
+                new ItemsControl { [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ExplanationActions)) },
+                new ItemsControl { [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ExplanationRelatedIssues)) }
             }
         };
     }

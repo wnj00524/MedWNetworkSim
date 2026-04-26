@@ -145,3 +145,11 @@ The repository now includes additive foundations for advanced simulation without
 - **Economics/bottleneck/explainability/data I/O foundations** include economic summary calculation, top issue detection, explainability services, demand CSV import validation, and JSON/CSV simulation replay export.
 
 These additions are modular and backward compatible; existing behavior remains the default unless new options are enabled.
+
+### Advanced UI workflows now available
+
+- **Layers panel**: add `Physical`, `Logical`, and `Policy` layers; rename/delete safe-empty layers; assign selected nodes/edges; show/hide and lock/unlock layer groups.
+- **Scenario editor**: create, rename, duplicate, delete, and run scenarios; edit scenario timing fields; edit event fields (type, target, timing, value, notes, enabled state).
+- **Scenario results**: run summaries plus warning lists are surfaced directly in the scenario panel.
+- **Top Issues + Explanation**: issue severity includes icon + text and selection syncs with explanation sections for nodes and routes.
+- **Policy-aware simulation**: policy effects and scenario multipliers flow through simulation outputs and validation.

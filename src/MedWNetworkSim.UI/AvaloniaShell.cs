@@ -875,6 +875,8 @@ public sealed class ShellWindow : Window
     private Control? trafficTypeWorkspaceFocusTarget;
     private Border? edgeEditorWorkspaceHost;
     private Control? edgeEditorWorkspaceFocusTarget;
+    private Border? scenarioEditorWorkspaceHost;
+    private Control? scenarioEditorWorkspaceFocusTarget;
     private Border? toolRailHost;
     private Border? canvasHost;
     private Border? inspectorHost;
@@ -899,7 +901,8 @@ public sealed class ShellWindow : Window
     private enum ShellWorkspaceMode
     {
         Standard,
-        TrafficTypes
+        TrafficTypes,
+        ScenarioEditor
     }
 
     private enum UnsavedChangesChoice
@@ -926,8 +929,8 @@ public sealed class ShellWindow : Window
         DataContext = viewModel;
         Width = 1760;
         Height = 1100;
-        MinWidth = 1380;
-        MinHeight = 900;
+        MinWidth = 1180;
+        MinHeight = 720;
         Background = new SolidColorBrush(AvaloniaDashboardTheme.AppBackground);
         ExtendClientAreaToDecorationsHint = true;
         ExtendClientAreaChromeHints = ExtendClientAreaChromeHints.NoChrome;
@@ -953,6 +956,10 @@ public sealed class ShellWindow : Window
                 if (viewModel.IsEdgeEditorWorkspaceMode)
                 {
                     FocusEdgeEditorWorkspaceEditor();
+                }
+                else if (viewModel.IsScenarioEditorWorkspaceMode)
+                {
+                    FocusScenarioEditorWorkspace();
                 }
                 else
                 {
@@ -1016,6 +1023,8 @@ public sealed class ShellWindow : Window
         trafficTypeWorkspaceHost.IsVisible = false;
         edgeEditorWorkspaceHost = BuildEdgeEditorWorkspace(viewModel);
         edgeEditorWorkspaceHost.IsVisible = false;
+        scenarioEditorWorkspaceHost = BuildScenarioEditorWorkspace(viewModel);
+        scenarioEditorWorkspaceHost.IsVisible = false;
 
         var contentRoot = new Grid
         {
@@ -1023,7 +1032,8 @@ public sealed class ShellWindow : Window
             {
                 standardWorkspaceHost,
                 trafficTypeWorkspaceHost,
-                edgeEditorWorkspaceHost
+                edgeEditorWorkspaceHost,
+                scenarioEditorWorkspaceHost
             }
         };
 
@@ -1189,6 +1199,7 @@ public sealed class ShellWindow : Window
         var addNodeButton = BuildToolButton("Add Node", "Click the canvas to place a new node.", viewModel.AddNodeToolCommand);
         var connectButton = BuildToolButton("Connect", "Choose a source node, then a target node to create a route.", viewModel.ConnectToolCommand);
         var trafficTypesButton = BuildToolButton("Traffic Types", "Edit traffic types used by nodes and routes", new RelayCommand(EnterTrafficTypeWorkspace));
+        var scenariosButton = BuildToolButton("Scenarios", "Open the full scenario workspace.", viewModel.OpenScenarioEditorCommand);
         var isochroneButton = BuildToolButton("Isochrone Mode", "Click a node and enter a minute threshold to highlight reachable nodes.", viewModel.ToggleIsochroneModeCommand);
         var facilityButton = BuildToolButton("Facility Planning", "Select multiple facilities and run a shared budget analysis.", viewModel.ToggleFacilityPlanningModeCommand);
         var deleteButton = BuildToolButton("Delete", "Delete the current selection.", viewModel.DeleteSelectionCommand);
@@ -1199,6 +1210,7 @@ public sealed class ShellWindow : Window
             ApplyToolButtonState(addNodeButton, viewModel.IsAddNodeToolActive);
             ApplyToolButtonState(connectButton, viewModel.IsConnectToolActive);
             ApplyToolButtonState(trafficTypesButton, shellWorkspaceMode == ShellWorkspaceMode.TrafficTypes);
+            ApplyToolButtonState(scenariosButton, shellWorkspaceMode == ShellWorkspaceMode.ScenarioEditor || viewModel.IsScenarioEditorWorkspaceMode);
             ApplyToolButtonState(isochroneButton, viewModel.IsIsochroneModeEnabled);
             ApplyToolButtonState(facilityButton, viewModel.IsFacilityPlanningMode);
         }
@@ -1230,6 +1242,7 @@ public sealed class ShellWindow : Window
                 addNodeButton,
                 connectButton,
                 trafficTypesButton,
+                scenariosButton,
                 isochroneButton,
                 facilityButton,
                 deleteButton
@@ -1704,6 +1717,255 @@ public sealed class ShellWindow : Window
             header: "Traffic Workspace",
             padding: new Thickness(14),
             radius: new CornerRadius(18));
+    }
+
+    private Border BuildScenarioEditorWorkspace(WorkspaceViewModel viewModel)
+    {
+        var heading = new TextBlock
+        {
+            Text = "Scenario Workspace",
+            FontSize = 20,
+            FontWeight = FontWeight.Bold,
+            Focusable = true,
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+        };
+        scenarioEditorWorkspaceFocusTarget = heading;
+
+        var header = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto,Auto"),
+            ColumnSpacing = 8,
+            Children =
+            {
+                new StackPanel
+                {
+                    Spacing = 3,
+                    Children =
+                    {
+                        heading,
+                        new TextBlock
+                        {
+                            Text = "Create, edit, and validate scenario runs without crowding the dashboard strip.",
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                            TextWrapping = TextWrapping.Wrap
+                        }
+                    }
+                }
+            }
+        };
+
+        var saveButton = BuildBoundButton("Save scenario", "ScenarioEditor.SaveScenarioCommand");
+        saveButton.Classes.Add("primary");
+        var cancelButton = BuildButton("Cancel", new RelayCommand(() => _ = CloseScenarioEditorWithConfirmationAsync()), toolTip: "Return to the network workspace.");
+        var addEventButton = BuildBoundButton("Add event", "ScenarioEditor.AddScenarioEventCommand");
+        var deleteScenarioButton = BuildDestructiveButton("Delete scenario", new RelayCommand(() => _ = ConfirmDeleteScenarioAsync()), toolTip: "Delete the selected scenario after confirmation.");
+        Grid.SetColumn(saveButton, 1);
+        Grid.SetColumn(cancelButton, 2);
+        Grid.SetColumn(addEventButton, 3);
+        Grid.SetColumn(deleteScenarioButton, 4);
+        header.Children.Add(saveButton);
+        header.Children.Add(cancelButton);
+        header.Children.Add(addEventButton);
+        header.Children.Add(deleteScenarioButton);
+
+        var scenarioList = new ListBox
+        {
+            MinHeight = 220
+        };
+        scenarioList.Bind(ItemsControl.ItemsSourceProperty, new Binding("ScenarioEditor.ScenarioDefinitions"));
+        scenarioList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding("ScenarioEditor.SelectedScenarioDefinition", BindingMode.TwoWay));
+        scenarioList.ItemTemplate = new FuncDataTemplate<ScenarioDefinitionModel>((item, _) => new StackPanel
+        {
+            Spacing = 3,
+            Margin = new Thickness(0, 3),
+            Children =
+            {
+                new TextBlock { Text = string.IsNullOrWhiteSpace(item.Name) ? "(unnamed scenario)" : item.Name, FontWeight = FontWeight.SemiBold },
+                new TextBlock { Text = $"{item.Events.Count} event(s) | {item.StartTime:0.##} to {item.EndTime:0.##}", FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
+            }
+        });
+        ApplyFocusVisual(scenarioList);
+
+        var emptyState = new TextBlock
+        {
+            Text = "No scenarios yet. Create a scenario to test closures, demand spikes, or routing changes.",
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
+        };
+        emptyState.Bind(IsVisibleProperty, new Binding("ScenarioEditor.HasScenarios") { Converter = InverseBoolConverter.Instance });
+
+        var leftPane = BuildScenarioEditorCard("Scenarios", "Select a saved scenario or create a new one.",
+            new StackPanel
+            {
+                Spacing = 10,
+                Children =
+                {
+                    BuildBoundButton("Create scenario", "ScenarioEditor.CreateScenarioCommand"),
+                    emptyState,
+                    scenarioList,
+                    BuildQuickStat("Run result", nameof(WorkspaceViewModel.ScenarioResultSummary))
+                }
+            });
+
+        var detailsGrid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto"),
+            ColumnSpacing = 12,
+            RowSpacing = 10,
+            Children =
+            {
+                BuildValidatedScenarioInput("Scenario name", "ScenarioEditor.NameText", "ScenarioEditor.ScenarioNameError"),
+                BuildValidatedScenarioInput("Description", "ScenarioEditor.DescriptionText", string.Empty),
+                BuildValidatedScenarioInput("Start time", "ScenarioEditor.StartTimeText", "ScenarioEditor.ScenarioStartTimeError"),
+                BuildValidatedScenarioInput("End time", "ScenarioEditor.EndTimeText", "ScenarioEditor.ScenarioEndTimeError"),
+                BuildValidatedScenarioInput("Step size", "ScenarioEditor.DeltaTimeText", "ScenarioEditor.ScenarioDeltaTimeError"),
+                BuildLabeledCheckBox("Adaptive routing", "ScenarioEditor.EnableAdaptiveRouting")
+            }
+        };
+        Grid.SetColumn(detailsGrid.Children[1], 1);
+        Grid.SetRow(detailsGrid.Children[2], 1);
+        Grid.SetRow(detailsGrid.Children[3], 1);
+        Grid.SetColumn(detailsGrid.Children[3], 1);
+        Grid.SetRow(detailsGrid.Children[4], 2);
+        Grid.SetRow(detailsGrid.Children[5], 2);
+        Grid.SetColumn(detailsGrid.Children[5], 1);
+
+        var eventList = new ListBox
+        {
+            MinHeight = 180
+        };
+        eventList.Bind(ItemsControl.ItemsSourceProperty, new Binding("ScenarioEditor.EventItems"));
+        eventList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding("ScenarioEditor.SelectedEventItem", BindingMode.TwoWay));
+        eventList.ItemTemplate = new FuncDataTemplate<ScenarioEventListItem>((item, _) =>
+        {
+            var row = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("1.5*,1.1*,1.3*,1*,1*"),
+                ColumnSpacing = 8,
+                Margin = new Thickness(0, 4)
+            };
+            var name = new TextBlock { Text = item.Name, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap };
+            var kind = new TextBlock { Text = item.KindText, TextWrapping = TextWrapping.Wrap };
+            var target = new TextBlock { Text = item.TargetText, TextWrapping = TextWrapping.Wrap };
+            var timing = new TextBlock { Text = item.TimingText, TextWrapping = TextWrapping.Wrap };
+            var value = new TextBlock { Text = item.ValueStatusText, TextWrapping = TextWrapping.Wrap };
+            Grid.SetColumn(kind, 1);
+            Grid.SetColumn(target, 2);
+            Grid.SetColumn(timing, 3);
+            Grid.SetColumn(value, 4);
+            row.Children.Add(name);
+            row.Children.Add(kind);
+            row.Children.Add(target);
+            row.Children.Add(timing);
+            row.Children.Add(value);
+            return row;
+        });
+        ApplyFocusVisual(eventList);
+
+        var eventActions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            Children =
+            {
+                BuildBoundButton("Add event", "ScenarioEditor.AddScenarioEventCommand"),
+                BuildBoundButton("Edit event", "ScenarioEditor.EditScenarioEventCommand"),
+                BuildBoundButton("Duplicate event", "ScenarioEditor.DuplicateScenarioEventCommand"),
+                BuildBoundButton("Delete event", "ScenarioEditor.DeleteScenarioEventCommand")
+            }
+        };
+
+        var targetPicker = BuildLabeledComboBox("Target", "ScenarioEditor.TargetIdOptions", "ScenarioEditor.EventTargetIdText");
+        targetPicker.Bind(IsVisibleProperty, new Binding("ScenarioEditor.HasSelectedEvent"));
+        var trafficPicker = BuildLabeledComboBox("Traffic type", "ScenarioEditor.TrafficTypeOptions", "ScenarioEditor.EventTrafficTypeText");
+        trafficPicker.Bind(IsVisibleProperty, new Binding("ScenarioEditor.EventUsesTrafficType"));
+        var valueInput = BuildValidatedScenarioInput("Value", "ScenarioEditor.EventValueText", "ScenarioEditor.EventValueError");
+        valueInput.Bind(IsVisibleProperty, new Binding("ScenarioEditor.EventUsesValue"));
+
+        var eventDetailsGrid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto"),
+            ColumnSpacing = 12,
+            RowSpacing = 10,
+            Children =
+            {
+                BuildValidatedScenarioInput("Event name", "ScenarioEditor.EventNameText", "ScenarioEditor.EventNameError"),
+                BuildLabeledComboBox("Event type", "ScenarioEditor.ScenarioEventKindOptions", "ScenarioEditor.EventKind"),
+                targetPicker,
+                trafficPicker,
+                BuildValidatedScenarioInput("Start", "ScenarioEditor.EventStartTimeText", "ScenarioEditor.EventStartTimeError"),
+                BuildValidatedScenarioInput("End", "ScenarioEditor.EventEndTimeText", "ScenarioEditor.EventEndTimeError"),
+                valueInput,
+                BuildLabeledCheckBox("Enabled", "ScenarioEditor.EventIsEnabled")
+            }
+        };
+        Grid.SetColumn(eventDetailsGrid.Children[1], 1);
+        Grid.SetRow(eventDetailsGrid.Children[2], 1);
+        Grid.SetRow(eventDetailsGrid.Children[3], 1);
+        Grid.SetColumn(eventDetailsGrid.Children[3], 1);
+        Grid.SetRow(eventDetailsGrid.Children[4], 2);
+        Grid.SetRow(eventDetailsGrid.Children[5], 2);
+        Grid.SetColumn(eventDetailsGrid.Children[5], 1);
+        Grid.SetRow(eventDetailsGrid.Children[6], 3);
+        Grid.SetRow(eventDetailsGrid.Children[7], 3);
+        Grid.SetColumn(eventDetailsGrid.Children[7], 1);
+
+        var mainPaneContent = new StackPanel
+        {
+            Spacing = 14,
+            Children =
+            {
+                BuildScenarioEditorCard("Scenario details", "Name the scenario and describe the decision it tests.", detailsGrid),
+                BuildScenarioEditorCard("Events", "Review event timing, targets, values, and enabled status.", new StackPanel { Spacing = 10, Children = { eventActions, eventList } }),
+                BuildScenarioEditorCard("Event details", "Select an event to edit its full form.", new StackPanel
+                {
+                    Spacing = 10,
+                    Children =
+                    {
+                        eventDetailsGrid,
+                        BuildValidatedScenarioInput("Notes", "ScenarioEditor.EventNotesText", string.Empty),
+                        BuildValidationBlock("ScenarioEditor.ValidationSummary")
+                    }
+                })
+            }
+        };
+
+        var mainScroll = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = mainPaneContent
+        };
+
+        var body = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("320,16,*"),
+            MinHeight = 0,
+            Children =
+            {
+                leftPane,
+                mainScroll
+            }
+        };
+        Grid.SetColumn(mainScroll, 2);
+
+        var layout = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            RowSpacing = 12,
+            MinHeight = 0,
+            Margin = new Thickness(0, 12, 0, 0),
+            Children =
+            {
+                header,
+                body
+            }
+        };
+        Grid.SetRow(body, 1);
+
+        return BuildDashboardPanel(layout, header: "Scenario Workspace", padding: new Thickness(14), radius: new CornerRadius(18));
     }
 
     private Border BuildEdgeEditorWorkspace(WorkspaceViewModel viewModel)
@@ -2735,26 +2997,6 @@ public sealed class ShellWindow : Window
 
     private static Control BuildScenarioPanel(WorkspaceViewModel viewModel)
     {
-        static string BuildValidationStatus(ScenarioEventModel evt)
-        {
-            if (string.IsNullOrWhiteSpace(evt.Name))
-            {
-                return "Validation: Enter an event name.";
-            }
-
-            if (evt.Time < 0d)
-            {
-                return "Validation: Start time must be zero or greater.";
-            }
-
-            if (evt.EndTime.HasValue && evt.EndTime.Value <= evt.Time)
-            {
-                return "Validation: End time must be after start time.";
-            }
-
-            return "Validation: Ready";
-        }
-
         var scenarioList = new ComboBox();
         scenarioList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.ScenarioDefinitions)));
         scenarioList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedScenarioDefinition), BindingMode.TwoWay));
@@ -2768,7 +3010,7 @@ public sealed class ShellWindow : Window
             {
                 new TextBlock { Text = $"{(item.IsEnabled ? "☑" : "☐")} {item.Kind} · {item.Name}", FontWeight = FontWeight.SemiBold },
                 new TextBlock { Text = $"Target {item.TargetId ?? "None"} · Traffic {(string.IsNullOrWhiteSpace(item.TrafficTypeIdOrName) ? "N/A" : item.TrafficTypeIdOrName)} · Start {item.Time:0.##} · End {(item.EndTime?.ToString("0.##") ?? "None")} · Value {item.Value:0.##}", FontSize = 11 },
-                new TextBlock { Text = BuildValidationStatus(item), FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
+                new TextBlock { Text = item.IsEnabled ? "Status: enabled" : "Status: disabled", FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
             }
         });
         return new StackPanel
@@ -2777,28 +3019,13 @@ public sealed class ShellWindow : Window
             Children =
             {
                 new TextBlock { Text = "Scenarios test what happens when demand, cost, or network availability changes.", TextWrapping = TextWrapping.Wrap },
+                BuildButton("Open scenario editor", viewModel.OpenScenarioEditorCommand, isPrimary: true, toolTip: "Open the full-screen scenario workspace."),
                 new TextBlock { Text = "No scenarios yet. Create a scenario to test failures, closures, demand spikes, or cost changes.", TextWrapping = TextWrapping.Wrap, FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) },
                 scenarioList,
-                BuildLabeledInput("Scenario name", "SelectedScenarioDefinition.Name"),
-                BuildLabeledInput("Description", "SelectedScenarioDefinition.Description"),
-                BuildLabeledTextBox("Start time", "SelectedScenarioDefinition.StartTime"),
-                BuildLabeledTextBox("End time", "SelectedScenarioDefinition.EndTime"),
-                BuildLabeledTextBox("Step size", "SelectedScenarioDefinition.DeltaTime"),
-                BuildLabeledCheckBox("Enable adaptive routing", "SelectedScenarioDefinition.EnableAdaptiveRouting"),
-                new TextBlock { Text = "No events yet. Add an event such as a node failure, edge closure, or demand spike.", TextWrapping = TextWrapping.Wrap, FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) },
-                eventList,
-                BuildLabeledInput("Event name", "SelectedScenarioEvent.Name"),
-                BuildLabeledComboBox("Event type", nameof(WorkspaceViewModel.ScenarioEventKindOptions), "SelectedScenarioEvent.Kind"),
-                BuildLabeledComboBox("Target kind", nameof(WorkspaceViewModel.ScenarioTargetKindOptions), "SelectedScenarioEvent.TargetKind"),
-                BuildLabeledInput("Target node/edge id", "SelectedScenarioEvent.TargetId"),
-                BuildLabeledInput("Traffic type", "SelectedScenarioEvent.TrafficTypeIdOrName"),
-                BuildLabeledTextBox("Start", "SelectedScenarioEvent.Time"),
-                BuildLabeledTextBox("End", "SelectedScenarioEvent.EndTime"),
-                BuildLabeledTextBox("Value", "SelectedScenarioEvent.Value"),
-                BuildLabeledCheckBox("Enabled", "SelectedScenarioEvent.IsEnabled"),
-                BuildLabeledInput("Notes", "SelectedScenarioEvent.Notes"),
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { BuildButton("Create scenario", viewModel.CreateScenarioCommand), BuildButton("Rename scenario", viewModel.RenameScenarioCommand), BuildButton("Duplicate scenario", viewModel.DuplicateScenarioCommand), BuildButton("Delete scenario", viewModel.DeleteScenarioCommand), BuildButton("Add event", viewModel.AddScenarioEventCommand), BuildButton("Delete event", viewModel.DeleteScenarioEventCommand), BuildButton("Run scenario", viewModel.RunScenarioCommand, isPrimary: true) } },
                 BuildQuickStat("Result", nameof(WorkspaceViewModel.ScenarioResultSummary)),
+                new TextBlock { Text = "Events are summarized here. Use the full editor to create or change event details.", TextWrapping = TextWrapping.Wrap, FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) },
+                eventList,
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { BuildButton("Run scenario", viewModel.RunScenarioCommand, isPrimary: true), BuildButton("Edit selected event", viewModel.EditScenarioEventCommand) } },
                 new ItemsControl { [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ScenarioWarnings)) }
             }
         };
@@ -2971,16 +3198,18 @@ public sealed class ShellWindow : Window
 
     private void UpdateShellWorkspaceMode()
     {
-        if (standardWorkspaceHost is null || trafficTypeWorkspaceHost is null || edgeEditorWorkspaceHost is null)
+        if (standardWorkspaceHost is null || trafficTypeWorkspaceHost is null || edgeEditorWorkspaceHost is null || scenarioEditorWorkspaceHost is null)
         {
             return;
         }
 
         var isTrafficTypeWorkspace = shellWorkspaceMode == ShellWorkspaceMode.TrafficTypes;
-        var isEdgeEditorWorkspace = !isTrafficTypeWorkspace && viewModel.IsEdgeEditorWorkspaceMode;
-        standardWorkspaceHost.IsVisible = !isTrafficTypeWorkspace && !isEdgeEditorWorkspace;
+        var isScenarioEditorWorkspace = shellWorkspaceMode == ShellWorkspaceMode.ScenarioEditor || viewModel.IsScenarioEditorWorkspaceMode;
+        var isEdgeEditorWorkspace = !isTrafficTypeWorkspace && !isScenarioEditorWorkspace && viewModel.IsEdgeEditorWorkspaceMode;
+        standardWorkspaceHost.IsVisible = !isTrafficTypeWorkspace && !isEdgeEditorWorkspace && !isScenarioEditorWorkspace;
         trafficTypeWorkspaceHost.IsVisible = isTrafficTypeWorkspace;
         edgeEditorWorkspaceHost.IsVisible = isEdgeEditorWorkspace;
+        scenarioEditorWorkspaceHost.IsVisible = isScenarioEditorWorkspace;
         refreshToolRailState?.Invoke();
     }
 
@@ -3026,8 +3255,36 @@ public sealed class ShellWindow : Window
         }, DispatcherPriority.Background);
     }
 
+    private void FocusScenarioEditorWorkspace()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (scenarioEditorWorkspaceHost?.IsVisible != true)
+            {
+                return;
+            }
+
+            scenarioEditorWorkspaceHost.BringIntoView();
+            if (scenarioEditorWorkspaceFocusTarget is { IsVisible: true, IsEnabled: true })
+            {
+                scenarioEditorWorkspaceFocusTarget.Focus();
+            }
+            else
+            {
+                scenarioEditorWorkspaceHost.Focus();
+            }
+        }, DispatcherPriority.Background);
+    }
+
     private void HandleShellWindowKeyDown(object? sender, KeyEventArgs e)
     {
+        if (viewModel.IsScenarioEditorWorkspaceMode && e.Key == Key.Escape)
+        {
+            _ = CloseScenarioEditorWithConfirmationAsync();
+            e.Handled = true;
+            return;
+        }
+
         if (viewModel.IsEdgeEditorWorkspaceMode &&
             e.Key == Key.Enter &&
             e.KeyModifiers.HasFlag(KeyModifiers.Control))
@@ -4159,6 +4416,49 @@ public sealed class ShellWindow : Window
         };
     }
 
+    private static Border BuildScenarioEditorCard(string title, string summary, Control content)
+    {
+        return new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(14),
+            Child = new StackPanel
+            {
+                Spacing = 10,
+                Children =
+                {
+                    BuildSectionTitle(title, summary),
+                    content
+                }
+            }
+        };
+    }
+
+    private static Control BuildValidatedScenarioInput(string label, string propertyName, string validationPropertyName)
+    {
+        var textBox = BuildTextBox(label);
+        textBox.MinHeight = 44;
+        textBox.Bind(TextBox.TextProperty, new Binding(propertyName, BindingMode.TwoWay));
+        var panel = new StackPanel
+        {
+            Spacing = 4,
+            Children =
+            {
+                BuildLabeledRow(label, textBox)
+            }
+        };
+
+        if (!string.IsNullOrWhiteSpace(validationPropertyName))
+        {
+            panel.Children.Add(BuildValidationBlock(validationPropertyName));
+        }
+
+        return panel;
+    }
+
     private static Control BuildLabeledTextBox(string label, string propertyName, string isEnabledPropertyName)
     {
         var textBox = BuildTextBox(label);
@@ -4828,6 +5128,53 @@ public sealed class ShellWindow : Window
         }
 
         viewModel.DeleteSelectedEdgeEditorCommand.Execute(null);
+    }
+
+    private async Task CloseScenarioEditorWithConfirmationAsync()
+    {
+        if (!viewModel.IsScenarioEditorWorkspaceMode)
+        {
+            return;
+        }
+
+        if (viewModel.ScenarioEditor.IsDirty)
+        {
+            var confirmed = await ShowConfirmationDialogAsync(
+                "Unsaved scenario changes",
+                "Discard unsaved scenario edits and return to the network workspace?",
+                "Discard Changes",
+                isDestructive: true);
+            if (!confirmed)
+            {
+                return;
+            }
+        }
+
+        viewModel.CloseScenarioEditorCommand.Execute(null);
+        toolRailHost?.Focus();
+    }
+
+    private async Task ConfirmDeleteScenarioAsync()
+    {
+        if (viewModel.ScenarioEditor.SelectedScenarioDefinition is null)
+        {
+            return;
+        }
+
+        var scenarioName = string.IsNullOrWhiteSpace(viewModel.ScenarioEditor.NameText)
+            ? "this scenario"
+            : viewModel.ScenarioEditor.NameText.Trim();
+        var confirmed = await ShowConfirmationDialogAsync(
+            "Delete scenario",
+            $"Delete '{scenarioName}' and its events? This cannot be undone.",
+            "Delete Scenario",
+            isDestructive: true);
+        if (!confirmed)
+        {
+            return;
+        }
+
+        viewModel.ScenarioEditor.DeleteScenarioCommand.Execute(null);
     }
 
     private async Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel, bool isDestructive)

@@ -31,6 +31,7 @@ ScenarioRouteTypeSuggestionsPopulateFromCurrentNetwork();
 ScenarioAutocompleteSuggestionsRefreshAfterInspectorEdits();
 ScenarioAutocompleteSuggestionsImportGraphMlRefreshesCollections();
 ScenarioRouteEditorWorkspaceModeTransitions();
+ScenarioEditorWorkspaceCreatesAndValidatesEvents();
 ScenarioRouteEditorCanAddTrafficRule();
 ScenarioRouteEditorValidationBlocksSave();
 ScenarioRouteEditorDeleteReturnsToNormalWorkspace();
@@ -763,6 +764,40 @@ static void ScenarioRouteEditorWorkspaceModeTransitions()
     {
         TryDelete(path);
     }
+}
+
+static void ScenarioEditorWorkspaceCreatesAndValidatesEvents()
+{
+    var workspace = new WorkspaceViewModel();
+    workspace.AddNodeAtPosition(new GraphPoint(0d, 0d));
+    workspace.OpenScenarioEditorCommand.Execute(null);
+
+    AssertTrue(workspace.IsScenarioEditorWorkspaceMode, "scenario editor enters dedicated workspace mode");
+    workspace.ScenarioEditor.CreateScenarioCommand.Execute(null);
+    workspace.ScenarioEditor.NameText = "Storm closure";
+    workspace.ScenarioEditor.StartTimeText = "1";
+    workspace.ScenarioEditor.EndTimeText = "4";
+    workspace.ScenarioEditor.DeltaTimeText = "1";
+    workspace.ScenarioEditor.AddScenarioEventCommand.Execute(null);
+    workspace.ScenarioEditor.EventKind = ScenarioEventKind.DemandSpike;
+    workspace.ScenarioEditor.EventTargetIdText = "missing";
+    workspace.ScenarioEditor.EventTrafficTypeText = "general";
+    workspace.ScenarioEditor.EventValueText = "-1";
+    workspace.ScenarioEditor.SaveScenarioCommand.Execute(null);
+
+    AssertTextEqual("Choose a target node.", workspace.ScenarioEditor.EventTargetError, "scenario editor validates target node");
+    AssertTextEqual("Enter a demand value greater than or equal to 0.", workspace.ScenarioEditor.EventValueError, "scenario editor validates demand value");
+
+    workspace.ScenarioEditor.EventTargetIdText = workspace.ScenarioEditor.NodeIdOptions.FirstOrDefault() ?? string.Empty;
+    workspace.ScenarioEditor.EventValueText = "2";
+    workspace.ScenarioEditor.SaveScenarioCommand.Execute(null);
+
+    AssertTextEqual(string.Empty, workspace.ScenarioEditor.EventTargetError, "scenario editor clears target validation");
+    AssertTrue(!workspace.ScenarioEditor.IsDirty, "scenario editor save clears dirty state");
+
+    workspace.CloseScenarioEditorCommand.Execute(null);
+
+    AssertTrue(workspace.IsNormalWorkspaceMode, "scenario editor returns to normal workspace");
 }
 
 static void ScenarioRouteEditorValidationBlocksSave()
@@ -1604,7 +1639,7 @@ static void InvokePrivate(object instance, string methodName)
     method.Invoke(instance, null);
 }
 
-static void InvokePrivate(object instance, string methodName, params object?[] args)
+static void InvokePrivateWithArgs(object instance, string methodName, params object?[] args)
 {
     var methods = instance.GetType().GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
         .Where(candidate => string.Equals(candidate.Name, methodName, StringComparison.Ordinal))
@@ -1671,24 +1706,6 @@ static T? GetPrivateField<T>(object instance, string fieldName) where T : class
     return field?.GetValue(instance) as T;
 }
 
-sealed class AutoCompleteBindingHost : ObservableObject
-{
-    private string placeType = string.Empty;
-    private IReadOnlyList<string> placeTypeSuggestions = [];
-
-    public string PlaceType
-    {
-        get => placeType;
-        set => SetProperty(ref placeType, value);
-    }
-
-    public IReadOnlyList<string> PlaceTypeSuggestions
-    {
-        get => placeTypeSuggestions;
-        set => SetProperty(ref placeTypeSuggestions, value);
-    }
-}
-
 static void ScenarioFacilityIso_EmptyOriginsReturnsNoReachableNodes()
 {
     var network = CreateFacilityIsoNetwork();
@@ -1752,7 +1769,7 @@ static void ScenarioFacilityIso_UncoveredExcludesReachable()
 {
     var network = CreateFacilityIsoNetwork();
     var service = new MultiOriginIsochroneService();
-    var origins = [network.Nodes.Single(node => node.Id == "A")];
+    var origins = new[] { network.Nodes.Single(node => node.Id == "A") };
 
     var result = service.Compute(network.Nodes, network.Edges, origins, 1d);
 
@@ -1763,7 +1780,7 @@ static void ScenarioFacilityIso_BudgetLimitExcludesOverBudgetNodes()
 {
     var network = CreateFacilityIsoNetwork();
     var service = new MultiOriginIsochroneService();
-    var origins = [network.Nodes.Single(node => node.Id == "A")];
+    var origins = new[] { network.Nodes.Single(node => node.Id == "A") };
 
     var result = service.Compute(network.Nodes, network.Edges, origins, 1.5d);
 
@@ -1868,7 +1885,7 @@ static WorkspaceViewModel BuildFacilityPlanningWorkspace()
 {
     var workspace = new WorkspaceViewModel();
     var network = CreateFacilityIsoNetwork();
-    InvokePrivate(workspace, "LoadNetwork", network, "Loaded for facility planning verification.", null);
+    InvokePrivateWithArgs(workspace, "LoadNetwork", network, "Loaded for facility planning verification.", null);
     return workspace;
 }
 
@@ -1893,4 +1910,22 @@ static NetworkModel CreateFacilityIsoNetwork()
             new EdgeModel { Id = "E-C", FromNodeId = "E", ToNodeId = "C", Time = 1d, Cost = 1d, IsBidirectional = true }
         ]
     };
+}
+
+sealed class AutoCompleteBindingHost : ObservableObject
+{
+    private string placeType = string.Empty;
+    private IReadOnlyList<string> placeTypeSuggestions = [];
+
+    public string PlaceType
+    {
+        get => placeType;
+        set => SetProperty(ref placeType, value);
+    }
+
+    public IReadOnlyList<string> PlaceTypeSuggestions
+    {
+        get => placeTypeSuggestions;
+        set => SetProperty(ref placeTypeSuggestions, value);
+    }
 }

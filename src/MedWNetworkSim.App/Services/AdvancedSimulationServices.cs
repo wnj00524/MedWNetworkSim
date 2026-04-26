@@ -5,19 +5,32 @@ using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
 
-public interface INetworkLayerResolver
+public interface INetworkLayerService
 {
-    IReadOnlyList<NetworkLayer> GetSimulationOrder(NetworkModel network);
+    void EnsureLayerIntegrity(NetworkModel network);
 
-    NetworkLayer GetDefaultLayer(NetworkModel network);
+    NetworkLayerModel GetDefaultLayer(NetworkModel network);
+
+    IReadOnlyList<NetworkLayerModel> GetSimulationOrder(NetworkModel network);
+
+    IReadOnlyList<NodeModel> GetNodesInLayer(NetworkModel network, Guid layerId);
+
+    IReadOnlyList<EdgeModel> GetEdgesInLayer(NetworkModel network, Guid layerId);
 }
 
-public sealed class NetworkLayerResolver : INetworkLayerResolver
+public interface INetworkLayerResolver
 {
-    public IReadOnlyList<NetworkLayer> GetSimulationOrder(NetworkModel network)
+    IReadOnlyList<NetworkLayerModel> GetSimulationOrder(NetworkModel network);
+
+    NetworkLayerModel GetDefaultLayer(NetworkModel network);
+}
+
+public sealed class NetworkLayerResolver : INetworkLayerResolver, INetworkLayerService
+{
+    public IReadOnlyList<NetworkLayerModel> GetSimulationOrder(NetworkModel network)
     {
         ArgumentNullException.ThrowIfNull(network);
-        RepairLayers(network);
+        EnsureLayerIntegrity(network);
         return network.Layers
             .OrderBy(layer => layer.Type == NetworkLayerType.Physical ? 0 : layer.Type == NetworkLayerType.Logical ? 1 : 2)
             .ThenBy(layer => layer.Order)
@@ -25,19 +38,39 @@ public sealed class NetworkLayerResolver : INetworkLayerResolver
             .ToList();
     }
 
-    public NetworkLayer GetDefaultLayer(NetworkModel network)
+    public NetworkLayerModel GetDefaultLayer(NetworkModel network)
     {
-        RepairLayers(network);
+        EnsureLayerIntegrity(network);
         return network.Layers.First(layer => layer.Type == NetworkLayerType.Physical);
     }
 
-    public void RepairLayers(NetworkModel network)
+    public IReadOnlyList<NodeModel> GetNodesInLayer(NetworkModel network, Guid layerId)
+    {
+        EnsureLayerIntegrity(network);
+        return network.Nodes.Where(node => node.LayerId == layerId).ToList();
+    }
+
+    public IReadOnlyList<EdgeModel> GetEdgesInLayer(NetworkModel network, Guid layerId)
+    {
+        EnsureLayerIntegrity(network);
+        return network.Edges.Where(edge => edge.LayerId == layerId).ToList();
+    }
+
+    public void EnsureLayerIntegrity(NetworkModel network)
     {
         network.Layers ??= [];
         if (network.Layers.Count == 0)
         {
-            network.Layers.Add(new NetworkLayer { Name = "Physical", Type = NetworkLayerType.Physical, Order = 0 });
+            network.Layers.Add(new NetworkLayerModel { Name = "Physical", Type = NetworkLayerType.Physical, Order = 0, IsVisible = true });
         }
+
+        var unique = network.Layers
+            .Where(layer => layer is not null)
+            .GroupBy(layer => layer.Id == Guid.Empty ? Guid.NewGuid() : layer.Id)
+            .Select(group => group.First())
+            .ToList();
+
+        network.Layers = unique;
 
         foreach (var type in Enum.GetValues<NetworkLayerType>())
         {
@@ -46,17 +79,45 @@ public sealed class NetworkLayerResolver : INetworkLayerResolver
                 continue;
             }
 
-            network.Layers.Add(new NetworkLayer { Name = type.ToString(), Type = type, Order = type == NetworkLayerType.Physical ? 0 : type == NetworkLayerType.Logical ? 1 : 2 });
+            network.Layers.Add(new NetworkLayerModel
+            {
+                Name = type.ToString(),
+                Type = type,
+                Order = type == NetworkLayerType.Physical ? 0 : type == NetworkLayerType.Logical ? 1 : 2,
+                IsVisible = true
+            });
         }
 
         var order = 0;
         foreach (var layer in network.Layers
-                     .DistinctBy(layer => layer.Id)
                      .OrderBy(layer => layer.Type == NetworkLayerType.Physical ? 0 : layer.Type == NetworkLayerType.Logical ? 1 : 2)
                      .ThenBy(layer => layer.Order))
         {
+            if (layer.Id == Guid.Empty)
+            {
+                layer.Id = Guid.NewGuid();
+            }
+
             layer.Order = order++;
             layer.Name = string.IsNullOrWhiteSpace(layer.Name) ? layer.Type.ToString() : layer.Name.Trim();
+        }
+
+        var validIds = network.Layers.Select(layer => layer.Id).ToHashSet();
+        var defaultLayerId = GetDefaultLayer(network).Id;
+        foreach (var node in network.Nodes)
+        {
+            if (node.LayerId == Guid.Empty || !validIds.Contains(node.LayerId))
+            {
+                node.LayerId = defaultLayerId;
+            }
+        }
+
+        foreach (var edge in network.Edges)
+        {
+            if (edge.LayerId == Guid.Empty || !validIds.Contains(edge.LayerId))
+            {
+                edge.LayerId = defaultLayerId;
+            }
         }
     }
 }
@@ -213,9 +274,10 @@ public sealed class BottleneckDetectionService : IBottleneckDetectionService
                     {
                         Type = NetworkIssueType.CongestedEdge,
                         Severity = util >= 1d ? NetworkIssueSeverity.Critical : NetworkIssueSeverity.Warning,
-                        Title = $"Congested edge: {edge.Id}",
-                        Explanation = $"Utilisation is {util:P0}, near or above the configured capacity.",
-                        SuggestedAction = "Increase capacity or add an alternate path.",
+                        TargetName = edge.Id,
+                        Title = "Edge is near capacity",
+                        Explanation = $"This route is using {util:P0} of its capacity, so delays may increase.",
+                        SuggestedAction = "Increase capacity, add another route, or reduce demand through this edge.",
                         Score = util
                     });
                 }
@@ -228,9 +290,10 @@ public sealed class BottleneckDetectionService : IBottleneckDetectionService
             {
                 Type = NetworkIssueType.StarvedNode,
                 Severity = NetworkIssueSeverity.Warning,
-                Title = $"Unmet demand for {outcome.TrafficType}",
-                Explanation = $"Unmet demand remains at {outcome.UnmetDemand:0.##}.",
-                SuggestedAction = "Add supply, capacity, or lower demand.",
+                TargetName = outcome.TrafficType,
+                Title = "Node demand is not met",
+                Explanation = $"Unmet demand remains at {outcome.UnmetDemand:0.##} for this traffic type.",
+                SuggestedAction = "Add supply, increase route capacity, or reduce demand at the node.",
                 Score = outcome.UnmetDemand
             });
 
@@ -240,9 +303,10 @@ public sealed class BottleneckDetectionService : IBottleneckDetectionService
                 {
                     Type = NetworkIssueType.PolicyBlockedFlow,
                     Severity = NetworkIssueSeverity.Critical,
-                    Title = $"Policy blocked flow for {outcome.TrafficType}",
+                    TargetName = outcome.TrafficType,
+                    Title = "Flow blocked by policy",
                     Explanation = $"{outcome.NoPermittedPathDemand:0.##} demand had no permitted route.",
-                    SuggestedAction = "Review edge traffic permissions and policy constraints.",
+                    SuggestedAction = "Review policy permissions and allow at least one valid route for this traffic type.",
                     Score = outcome.NoPermittedPathDemand
                 });
             }
@@ -254,24 +318,24 @@ public sealed class BottleneckDetectionService : IBottleneckDetectionService
 
 public interface IExplainabilityService
 {
-    NodeExplanation ExplainNode(Guid nodeId, NetworkModel network, SimulationResult result);
+    NodeExplanation ExplainNode(NetworkModel network, SimulationResult result, Guid nodeId);
 
-    EdgeExplanation ExplainEdge(Guid edgeId, NetworkModel network, SimulationResult result);
+    EdgeExplanation ExplainEdge(NetworkModel network, SimulationResult result, Guid edgeId);
 }
 
 public sealed class ExplainabilityService : IExplainabilityService
 {
-    public NodeExplanation ExplainNode(Guid nodeId, NetworkModel network, SimulationResult result)
+    public NodeExplanation ExplainNode(NetworkModel network, SimulationResult result, Guid nodeId)
     {
         var node = network.Nodes.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == nodeId);
-        var explanation = new NodeExplanation { NodeId = nodeId };
+        var explanation = new NodeExplanation { NodeId = nodeId, NodeName = node?.Name ?? string.Empty };
         if (node is null)
         {
-            explanation.Summary = "Node not found in this network.";
+            explanation.Summary = "Node not found in this network. Select a node from the map and rerun the simulation.";
             return explanation;
         }
 
-        explanation.Summary = $"Node '{node.Name}' currently shows mixed supply and demand pressure.";
+        explanation.Summary = $"Why this matters: node '{node.Name}' has supply-demand pressure that can reduce service reliability.";
         foreach (var profile in node.TrafficProfiles)
         {
             var unmet = Math.Max(0d, profile.Consumption - profile.Inventory);
@@ -286,24 +350,24 @@ public sealed class ExplainabilityService : IExplainabilityService
 
         if (explanation.Causes.Count == 0)
         {
-            explanation.Causes.Add("No significant unmet demand was detected.");
+            explanation.Causes.Add("Run a simulation to see why this node is constrained.");
         }
 
         explanation.SuggestedActions.Add("Check upstream capacity, policy permissions, and alternate routes.");
         return explanation;
     }
 
-    public EdgeExplanation ExplainEdge(Guid edgeId, NetworkModel network, SimulationResult result)
+    public EdgeExplanation ExplainEdge(NetworkModel network, SimulationResult result, Guid edgeId)
     {
         var edge = network.Edges.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == edgeId);
-        var explanation = new EdgeExplanation { EdgeId = edgeId };
+        var explanation = new EdgeExplanation { EdgeId = edgeId, EdgeName = edge?.Id ?? string.Empty };
         if (edge is null)
         {
-            explanation.Summary = "Edge not found in this network.";
+            explanation.Summary = "Edge not found in this network. Select a route on the map and rerun the simulation.";
             return explanation;
         }
 
-        explanation.Summary = $"Edge '{edge.Id}' movement performance summary.";
+        explanation.Summary = $"Why this matters: edge '{edge.Id}' can become a bottleneck and delay downstream demand.";
         var latest = result.Steps.LastOrDefault();
         if (latest is not null && edge.Capacity.HasValue && edge.Capacity.Value > 0d)
         {
@@ -324,90 +388,185 @@ public sealed class ExplainabilityService : IExplainabilityService
 
 public interface IScenarioRunner
 {
-    SimulationResult RunScenario(NetworkModel network, ScenarioDefinition scenario, SimulationRunOptions options);
-}
-
-public interface IScenarioComparisonService
-{
-    ScenarioComparisonResult Compare(NetworkModel network, ScenarioDefinition scenario, SimulationRunOptions options);
+    ScenarioRunResult Run(NetworkModel sourceNetwork, ScenarioDefinitionModel scenario, ScenarioRunOptions options);
 }
 
 public sealed class ScenarioRunner : IScenarioRunner
 {
-    private readonly TemporalNetworkSimulationEngine temporalEngine = new();
-    private readonly NetworkSimulationEngine staticEngine = new();
+    private readonly NetworkSimulationEngine simulationEngine = new();
+    private readonly INetworkLayerService networkLayerService = new NetworkLayerResolver();
+    private readonly IBottleneckDetectionService bottleneckDetectionService = new BottleneckDetectionService();
 
-    public SimulationResult RunScenario(NetworkModel network, ScenarioDefinition scenario, SimulationRunOptions options)
+    public ScenarioRunResult Run(NetworkModel sourceNetwork, ScenarioDefinitionModel scenario, ScenarioRunOptions options)
     {
-        var clonedNetwork = Clone(network);
-        var state = temporalEngine.Initialize(clonedNetwork);
-        var context = new SimulationContext
-        {
-            Network = clonedNetwork,
-            TemporalState = state,
-            Options = options
-        };
+        ArgumentNullException.ThrowIfNull(sourceNetwork);
+        ArgumentNullException.ThrowIfNull(scenario);
+        ArgumentNullException.ThrowIfNull(options);
 
-        var applied = new List<IScenarioEvent>();
-        var steps = Math.Max(1, options.Steps);
-        var timeline = new List<TemporalNetworkSimulationEngine.TemporalSimulationStepResult>(steps);
-        for (var period = 0; period < steps; period++)
+        var warnings = new List<string>();
+        var clonedNetwork = Clone(sourceNetwork);
+        networkLayerService.EnsureLayerIntegrity(clonedNetwork);
+
+        var activeEvents = new List<ScenarioEventModel>();
+        for (var time = options.StartTime; time <= options.EndTime; time += Math.Max(0.01d, options.DeltaTime))
         {
-            var now = period * options.DeltaTime;
-            foreach (var evt in scenario.Events.Where(item => item.Time <= now).Except(applied))
+            foreach (var evt in scenario.Events.Where(evt => evt.IsEnabled && Math.Abs(evt.Time - time) < 0.0001d))
             {
-                evt.Apply(context);
-                applied.Add(evt);
+                if (!TryApplyEvent(clonedNetwork, evt, warnings))
+                {
+                    continue;
+                }
+
+                if (evt.EndTime.HasValue)
+                {
+                    activeEvents.Add(evt);
+                }
             }
 
-            timeline.Add(temporalEngine.Advance(clonedNetwork, state));
+            foreach (var evt in activeEvents.Where(evt => evt.EndTime.HasValue && time >= evt.EndTime.Value).ToList())
+            {
+                RevertEvent(clonedNetwork, sourceNetwork, evt);
+                activeEvents.Remove(evt);
+            }
         }
 
-        applied.Reverse();
-        foreach (var evt in applied)
+        var simulation = new SimulationResult { Outcomes = simulationEngine.Simulate(clonedNetwork) };
+        var issues = bottleneckDetectionService.DetectIssues(clonedNetwork, simulation);
+        return new ScenarioRunResult
         {
-            evt.Revert(context);
-        }
-
-        return new SimulationResult
-        {
-            Outcomes = staticEngine.Simulate(clonedNetwork),
-            Steps = timeline
+            ScenarioName = scenario.Name,
+            SimulationResult = simulation,
+            Issues = issues,
+            Warnings = warnings
         };
+    }
+
+    private static bool TryApplyEvent(NetworkModel network, ScenarioEventModel evt, List<string> warnings)
+    {
+        switch (evt.Kind)
+        {
+            case ScenarioEventKind.NodeFailure:
+                if (evt.TargetKind != ScenarioTargetKind.Node || evt.TargetId is null)
+                {
+                    warnings.Add("Choose a node for this node failure event.");
+                    return false;
+                }
+
+                var node = network.Nodes.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == evt.TargetId);
+                if (node is null)
+                {
+                    warnings.Add($"Skipped event '{evt.Name}': target node was not found.");
+                    return false;
+                }
+
+                foreach (var profile in node.TrafficProfiles)
+                {
+                    profile.Production = 0d;
+                    profile.Consumption = 0d;
+                    profile.CanTransship = false;
+                }
+
+                return true;
+            case ScenarioEventKind.EdgeClosure:
+                if (evt.TargetKind != ScenarioTargetKind.Edge || evt.TargetId is null)
+                {
+                    warnings.Add("Choose an edge for this edge closure.");
+                    return false;
+                }
+
+                var edge = network.Edges.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == evt.TargetId);
+                if (edge is null)
+                {
+                    warnings.Add($"Skipped event '{evt.Name}': target edge was not found.");
+                    return false;
+                }
+
+                edge.Capacity = 0d;
+                return true;
+            case ScenarioEventKind.DemandSpike:
+                if (evt.TargetKind != ScenarioTargetKind.Node || evt.TargetId is null || string.IsNullOrWhiteSpace(evt.TrafficTypeIdOrName))
+                {
+                    warnings.Add("Choose a node for this demand spike.");
+                    return false;
+                }
+
+                var spikeNode = network.Nodes.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == evt.TargetId);
+                if (spikeNode is null)
+                {
+                    warnings.Add($"Skipped event '{evt.Name}': target node was not found.");
+                    return false;
+                }
+
+                foreach (var profile in spikeNode.TrafficProfiles.Where(p => string.Equals(p.TrafficType, evt.TrafficTypeIdOrName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    profile.Consumption *= Math.Max(1d, evt.Value);
+                }
+
+                return true;
+            case ScenarioEventKind.EdgeCostChange:
+                if (evt.TargetKind != ScenarioTargetKind.Edge || evt.TargetId is null)
+                {
+                    warnings.Add("Choose an edge for this edge cost change.");
+                    return false;
+                }
+
+                var targetEdge = network.Edges.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == evt.TargetId);
+                if (targetEdge is null)
+                {
+                    warnings.Add($"Skipped event '{evt.Name}': target edge was not found.");
+                    return false;
+                }
+
+                targetEdge.Cost *= Math.Max(0d, evt.Value);
+                return true;
+            default:
+                warnings.Add($"Skipped unsupported event type '{evt.Kind}'.");
+                return false;
+        }
+    }
+
+    private static void RevertEvent(NetworkModel working, NetworkModel source, ScenarioEventModel evt)
+    {
+        if (evt.TargetId is null)
+        {
+            return;
+        }
+
+        switch (evt.Kind)
+        {
+            case ScenarioEventKind.EdgeClosure:
+            case ScenarioEventKind.EdgeCostChange:
+                var sourceEdge = source.Edges.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == evt.TargetId);
+                var workingEdge = working.Edges.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == evt.TargetId);
+                if (sourceEdge is not null && workingEdge is not null)
+                {
+                    workingEdge.Capacity = sourceEdge.Capacity;
+                    workingEdge.Cost = sourceEdge.Cost;
+                }
+
+                break;
+            case ScenarioEventKind.NodeFailure:
+            case ScenarioEventKind.DemandSpike:
+                var sourceNode = source.Nodes.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == evt.TargetId);
+                var workingNode = working.Nodes.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == evt.TargetId);
+                if (sourceNode is not null && workingNode is not null)
+                {
+                    for (var i = 0; i < Math.Min(sourceNode.TrafficProfiles.Count, workingNode.TrafficProfiles.Count); i++)
+                    {
+                        workingNode.TrafficProfiles[i].Production = sourceNode.TrafficProfiles[i].Production;
+                        workingNode.TrafficProfiles[i].Consumption = sourceNode.TrafficProfiles[i].Consumption;
+                        workingNode.TrafficProfiles[i].CanTransship = sourceNode.TrafficProfiles[i].CanTransship;
+                    }
+                }
+
+                break;
+        }
     }
 
     private static NetworkModel Clone(NetworkModel network)
     {
         var json = JsonSerializer.Serialize(network);
         return JsonSerializer.Deserialize<NetworkModel>(json) ?? new NetworkModel();
-    }
-}
-
-public sealed class ScenarioComparisonService(IScenarioRunner scenarioRunner, IEconomicCalculator economicCalculator) : IScenarioComparisonService
-{
-    public ScenarioComparisonResult Compare(NetworkModel network, ScenarioDefinition scenario, SimulationRunOptions options)
-    {
-        var baseline = scenarioRunner.RunScenario(network, new ScenarioDefinition { Name = "Baseline" }, options);
-        var variant = scenarioRunner.RunScenario(network, scenario, options);
-        var baseEconomics = economicCalculator.Calculate(network, baseline);
-        var variantEconomics = economicCalculator.Calculate(network, variant);
-
-        return new ScenarioComparisonResult
-        {
-            Baseline = baseline,
-            Variant = variant,
-            ThroughputDelta = variant.TotalThroughput - baseline.TotalThroughput,
-            CostDelta = variant.TotalCost - baseline.TotalCost,
-            UnmetDemandDelta = variant.TotalUnmetDemand - baseline.TotalUnmetDemand,
-            EconomicDelta = new EconomicSummary
-            {
-                TotalRevenue = variantEconomics.TotalRevenue - baseEconomics.TotalRevenue,
-                TotalTransportCost = variantEconomics.TotalTransportCost - baseEconomics.TotalTransportCost,
-                TotalHoldingCost = variantEconomics.TotalHoldingCost - baseEconomics.TotalHoldingCost,
-                TotalShortagePenalty = variantEconomics.TotalShortagePenalty - baseEconomics.TotalShortagePenalty,
-                TotalProfit = variantEconomics.TotalProfit - baseEconomics.TotalProfit
-            }
-        };
     }
 }
 

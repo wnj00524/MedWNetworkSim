@@ -74,6 +74,8 @@ public sealed class NetworkIssue
 
     public Guid? TargetId { get; set; }
 
+    public string TargetName { get; set; } = string.Empty;
+
     public string Title { get; set; } = string.Empty;
 
     public string Explanation { get; set; } = string.Empty;
@@ -87,6 +89,8 @@ public sealed class NodeExplanation
 {
     public Guid NodeId { get; set; }
 
+    public string NodeName { get; set; } = string.Empty;
+
     public string Summary { get; set; } = string.Empty;
 
     public List<string> Causes { get; set; } = [];
@@ -99,6 +103,8 @@ public sealed class NodeExplanation
 public sealed class EdgeExplanation
 {
     public Guid EdgeId { get; set; }
+
+    public string EdgeName { get; set; } = string.Empty;
 
     public string Summary { get; set; } = string.Empty;
 

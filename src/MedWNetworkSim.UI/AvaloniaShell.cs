@@ -1839,6 +1839,11 @@ public sealed class ShellWindow : Window
         eventList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding("ScenarioEditor.SelectedEventItem", BindingMode.TwoWay));
         eventList.ItemTemplate = new FuncDataTemplate<ScenarioEventListItem>((item, _) =>
         {
+            // Add this guard clause to prevent the NRE
+            if (item == null)
+            {
+                return new TextBlock();
+            }
             var row = new Grid
             {
                 ColumnDefinitions = new ColumnDefinitions("1.5*,1.1*,1.3*,1*,1*"),

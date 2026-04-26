@@ -1,5 +1,9 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Services;
+using Xunit;
 
 namespace MedWNetworkSim.Tests;
 
@@ -63,7 +67,7 @@ public sealed class AdvancedSimulationTests
         var scenario = new ScenarioDefinitionModel
         {
             Name = "Bad",
-            Events = [new ScenarioEventModel { Name = "bad", Kind = ScenarioEventKind.EdgeCostChange, TargetKind = ScenarioTargetKind.Edge, TargetId = Guid.NewGuid(), Time = 0, Value = 9 }]
+            Events = [new ScenarioEventModel { Name = "bad", Kind = ScenarioEventKind.EdgeCostChange, TargetKind = ScenarioTargetKind.Edge, TargetId = Guid.NewGuid().ToString(), Time = 0, Value = 9 }]
         };
 
         var result = runner.Run(network, scenario, new ScenarioRunOptions { EndTime = 1, DeltaTime = 1 });
@@ -77,8 +81,8 @@ public sealed class AdvancedSimulationTests
     {
         var network = BuildNetwork();
         var runner = new ScenarioRunner();
-        var edgeId = Guid.Parse(network.Edges[0].Id);
-        var nodeId = Guid.Parse(network.Nodes[1].Id);
+        var edgeId = network.Edges[0].Id;
+        var nodeId = network.Nodes[1].Id;
 
         var baseResult = runner.Run(network, new ScenarioDefinitionModel { Name = "Base" }, new ScenarioRunOptions { EndTime = 0, DeltaTime = 1 }).SimulationResult!;
         var closure = runner.Run(network, new ScenarioDefinitionModel
@@ -116,7 +120,7 @@ public sealed class AdvancedSimulationTests
         };
 
         var issues = new BottleneckDetectionService().DetectIssues(network, result);
-        var explanation = new ExplainabilityService().ExplainEdge(network, result, Guid.Parse(network.Edges[0].Id));
+        var explanation = new ExplainabilityService().ExplainEdge(network, result, network.Edges[0].Id);
 
         Assert.Contains(issues, i => i.Type == NetworkIssueType.CongestedEdge);
         Assert.Contains(issues, i => i.Type == NetworkIssueType.StarvedNode);
@@ -161,7 +165,7 @@ public sealed class AdvancedSimulationTests
     public void ScenarioValidation_ReturnsActionableMessages()
     {
         var validator = new ScenarioValidationService();
-        var scenarioErrors = validator.ValidateScenario(new ScenarioDefinitionModel { Name = " ", StartTime = -1, EndTime = 0, DeltaTime = 0 });
+        var scenarioErrors = validator.ValidateScenario(new ScenarioDefinitionModel { Name = " ", StartTime = -1, EndTime = -2, DeltaTime = 0 });
         var nodeFailureErrors = validator.ValidateEvent(new ScenarioEventModel { Name = " ", Kind = ScenarioEventKind.NodeFailure, TargetKind = ScenarioTargetKind.Edge, Time = -1 });
         var edgeClosureErrors = validator.ValidateEvent(new ScenarioEventModel { Name = " ", Kind = ScenarioEventKind.EdgeClosure, TargetKind = ScenarioTargetKind.Node, Time = -1 });
         var demandSpikeErrors = validator.ValidateEvent(new ScenarioEventModel { Name = " ", Kind = ScenarioEventKind.DemandSpike, TargetKind = ScenarioTargetKind.Node, Time = 0, Value = 0 });

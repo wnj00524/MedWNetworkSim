@@ -78,7 +78,8 @@ public enum InspectorTabTarget
 public enum WorkspaceMode
 {
     Normal,
-    EdgeEditor
+    EdgeEditor,
+    ScenarioEditor
 }
 
 public enum InspectorSectionTarget
@@ -137,6 +138,656 @@ public sealed class FacilityComparisonRowViewModel
     public required string UniqueNodesCovered { get; init; }
     public required string AverageCost { get; init; }
     public required string MaxCost { get; init; }
+}
+
+public sealed class ScenarioEventListItem(ScenarioEventModel model)
+{
+    public ScenarioEventModel Model { get; } = model;
+    public string Name => string.IsNullOrWhiteSpace(Model.Name) ? "(unnamed event)" : Model.Name;
+    public string KindText => Model.Kind.ToString();
+    public string TargetText => string.IsNullOrWhiteSpace(Model.TargetId) ? "No target" : $"{Model.TargetKind}: {Model.TargetId}";
+    public string TimingText => Model.EndTime.HasValue ? $"{Model.Time:0.##} to {Model.EndTime.Value:0.##}" : $"{Model.Time:0.##}";
+    public string ValueStatusText => $"{Model.Value:0.##} | {(Model.IsEnabled ? "Enabled" : "Disabled")}";
+    public string SummaryText => $"{KindText} | {TargetText} | {TimingText} | {ValueStatusText}";
+    public override string ToString() => Name;
+}
+
+public sealed class ScenarioEditorViewModel : ObservableObject
+{
+    private readonly Action markDirty;
+    private NetworkModel network;
+    private List<ScenarioDefinitionModel> snapshot = [];
+    private ScenarioDefinitionModel? selectedScenarioDefinition;
+    private ScenarioEventListItem? selectedEventItem;
+    private bool isDirty;
+    private string nameText = string.Empty;
+    private string descriptionText = string.Empty;
+    private string startTimeText = "0";
+    private string endTimeText = "10";
+    private string deltaTimeText = "1";
+    private bool enableAdaptiveRouting;
+    private string eventNameText = string.Empty;
+    private ScenarioEventKind eventKind;
+    private ScenarioTargetKind eventTargetKind;
+    private string eventTargetIdText = string.Empty;
+    private string eventTrafficTypeText = string.Empty;
+    private string eventStartTimeText = "0";
+    private string eventEndTimeText = string.Empty;
+    private string eventValueText = "1";
+    private string eventNotesText = string.Empty;
+    private bool eventIsEnabled = true;
+    private string scenarioNameError = string.Empty;
+    private string scenarioStartTimeError = string.Empty;
+    private string scenarioEndTimeError = string.Empty;
+    private string scenarioDeltaTimeError = string.Empty;
+    private string eventNameError = string.Empty;
+    private string eventTargetError = string.Empty;
+    private string eventTrafficTypeError = string.Empty;
+    private string eventStartTimeError = string.Empty;
+    private string eventEndTimeError = string.Empty;
+    private string eventValueError = string.Empty;
+    private string validationSummary = "Open or create a scenario to begin.";
+
+    public ScenarioEditorViewModel(NetworkModel network, Action markDirty)
+    {
+        this.network = network;
+        this.markDirty = markDirty;
+        EventItems = [];
+        CreateScenarioCommand = new RelayCommand(CreateScenario);
+        SaveScenarioCommand = new RelayCommand(SaveScenario, () => SelectedScenarioDefinition is not null);
+        DeleteScenarioCommand = new RelayCommand(DeleteScenario, () => SelectedScenarioDefinition is not null);
+        AddScenarioEventCommand = new RelayCommand(AddEvent, () => SelectedScenarioDefinition is not null);
+        EditScenarioEventCommand = new RelayCommand(LoadSelectedEventDraft, () => SelectedEventItem is not null);
+        DuplicateScenarioEventCommand = new RelayCommand(DuplicateEvent, () => SelectedScenarioDefinition is not null && SelectedEventItem is not null);
+        DeleteScenarioEventCommand = new RelayCommand(DeleteEvent, () => SelectedScenarioDefinition is not null && SelectedEventItem is not null);
+        Open();
+    }
+
+    public ObservableCollection<ScenarioEventListItem> EventItems { get; }
+    public Array ScenarioEventKindOptions { get; } = Enum.GetValues(typeof(ScenarioEventKind));
+    public Array ScenarioTargetKindOptions { get; } = Enum.GetValues(typeof(ScenarioTargetKind));
+    public IReadOnlyList<ScenarioDefinitionModel> ScenarioDefinitions => network.ScenarioDefinitions;
+    public IReadOnlyList<string> NodeIdOptions => network.Nodes.Select(node => node.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+    public IReadOnlyList<string> EdgeIdOptions => network.Edges.Select(edge => edge.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+    public IReadOnlyList<string> TrafficTypeOptions => network.TrafficTypes.Select(type => type.Name).OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList();
+    public RelayCommand CreateScenarioCommand { get; }
+    public RelayCommand SaveScenarioCommand { get; }
+    public RelayCommand DeleteScenarioCommand { get; }
+    public RelayCommand AddScenarioEventCommand { get; }
+    public RelayCommand EditScenarioEventCommand { get; }
+    public RelayCommand DuplicateScenarioEventCommand { get; }
+    public RelayCommand DeleteScenarioEventCommand { get; }
+
+    public ScenarioDefinitionModel? SelectedScenarioDefinition
+    {
+        get => selectedScenarioDefinition;
+        set
+        {
+            if (SetProperty(ref selectedScenarioDefinition, value))
+            {
+                LoadScenarioDraft(value);
+                RefreshCommands();
+            }
+        }
+    }
+
+    public ScenarioEventListItem? SelectedEventItem
+    {
+        get => selectedEventItem;
+        set
+        {
+            if (SetProperty(ref selectedEventItem, value))
+            {
+                LoadSelectedEventDraft();
+                RefreshCommands();
+            }
+        }
+    }
+
+    public bool IsDirty { get => isDirty; private set => SetProperty(ref isDirty, value); }
+    public bool HasScenarios => network.ScenarioDefinitions.Count > 0;
+    public bool HasSelectedScenario => SelectedScenarioDefinition is not null;
+    public bool HasSelectedEvent => SelectedEventItem is not null;
+    public bool EventUsesNodeTarget => EventKind is ScenarioEventKind.NodeFailure or ScenarioEventKind.DemandSpike or ScenarioEventKind.ProductionMultiplier or ScenarioEventKind.ConsumptionMultiplier;
+    public bool EventUsesEdgeTarget => EventKind is ScenarioEventKind.EdgeClosure or ScenarioEventKind.EdgeCostChange or ScenarioEventKind.RouteCostMultiplier;
+    public bool EventUsesTrafficType => EventKind is ScenarioEventKind.DemandSpike or ScenarioEventKind.ProductionMultiplier or ScenarioEventKind.ConsumptionMultiplier or ScenarioEventKind.RouteCostMultiplier;
+    public bool EventUsesValue => EventKind is ScenarioEventKind.DemandSpike or ScenarioEventKind.EdgeCostChange or ScenarioEventKind.ProductionMultiplier or ScenarioEventKind.ConsumptionMultiplier or ScenarioEventKind.RouteCostMultiplier;
+    public string TargetFieldLabel => EventUsesNodeTarget ? "Target node" : "Target route";
+    public string TargetHelperText => EventUsesNodeTarget ? "Choose a node id that exists in this network." : "Choose a route id that exists in this network.";
+    public IReadOnlyList<string> TargetIdOptions => EventUsesNodeTarget ? NodeIdOptions : EdgeIdOptions;
+    public string EventValueLabel => EventKind switch
+    {
+        ScenarioEventKind.DemandSpike => "Demand value",
+        ScenarioEventKind.EdgeCostChange => "Route cost",
+        ScenarioEventKind.ProductionMultiplier => "Production multiplier",
+        ScenarioEventKind.ConsumptionMultiplier => "Consumption multiplier",
+        ScenarioEventKind.RouteCostMultiplier => "Route cost multiplier",
+        _ => "Value"
+    };
+    public string EventValueHelperText => EventKind == ScenarioEventKind.DemandSpike
+        ? "Enter a demand value greater than or equal to 0."
+        : "Enter a value greater than 0.";
+
+    public string NameText { get => nameText; set => SetDraftProperty(ref nameText, value, nameof(NameText)); }
+    public string DescriptionText { get => descriptionText; set => SetDraftProperty(ref descriptionText, value, nameof(DescriptionText)); }
+    public string StartTimeText { get => startTimeText; set => SetDraftProperty(ref startTimeText, value, nameof(StartTimeText)); }
+    public string EndTimeText { get => endTimeText; set => SetDraftProperty(ref endTimeText, value, nameof(EndTimeText)); }
+    public string DeltaTimeText { get => deltaTimeText; set => SetDraftProperty(ref deltaTimeText, value, nameof(DeltaTimeText)); }
+    public bool EnableAdaptiveRouting { get => enableAdaptiveRouting; set => SetDraftProperty(ref enableAdaptiveRouting, value, nameof(EnableAdaptiveRouting)); }
+    public string EventNameText { get => eventNameText; set => SetDraftProperty(ref eventNameText, value, nameof(EventNameText)); }
+    public ScenarioEventKind EventKind
+    {
+        get => eventKind;
+        set
+        {
+            if (SetDraftProperty(ref eventKind, value, nameof(EventKind)))
+            {
+                EventTargetKind = EventUsesNodeTarget ? ScenarioTargetKind.Node : ScenarioTargetKind.Edge;
+                RaiseEventVisibilityChanged();
+            }
+        }
+    }
+    public ScenarioTargetKind EventTargetKind { get => eventTargetKind; set => SetDraftProperty(ref eventTargetKind, value, nameof(EventTargetKind)); }
+    public string EventTargetIdText { get => eventTargetIdText; set => SetDraftProperty(ref eventTargetIdText, value, nameof(EventTargetIdText)); }
+    public string EventTrafficTypeText { get => eventTrafficTypeText; set => SetDraftProperty(ref eventTrafficTypeText, value, nameof(EventTrafficTypeText)); }
+    public string EventStartTimeText { get => eventStartTimeText; set => SetDraftProperty(ref eventStartTimeText, value, nameof(EventStartTimeText)); }
+    public string EventEndTimeText { get => eventEndTimeText; set => SetDraftProperty(ref eventEndTimeText, value, nameof(EventEndTimeText)); }
+    public string EventValueText { get => eventValueText; set => SetDraftProperty(ref eventValueText, value, nameof(EventValueText)); }
+    public string EventNotesText { get => eventNotesText; set => SetDraftProperty(ref eventNotesText, value, nameof(EventNotesText)); }
+    public bool EventIsEnabled { get => eventIsEnabled; set => SetDraftProperty(ref eventIsEnabled, value, nameof(EventIsEnabled)); }
+    public string ScenarioNameError { get => scenarioNameError; private set => SetProperty(ref scenarioNameError, value); }
+    public string ScenarioStartTimeError { get => scenarioStartTimeError; private set => SetProperty(ref scenarioStartTimeError, value); }
+    public string ScenarioEndTimeError { get => scenarioEndTimeError; private set => SetProperty(ref scenarioEndTimeError, value); }
+    public string ScenarioDeltaTimeError { get => scenarioDeltaTimeError; private set => SetProperty(ref scenarioDeltaTimeError, value); }
+    public string EventNameError { get => eventNameError; private set => SetProperty(ref eventNameError, value); }
+    public string EventTargetError { get => eventTargetError; private set => SetProperty(ref eventTargetError, value); }
+    public string EventTrafficTypeError { get => eventTrafficTypeError; private set => SetProperty(ref eventTrafficTypeError, value); }
+    public string EventStartTimeError { get => eventStartTimeError; private set => SetProperty(ref eventStartTimeError, value); }
+    public string EventEndTimeError { get => eventEndTimeError; private set => SetProperty(ref eventEndTimeError, value); }
+    public string EventValueError { get => eventValueError; private set => SetProperty(ref eventValueError, value); }
+    public string ValidationSummary { get => validationSummary; private set => SetProperty(ref validationSummary, value); }
+
+    public void AttachNetwork(NetworkModel model)
+    {
+        network = model;
+        Open();
+        RaiseReferenceDataChanged();
+    }
+
+    public void Open()
+    {
+        snapshot = CloneScenarios(network.ScenarioDefinitions);
+        SelectedScenarioDefinition = network.ScenarioDefinitions.FirstOrDefault();
+        if (SelectedScenarioDefinition is null)
+        {
+            LoadScenarioDraft(null);
+        }
+
+        IsDirty = false;
+        Raise(nameof(HasScenarios));
+        Raise(nameof(ScenarioDefinitions));
+    }
+
+    public void DiscardChanges()
+    {
+        if (IsDirty)
+        {
+            network.ScenarioDefinitions = CloneScenarios(snapshot);
+            SelectedScenarioDefinition = network.ScenarioDefinitions.FirstOrDefault();
+            RefreshScenarioCollectionState();
+        }
+
+        LoadScenarioDraft(SelectedScenarioDefinition);
+        IsDirty = false;
+        ValidationSummary = "Changes discarded.";
+    }
+
+    private bool SetDraftProperty<T>(ref T field, T value, string propertyName)
+    {
+        if (!SetProperty(ref field, value, propertyName))
+        {
+            return false;
+        }
+
+        IsDirty = true;
+        ValidateDraft(updateSummary: false);
+        return true;
+    }
+
+    private void CreateScenario()
+    {
+        var scenario = new ScenarioDefinitionModel
+        {
+            Name = $"Scenario {network.ScenarioDefinitions.Count + 1}",
+            Description = string.Empty,
+            StartTime = 0d,
+            EndTime = 10d,
+            DeltaTime = 1d
+        };
+        network.ScenarioDefinitions.Add(scenario);
+        SelectedScenarioDefinition = scenario;
+        IsDirty = true;
+        markDirty();
+        RefreshScenarioCollectionState();
+        ValidationSummary = "Scenario created. Complete the details, then save scenario.";
+    }
+
+    private void SaveScenario()
+    {
+        if (SelectedScenarioDefinition is null)
+        {
+            ValidationSummary = "Create or select a scenario before saving.";
+            return;
+        }
+
+        if (!ValidateDraft(updateSummary: true))
+        {
+            return;
+        }
+
+        var scenario = SelectedScenarioDefinition;
+        scenario.Name = NameText.Trim();
+        scenario.Description = DescriptionText.Trim();
+        scenario.StartTime = ParseDouble(StartTimeText);
+        scenario.EndTime = ParseDouble(EndTimeText);
+        scenario.DeltaTime = ParseDouble(DeltaTimeText);
+        scenario.EnableAdaptiveRouting = EnableAdaptiveRouting;
+        if (SelectedEventItem?.Model is { } evt)
+        {
+            ApplyEventDraft(evt);
+        }
+
+        IsDirty = false;
+        snapshot = CloneScenarios(network.ScenarioDefinitions);
+        markDirty();
+        RefreshScenarioCollectionState();
+        RefreshEventItems(SelectedEventItem?.Model);
+        ValidationSummary = "Scenario saved.";
+    }
+
+    private void DeleteScenario()
+    {
+        if (SelectedScenarioDefinition is null)
+        {
+            return;
+        }
+
+        network.ScenarioDefinitions.Remove(SelectedScenarioDefinition);
+        SelectedScenarioDefinition = network.ScenarioDefinitions.FirstOrDefault();
+        IsDirty = false;
+        markDirty();
+        RefreshScenarioCollectionState();
+        ValidationSummary = "Scenario deleted.";
+    }
+
+    private static List<ScenarioDefinitionModel> CloneScenarios(IEnumerable<ScenarioDefinitionModel> scenarios) =>
+        scenarios.Select(scenario => new ScenarioDefinitionModel
+        {
+            Id = scenario.Id,
+            Name = scenario.Name,
+            Description = scenario.Description,
+            StartTime = scenario.StartTime,
+            EndTime = scenario.EndTime,
+            DeltaTime = scenario.DeltaTime,
+            EnableAdaptiveRouting = scenario.EnableAdaptiveRouting,
+            Events = scenario.Events.Select(evt => new ScenarioEventModel
+            {
+                Id = evt.Id,
+                Name = evt.Name,
+                Kind = evt.Kind,
+                TargetKind = evt.TargetKind,
+                TargetId = evt.TargetId,
+                TrafficTypeIdOrName = evt.TrafficTypeIdOrName,
+                Time = evt.Time,
+                EndTime = evt.EndTime,
+                Value = evt.Value,
+                Notes = evt.Notes,
+                IsEnabled = evt.IsEnabled
+            }).ToList()
+        }).ToList();
+
+    private void AddEvent()
+    {
+        if (SelectedScenarioDefinition is null)
+        {
+            return;
+        }
+
+        var evt = new ScenarioEventModel
+        {
+            Name = "New event",
+            Kind = ScenarioEventKind.NodeFailure,
+            TargetKind = ScenarioTargetKind.Node,
+            Time = ParseDoubleOrDefault(StartTimeText, 0d),
+            Value = 1d,
+            IsEnabled = true
+        };
+        SelectedScenarioDefinition.Events.Add(evt);
+        RefreshEventItems(evt);
+        IsDirty = true;
+        markDirty();
+        ValidationSummary = "Event added. Fill in the target and save scenario.";
+    }
+
+    private void DuplicateEvent()
+    {
+        if (SelectedScenarioDefinition is null || SelectedEventItem?.Model is not { } source)
+        {
+            return;
+        }
+
+        var copy = new ScenarioEventModel
+        {
+            Name = $"{source.Name} Copy",
+            Kind = source.Kind,
+            TargetKind = source.TargetKind,
+            TargetId = source.TargetId,
+            TrafficTypeIdOrName = source.TrafficTypeIdOrName,
+            Time = source.Time,
+            EndTime = source.EndTime,
+            Value = source.Value,
+            Notes = source.Notes,
+            IsEnabled = source.IsEnabled
+        };
+        SelectedScenarioDefinition.Events.Add(copy);
+        RefreshEventItems(copy);
+        IsDirty = true;
+        markDirty();
+        ValidationSummary = "Event duplicated.";
+    }
+
+    private void DeleteEvent()
+    {
+        if (SelectedScenarioDefinition is null || SelectedEventItem?.Model is not { } evt)
+        {
+            return;
+        }
+
+        SelectedScenarioDefinition.Events.Remove(evt);
+        RefreshEventItems(SelectedScenarioDefinition.Events.FirstOrDefault());
+        IsDirty = true;
+        markDirty();
+        ValidationSummary = "Event deleted.";
+    }
+
+    private void LoadScenarioDraft(ScenarioDefinitionModel? scenario)
+    {
+        var wasDirty = IsDirty;
+        if (scenario is null)
+        {
+            NameText = string.Empty;
+            DescriptionText = string.Empty;
+            StartTimeText = "0";
+            EndTimeText = "10";
+            DeltaTimeText = "1";
+            EnableAdaptiveRouting = false;
+            EventItems.Clear();
+            SelectedEventItem = null;
+            ClearValidation();
+            ValidationSummary = "No scenarios yet. Create a scenario to test closures, demand spikes, or routing changes.";
+        }
+        else
+        {
+            nameText = scenario.Name;
+            descriptionText = scenario.Description;
+            startTimeText = scenario.StartTime.ToString("0.##", CultureInfo.InvariantCulture);
+            endTimeText = scenario.EndTime.ToString("0.##", CultureInfo.InvariantCulture);
+            deltaTimeText = scenario.DeltaTime.ToString("0.##", CultureInfo.InvariantCulture);
+            enableAdaptiveRouting = scenario.EnableAdaptiveRouting;
+            RaiseScenarioDraftProperties();
+            RefreshEventItems(scenario.Events.FirstOrDefault());
+            ValidateDraft(updateSummary: false);
+            ValidationSummary = "Review scenario details and events, then save scenario.";
+        }
+
+        IsDirty = wasDirty && scenario is not null;
+        Raise(nameof(HasSelectedScenario));
+    }
+
+    private void LoadSelectedEventDraft()
+    {
+        var wasDirty = IsDirty;
+        var evt = SelectedEventItem?.Model;
+        if (evt is null)
+        {
+            eventNameText = string.Empty;
+            eventKind = ScenarioEventKind.NodeFailure;
+            eventTargetKind = ScenarioTargetKind.Node;
+            eventTargetIdText = string.Empty;
+            eventTrafficTypeText = string.Empty;
+            eventStartTimeText = "0";
+            eventEndTimeText = string.Empty;
+            eventValueText = "1";
+            eventNotesText = string.Empty;
+            eventIsEnabled = true;
+        }
+        else
+        {
+            eventNameText = evt.Name;
+            eventKind = evt.Kind;
+            eventTargetKind = evt.TargetKind;
+            eventTargetIdText = evt.TargetId ?? string.Empty;
+            eventTrafficTypeText = evt.TrafficTypeIdOrName ?? string.Empty;
+            eventStartTimeText = evt.Time.ToString("0.##", CultureInfo.InvariantCulture);
+            eventEndTimeText = evt.EndTime?.ToString("0.##", CultureInfo.InvariantCulture) ?? string.Empty;
+            eventValueText = evt.Value.ToString("0.##", CultureInfo.InvariantCulture);
+            eventNotesText = evt.Notes;
+            eventIsEnabled = evt.IsEnabled;
+        }
+
+        RaiseEventDraftProperties();
+        ValidateDraft(updateSummary: false);
+        IsDirty = wasDirty;
+        Raise(nameof(HasSelectedEvent));
+    }
+
+    private void ApplyEventDraft(ScenarioEventModel evt)
+    {
+        evt.Name = EventNameText.Trim();
+        evt.Kind = EventKind;
+        evt.TargetKind = EventUsesNodeTarget ? ScenarioTargetKind.Node : ScenarioTargetKind.Edge;
+        evt.TargetId = string.IsNullOrWhiteSpace(EventTargetIdText) ? null : EventTargetIdText.Trim();
+        evt.TrafficTypeIdOrName = EventUsesTrafficType && !string.IsNullOrWhiteSpace(EventTrafficTypeText) ? EventTrafficTypeText.Trim() : null;
+        evt.Time = ParseDouble(EventStartTimeText);
+        evt.EndTime = string.IsNullOrWhiteSpace(EventEndTimeText) ? null : ParseDouble(EventEndTimeText);
+        evt.Value = EventUsesValue ? ParseDouble(EventValueText) : 1d;
+        evt.Notes = EventNotesText.Trim();
+        evt.IsEnabled = EventIsEnabled;
+    }
+
+    private bool ValidateDraft(bool updateSummary)
+    {
+        ClearValidation();
+        var errors = 0;
+        if (SelectedScenarioDefinition is not null)
+        {
+            if (string.IsNullOrWhiteSpace(NameText))
+            {
+                ScenarioNameError = "Enter a scenario name.";
+                errors++;
+            }
+
+            var hasStart = TryParseDouble(StartTimeText, out var start);
+            var hasEnd = TryParseDouble(EndTimeText, out var end);
+            if (!hasStart || start < 0d)
+            {
+                ScenarioStartTimeError = "Start time must be zero or greater.";
+                errors++;
+            }
+
+            if (!hasEnd || end <= start)
+            {
+                ScenarioEndTimeError = "End time must be after start time.";
+                errors++;
+            }
+
+            if (!TryParseDouble(DeltaTimeText, out var delta) || delta <= 0d)
+            {
+                ScenarioDeltaTimeError = "Step size must be greater than 0.";
+                errors++;
+            }
+        }
+
+        if (SelectedEventItem is not null)
+        {
+            if (string.IsNullOrWhiteSpace(EventNameText))
+            {
+                EventNameError = "Enter an event name.";
+                errors++;
+            }
+
+            var hasEventStart = TryParseDouble(EventStartTimeText, out var eventStart);
+            if (!hasEventStart || eventStart < 0d)
+            {
+                EventStartTimeError = "Start time must be zero or greater.";
+                errors++;
+            }
+
+            if (!string.IsNullOrWhiteSpace(EventEndTimeText) &&
+                (!TryParseDouble(EventEndTimeText, out var eventEnd) || eventEnd <= eventStart))
+            {
+                EventEndTimeError = "End time must be after start time.";
+                errors++;
+            }
+
+            var target = EventTargetIdText.Trim();
+            if (EventUsesNodeTarget && (target.Length == 0 || !network.Nodes.Any(node => string.Equals(node.Id, target, StringComparison.OrdinalIgnoreCase))))
+            {
+                EventTargetError = "Choose a target node.";
+                errors++;
+            }
+            else if (EventUsesEdgeTarget && (target.Length == 0 || !network.Edges.Any(edge => string.Equals(edge.Id, target, StringComparison.OrdinalIgnoreCase))))
+            {
+                EventTargetError = "Choose a target route.";
+                errors++;
+            }
+
+            if (EventUsesTrafficType &&
+                (string.IsNullOrWhiteSpace(EventTrafficTypeText) || !network.TrafficTypes.Any(type => string.Equals(type.Name, EventTrafficTypeText.Trim(), StringComparison.OrdinalIgnoreCase))))
+            {
+                EventTrafficTypeError = "Choose a traffic type.";
+                errors++;
+            }
+
+            if (EventUsesValue)
+            {
+                if (!TryParseDouble(EventValueText, out var value) || (EventKind == ScenarioEventKind.DemandSpike ? value < 0d : value <= 0d))
+                {
+                    EventValueError = EventKind == ScenarioEventKind.DemandSpike
+                        ? "Enter a demand value greater than or equal to 0."
+                        : "Enter a value greater than 0.";
+                    errors++;
+                }
+            }
+        }
+
+        if (updateSummary)
+        {
+            ValidationSummary = errors == 0 ? "Ready to save." : $"Fix {errors} validation issue(s) before saving.";
+        }
+
+        return errors == 0;
+    }
+
+    private void RefreshEventItems(ScenarioEventModel? selected)
+    {
+        EventItems.Clear();
+        if (SelectedScenarioDefinition is not null)
+        {
+            foreach (var evt in SelectedScenarioDefinition.Events)
+            {
+                EventItems.Add(new ScenarioEventListItem(evt));
+            }
+        }
+
+        SelectedEventItem = selected is null ? EventItems.FirstOrDefault() : EventItems.FirstOrDefault(item => ReferenceEquals(item.Model, selected));
+        Raise(nameof(HasSelectedEvent));
+    }
+
+    private void RefreshScenarioCollectionState()
+    {
+        Raise(nameof(ScenarioDefinitions));
+        Raise(nameof(HasScenarios));
+        Raise(nameof(HasSelectedScenario));
+        RefreshCommands();
+    }
+
+    private void RefreshCommands()
+    {
+        SaveScenarioCommand.NotifyCanExecuteChanged();
+        DeleteScenarioCommand.NotifyCanExecuteChanged();
+        AddScenarioEventCommand.NotifyCanExecuteChanged();
+        EditScenarioEventCommand.NotifyCanExecuteChanged();
+        DuplicateScenarioEventCommand.NotifyCanExecuteChanged();
+        DeleteScenarioEventCommand.NotifyCanExecuteChanged();
+    }
+
+    private void ClearValidation()
+    {
+        ScenarioNameError = string.Empty;
+        ScenarioStartTimeError = string.Empty;
+        ScenarioEndTimeError = string.Empty;
+        ScenarioDeltaTimeError = string.Empty;
+        EventNameError = string.Empty;
+        EventTargetError = string.Empty;
+        EventTrafficTypeError = string.Empty;
+        EventStartTimeError = string.Empty;
+        EventEndTimeError = string.Empty;
+        EventValueError = string.Empty;
+    }
+
+    private void RaiseScenarioDraftProperties()
+    {
+        Raise(nameof(NameText));
+        Raise(nameof(DescriptionText));
+        Raise(nameof(StartTimeText));
+        Raise(nameof(EndTimeText));
+        Raise(nameof(DeltaTimeText));
+        Raise(nameof(EnableAdaptiveRouting));
+    }
+
+    private void RaiseEventDraftProperties()
+    {
+        Raise(nameof(EventNameText));
+        Raise(nameof(EventKind));
+        Raise(nameof(EventTargetKind));
+        Raise(nameof(EventTargetIdText));
+        Raise(nameof(EventTrafficTypeText));
+        Raise(nameof(EventStartTimeText));
+        Raise(nameof(EventEndTimeText));
+        Raise(nameof(EventValueText));
+        Raise(nameof(EventNotesText));
+        Raise(nameof(EventIsEnabled));
+        RaiseEventVisibilityChanged();
+    }
+
+    private void RaiseEventVisibilityChanged()
+    {
+        Raise(nameof(EventUsesNodeTarget));
+        Raise(nameof(EventUsesEdgeTarget));
+        Raise(nameof(EventUsesTrafficType));
+        Raise(nameof(EventUsesValue));
+        Raise(nameof(TargetFieldLabel));
+        Raise(nameof(TargetHelperText));
+        Raise(nameof(TargetIdOptions));
+        Raise(nameof(EventValueLabel));
+        Raise(nameof(EventValueHelperText));
+    }
+
+    private void RaiseReferenceDataChanged()
+    {
+        Raise(nameof(NodeIdOptions));
+        Raise(nameof(EdgeIdOptions));
+        Raise(nameof(TrafficTypeOptions));
+        Raise(nameof(TargetIdOptions));
+    }
+
+    private static bool TryParseDouble(string text, out double value) =>
+        double.TryParse(text?.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out value) ||
+        double.TryParse(text?.Trim(), NumberStyles.Float, CultureInfo.CurrentCulture, out value);
+
+    private static double ParseDouble(string text) => TryParseDouble(text, out var value) ? value : 0d;
+    private static double ParseDoubleOrDefault(string text, double fallback) => TryParseDouble(text, out var value) ? value : fallback;
 }
 
 public sealed class FacilityOriginItem : ObservableObject
@@ -899,6 +1550,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         LayerItems = [];
         TopIssues = [];
         ScenarioWarnings = [];
+        ScenarioEditor = new ScenarioEditorViewModel(network, MarkDirty);
         DefaultTrafficPermissionRows.CollectionChanged += (_, _) => RaiseTrafficTypeDisplayStateChanged();
         NewCommand = new RelayCommand(CreateBlankNetwork);
         SimulateCommand = new RelayCommand(RunSimulation);
@@ -985,11 +1637,15 @@ public sealed class WorkspaceViewModel : ObservableObject
         UnlockAllLayersCommand = new RelayCommand(UnlockAllLayers);
         AssignSelectedNodesToLayerCommand = new RelayCommand(AssignSelectedNodesToLayer, () => SelectedLayerItem is not null && Scene.Selection.SelectedNodeIds.Count > 0);
         AssignSelectedEdgesToLayerCommand = new RelayCommand(AssignSelectedEdgesToLayer, () => SelectedLayerItem is not null && Scene.Selection.SelectedEdgeIds.Count > 0);
+        OpenScenarioEditorCommand = new RelayCommand(OpenScenarioEditor);
+        CloseScenarioEditorCommand = new RelayCommand(CloseScenarioEditor, () => IsScenarioEditorWorkspaceMode);
         CreateScenarioCommand = new RelayCommand(CreateScenario);
         RenameScenarioCommand = new RelayCommand(RenameScenario, () => SelectedScenarioDefinition is not null);
         DuplicateScenarioCommand = new RelayCommand(DuplicateScenario, () => SelectedScenarioDefinition is not null);
         DeleteScenarioCommand = new RelayCommand(DeleteScenario, () => SelectedScenarioDefinition is not null);
         AddScenarioEventCommand = new RelayCommand(AddScenarioEvent, () => SelectedScenarioDefinition is not null);
+        EditScenarioEventCommand = new RelayCommand(EditScenarioEvent, () => SelectedScenarioEvent is not null && SelectedScenarioDefinition is not null);
+        DuplicateScenarioEventCommand = new RelayCommand(DuplicateScenarioEvent, () => SelectedScenarioEvent is not null && SelectedScenarioDefinition is not null);
         DeleteScenarioEventCommand = new RelayCommand(DeleteScenarioEvent, () => SelectedScenarioEvent is not null && SelectedScenarioDefinition is not null);
         RunScenarioCommand = new RelayCommand(RunScenario, () => SelectedScenarioDefinition is not null);
         SelectIssueCommand = new RelayCommand(SelectCurrentIssue, () => SelectedTopIssue is not null);
@@ -1023,6 +1679,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     public NodeInspectorDraft NodeDraft { get; }
     public EdgeInspectorDraft EdgeDraft { get; }
     public BulkSelectionInspectorDraft BulkDraft { get; }
+    public ScenarioEditorViewModel ScenarioEditor { get; }
 
     public Array NodeShapeOptions { get; } = Enum.GetValues(typeof(NodeVisualShape));
     public Array NodeKindOptions { get; } = Enum.GetValues(typeof(NodeKind));
@@ -1084,11 +1741,15 @@ public sealed class WorkspaceViewModel : ObservableObject
     public RelayCommand UnlockAllLayersCommand { get; }
     public RelayCommand AssignSelectedNodesToLayerCommand { get; }
     public RelayCommand AssignSelectedEdgesToLayerCommand { get; }
+    public RelayCommand OpenScenarioEditorCommand { get; }
+    public RelayCommand CloseScenarioEditorCommand { get; }
     public RelayCommand CreateScenarioCommand { get; }
     public RelayCommand RenameScenarioCommand { get; }
     public RelayCommand DuplicateScenarioCommand { get; }
     public RelayCommand DeleteScenarioCommand { get; }
     public RelayCommand AddScenarioEventCommand { get; }
+    public RelayCommand EditScenarioEventCommand { get; }
+    public RelayCommand DuplicateScenarioEventCommand { get; }
     public RelayCommand DeleteScenarioEventCommand { get; }
     public RelayCommand RunScenarioCommand { get; }
     public RelayCommand SelectIssueCommand { get; }
@@ -1295,6 +1956,8 @@ public sealed class WorkspaceViewModel : ObservableObject
         {
             if (SetProperty(ref selectedScenarioEvent, value))
             {
+                EditScenarioEventCommand.NotifyCanExecuteChanged();
+                DuplicateScenarioEventCommand.NotifyCanExecuteChanged();
                 DeleteScenarioEventCommand.NotifyCanExecuteChanged();
             }
         }
@@ -1330,6 +1993,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             {
                 Raise(nameof(IsNormalWorkspaceMode));
                 Raise(nameof(IsEdgeEditorWorkspaceMode));
+                Raise(nameof(IsScenarioEditorWorkspaceMode));
                 Raise(nameof(CanOpenSelectedEdgeEditor));
                 Raise(nameof(CanSaveEdgeEditor));
                 Raise(nameof(CanDeleteSelectedEdgeEditor));
@@ -1337,6 +2001,7 @@ public sealed class WorkspaceViewModel : ObservableObject
                 OpenSelectedEdgeEditorCommand.NotifyCanExecuteChanged();
                 SaveEdgeEditorCommand.NotifyCanExecuteChanged();
                 CancelEdgeEditorCommand.NotifyCanExecuteChanged();
+                CloseScenarioEditorCommand.NotifyCanExecuteChanged();
                 DeleteSelectedEdgeEditorCommand.NotifyCanExecuteChanged();
                 AddEdgePermissionRuleCommand.NotifyCanExecuteChanged();
             }
@@ -1344,6 +2009,7 @@ public sealed class WorkspaceViewModel : ObservableObject
     }
     public bool IsNormalWorkspaceMode => CurrentWorkspaceMode == WorkspaceMode.Normal;
     public bool IsEdgeEditorWorkspaceMode => CurrentWorkspaceMode == WorkspaceMode.EdgeEditor;
+    public bool IsScenarioEditorWorkspaceMode => CurrentWorkspaceMode == WorkspaceMode.ScenarioEditor;
     public InspectorTabTarget SelectedInspectorTab
     {
         get => selectedInspectorTab;
@@ -2452,6 +3118,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         BuildSceneFromNetwork();
         RefreshLayerItems();
         RefreshScenarioItems();
+        ScenarioEditor.AttachNetwork(network);
         Viewport.Reset(Scene.GetContentBounds(), LastViewportSize);
         PopulateTrafficDefinitionList();
         PopulateDefaultPermissionRows();
@@ -2704,6 +3371,27 @@ public sealed class WorkspaceViewModel : ObservableObject
     {
         Raise(nameof(ScenarioDefinitions));
         SelectedScenarioDefinition ??= network.ScenarioDefinitions.FirstOrDefault();
+        ScenarioEditor.AttachNetwork(network);
+    }
+
+    private void OpenScenarioEditor()
+    {
+        ScenarioEditor.Open();
+        CurrentWorkspaceMode = WorkspaceMode.ScenarioEditor;
+        StatusText = "Scenario editor opened.";
+    }
+
+    public void CloseScenarioEditor()
+    {
+        if (!IsScenarioEditorWorkspaceMode)
+        {
+            return;
+        }
+
+        ScenarioEditor.DiscardChanges();
+        CurrentWorkspaceMode = WorkspaceMode.Normal;
+        RefreshScenarioItems();
+        StatusText = "Returned to the network workspace.";
     }
 
     private void CreateScenario()
@@ -2784,6 +3472,45 @@ public sealed class WorkspaceViewModel : ObservableObject
         var evt = new ScenarioEventModel { Name = "New Event", Kind = ScenarioEventKind.NodeFailure, TargetKind = ScenarioTargetKind.Node, Time = 0d };
         SelectedScenarioDefinition.Events.Add(evt);
         SelectedScenarioEvent = evt;
+        MarkDirty();
+    }
+
+    private void EditScenarioEvent()
+    {
+        if (SelectedScenarioDefinition is null || SelectedScenarioEvent is null)
+        {
+            return;
+        }
+
+        ScenarioEditor.SelectedScenarioDefinition = SelectedScenarioDefinition;
+        ScenarioEditor.Open();
+        ScenarioEditor.SelectedEventItem = ScenarioEditor.EventItems.FirstOrDefault(item => ReferenceEquals(item.Model, SelectedScenarioEvent));
+        CurrentWorkspaceMode = WorkspaceMode.ScenarioEditor;
+    }
+
+    private void DuplicateScenarioEvent()
+    {
+        if (SelectedScenarioDefinition is null || SelectedScenarioEvent is null)
+        {
+            return;
+        }
+
+        var source = SelectedScenarioEvent;
+        var copy = new ScenarioEventModel
+        {
+            Name = $"{source.Name} Copy",
+            Kind = source.Kind,
+            TargetKind = source.TargetKind,
+            TargetId = source.TargetId,
+            TrafficTypeIdOrName = source.TrafficTypeIdOrName,
+            Time = source.Time,
+            EndTime = source.EndTime,
+            Value = source.Value,
+            Notes = source.Notes,
+            IsEnabled = source.IsEnabled
+        };
+        SelectedScenarioDefinition.Events.Add(copy);
+        SelectedScenarioEvent = copy;
         MarkDirty();
     }
 
@@ -3406,10 +4133,12 @@ public sealed class WorkspaceViewModel : ObservableObject
         Raise(nameof(CurrentWorkspaceMode));
         Raise(nameof(IsNormalWorkspaceMode));
         Raise(nameof(IsEdgeEditorWorkspaceMode));
+        Raise(nameof(IsScenarioEditorWorkspaceMode));
         DeleteSelectionCommand.NotifyCanExecuteChanged();
         OpenSelectedEdgeEditorCommand.NotifyCanExecuteChanged();
         SaveEdgeEditorCommand.NotifyCanExecuteChanged();
         CancelEdgeEditorCommand.NotifyCanExecuteChanged();
+        CloseScenarioEditorCommand.NotifyCanExecuteChanged();
         DeleteSelectedEdgeEditorCommand.NotifyCanExecuteChanged();
         AddNodeTrafficProfileCommand.NotifyCanExecuteChanged();
         DuplicateSelectedNodeTrafficProfileCommand.NotifyCanExecuteChanged();

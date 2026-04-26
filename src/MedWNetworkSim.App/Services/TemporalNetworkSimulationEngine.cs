@@ -4,6 +4,12 @@ namespace MedWNetworkSim.App.Services;
 
 public sealed class TemporalNetworkSimulationEngine
 {
+    private readonly SimulationClock clock = new();
+    private readonly ISimulationEventQueue eventQueue = new SimulationEventQueue();
+
+    public SimulationClock Clock => clock;
+
+    public ISimulationEventQueue EventQueue => eventQueue;
     private const double Epsilon = 0.000001d;
     private const double PerishabilityPriorityBidFactor = 100d;
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
@@ -27,6 +33,24 @@ public sealed class TemporalNetworkSimulationEngine
 
     public TemporalSimulationStepResult Advance(NetworkModel network, TemporalSimulationState? currentState)
     {
+        return Advance(network, currentState, new SimulationRunOptions());
+    }
+
+    public TemporalSimulationStepResult Advance(NetworkModel network, TemporalSimulationState? currentState, SimulationRunOptions options)
+    {
+        options ??= new SimulationRunOptions();
+        clock.DeltaTime = options.DeltaTime > 0d ? options.DeltaTime : 1d;
+        var context = new SimulationContext
+        {
+            Network = network,
+            TemporalState = currentState ?? Initialize(network),
+            Options = options
+        };
+
+        foreach (var scheduled in eventQueue.DequeueDueEvents(clock.CurrentTime))
+        {
+            scheduled.Execute(context);
+        }
         ArgumentNullException.ThrowIfNull(network);
         network = HierarchicalNetworkProjection.ProjectForSimulation(network);
 
@@ -222,6 +246,8 @@ public sealed class TemporalNetworkSimulationEngine
             pair => pair.Key,
             pair => new TemporalNodeStateSnapshot(pair.Value.AvailableSupply, pair.Value.DemandBacklog, pair.Value.StoreInventory),
             TemporalNodeTrafficKey.Comparer);
+
+        clock.Advance(options.DeltaTime);
 
         return new TemporalSimulationStepResult(
             nextPeriod,

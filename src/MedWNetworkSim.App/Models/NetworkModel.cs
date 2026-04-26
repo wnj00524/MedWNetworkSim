@@ -46,6 +46,12 @@ public sealed class NetworkModel
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public double? FacilityCoverageThreshold { get; set; }
 
+
+    /// <summary>
+    /// Gets or sets the declared simulation layers used to process different network concerns.
+    /// </summary>
+    public List<NetworkLayer> Layers { get; set; } = [];
+
     /// <summary>
     /// Gets or sets the declared traffic types that can move through the network.
     /// </summary>

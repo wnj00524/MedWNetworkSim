@@ -85,6 +85,10 @@ ScenarioBQ_OsmImportDistancePreservedAfterThinning();
 ScenarioBR_OsmImportIntegrationFixtureRetentionSummary();
 ScenarioBS_OsmImportAlwaysKeepsNamedRoadTransitions();
 ScenarioBT_OsmImportArticulationDetectionHandlesDeepGraphsWithoutOverflow();
+ScenarioBU_LegacyLayerCompatibilityBackfillsPhysicalLayer();
+ScenarioBV_SimulationEventQueueRunsDueEvents();
+ScenarioBW_AdaptiveRoutingPenaltyIncreasesAfterObservations();
+ScenarioBX_DemandCsvImporterValidatesRows();
 
 Console.WriteLine("Verification passed.");
 
@@ -2774,5 +2778,81 @@ static void AssertAtLeast(int expectedMinimum, int actual, string scenario)
     if (actual < expectedMinimum)
     {
         throw new InvalidOperationException($"{scenario} expected at least {expectedMinimum} but got {actual}.");
+    }
+}
+
+
+static void ScenarioBU_LegacyLayerCompatibilityBackfillsPhysicalLayer()
+{
+    const string legacyJson = """
+{
+  "name": "legacy",
+  "nodes": [{ "id": "A", "name": "A", "trafficProfiles": [] }],
+  "edges": [],
+  "trafficTypes": []
+}
+""";
+
+    var fileService = new NetworkFileService();
+    var network = fileService.LoadJson(legacyJson);
+    AssertEqual(3, network.Layers.Count, "BU layer count includes defaults");
+    var physical = network.Layers.First(layer => layer.Type == NetworkLayerType.Physical);
+    AssertTrue(network.Nodes.All(node => node.LayerId == physical.Id), "BU node layer backfill");
+}
+
+static void ScenarioBV_SimulationEventQueueRunsDueEvents()
+{
+    var queue = new SimulationEventQueue();
+    var context = new SimulationContext { Network = new NetworkModel() };
+    var invoked = false;
+    queue.Enqueue(new CallbackScheduledEvent(1d, () => invoked = true));
+
+    var due = queue.DequeueDueEvents(0.5d);
+    AssertEqual(0, due.Count, "BV no due event before time");
+    foreach (var evt in queue.DequeueDueEvents(1d))
+    {
+        evt.Execute(context);
+    }
+
+    AssertTrue(invoked, "BV event executed at due time");
+}
+
+static void ScenarioBW_AdaptiveRoutingPenaltyIncreasesAfterObservations()
+{
+    var memory = new AdaptiveRoutingMemory();
+    var edgeId = Guid.NewGuid();
+    memory.RecordObservation(edgeId, observedDelay: 10d, utilisation: 0.95d);
+    memory.RecordObservation(edgeId, observedDelay: 12d, utilisation: 0.98d);
+    AssertTrue(memory.GetAdaptivePenalty(edgeId) > 0d, "BW adaptive penalty positive");
+}
+
+static void ScenarioBX_DemandCsvImporterValidatesRows()
+{
+    var importer = new DemandTimeSeriesImporter();
+    var rows = importer.ImportCsv("time,node,trafficType,demand\n1,A,med,10\n2,A,med,12");
+    AssertEqual(2, rows.Count, "BX csv rows parsed");
+
+    var failed = false;
+    try
+    {
+        importer.ImportCsv("time,node,trafficType,demand\n1,A,med,-1");
+    }
+    catch (InvalidOperationException)
+    {
+        failed = true;
+    }
+
+    AssertTrue(failed, "BX negative demand is rejected");
+}
+
+file sealed class CallbackScheduledEvent(double time, Action callback) : ISimulationScheduledEvent
+{
+    public double Time => time;
+
+    public string Name => "callback";
+
+    public void Execute(SimulationContext context)
+    {
+        callback();
     }
 }

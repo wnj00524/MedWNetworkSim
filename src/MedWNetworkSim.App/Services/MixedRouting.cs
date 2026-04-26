@@ -210,6 +210,7 @@ public static partial class MixedRoutingAllocator
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
     private static readonly ICongestionCostModel CongestionCostModel = new VolumeCapacityCongestionCostModel();
     private static readonly ICapacityResolutionPolicy CapacityResolutionPolicy = new PriorityWeightedCapacityResolutionPolicy();
+    private static readonly IAdaptiveRoutingMemory AdaptiveRoutingMemory = new AdaptiveRoutingMemory();
     private static IReadOnlyDictionary<string, List<GraphArc>> adjacency = new Dictionary<string, List<GraphArc>>(Comparer);
 
     public static IReadOnlyList<RoutingTrafficContext> BuildStaticContexts(NetworkModel network, bool applyLocalAllocations = true)
@@ -310,6 +311,7 @@ public static partial class MixedRoutingAllocator
 
         foreach (var context in contexts)
         {
+            RecordAdaptiveObservations(context, state);
             ClassifyRemainingRestrictions(network, context, state);
         }
 
@@ -817,6 +819,27 @@ public static partial class MixedRoutingAllocator
         }
     }
 
+
+    private static void RecordAdaptiveObservations(RoutingTrafficContext context, NetworkState state)
+    {
+        if (!context.RouteChoiceSettings.AdaptiveRoutingEnabled)
+        {
+            return;
+        }
+
+        foreach (var pair in state.EdgeLoad)
+        {
+            var capacity = state.EdgeCapacity.GetValueOrDefault(pair.Key, double.PositiveInfinity);
+            var util = double.IsPositiveInfinity(capacity) || capacity <= 0d ? 0d : pair.Value / capacity;
+            if (!Guid.TryParse(pair.Key, out var edgeId))
+            {
+                continue;
+            }
+
+            AdaptiveRoutingMemory.RecordObservation(edgeId, observedDelay: pair.Value, utilisation: util);
+        }
+    }
+
     private static double GetEffectiveArcTime(RoutingTrafficContext context, GraphArc arc, NetworkState state)
     {
         var alpha = context.RouteChoiceModel == RouteChoiceModel.SystemOptimal && !context.RouteChoiceSettings.InternalizeCongestion
@@ -834,11 +857,18 @@ public static partial class MixedRoutingAllocator
         var gamma = context.RouteChoiceModel == RouteChoiceModel.SystemOptimal && !context.RouteChoiceSettings.InternalizeCongestion
             ? 0d
             : context.RouteChoiceSettings.CongestionSensitivity;
-        return CongestionCostModel.GetEffectiveCost(
+        var congestionCost = CongestionCostModel.GetEffectiveCost(
             arc.Cost,
             state.EdgeLoad.GetValueOrDefault(arc.EdgeId),
             state.EdgeCapacity.GetValueOrDefault(arc.EdgeId, double.PositiveInfinity),
             gamma);
+
+        if (!context.RouteChoiceSettings.AdaptiveRoutingEnabled || !Guid.TryParse(arc.EdgeId, out var edgeId))
+        {
+            return congestionCost;
+        }
+
+        return congestionCost + AdaptiveRoutingMemory.GetAdaptivePenalty(edgeId);
     }
 
     private static GraphArc? FindArc(string edgeId)

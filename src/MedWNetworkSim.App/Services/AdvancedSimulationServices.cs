@@ -223,16 +223,24 @@ public sealed class EconomicCalculator : IEconomicCalculator
 {
     public EconomicSummary Calculate(NetworkModel network, SimulationResult result)
     {
-        var revenue = 0d;
-        var holding = 0d;
-        var shortage = 0d;
+        var revenueByNodeTraffic = network.Nodes
+            .SelectMany(node => node.TrafficProfiles.Select(profile => new { node.Id, profile.TrafficType, UnitPrice = Math.Max(0d, profile.UnitPrice) }))
+            .ToDictionary(item => (item.Id, item.TrafficType), item => item.UnitPrice);
+        var shortagePenaltyByTraffic = network.Nodes
+            .SelectMany(node => node.TrafficProfiles.Select(profile => new { profile.TrafficType, Penalty = Math.Max(0d, profile.ShortagePenalty) }))
+            .GroupBy(item => item.TrafficType, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Max(item => item.Penalty), StringComparer.OrdinalIgnoreCase);
 
-        foreach (var profile in network.Nodes.SelectMany(node => node.TrafficProfiles))
-        {
-            revenue += profile.Revenue;
-            holding += profile.Inventory * Math.Max(0d, profile.HoldingCostPerTime);
-            shortage += Math.Max(0d, profile.Consumption - profile.Inventory) * Math.Max(0d, profile.ShortagePenalty);
-        }
+        var revenue = result.Outcomes
+            .Sum(outcome => outcome.Allocations.Sum(allocation =>
+            {
+                var key = (allocation.ConsumerNodeId, allocation.TrafficType);
+                var unitPrice = revenueByNodeTraffic.GetValueOrDefault(key, 0d);
+                return allocation.Quantity * unitPrice;
+            }));
+        var holding = 0d;
+        var shortage = result.Outcomes.Sum(outcome =>
+            Math.Max(0d, outcome.UnmetDemand) * shortagePenaltyByTraffic.GetValueOrDefault(outcome.TrafficType, 0d));
 
         var transport = result.Outcomes.Sum(outcome => outcome.Allocations.Sum(allocation => allocation.TotalMovementCost));
         return new EconomicSummary
@@ -318,16 +326,16 @@ public sealed class BottleneckDetectionService : IBottleneckDetectionService
 
 public interface IExplainabilityService
 {
-    NodeExplanation ExplainNode(NetworkModel network, SimulationResult result, Guid nodeId);
+    NodeExplanation ExplainNode(NetworkModel network, SimulationResult result, string nodeId);
 
-    EdgeExplanation ExplainEdge(NetworkModel network, SimulationResult result, Guid edgeId);
+    EdgeExplanation ExplainEdge(NetworkModel network, SimulationResult result, string edgeId);
 }
 
 public sealed class ExplainabilityService : IExplainabilityService
 {
-    public NodeExplanation ExplainNode(NetworkModel network, SimulationResult result, Guid nodeId)
+    public NodeExplanation ExplainNode(NetworkModel network, SimulationResult result, string nodeId)
     {
-        var node = network.Nodes.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == nodeId);
+        var node = network.Nodes.FirstOrDefault(item => string.Equals(item.Id, nodeId, StringComparison.OrdinalIgnoreCase));
         var explanation = new NodeExplanation { NodeId = nodeId, NodeName = node?.Name ?? string.Empty };
         if (node is null)
         {
@@ -357,9 +365,9 @@ public sealed class ExplainabilityService : IExplainabilityService
         return explanation;
     }
 
-    public EdgeExplanation ExplainEdge(NetworkModel network, SimulationResult result, Guid edgeId)
+    public EdgeExplanation ExplainEdge(NetworkModel network, SimulationResult result, string edgeId)
     {
-        var edge = network.Edges.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == edgeId);
+        var edge = network.Edges.FirstOrDefault(item => string.Equals(item.Id, edgeId, StringComparison.OrdinalIgnoreCase));
         var explanation = new EdgeExplanation { EdgeId = edgeId, EdgeName = edge?.Id ?? string.Empty };
         if (edge is null)
         {
@@ -462,7 +470,7 @@ public sealed class ScenarioRunner : IScenarioRunner
                     return false;
                 }
 
-                var node = network.Nodes.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == evt.TargetId);
+                var node = network.Nodes.FirstOrDefault(item => string.Equals(item.Id, evt.TargetId, StringComparison.OrdinalIgnoreCase));
                 if (node is null)
                 {
                     warnings.Add($"Skipped event '{evt.Name}': target node was not found.");
@@ -484,7 +492,7 @@ public sealed class ScenarioRunner : IScenarioRunner
                     return false;
                 }
 
-                var edge = network.Edges.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == evt.TargetId);
+                var edge = network.Edges.FirstOrDefault(item => string.Equals(item.Id, evt.TargetId, StringComparison.OrdinalIgnoreCase));
                 if (edge is null)
                 {
                     warnings.Add($"Skipped event '{evt.Name}': target edge was not found.");
@@ -500,7 +508,7 @@ public sealed class ScenarioRunner : IScenarioRunner
                     return false;
                 }
 
-                var spikeNode = network.Nodes.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == evt.TargetId);
+                var spikeNode = network.Nodes.FirstOrDefault(item => string.Equals(item.Id, evt.TargetId, StringComparison.OrdinalIgnoreCase));
                 if (spikeNode is null)
                 {
                     warnings.Add($"Skipped event '{evt.Name}': target node was not found.");
@@ -520,7 +528,7 @@ public sealed class ScenarioRunner : IScenarioRunner
                     return false;
                 }
 
-                var targetEdge = network.Edges.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == evt.TargetId);
+                var targetEdge = network.Edges.FirstOrDefault(item => string.Equals(item.Id, evt.TargetId, StringComparison.OrdinalIgnoreCase));
                 if (targetEdge is null)
                 {
                     warnings.Add($"Skipped event '{evt.Name}': target edge was not found.");
@@ -554,11 +562,11 @@ public sealed class NodeFailureScenarioEvent : IScenarioEvent
 
     public ScenarioTargetKind TargetKind => ScenarioTargetKind.Node;
 
-    public Guid? TargetId { get; init; }
+    public string? TargetId { get; init; }
 
     public void Apply(SimulationContext context)
     {
-        var node = context.Network.Nodes.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == TargetId);
+        var node = context.Network.Nodes.FirstOrDefault(item => string.Equals(item.Id, TargetId, StringComparison.OrdinalIgnoreCase));
         if (node is null)
         {
             return;
@@ -596,11 +604,11 @@ public sealed class EdgeClosureScenarioEvent : IScenarioEvent
 
     public ScenarioTargetKind TargetKind => ScenarioTargetKind.Edge;
 
-    public Guid? TargetId { get; init; }
+    public string? TargetId { get; init; }
 
     public void Apply(SimulationContext context)
     {
-        var edge = context.Network.Edges.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == TargetId);
+        var edge = context.Network.Edges.FirstOrDefault(item => string.Equals(item.Id, TargetId, StringComparison.OrdinalIgnoreCase));
         if (edge is null)
         {
             return;
@@ -614,7 +622,7 @@ public sealed class EdgeClosureScenarioEvent : IScenarioEvent
 
     public void Revert(SimulationContext context)
     {
-        var edge = context.Network.Edges.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == TargetId);
+        var edge = context.Network.Edges.FirstOrDefault(item => string.Equals(item.Id, TargetId, StringComparison.OrdinalIgnoreCase));
         if (edge is null)
         {
             return;
@@ -637,7 +645,7 @@ public sealed class DemandSpikeScenarioEvent : IScenarioEvent
 
     public ScenarioTargetKind TargetKind => ScenarioTargetKind.Node;
 
-    public Guid? TargetId { get; init; }
+    public string? TargetId { get; init; }
 
     public string? TrafficType { get; init; }
 
@@ -645,7 +653,7 @@ public sealed class DemandSpikeScenarioEvent : IScenarioEvent
 
     public void Apply(SimulationContext context)
     {
-        var node = context.Network.Nodes.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == TargetId);
+        var node = context.Network.Nodes.FirstOrDefault(item => string.Equals(item.Id, TargetId, StringComparison.OrdinalIgnoreCase));
         if (node is null)
         {
             return;
@@ -679,13 +687,13 @@ public sealed class EdgeCostChangeScenarioEvent : IScenarioEvent
 
     public ScenarioTargetKind TargetKind => ScenarioTargetKind.Edge;
 
-    public Guid? TargetId { get; init; }
+    public string? TargetId { get; init; }
 
     public double NewCost { get; init; }
 
     public void Apply(SimulationContext context)
     {
-        var edge = context.Network.Edges.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == TargetId);
+        var edge = context.Network.Edges.FirstOrDefault(item => string.Equals(item.Id, TargetId, StringComparison.OrdinalIgnoreCase));
         if (edge is null)
         {
             return;
@@ -697,7 +705,7 @@ public sealed class EdgeCostChangeScenarioEvent : IScenarioEvent
 
     public void Revert(SimulationContext context)
     {
-        var edge = context.Network.Edges.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == TargetId);
+        var edge = context.Network.Edges.FirstOrDefault(item => string.Equals(item.Id, TargetId, StringComparison.OrdinalIgnoreCase));
         if (edge is null || previousCost is null)
         {
             return;

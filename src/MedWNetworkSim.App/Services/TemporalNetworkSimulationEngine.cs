@@ -38,6 +38,7 @@ public sealed class TemporalNetworkSimulationEngine
 
     public TemporalSimulationStepResult Advance(NetworkModel network, TemporalSimulationState? currentState, SimulationRunOptions options)
     {
+        ArgumentNullException.ThrowIfNull(network);
         options ??= new SimulationRunOptions();
         clock.DeltaTime = options.DeltaTime > 0d ? options.DeltaTime : 1d;
         var context = new SimulationContext
@@ -51,7 +52,6 @@ public sealed class TemporalNetworkSimulationEngine
         {
             scheduled.Execute(context);
         }
-        ArgumentNullException.ThrowIfNull(network);
         network = HierarchicalNetworkProjection.ProjectForSimulation(network);
 
         var state = currentState ?? Initialize(network);

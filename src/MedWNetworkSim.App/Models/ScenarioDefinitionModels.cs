@@ -25,7 +25,7 @@ public sealed class ScenarioEventModel
     public string Name { get; set; } = string.Empty;
     public ScenarioEventKind Kind { get; set; }
     public ScenarioTargetKind TargetKind { get; set; }
-    public Guid? TargetId { get; set; }
+    public string? TargetId { get; set; }
     public string? TrafficTypeIdOrName { get; set; }
     public double Time { get; set; }
     public double? EndTime { get; set; }

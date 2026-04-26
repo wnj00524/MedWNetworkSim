@@ -18,7 +18,7 @@ public interface IScenarioEvent
 
     ScenarioTargetKind TargetKind { get; }
 
-    Guid? TargetId { get; }
+    string? TargetId { get; }
 
     void Apply(SimulationContext context);
 
@@ -72,7 +72,7 @@ public sealed class NetworkIssue
 
     public NetworkIssueSeverity Severity { get; set; }
 
-    public Guid? TargetId { get; set; }
+    public string? TargetId { get; set; }
 
     public string TargetName { get; set; } = string.Empty;
 
@@ -87,7 +87,7 @@ public sealed class NetworkIssue
 
 public sealed class NodeExplanation
 {
-    public Guid NodeId { get; set; }
+    public string NodeId { get; set; } = string.Empty;
 
     public string NodeName { get; set; } = string.Empty;
 
@@ -102,7 +102,7 @@ public sealed class NodeExplanation
 
 public sealed class EdgeExplanation
 {
-    public Guid EdgeId { get; set; }
+    public string EdgeId { get; set; } = string.Empty;
 
     public string EdgeName { get; set; } = string.Empty;
 

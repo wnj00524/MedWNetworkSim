@@ -163,9 +163,8 @@ public sealed class GraphSelectionState
     public string? KeyboardNodeId { get; set; }
     public string? KeyboardEdgeId { get; set; }
     public string? PulseNodeId { get; set; }
-    public double PulseNodeStartTime { get; set; }
     public string? PulseEdgeId { get; set; }
-    public double PulseEdgeStartTime { get; set; }
+    public double PulseProgress { get; set; }
 }
 
 public sealed class GraphSimulationSceneState
@@ -502,7 +501,7 @@ public sealed class GraphRenderer
             var pulse = GetPulseState(
                 scene,
                 string.Equals(scene.Selection.PulseEdgeId, edge.Id, StringComparison.OrdinalIgnoreCase),
-                scene.Selection.PulseEdgeStartTime);
+                scene.Selection.PulseProgress);
             overlayPaint.Color = (pulse.IsActive ? PulseColor : FocusColor).WithAlpha((byte)(pulse.IsActive ? 190 : 120));
             overlayPaint.StrokeWidth = (float)(6f + pulse.StrokeBoost);
             canvas.DrawLine((float)start.X, (float)start.Y, (float)end.X, (float)end.Y, overlayPaint);
@@ -540,7 +539,7 @@ public sealed class GraphRenderer
             var pulse = GetPulseState(
                 scene,
                 isSelected && string.Equals(scene.Selection.PulseNodeId, node.Id, StringComparison.OrdinalIgnoreCase),
-                scene.Selection.PulseNodeStartTime);
+                scene.Selection.PulseProgress);
             var nodeAlpha = (byte)Math.Clamp(Math.Round(255d * node.VisualOpacity), 32d, 255d);
             using var fill = new SKPaint { Color = node.FillColor.WithAlpha(nodeAlpha), IsAntialias = true };
             using var stroke = new SKPaint
@@ -557,7 +556,7 @@ public sealed class GraphRenderer
         }
     }
 
-    private static (bool IsActive, double StrokeBoost) GetPulseState(GraphScene scene, bool isPulseTarget, double pulseStartTime)
+    private static (bool IsActive, double StrokeBoost) GetPulseState(GraphScene scene, bool isPulseTarget, double pulseProgress)
     {
         if (!isPulseTarget)
         {
@@ -569,16 +568,13 @@ public sealed class GraphRenderer
             return (true, 1.8d);
         }
 
-        const double pulseDurationSeconds = 1.25d;
-        var elapsed = scene.Simulation.AnimationTime - pulseStartTime;
-        if (elapsed < 0d || elapsed > pulseDurationSeconds)
+        if (pulseProgress <= 0d)
         {
             return (false, 0d);
         }
 
-        var progress = elapsed / pulseDurationSeconds;
-        var wave = Math.Sin(progress * Math.PI * 4d);
-        var envelope = 1d - progress;
+        var wave = Math.Sin((1d - pulseProgress) * Math.PI * 4d);
+        var envelope = pulseProgress;
         var strokeBoost = Math.Max(0d, wave) * 3.1d * envelope;
         return (true, strokeBoost);
     }

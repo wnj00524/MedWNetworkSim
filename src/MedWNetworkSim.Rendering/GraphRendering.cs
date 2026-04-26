@@ -162,6 +162,10 @@ public sealed class GraphSelectionState
     public string? HoverEdgeId { get; set; }
     public string? KeyboardNodeId { get; set; }
     public string? KeyboardEdgeId { get; set; }
+    public string? PulseNodeId { get; set; }
+    public double PulseNodeStartTime { get; set; }
+    public string? PulseEdgeId { get; set; }
+    public double PulseEdgeStartTime { get; set; }
 }
 
 public sealed class GraphSimulationSceneState
@@ -279,6 +283,7 @@ public sealed class GraphRenderer
     private static readonly SKColor TextColor = SKColor.Parse("#E4EEF8");
     private static readonly SKColor MutedTextColor = SKColor.Parse("#89A5BA");
     private static readonly SKColor WarningColor = SKColor.Parse("#F39B68");
+    private static readonly SKColor PulseColor = SKColor.Parse("#FFF1B8");
     private static readonly SKColor MinimapBackground = new(6, 13, 22, 220);
 
     public void Render(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize)
@@ -494,7 +499,12 @@ public sealed class GraphRenderer
         {
             var start = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId), viewportSize);
             var end = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId), viewportSize);
-            overlayPaint.Color = FocusColor.WithAlpha(120);
+            var pulse = GetPulseState(
+                scene,
+                string.Equals(scene.Selection.PulseEdgeId, edge.Id, StringComparison.OrdinalIgnoreCase),
+                scene.Selection.PulseEdgeStartTime);
+            overlayPaint.Color = (pulse.IsActive ? PulseColor : FocusColor).WithAlpha((byte)(pulse.IsActive ? 190 : 120));
+            overlayPaint.StrokeWidth = (float)(6f + pulse.StrokeBoost);
             canvas.DrawLine((float)start.X, (float)start.Y, (float)end.X, (float)end.Y, overlayPaint);
             if (!edge.IsBidirectional)
             {
@@ -526,13 +536,18 @@ public sealed class GraphRenderer
         {
             var screenRect = GetNodeScreenRect(node, viewport, viewportSize);
 
+            var isSelected = scene.Selection.SelectedNodeIds.Contains(node.Id);
+            var pulse = GetPulseState(
+                scene,
+                isSelected && string.Equals(scene.Selection.PulseNodeId, node.Id, StringComparison.OrdinalIgnoreCase),
+                scene.Selection.PulseNodeStartTime);
             var nodeAlpha = (byte)Math.Clamp(Math.Round(255d * node.VisualOpacity), 32d, 255d);
             using var fill = new SKPaint { Color = node.FillColor.WithAlpha(nodeAlpha), IsAntialias = true };
             using var stroke = new SKPaint
             {
-                Color = (scene.Selection.SelectedNodeIds.Contains(node.Id) ? FocusColor : node.StrokeColor).WithAlpha(nodeAlpha),
+                Color = (isSelected ? (pulse.IsActive ? PulseColor : FocusColor) : node.StrokeColor).WithAlpha(nodeAlpha),
                 IsAntialias = true,
-                StrokeWidth = scene.Selection.SelectedNodeIds.Contains(node.Id) ? 3.2f : 1.6f,
+                StrokeWidth = isSelected ? (float)(3.2f + pulse.StrokeBoost) : 1.6f,
                 Style = SKPaintStyle.Stroke
             };
 
@@ -540,6 +555,32 @@ public sealed class GraphRenderer
             canvas.DrawRoundRect(screenRect, NodeCornerRadius, NodeCornerRadius, stroke);
             DrawFacilityCoverageOverlay(canvas, node, screenRect, nodeAlpha);
         }
+    }
+
+    private static (bool IsActive, double StrokeBoost) GetPulseState(GraphScene scene, bool isPulseTarget, double pulseStartTime)
+    {
+        if (!isPulseTarget)
+        {
+            return (false, 0d);
+        }
+
+        if (scene.Simulation.ReducedMotion)
+        {
+            return (true, 1.8d);
+        }
+
+        const double pulseDurationSeconds = 1.25d;
+        var elapsed = scene.Simulation.AnimationTime - pulseStartTime;
+        if (elapsed < 0d || elapsed > pulseDurationSeconds)
+        {
+            return (false, 0d);
+        }
+
+        var progress = elapsed / pulseDurationSeconds;
+        var wave = Math.Sin(progress * Math.PI * 4d);
+        var envelope = 1d - progress;
+        var strokeBoost = Math.Max(0d, wave) * 3.1d * envelope;
+        return (true, strokeBoost);
     }
 
     private static void DrawFacilityCoverageOverlay(SKCanvas canvas, GraphNodeSceneItem node, SKRect screenRect, byte nodeAlpha)

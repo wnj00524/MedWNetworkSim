@@ -448,6 +448,7 @@ public sealed class ScenarioRunner : IScenarioRunner
         var productionByTraffic = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         var consumptionByTraffic = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         var unusedByTraffic = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var noPermittedPathByTraffic = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         var allocationsByTraffic = new Dictionary<string, List<RouteAllocation>>(StringComparer.OrdinalIgnoreCase);
         var notesByTraffic = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         var routingByTraffic = new Dictionary<string, RoutingPreference>(StringComparer.OrdinalIgnoreCase);
@@ -495,6 +496,7 @@ public sealed class ScenarioRunner : IScenarioRunner
                 productionByTraffic[traffic] = productionByTraffic.GetValueOrDefault(traffic) + outcome.TotalProduction;
                 consumptionByTraffic[traffic] = consumptionByTraffic.GetValueOrDefault(traffic) + outcome.TotalConsumption;
                 unusedByTraffic[traffic] = unusedByTraffic.GetValueOrDefault(traffic) + outcome.UnusedSupply;
+                noPermittedPathByTraffic[traffic] = noPermittedPathByTraffic.GetValueOrDefault(traffic) + outcome.NoPermittedPathDemand;
                 routingByTraffic.TryAdd(traffic, outcome.RoutingPreference);
                 allocationModeByTraffic.TryAdd(traffic, outcome.AllocationMode);
                 if (!allocationsByTraffic.TryGetValue(traffic, out var allocations))
@@ -544,6 +546,7 @@ public sealed class ScenarioRunner : IScenarioRunner
                     TotalDelivered = deliveredByTraffic.GetValueOrDefault(traffic),
                     UnusedSupply = unusedByTraffic.GetValueOrDefault(traffic),
                     UnmetDemand = unmetByTraffic.GetValueOrDefault(traffic),
+                    NoPermittedPathDemand = noPermittedPathByTraffic.GetValueOrDefault(traffic),
                     Allocations = allocationsByTraffic.GetValueOrDefault(traffic) ?? [],
                     Notes = notesByTraffic.TryGetValue(traffic, out var notes) ? notes.ToList() : []
                 })

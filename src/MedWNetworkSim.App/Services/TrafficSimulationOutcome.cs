@@ -49,6 +49,11 @@ public sealed class TrafficSimulationOutcome
     public double UnmetDemand { get; init; }
 
     /// <summary>
+    /// Gets the demand quantity that could not be routed because no permitted path existed.
+    /// </summary>
+    public double NoPermittedPathDemand { get; init; }
+
+    /// <summary>
     /// Gets the detailed local and routed allocations that make up the outcome.
     /// </summary>
     public IReadOnlyList<RouteAllocation> Allocations { get; init; } = [];

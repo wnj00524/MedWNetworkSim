@@ -218,6 +218,7 @@ public sealed class FacilityModeSimulationEngine
             TotalDelivered = delivered,
             UnusedSupply = Math.Max(0d, totalProduction - (inboundOutcome?.TotalDelivered ?? 0d)),
             UnmetDemand = Math.Max(0d, totalDemand - delivered),
+            NoPermittedPathDemand = (inboundOutcome?.NoPermittedPathDemand ?? 0d) + (outboundOutcome?.NoPermittedPathDemand ?? 0d),
             Allocations = allocations,
             Notes = notes
         };
@@ -234,6 +235,7 @@ public sealed class FacilityModeSimulationEngine
             TotalDelivered = 0d,
             UnusedSupply = 0d,
             UnmetDemand = totalDemand,
+            NoPermittedPathDemand = 0d,
             Allocations = [],
             Notes = [note]
         };
@@ -249,6 +251,7 @@ public sealed class FacilityModeSimulationEngine
             TotalDelivered = outcome.TotalDelivered,
             UnusedSupply = outcome.UnusedSupply,
             UnmetDemand = outcome.UnmetDemand,
+            NoPermittedPathDemand = outcome.NoPermittedPathDemand,
             Allocations = outcome.Allocations,
             Notes = outcome.Notes.Concat([note]).ToList()
         };

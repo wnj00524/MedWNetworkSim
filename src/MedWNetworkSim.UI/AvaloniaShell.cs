@@ -286,8 +286,12 @@ public sealed class GraphCanvasControl : Control
         catch (Exception ex)
         {
             LogDebug($"Render failure: {ex}");
-            UpdateStatus("Render error", ex.Message, isError: true, visibleFrame: false);
-            DrawStatusPanel(context, "Graph canvas failed to render", ex.Message, isError: true);
+            var safeMessage = UiExceptionBoundary.BuildActionableMessage(
+                "Canvas rendering",
+                "Try Fit View or reduce zoom/window size. If this keeps happening, restart the app.");
+            UiExceptionBoundary.Report(ex, safeMessage, nameof(GraphCanvasControl));
+            UpdateStatus("Render error", safeMessage, isError: true, visibleFrame: false);
+            DrawStatusPanel(context, "Graph canvas failed to render", safeMessage, isError: true);
         }
     }
 
@@ -300,60 +304,68 @@ public sealed class GraphCanvasControl : Control
             return;
         }
 
-        var transform = GetCoordinateTransform();
-        var interactionContext = ViewModel.CreateInteractionContext(transform.LogicalViewport);
-        var point = PointerToGraph(e, transform);
-        var button = e.GetCurrentPoint(this).Properties.PointerUpdateKind switch
+        try
         {
-            PointerUpdateKind.LeftButtonPressed => GraphPointerButton.Left,
-            PointerUpdateKind.MiddleButtonPressed => GraphPointerButton.Middle,
-            PointerUpdateKind.RightButtonPressed => GraphPointerButton.Right,
-            _ => GraphPointerButton.Left
-        };
+            var transform = GetCoordinateTransform();
+            var interactionContext = ViewModel.CreateInteractionContext(transform.LogicalViewport);
+            var point = PointerToGraph(e, transform);
+            var button = e.GetCurrentPoint(this).Properties.PointerUpdateKind switch
+            {
+                PointerUpdateKind.LeftButtonPressed => GraphPointerButton.Left,
+                PointerUpdateKind.MiddleButtonPressed => GraphPointerButton.Middle,
+                PointerUpdateKind.RightButtonPressed => GraphPointerButton.Right,
+                _ => GraphPointerButton.Left
+            };
 
-        if (button == GraphPointerButton.Right)
-        {
-            ShowContextMenu(ViewModel, interactionContext, point);
-            e.Handled = true;
-            return;
-        }
+            if (button == GraphPointerButton.Right)
+            {
+                ShowContextMenu(ViewModel, interactionContext, point);
+                e.Handled = true;
+                return;
+            }
 
-        if (button == GraphPointerButton.Left &&
-            ViewModel.IsFacilityPlanningMode &&
-            TryToggleFacilitySelection(ViewModel, interactionContext, point))
-        {
-            e.Handled = true;
-            return;
-        }
+            if (button == GraphPointerButton.Left &&
+                ViewModel.IsFacilityPlanningMode &&
+                TryToggleFacilitySelection(ViewModel, interactionContext, point))
+            {
+                e.Handled = true;
+                return;
+            }
 
-        if (button == GraphPointerButton.Left &&
-            ViewModel.IsIsochroneModeEnabled &&
-            TryStartIsochroneSelection(ViewModel, interactionContext, point))
-        {
-            e.Handled = true;
-            return;
-        }
+            if (button == GraphPointerButton.Left &&
+                ViewModel.IsIsochroneModeEnabled &&
+                TryStartIsochroneSelection(ViewModel, interactionContext, point))
+            {
+                e.Handled = true;
+                return;
+            }
 
-        if (button == GraphPointerButton.Left && e.ClickCount >= 2 && TryHandleWorkspaceDoubleClick(interactionContext, point))
-        {
+            if (button == GraphPointerButton.Left && e.ClickCount >= 2 && TryHandleWorkspaceDoubleClick(interactionContext, point))
+            {
+                ViewModel.NotifyVisualChanged();
+                RefreshEditorSummaries(ViewModel);
+                InvalidateVisual();
+                e.Handled = true;
+                return;
+            }
+
+            ViewModel.InteractionController.OnPointerPressed(
+                interactionContext,
+                button,
+                point,
+                e.KeyModifiers.HasFlag(KeyModifiers.Shift),
+                e.KeyModifiers.HasFlag(KeyModifiers.Alt),
+                e.KeyModifiers.HasFlag(KeyModifiers.Control));
             ViewModel.NotifyVisualChanged();
             RefreshEditorSummaries(ViewModel);
             InvalidateVisual();
             e.Handled = true;
-            return;
         }
-
-        ViewModel.InteractionController.OnPointerPressed(
-            interactionContext,
-            button,
-            point,
-            e.KeyModifiers.HasFlag(KeyModifiers.Shift),
-            e.KeyModifiers.HasFlag(KeyModifiers.Alt),
-            e.KeyModifiers.HasFlag(KeyModifiers.Control));
-        ViewModel.NotifyVisualChanged();
-        RefreshEditorSummaries(ViewModel);
-        InvalidateVisual();
-        e.Handled = true;
+        catch (Exception ex)
+        {
+            ReportInputFailure("pointer press", ex);
+            e.Handled = true;
+        }
     }
 
     private bool TryStartIsochroneSelection(WorkspaceViewModel viewModel, GraphInteractionContext interactionContext, GraphPoint point)
@@ -365,7 +377,7 @@ public sealed class GraphCanvasControl : Control
             return false;
         }
 
-        _ = Dispatcher.UIThread.InvokeAsync(async () =>
+        SafeFireAndForget(Dispatcher.UIThread.InvokeAsync(async () =>
         {
             var threshold = await PromptIsochroneThresholdAsync(viewModel.IsochroneThresholdMinutes);
             if (!threshold.HasValue)
@@ -378,7 +390,7 @@ public sealed class GraphCanvasControl : Control
                 viewModel.NotifyVisualChanged();
                 InvalidateVisual();
             }
-        });
+        }), "isochrone selection");
         return true;
     }
 
@@ -396,7 +408,7 @@ public sealed class GraphCanvasControl : Control
             return viewModel.ToggleFacilityOriginById(hit.NodeId);
         }
 
-        _ = Dispatcher.UIThread.InvokeAsync(async () =>
+        SafeFireAndForget(Dispatcher.UIThread.InvokeAsync(async () =>
         {
             var maxTravelTime = await FacilityPlanningDialogs.PromptMaxTravelTimeAsync(
                 this,
@@ -412,7 +424,7 @@ public sealed class GraphCanvasControl : Control
                 viewModel.NotifyVisualChanged();
                 InvalidateVisual();
             }
-        });
+        }), "facility selection");
         return true;
     }
 
@@ -603,13 +615,22 @@ public sealed class GraphCanvasControl : Control
             return;
         }
 
-        var transform = GetCoordinateTransform();
-        ViewModel.InteractionController.OnPointerMoved(
-            ViewModel.CreateInteractionContext(transform.LogicalViewport),
-            PointerToGraph(e, transform));
-        UpdateHoveredNodeToolTip(ViewModel, transform, e);
-        ViewModel.NotifyVisualChanged();
-        InvalidateVisual();
+        try
+        {
+            var transform = GetCoordinateTransform();
+            ViewModel.InteractionController.OnPointerMoved(
+                ViewModel.CreateInteractionContext(transform.LogicalViewport),
+                PointerToGraph(e, transform));
+            UpdateHoveredNodeToolTip(ViewModel, transform, e);
+            ViewModel.NotifyVisualChanged();
+            InvalidateVisual();
+            e.Handled = true;
+        }
+        catch (Exception ex)
+        {
+            ReportInputFailure("pointer move", ex);
+            e.Handled = true;
+        }
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -620,22 +641,31 @@ public sealed class GraphCanvasControl : Control
             return;
         }
 
-        var transform = GetCoordinateTransform();
-        var button = e.InitialPressMouseButton switch
+        try
         {
-            MouseButton.Middle => GraphPointerButton.Middle,
-            MouseButton.Right => GraphPointerButton.Right,
-            _ => GraphPointerButton.Left
-        };
+            var transform = GetCoordinateTransform();
+            var button = e.InitialPressMouseButton switch
+            {
+                MouseButton.Middle => GraphPointerButton.Middle,
+                MouseButton.Right => GraphPointerButton.Right,
+                _ => GraphPointerButton.Left
+            };
 
-        ViewModel.InteractionController.OnPointerReleased(
-            ViewModel.CreateInteractionContext(transform.LogicalViewport),
-            button,
-            PointerToGraph(e, transform),
-            e.KeyModifiers.HasFlag(KeyModifiers.Shift));
-        ViewModel.NotifyVisualChanged();
-        RefreshEditorSummaries(ViewModel);
-        InvalidateVisual();
+            ViewModel.InteractionController.OnPointerReleased(
+                ViewModel.CreateInteractionContext(transform.LogicalViewport),
+                button,
+                PointerToGraph(e, transform),
+                e.KeyModifiers.HasFlag(KeyModifiers.Shift));
+            ViewModel.NotifyVisualChanged();
+            RefreshEditorSummaries(ViewModel);
+            InvalidateVisual();
+            e.Handled = true;
+        }
+        catch (Exception ex)
+        {
+            ReportInputFailure("pointer release", ex);
+            e.Handled = true;
+        }
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -646,14 +676,22 @@ public sealed class GraphCanvasControl : Control
             return;
         }
 
-        var transform = GetCoordinateTransform();
-        ViewModel.InteractionController.OnPointerWheel(
-            ViewModel.CreateInteractionContext(transform.LogicalViewport),
-            PointerToGraph(e, transform),
-            e.Delta.Y);
-        ViewModel.NotifyVisualChanged();
-        InvalidateVisual();
-        e.Handled = true;
+        try
+        {
+            var transform = GetCoordinateTransform();
+            ViewModel.InteractionController.OnPointerWheel(
+                ViewModel.CreateInteractionContext(transform.LogicalViewport),
+                PointerToGraph(e, transform),
+                e.Delta.Y);
+            ViewModel.NotifyVisualChanged();
+            InvalidateVisual();
+            e.Handled = true;
+        }
+        catch (Exception ex)
+        {
+            ReportInputFailure("mouse wheel", ex);
+            e.Handled = true;
+        }
     }
 
     protected override void OnPointerExited(PointerEventArgs e)
@@ -672,15 +710,23 @@ public sealed class GraphCanvasControl : Control
             return;
         }
 
-        var transform = GetCoordinateTransform();
-        if (ViewModel.InteractionController.OnKeyDown(
-                ViewModel.CreateInteractionContext(transform.LogicalViewport),
-                e.Key.ToString(),
-                e.KeyModifiers.HasFlag(KeyModifiers.Shift)))
+        try
         {
-            ViewModel.NotifyVisualChanged();
-            RefreshEditorSummaries(ViewModel);
-            InvalidateVisual();
+            var transform = GetCoordinateTransform();
+            if (ViewModel.InteractionController.OnKeyDown(
+                    ViewModel.CreateInteractionContext(transform.LogicalViewport),
+                    e.Key.ToString(),
+                    e.KeyModifiers.HasFlag(KeyModifiers.Shift)))
+            {
+                ViewModel.NotifyVisualChanged();
+                RefreshEditorSummaries(ViewModel);
+                InvalidateVisual();
+                e.Handled = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            ReportInputFailure("keyboard input", ex);
             e.Handled = true;
         }
     }
@@ -725,6 +771,18 @@ public sealed class GraphCanvasControl : Control
 
     private void EnsureBitmap(GraphCanvasCoordinateTransform transform)
     {
+        const int maxPixelsPerAxis = 16384;
+        if (transform.PixelViewport.Width <= 0 || transform.PixelViewport.Height <= 0)
+        {
+            throw new InvalidOperationException("Canvas pixel size is invalid.");
+        }
+
+        if (transform.PixelViewport.Width > maxPixelsPerAxis || transform.PixelViewport.Height > maxPixelsPerAxis)
+        {
+            throw new InvalidOperationException(
+                $"Canvas resolution {transform.PixelViewport.Width}x{transform.PixelViewport.Height} is too large. Resize the window or reduce display scaling.");
+        }
+
         if (bitmap is not null &&
             bitmap.PixelSize.Width == transform.PixelViewport.Width &&
             bitmap.PixelSize.Height == transform.PixelViewport.Height)
@@ -732,11 +790,41 @@ public sealed class GraphCanvasControl : Control
             return;
         }
 
+        bitmap?.Dispose();
         bitmap = new WriteableBitmap(
             transform.PixelViewport,
             new Vector(96d * transform.ScaleX, 96d * transform.ScaleY),
             Avalonia.Platform.PixelFormat.Bgra8888,
             Avalonia.Platform.AlphaFormat.Premul);
+    }
+
+    private void ReportInputFailure(string operation, Exception ex)
+    {
+        var safeMessage = UiExceptionBoundary.BuildActionableMessage(
+            $"Canvas {operation}",
+            "Try the action again. If this repeats, save your work and restart.");
+        UiExceptionBoundary.Report(ex, safeMessage, nameof(GraphCanvasControl));
+        UpdateStatus("Input error", safeMessage, isError: true, visibleFrame: hasVisibleFrame);
+    }
+
+    private void SafeFireAndForget(Task task, string operation)
+    {
+        _ = task.ContinueWith(
+            t =>
+            {
+                if (t.Exception is null)
+                {
+                    return;
+                }
+
+                var ex = t.Exception.Flatten().InnerException ?? t.Exception;
+                var safeMessage = UiExceptionBoundary.BuildActionableMessage(
+                    $"{operation} action",
+                    "Please retry. If it keeps failing, close any open dialogs and try again.");
+                UiExceptionBoundary.Report(ex, safeMessage, nameof(GraphCanvasControl));
+                Dispatcher.UIThread.Post(() => UpdateStatus("Action failed", safeMessage, isError: true, visibleFrame: hasVisibleFrame));
+            },
+            TaskContinuationOptions.OnlyOnFaulted);
     }
 
     private void HandleAnimationTick(object? sender, EventArgs e)

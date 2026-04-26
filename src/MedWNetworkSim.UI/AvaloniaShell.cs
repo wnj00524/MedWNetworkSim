@@ -1861,6 +1861,11 @@ public sealed class ShellWindow : Window
         scenarioList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding("ScenarioEditor.SelectedScenarioDefinition", BindingMode.TwoWay));
         scenarioList.ItemTemplate = new FuncDataTemplate<ScenarioDefinitionModel>((item, _) =>
         {
+            //Add null check 
+            if (item is null)
+            {
+                return new TextBlock();
+            }
             return new StackPanel
             {
                 Spacing = 3,
@@ -3021,40 +3026,38 @@ public sealed class ShellWindow : Window
         var list = new ListBox { MinHeight = 180 };
         list.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.LayerItems)));
         list.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedLayerItem), BindingMode.TwoWay));
-        list.ItemTemplate = new FuncDataTemplate<LayerListItemViewModel>((item, _) => 
+        list.ItemTemplate = new FuncDataTemplate<LayerListItemViewModel>((item, _) =>
         {
-            if (item == null)
+            // Add the early exit for null items
+            if (item is null)
             {
-                return new StackPanel
-                {
-                  
-                };
+                return new TextBlock();
             }
+
             return new StackPanel
             {
                 Spacing = 4,
                 Children =
+        {
+            new TextBlock { Text = $"{item.Name} ({item.TypeLabel})", FontWeight = FontWeight.SemiBold },
+            new TextBlock { Text = $"Nodes {item.NodeCount} · Edges {item.EdgeCount}", FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) },
+            new StackPanel
             {
-                new TextBlock { Text = $"{item.Name} ({item.TypeLabel})", FontWeight = FontWeight.SemiBold },
-                new TextBlock { Text = $"Nodes {item.NodeCount} · Edges {item.EdgeCount}", FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) },
-                new StackPanel
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                Children =
                 {
-                    Orientation = Orientation.Horizontal,
-                    Spacing = 8,
-                    Children =
+                    new CheckBox
                     {
-                        new CheckBox
-                        {
-                            Content = "Visible",
-                            [!ToggleButton.IsCheckedProperty] = new Binding(nameof(LayerListItemViewModel.IsVisible), BindingMode.TwoWay)
-                        },
-                        new CheckBox
-                        {
-                            Content = "Locked",
-                            [!ToggleButton.IsCheckedProperty] = new Binding(nameof(LayerListItemViewModel.IsLocked), BindingMode.TwoWay)
-                        },
-                        new TextBlock { Text = $"State: {item.VisibilityLabel} · {item.LockLabel}", FontSize = 11, VerticalAlignment = VerticalAlignment.Center }
-                    }
+                        Content = "Visible",
+                        [!ToggleButton.IsCheckedProperty] = new Binding(nameof(LayerListItemViewModel.IsVisible), BindingMode.TwoWay)
+                    },
+                    new CheckBox
+                    {
+                        Content = "Locked",
+                        [!ToggleButton.IsCheckedProperty] = new Binding(nameof(LayerListItemViewModel.IsLocked), BindingMode.TwoWay)
+                    },
+                    new TextBlock { Text = $"State: {item.VisibilityLabel} · {item.LockLabel}", FontSize = 11, VerticalAlignment = VerticalAlignment.Center }
                 }
                 }
             };
@@ -3109,15 +3112,24 @@ public sealed class ShellWindow : Window
         var eventList = new ListBox { MinHeight = 140 };
         eventList.Bind(ItemsControl.ItemsSourceProperty, new Binding("SelectedScenarioDefinition.Events"));
         eventList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedScenarioEvent), BindingMode.TwoWay));
-        eventList.ItemTemplate = new FuncDataTemplate<ScenarioEventModel>((item, _) => new StackPanel
+        eventList.ItemTemplate = new FuncDataTemplate<ScenarioEventModel>((item, _) =>
         {
-            Spacing = 2,
-            Children =
+            // Add the early exit for null items
+            if (item is null)
             {
-                new TextBlock { Text = $"{(item.IsEnabled ? "☑" : "☐")} {item.Kind} · {item.Name}", FontWeight = FontWeight.SemiBold },
-                new TextBlock { Text = $"Target {item.TargetId ?? "None"} · Traffic {(string.IsNullOrWhiteSpace(item.TrafficTypeIdOrName) ? "N/A" : item.TrafficTypeIdOrName)} · Start {item.Time:0.##} · End {(item.EndTime?.ToString("0.##") ?? "None")} · Value {item.Value:0.##}", FontSize = 11 },
-                new TextBlock { Text = item.IsEnabled ? "Status: enabled" : "Status: disabled", FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
+                return new TextBlock();
             }
+
+            return new StackPanel
+            {
+                Spacing = 2,
+                Children =
+        {
+            new TextBlock { Text = $"{(item.IsEnabled ? "☑" : "☐")} {item.Kind} · {item.Name}", FontWeight = FontWeight.SemiBold },
+            new TextBlock { Text = $"Target {item.TargetId ?? "None"} · Traffic {(string.IsNullOrWhiteSpace(item.TrafficTypeIdOrName) ? "N/A" : item.TrafficTypeIdOrName)} · Start {item.Time:0.##} · End {(item.EndTime?.ToString("0.##") ?? "None")} · Value {item.Value:0.##}", FontSize = 11 },
+            new TextBlock { Text = item.IsEnabled ? "Status: enabled" : "Status: disabled", FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
+        }
+            };
         });
         return new StackPanel
         {
@@ -3142,13 +3154,13 @@ public sealed class ShellWindow : Window
         var list = new ListBox();
         list.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.TopIssues)));
         list.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedTopIssue), BindingMode.TwoWay));
-        list.ItemTemplate = new FuncDataTemplate<NetworkIssueListItemViewModel>((item, _) => 
+        list.ItemTemplate = new FuncDataTemplate<NetworkIssueListItemViewModel>((item, _) =>
         {
             if (item is null)
-             {
+            {
                 return new TextBlock();
-             }
-            return new StackPanel
+            }
+                return new StackPanel
             {
                 Children =
             {
@@ -3158,7 +3170,6 @@ public sealed class ShellWindow : Window
                 new TextBlock { Text = $"Suggested: {item.SuggestedAction}", TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
             }
             };
-               
         });
         return new StackPanel { Spacing = 8, Children = { list, BuildButton("Select", viewModel.SelectIssueCommand) } };
     }

@@ -19,7 +19,7 @@ public sealed class ScenarioValidationService : IScenarioValidationService
 
         if (evt.Time < 0d)
         {
-            errors.Add("Start time must be 0 or greater.");
+            errors.Add("Start time must be zero or greater.");
         }
 
         if (evt.EndTime.HasValue && evt.EndTime.Value < evt.Time)
@@ -29,19 +29,27 @@ public sealed class ScenarioValidationService : IScenarioValidationService
 
         if (evt.Kind == ScenarioEventKind.NodeFailure && (evt.TargetKind != ScenarioTargetKind.Node || evt.TargetId is null))
         {
-            errors.Add("Choose a node for this node failure.");
+            errors.Add("Choose a node for this event.");
         }
 
         if ((evt.Kind == ScenarioEventKind.EdgeClosure || evt.Kind == ScenarioEventKind.EdgeCostChange) && (evt.TargetKind != ScenarioTargetKind.Edge || evt.TargetId is null))
         {
             errors.Add(evt.Kind == ScenarioEventKind.EdgeClosure
-                ? "Choose an edge for this edge closure."
-                : "Choose an edge for this edge cost change.");
+                ? "Choose an edge for this event."
+                : "Choose an edge for this event.");
         }
 
         if (evt.Kind == ScenarioEventKind.DemandSpike && (evt.TargetKind != ScenarioTargetKind.Node || evt.TargetId is null || string.IsNullOrWhiteSpace(evt.TrafficTypeIdOrName)))
         {
-            errors.Add("Choose a node for this demand spike.");
+            if (evt.TargetKind != ScenarioTargetKind.Node || evt.TargetId is null)
+            {
+                errors.Add("Choose a node for this event.");
+            }
+
+            if (string.IsNullOrWhiteSpace(evt.TrafficTypeIdOrName))
+            {
+                errors.Add("Choose a traffic type for this demand spike.");
+            }
         }
 
         return errors;

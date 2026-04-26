@@ -123,6 +123,40 @@ public sealed class AdvancedSimulationTests
         Assert.Contains("Why this matters", explanation.Summary);
     }
 
+    [Fact]
+    public void PolicyCostMultiplier_ChangesTransportCost()
+    {
+        var network = BuildNetwork();
+        var engine = new NetworkSimulationEngine();
+        var baseCost = engine.Simulate(network).SelectMany(outcome => outcome.Allocations).Sum(allocation => allocation.TotalMovementCost);
+        network.PolicyRules.Add(new PolicyRuleModel
+        {
+            Name = "Expensive corridor",
+            Effect = PolicyRuleEffect.CostMultiplier,
+            TargetEdgeId = network.Edges[0].Id,
+            Value = 4d
+        });
+
+        var policyCost = engine.Simulate(network).SelectMany(outcome => outcome.Allocations).Sum(allocation => allocation.TotalMovementCost);
+        Assert.True(policyCost >= baseCost);
+    }
+
+    [Fact]
+    public void PolicyBlockTraffic_PreventsFlow()
+    {
+        var network = BuildNetwork();
+        network.PolicyRules.Add(new PolicyRuleModel
+        {
+            Name = "Block food",
+            Effect = PolicyRuleEffect.BlockTraffic,
+            TargetEdgeId = network.Edges[0].Id,
+            TrafficTypeIdOrName = "Food"
+        });
+
+        var outcome = new NetworkSimulationEngine().Simulate(network).Single();
+        Assert.True(outcome.UnmetDemand > 0d);
+    }
+
     private static NetworkModel BuildNetwork()
     {
         var a = Guid.NewGuid();

@@ -282,6 +282,7 @@ public sealed class BottleneckDetectionService : IBottleneckDetectionService
                     {
                         Type = NetworkIssueType.CongestedEdge,
                         Severity = util >= 1d ? NetworkIssueSeverity.Critical : NetworkIssueSeverity.Warning,
+                        TargetId = edge.Id,
                         TargetName = edge.Id,
                         Title = "Edge is near capacity",
                         Explanation = $"This route is using {util:P0} of its capacity, so delays may increase.",
@@ -298,6 +299,7 @@ public sealed class BottleneckDetectionService : IBottleneckDetectionService
             {
                 Type = NetworkIssueType.StarvedNode,
                 Severity = NetworkIssueSeverity.Warning,
+                TargetId = outcome.TrafficType,
                 TargetName = outcome.TrafficType,
                 Title = "Node demand is not met",
                 Explanation = $"Unmet demand remains at {outcome.UnmetDemand:0.##} for this traffic type.",
@@ -311,6 +313,7 @@ public sealed class BottleneckDetectionService : IBottleneckDetectionService
                 {
                     Type = NetworkIssueType.PolicyBlockedFlow,
                     Severity = NetworkIssueSeverity.Critical,
+                    TargetId = outcome.TrafficType,
                     TargetName = outcome.TrafficType,
                     Title = "Flow blocked by policy",
                     Explanation = $"{outcome.NoPermittedPathDemand:0.##} demand had no permitted route.",
@@ -390,6 +393,14 @@ public sealed class ExplainabilityService : IExplainabilityService
         }
 
         explanation.SuggestedActions.Add("Increase capacity or redistribute demand across parallel routes.");
+        foreach (var rule in network.PolicyRules.Where(rule => rule.IsEnabled && rule.Effect is PolicyRuleEffect.BlockTraffic or PolicyRuleEffect.AllowOnlyTraffic))
+        {
+            if (!string.IsNullOrWhiteSpace(rule.TargetEdgeId) && string.Equals(rule.TargetEdgeId, edgeId, StringComparison.OrdinalIgnoreCase))
+            {
+                explanation.Causes.Add($"This route is blocked by the policy rule '{rule.Name}'.");
+            }
+        }
+
         return explanation;
     }
 }

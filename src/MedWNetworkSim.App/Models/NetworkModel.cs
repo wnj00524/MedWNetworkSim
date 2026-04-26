@@ -58,6 +58,11 @@ public sealed class NetworkModel
     public List<ScenarioDefinitionModel> ScenarioDefinitions { get; set; } = [];
 
     /// <summary>
+    /// Gets or sets deterministic policy rules that can block traffic or adjust route costs/capacity.
+    /// </summary>
+    public List<PolicyRuleModel> PolicyRules { get; set; } = [];
+
+    /// <summary>
     /// Gets or sets the declared traffic types that can move through the network.
     /// </summary>
     public List<TrafficTypeDefinition> TrafficTypes { get; set; } = [];

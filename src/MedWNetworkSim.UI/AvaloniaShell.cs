@@ -4104,6 +4104,39 @@ public sealed class ShellWindow : Window
         return BuildLabeledRow(label, textBox);
     }
 
+    private static Control BuildLabeledInput(string label, string bindingPath)
+    {
+        var textBox = new TextBox
+        {
+            Watermark = label,
+            MinHeight = 36
+        };
+
+        textBox.Bind(TextBox.TextProperty, new Binding(bindingPath)
+        {
+            Mode = BindingMode.TwoWay,
+            UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+        });
+
+        AttachFocusBorder(textBox);
+
+        return new StackPanel
+        {
+            Spacing = 4,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = label,
+                    FontSize = 11,
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.MutedText),
+                    TextWrapping = TextWrapping.Wrap
+                },
+                textBox
+            }
+        };
+    }
+
     private static TextBox BuildBoundTextBox(string propertyName, string watermark)
     {
         var textBox = BuildTextBox(watermark);

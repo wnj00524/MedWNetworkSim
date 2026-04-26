@@ -50,7 +50,12 @@ public sealed class NetworkModel
     /// <summary>
     /// Gets or sets the declared simulation layers used to process different network concerns.
     /// </summary>
-    public List<NetworkLayer> Layers { get; set; } = [];
+    public List<NetworkLayerModel> Layers { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets the saved scenario definitions available for what-if analysis runs.
+    /// </summary>
+    public List<ScenarioDefinitionModel> ScenarioDefinitions { get; set; } = [];
 
     /// <summary>
     /// Gets or sets the declared traffic types that can move through the network.

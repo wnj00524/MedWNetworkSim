@@ -259,6 +259,7 @@ public sealed class NetworkFileService
             TrafficTypes = trafficDefinitions,
             EdgeTrafficPermissionDefaults = edgeTrafficPermissionDefaults,
             TimelineEvents = timelineEvents,
+            ScenarioDefinitions = (model.ScenarioDefinitions ?? []).Where(s => s is not null).ToList(),
             Subnetworks = NormalizeSubnetworks(model.Subnetworks, normalizedNodes, normalizedEdges, forceLayoutAllNodes, depth, ancestry)
         };
     }

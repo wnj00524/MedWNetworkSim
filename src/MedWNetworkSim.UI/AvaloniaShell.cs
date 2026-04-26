@@ -3155,6 +3155,14 @@ public sealed class ShellWindow : Window
         var list = new ListBox();
         list.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.TopIssues)));
         list.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedTopIssue), BindingMode.TwoWay));
+        list.KeyDown += (_, e) =>
+        {
+            if (e.Key is Key.Enter or Key.Space && viewModel.SelectIssueCommand.CanExecute(null))
+            {
+                viewModel.SelectIssueCommand.Execute(null);
+                e.Handled = true;
+            }
+        };
         list.ItemTemplate = new FuncDataTemplate<NetworkIssueListItemViewModel>((item, _) =>
         {
             if (item is null)
@@ -3172,7 +3180,16 @@ public sealed class ShellWindow : Window
             }
             };
         });
-        return new StackPanel { Spacing = 8, Children = { list, BuildButton("Select", viewModel.SelectIssueCommand) } };
+        return new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                list,
+                BuildButton("Select", viewModel.SelectIssueCommand),
+                BuildQuickStat("Location", nameof(WorkspaceViewModel.SelectedIssueBreadcrumb))
+            }
+        };
     }
 
     private static Control BuildExplanationPanel()

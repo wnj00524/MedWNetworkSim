@@ -1438,7 +1438,25 @@ public sealed class NetworkIssueListItemViewModel
     public string SuggestedAction => Issue.SuggestedAction;
 }
 
-public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink
+public enum SelectionSource
+{
+    User,
+    TopIssue
+}
+
+public interface ICanvasSelectionService
+{
+    void SelectNode(string nodeId, SelectionSource source = SelectionSource.User);
+    void SelectEdge(string edgeId, SelectionSource source = SelectionSource.User);
+}
+
+public interface IElementEditorCoordinator
+{
+    void OpenNodeEditor(string nodeId);
+    void OpenEdgeEditor(string edgeId);
+}
+
+public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICanvasSelectionService, IElementEditorCoordinator
 {
     private sealed class EdgeEditorSession
     {
@@ -1548,6 +1566,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink
     private ScenarioEventModel? selectedScenarioEvent;
     private string scenarioResultSummary = string.Empty;
     private NetworkIssueListItemViewModel? selectedTopIssue;
+    private string selectedIssueBreadcrumb = "Issue → (none selected)";
     private string explanationTitle = "Why this item matters";
     private string explanationSummary = "Run a simulation to see constraints, delays, and unmet demand.";
     private IReadOnlyList<string> explanationCauses = [];
@@ -2034,6 +2053,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink
             }
         }
     }
+    public string SelectedIssueBreadcrumb { get => selectedIssueBreadcrumb; private set => SetProperty(ref selectedIssueBreadcrumb, value); }
     public string ScenarioResultSummary { get => scenarioResultSummary; private set => SetProperty(ref scenarioResultSummary, value); }
     public string ExplanationTitle { get => explanationTitle; private set => SetProperty(ref explanationTitle, value); }
     public string ExplanationSummary { get => explanationSummary; private set => SetProperty(ref explanationSummary, value); }
@@ -3952,6 +3972,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink
         {
             TopIssues.Add(new NetworkIssueListItemViewModel { Issue = issue });
         }
+
+        SelectedIssueBreadcrumb = "Issue → (none selected)";
     }
 
     private void SelectCurrentIssue()
@@ -3961,20 +3983,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink
             return;
         }
 
-        Scene.Selection.SelectedNodeIds.Clear();
-        Scene.Selection.SelectedEdgeIds.Clear();
-        var target = SelectedTopIssue.Issue.TargetId ?? SelectedTopIssue.Issue.TargetName;
-        if (network.Nodes.Any(node => Comparer.Equals(node.Id, target)))
-        {
-            Scene.Selection.SelectedNodeIds.Add(target);
-        }
-        else if (network.Edges.Any(edge => Comparer.Equals(edge.Id, target)))
-        {
-            Scene.Selection.SelectedEdgeIds.Add(target);
-        }
-
-        RefreshInspector();
-        NotifyVisualChanged();
+        OnSelectIssue(SelectedTopIssue.Issue);
     }
 
     private void PopulateReportMetrics(IEnumerable<ReportMetricViewModel> metrics)
@@ -5372,32 +5381,14 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink
 
     public void SelectNodeForEdit(string nodeId, bool focusTrafficRoles = false)
     {
-        if (!network.Nodes.Any(node => Comparer.Equals(node.Id, nodeId)))
-        {
-            return;
-        }
-
-        Scene.Selection.SelectedNodeIds.Clear();
-        Scene.Selection.SelectedEdgeIds.Clear();
-        Scene.Selection.SelectedNodeIds.Add(nodeId);
+        SelectNode(nodeId);
         FocusInspectorSection(InspectorTabTarget.Selection, focusTrafficRoles ? InspectorSectionTarget.TrafficRoles : InspectorSectionTarget.Node);
-        RefreshInspector();
-        NotifyVisualChanged();
     }
 
     public void SelectRouteForEdit(string edgeId)
     {
-        if (!network.Edges.Any(edge => Comparer.Equals(edge.Id, edgeId)))
-        {
-            return;
-        }
-
-        Scene.Selection.SelectedNodeIds.Clear();
-        Scene.Selection.SelectedEdgeIds.Clear();
-        Scene.Selection.SelectedEdgeIds.Add(edgeId);
+        SelectEdge(edgeId);
         FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.Route);
-        RefreshInspector();
-        NotifyVisualChanged();
     }
 
     private Dictionary<string, double> BuildEdgeLoads(
@@ -5560,6 +5551,128 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink
     {
         SelectedInspectorTab = tab;
         SelectedInspectorSection = section;
+    }
+
+    public void SelectNode(string nodeId, SelectionSource source = SelectionSource.User)
+    {
+        if (!network.Nodes.Any(node => Comparer.Equals(node.Id, nodeId)))
+        {
+            return;
+        }
+
+        Scene.Selection.SelectedNodeIds.Clear();
+        Scene.Selection.SelectedEdgeIds.Clear();
+        Scene.Selection.SelectedNodeIds.Add(nodeId);
+        ApplyTopIssueSelectionExperience(source, nodeId, isNode: true);
+        RefreshInspector();
+        NotifyVisualChanged();
+    }
+
+    public void SelectEdge(string edgeId, SelectionSource source = SelectionSource.User)
+    {
+        if (!network.Edges.Any(edge => Comparer.Equals(edge.Id, edgeId)))
+        {
+            return;
+        }
+
+        Scene.Selection.SelectedNodeIds.Clear();
+        Scene.Selection.SelectedEdgeIds.Clear();
+        Scene.Selection.SelectedEdgeIds.Add(edgeId);
+        ApplyTopIssueSelectionExperience(source, edgeId, isNode: false);
+        RefreshInspector();
+        NotifyVisualChanged();
+    }
+
+    public void OpenNodeEditor(string nodeId)
+    {
+        FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.Node);
+        CurrentWorkspaceMode = WorkspaceMode.Normal;
+    }
+
+    public void OpenEdgeEditor(string edgeId)
+    {
+        FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.Route);
+        CurrentWorkspaceMode = WorkspaceMode.Normal;
+    }
+
+    private void OnSelectIssue(NetworkIssue issue)
+    {
+        var target = issue.TargetId ?? issue.TargetName;
+        if (network.Nodes.Any(node => Comparer.Equals(node.Id, target)))
+        {
+            SelectNode(target, SelectionSource.TopIssue);
+            OpenNodeEditor(target);
+            var node = network.Nodes.First(node => Comparer.Equals(node.Id, target));
+            var label = string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name;
+            SelectedIssueBreadcrumb = $"Issue → Node {label}";
+        }
+        else if (network.Edges.Any(edge => Comparer.Equals(edge.Id, target)))
+        {
+            SelectEdge(target, SelectionSource.TopIssue);
+            OpenEdgeEditor(target);
+            SelectedIssueBreadcrumb = BuildIssueEdgeBreadcrumb(target);
+        }
+    }
+
+    private string BuildIssueEdgeBreadcrumb(string edgeId)
+    {
+        var edge = network.Edges.FirstOrDefault(candidate => Comparer.Equals(candidate.Id, edgeId));
+        if (edge is null)
+        {
+            return $"Issue → Edge {edgeId}";
+        }
+
+        var from = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, edge.FromNodeId));
+        var to = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, edge.ToNodeId));
+        var fromLabel = string.IsNullOrWhiteSpace(from?.Name) ? edge.FromNodeId : from!.Name;
+        var toLabel = string.IsNullOrWhiteSpace(to?.Name) ? edge.ToNodeId : to!.Name;
+        return $"Issue → Edge {fromLabel} → {toLabel}";
+    }
+
+    private void ApplyTopIssueSelectionExperience(SelectionSource source, string targetId, bool isNode)
+    {
+        if (source != SelectionSource.TopIssue)
+        {
+            return;
+        }
+
+        if (isNode)
+        {
+            var node = Scene.FindNode(targetId);
+            if (node is not null)
+            {
+                CenterViewportOnPoint(new GraphPoint(node.Bounds.CenterX, node.Bounds.CenterY));
+            }
+
+            Scene.Selection.PulseNodeId = targetId;
+            Scene.Selection.PulseNodeStartTime = Scene.Simulation.AnimationTime;
+            Scene.Selection.PulseEdgeId = null;
+        }
+        else
+        {
+            var edge = Scene.FindEdge(targetId);
+            if (edge is not null)
+            {
+                var from = Scene.FindNode(edge.FromNodeId);
+                var to = Scene.FindNode(edge.ToNodeId);
+                if (from is not null && to is not null)
+                {
+                    CenterViewportOnPoint(new GraphPoint(
+                        (from.Bounds.CenterX + to.Bounds.CenterX) / 2d,
+                        (from.Bounds.CenterY + to.Bounds.CenterY) / 2d));
+                }
+            }
+
+            Scene.Selection.PulseEdgeId = targetId;
+            Scene.Selection.PulseEdgeStartTime = Scene.Simulation.AnimationTime;
+            Scene.Selection.PulseNodeId = null;
+        }
+    }
+
+    private void CenterViewportOnPoint(GraphPoint worldPoint)
+    {
+        var delta = new GraphVector(Viewport.Center.X - worldPoint.X, Viewport.Center.Y - worldPoint.Y);
+        Viewport.Pan(delta);
     }
 
     private string BuildNodeTrafficRoleValidationText()

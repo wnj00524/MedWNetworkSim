@@ -30,7 +30,7 @@ public sealed class ScenarioValidationService : IScenarioValidationService
 
         if (scenario.DeltaTime <= 0d)
         {
-            errors.Add("Value must be greater than zero.");
+            errors.Add("Step size must be greater than zero.");
         }
 
         return errors;

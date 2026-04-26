@@ -3157,28 +3157,53 @@ public sealed class ShellWindow : Window
         list.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedTopIssue), BindingMode.TwoWay));
         list.KeyDown += (_, e) =>
         {
-            if (e.Key is Key.Enter or Key.Space && viewModel.SelectIssueCommand.CanExecute(null))
+            if (e.Key is Key.Enter or Key.Space &&
+                list.SelectedItem is TopIssueViewModel selectedIssue &&
+                viewModel.SelectTopIssueCommand.CanExecute(selectedIssue))
             {
-                viewModel.SelectIssueCommand.Execute(null);
+                viewModel.SelectTopIssueCommand.Execute(selectedIssue);
                 e.Handled = true;
             }
         };
-        list.ItemTemplate = new FuncDataTemplate<NetworkIssueListItemViewModel>((item, _) =>
+        list.ItemTemplate = new FuncDataTemplate<TopIssueViewModel>((item, _) =>
         {
             if (item is null)
             {
                 return new TextBlock();
             }
-                return new StackPanel
+
+            var issueButton = new Button
             {
-                Children =
-            {
-                new TextBlock { Text = $"{item.SeverityIcon} {item.SeverityLabel} · {item.IssueTitle}", FontWeight = FontWeight.Bold },
-                new TextBlock { Text = item.TargetName },
-                new TextBlock { Text = item.Explanation, TextWrapping = TextWrapping.Wrap },
-                new TextBlock { Text = $"Suggested: {item.SuggestedAction}", TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
-            }
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Command = viewModel.SelectTopIssueCommand,
+                CommandParameter = item,
+                Padding = new Thickness(10, 8),
+                Content = new StackPanel
+                {
+                    Spacing = 3,
+                    Children =
+                    {
+                        new TextBlock { Text = item.Title, FontWeight = FontWeight.Bold, TextWrapping = TextWrapping.Wrap },
+                        new TextBlock { Text = item.Detail, TextWrapping = TextWrapping.Wrap },
+                        new TextBlock
+                        {
+                            Text = item.Breadcrumb,
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                            FontSize = 11
+                        }
+                    }
+                }
             };
+            issueButton.KeyDown += (_, keyEvent) =>
+            {
+                if (keyEvent.Key is Key.Enter or Key.Space && viewModel.SelectTopIssueCommand.CanExecute(item))
+                {
+                    viewModel.SelectTopIssueCommand.Execute(item);
+                    keyEvent.Handled = true;
+                }
+            };
+            return issueButton;
         });
         return new StackPanel
         {
@@ -3186,7 +3211,6 @@ public sealed class ShellWindow : Window
             Children =
             {
                 list,
-                BuildButton("Select", viewModel.SelectIssueCommand),
                 BuildQuickStat("Location", nameof(WorkspaceViewModel.SelectedIssueBreadcrumb))
             }
         };

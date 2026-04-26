@@ -701,7 +701,7 @@ public sealed class ScenarioEditorViewModel : ObservableObject
                 errors++;
             }
 
-            var target = EventTargetIdText.Trim();
+            var target = (EventTargetIdText ?? string.Empty).Trim();
             if (EventUsesNodeTarget && (target.Length == 0 || !network.Nodes.Any(node => string.Equals(node.Id, target, StringComparison.OrdinalIgnoreCase))))
             {
                 EventTargetError = "Choose a target node.";

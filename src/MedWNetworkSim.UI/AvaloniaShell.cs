@@ -3059,8 +3059,7 @@ public sealed class ShellWindow : Window
                     },
                     new TextBlock { Text = $"State: {item.VisibilityLabel} · {item.LockLabel}", FontSize = 11, VerticalAlignment = VerticalAlignment.Center }
                 }
-            }
-        }
+                }
             };
         });
 

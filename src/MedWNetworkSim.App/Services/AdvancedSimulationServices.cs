@@ -443,12 +443,12 @@ public sealed class ScenarioRunner : IScenarioRunner
                      .OrderBy(evt => evt.Time)
                      .ThenBy(evt => evt.Name, StringComparer.OrdinalIgnoreCase))
         {
-            if (evt.Time > options.EndTime + ComparisonTolerance)
+            if (evt.Time > options.EndTime + ComparisonTolerance || evt.Time < options.StartTime - ComparisonTolerance)
             {
                 continue;
             }
 
-            if (evt.EndTime.HasValue && evt.EndTime.Value <= options.EndTime + ComparisonTolerance)
+            if (evt.EndTime.HasValue && evt.EndTime.Value <= options.StartTime + ComparisonTolerance)
             {
                 continue;
             }
@@ -548,10 +548,67 @@ public sealed class ScenarioRunner : IScenarioRunner
 
                 targetEdge.Cost *= Math.Max(0d, evt.Value);
                 return true;
+            case ScenarioEventKind.ProductionMultiplier:
+                return ApplyNodeProfileMultiplier(network, evt, warnings, applyProduction: true);
+            case ScenarioEventKind.ConsumptionMultiplier:
+                return ApplyNodeProfileMultiplier(network, evt, warnings, applyProduction: false);
+            case ScenarioEventKind.RouteCostMultiplier:
+                if (evt.TargetKind != ScenarioTargetKind.Edge || evt.TargetId is null)
+                {
+                    warnings.Add("Choose an edge for this event.");
+                    return false;
+                }
+
+                var routeEdge = network.Edges.FirstOrDefault(item => string.Equals(item.Id, evt.TargetId, StringComparison.OrdinalIgnoreCase));
+                if (routeEdge is null)
+                {
+                    warnings.Add($"Skipped event '{evt.Name}': target edge was not found.");
+                    return false;
+                }
+
+                routeEdge.Cost *= Math.Max(0d, evt.Value);
+                return true;
             default:
                 warnings.Add($"Skipped unsupported event type '{evt.Kind}'.");
                 return false;
         }
+    }
+
+    private static bool ApplyNodeProfileMultiplier(NetworkModel network, ScenarioEventModel evt, List<string> warnings, bool applyProduction)
+    {
+        if (evt.TargetKind != ScenarioTargetKind.Node || evt.TargetId is null)
+        {
+            warnings.Add("Choose a node for this event.");
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(evt.TrafficTypeIdOrName))
+        {
+            warnings.Add("Choose a traffic type for this event.");
+            return false;
+        }
+
+        var node = network.Nodes.FirstOrDefault(item => string.Equals(item.Id, evt.TargetId, StringComparison.OrdinalIgnoreCase));
+        if (node is null)
+        {
+            warnings.Add($"Skipped event '{evt.Name}': target node was not found.");
+            return false;
+        }
+
+        var multiplier = Math.Max(0d, evt.Value);
+        foreach (var profile in node.TrafficProfiles.Where(p => string.Equals(p.TrafficType, evt.TrafficTypeIdOrName, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (applyProduction)
+            {
+                profile.Production *= multiplier;
+            }
+            else
+            {
+                profile.Consumption *= multiplier;
+            }
+        }
+
+        return true;
     }
 
     private static NetworkModel Clone(NetworkModel network)

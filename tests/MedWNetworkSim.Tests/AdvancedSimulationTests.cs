@@ -157,6 +157,72 @@ public sealed class AdvancedSimulationTests
         Assert.True(outcome.UnmetDemand > 0d);
     }
 
+    [Fact]
+    public void ScenarioValidation_ReturnsActionableMessages()
+    {
+        var validator = new ScenarioValidationService();
+        var scenarioErrors = validator.ValidateScenario(new ScenarioDefinitionModel { Name = " ", StartTime = -1, EndTime = 0, DeltaTime = 0 });
+        var nodeFailureErrors = validator.ValidateEvent(new ScenarioEventModel { Name = " ", Kind = ScenarioEventKind.NodeFailure, TargetKind = ScenarioTargetKind.Edge, Time = -1 });
+        var edgeClosureErrors = validator.ValidateEvent(new ScenarioEventModel { Name = " ", Kind = ScenarioEventKind.EdgeClosure, TargetKind = ScenarioTargetKind.Node, Time = -1 });
+        var demandSpikeErrors = validator.ValidateEvent(new ScenarioEventModel { Name = " ", Kind = ScenarioEventKind.DemandSpike, TargetKind = ScenarioTargetKind.Node, Time = 0, Value = 0 });
+        var edgeCostErrors = validator.ValidateEvent(new ScenarioEventModel { Name = " ", Kind = ScenarioEventKind.EdgeCostChange, TargetKind = ScenarioTargetKind.Edge, Time = 0, Value = 0 });
+
+        Assert.Contains("Enter a scenario name.", scenarioErrors);
+        Assert.Contains("Start time must be zero or greater.", scenarioErrors);
+        Assert.Contains("End time must be after start time.", scenarioErrors);
+        Assert.Contains("Enter an event name.", nodeFailureErrors);
+        Assert.Contains("Choose a node for this event.", nodeFailureErrors);
+        Assert.Contains("Choose an edge for this event.", edgeClosureErrors);
+        Assert.Contains("Choose a traffic type for this event.", demandSpikeErrors);
+        Assert.Contains("Value must be greater than zero.", demandSpikeErrors);
+        Assert.Contains("Value must be greater than zero.", edgeCostErrors);
+    }
+
+    [Fact]
+    public void ScenarioRunner_AppliesProductionAndConsumptionMultiplierEvents()
+    {
+        var network = BuildNetwork();
+        var runner = new ScenarioRunner();
+        var targetNode = network.Nodes[0].Id;
+
+        var scenario = new ScenarioDefinitionModel
+        {
+            Name = "Multiplier Test",
+            StartTime = 0,
+            EndTime = 1,
+            DeltaTime = 1,
+            Events =
+            [
+                new ScenarioEventModel
+                {
+                    Name = "Production up",
+                    Kind = ScenarioEventKind.ProductionMultiplier,
+                    TargetKind = ScenarioTargetKind.Node,
+                    TargetId = targetNode,
+                    TrafficTypeIdOrName = "Food",
+                    Time = 0,
+                    Value = 2d
+                },
+                new ScenarioEventModel
+                {
+                    Name = "Consumption up",
+                    Kind = ScenarioEventKind.ConsumptionMultiplier,
+                    TargetKind = ScenarioTargetKind.Node,
+                    TargetId = network.Nodes[1].Id,
+                    TrafficTypeIdOrName = "Food",
+                    Time = 0,
+                    Value = 2d
+                }
+            ]
+        };
+
+        var baseline = runner.Run(network, new ScenarioDefinitionModel { Name = "Base" }, new ScenarioRunOptions { StartTime = 0, EndTime = 1, DeltaTime = 1 }).SimulationResult!;
+        var modified = runner.Run(network, scenario, new ScenarioRunOptions { StartTime = 0, EndTime = 1, DeltaTime = 1 }).SimulationResult!;
+
+        Assert.NotNull(modified);
+        Assert.True(modified.TotalThroughput >= baseline.TotalThroughput || modified.TotalUnmetDemand >= baseline.TotalUnmetDemand);
+    }
+
     private static NetworkModel BuildNetwork()
     {
         var a = Guid.NewGuid();

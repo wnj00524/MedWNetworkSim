@@ -16,6 +16,10 @@ public sealed class ScenarioDefinitionModel
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "Scenario";
     public string Description { get; set; } = string.Empty;
+    public double StartTime { get; set; }
+    public double EndTime { get; set; } = 10d;
+    public double DeltaTime { get; set; } = 1d;
+    public bool EnableAdaptiveRouting { get; set; }
     public List<ScenarioEventModel> Events { get; set; } = [];
 }
 

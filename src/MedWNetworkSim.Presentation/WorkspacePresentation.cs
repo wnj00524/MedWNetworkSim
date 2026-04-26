@@ -675,6 +675,27 @@ public sealed class BulkSelectionInspectorDraft : ObservableObject
     }
 }
 
+public sealed class LayerListItemViewModel : ObservableObject
+{
+    public required NetworkLayerModel Layer { get; init; }
+    public string Name => Layer.Name;
+    public string TypeLabel => Layer.Type.ToString();
+    public string VisibilityLabel => Layer.IsVisible ? "Visible" : "Hidden";
+    public string LockLabel => Layer.IsLocked ? "Locked" : "Unlocked";
+    public int NodeCount { get; set; }
+    public int EdgeCount { get; set; }
+}
+
+public sealed class NetworkIssueListItemViewModel
+{
+    public required NetworkIssue Issue { get; init; }
+    public string SeverityLabel => Issue.Severity.ToString();
+    public string IssueTitle => Issue.Title;
+    public string TargetName => Issue.TargetName;
+    public string Explanation => Issue.Explanation;
+    public string SuggestedAction => Issue.SuggestedAction;
+}
+
 public sealed class WorkspaceViewModel : ObservableObject
 {
     private sealed class EdgeEditorSession
@@ -700,6 +721,10 @@ public sealed class WorkspaceViewModel : ObservableObject
     private readonly GraphRenderer graphRenderer = new();
     private readonly IsochroneService isochroneService = new();
     private readonly MultiOriginIsochroneService multiOriginIsochroneService = new();
+    private readonly INetworkLayerService networkLayerService = new NetworkLayerResolver();
+    private readonly IScenarioRunner scenarioRunner = new ScenarioRunner();
+    private readonly IScenarioValidationService scenarioValidationService = new ScenarioValidationService();
+    private readonly IExplainabilityService explainabilityService = new ExplainabilityService();
 
     private NetworkModel network = new();
     private TemporalNetworkSimulationEngine.TemporalSimulationState? temporalState;
@@ -774,6 +799,15 @@ public sealed class WorkspaceViewModel : ObservableObject
     private FacilityOriginItem? selectedFacilityNodeItem;
     private readonly Dictionary<string, Dictionary<string, double>> cachedFacilityDistances = new(Comparer);
     private Dictionary<string, List<FacilityCoverageInfo>> facilityCoverageByNodeId = new(Comparer);
+    private Guid? selectedLayerId;
+    private LayerListItemViewModel? selectedLayerItem;
+    private ScenarioDefinitionModel? selectedScenarioDefinition;
+    private ScenarioEventModel? selectedScenarioEvent;
+    private string scenarioResultSummary = string.Empty;
+    private NetworkIssueListItemViewModel? selectedTopIssue;
+    private string explanationSummary = "Run a simulation to see constraints, delays, and unmet demand.";
+    private IReadOnlyList<string> explanationCauses = [];
+    private IReadOnlyList<string> explanationActions = [];
 
     public WorkspaceViewModel()
     {
@@ -819,6 +853,9 @@ public sealed class WorkspaceViewModel : ObservableObject
         TrafficDefinitions = [];
         DefaultTrafficPermissionRows = [];
         SelectedFacilityNodes = [];
+        LayerItems = [];
+        TopIssues = [];
+        ScenarioWarnings = [];
         DefaultTrafficPermissionRows.CollectionChanged += (_, _) => RaiseTrafficTypeDisplayStateChanged();
         NewCommand = new RelayCommand(CreateBlankNetwork);
         SimulateCommand = new RelayCommand(RunSimulation);
@@ -891,6 +928,15 @@ public sealed class WorkspaceViewModel : ObservableObject
         AddTrafficDefinitionCommand = new RelayCommand(AddTrafficDefinition);
         RemoveSelectedTrafficDefinitionCommand = new RelayCommand(RemoveSelectedTrafficDefinition, () => SelectedTrafficDefinitionItem is not null);
         ApplyTrafficDefinitionCommand = new RelayCommand(ApplyTrafficDefinitionEdits, () => SelectedTrafficDefinitionItem is not null);
+        AddLayerCommand = new RelayCommand(AddLayer);
+        DeleteLayerCommand = new RelayCommand(DeleteSelectedLayer, () => SelectedLayerItem is not null);
+        AssignSelectedNodesToLayerCommand = new RelayCommand(AssignSelectedNodesToLayer, () => SelectedLayerItem is not null && Scene.Selection.SelectedNodeIds.Count > 0);
+        AssignSelectedEdgesToLayerCommand = new RelayCommand(AssignSelectedEdgesToLayer, () => SelectedLayerItem is not null && Scene.Selection.SelectedEdgeIds.Count > 0);
+        CreateScenarioCommand = new RelayCommand(CreateScenario);
+        AddScenarioEventCommand = new RelayCommand(AddScenarioEvent, () => SelectedScenarioDefinition is not null);
+        DeleteScenarioEventCommand = new RelayCommand(DeleteScenarioEvent, () => SelectedScenarioEvent is not null && SelectedScenarioDefinition is not null);
+        RunScenarioCommand = new RelayCommand(RunScenario, () => SelectedScenarioDefinition is not null);
+        SelectIssueCommand = new RelayCommand(SelectCurrentIssue, () => SelectedTopIssue is not null);
 
         CreateBlankNetwork();
         SetActiveTool(GraphToolMode.Select);
@@ -915,6 +961,9 @@ public sealed class WorkspaceViewModel : ObservableObject
     public ObservableCollection<TrafficDefinitionListItem> TrafficDefinitions { get; }
     public ObservableCollection<PermissionRuleEditorRow> DefaultTrafficPermissionRows { get; }
     public ObservableCollection<FacilityOriginItem> SelectedFacilityNodes { get; }
+    public ObservableCollection<LayerListItemViewModel> LayerItems { get; }
+    public ObservableCollection<NetworkIssueListItemViewModel> TopIssues { get; }
+    public ObservableCollection<string> ScenarioWarnings { get; }
     public NodeInspectorDraft NodeDraft { get; }
     public EdgeInspectorDraft EdgeDraft { get; }
     public BulkSelectionInspectorDraft BulkDraft { get; }
@@ -963,6 +1012,15 @@ public sealed class WorkspaceViewModel : ObservableObject
     public RelayCommand AddTrafficDefinitionCommand { get; }
     public RelayCommand RemoveSelectedTrafficDefinitionCommand { get; }
     public RelayCommand ApplyTrafficDefinitionCommand { get; }
+    public RelayCommand AddLayerCommand { get; }
+    public RelayCommand DeleteLayerCommand { get; }
+    public RelayCommand AssignSelectedNodesToLayerCommand { get; }
+    public RelayCommand AssignSelectedEdgesToLayerCommand { get; }
+    public RelayCommand CreateScenarioCommand { get; }
+    public RelayCommand AddScenarioEventCommand { get; }
+    public RelayCommand DeleteScenarioEventCommand { get; }
+    public RelayCommand RunScenarioCommand { get; }
+    public RelayCommand SelectIssueCommand { get; }
 
     public GraphInteractionController InteractionController => interactionController;
     public bool HasUnsavedChanges
@@ -1117,6 +1175,59 @@ public sealed class WorkspaceViewModel : ObservableObject
     public string TrafficDeliveredColumnLabel => lastTimelineStepResult is null ? "Delivered" : "Started this period";
     public string SelectionSummary => BuildSelectionSummary();
     public bool CanDeleteSelection => Scene.Selection.SelectedNodeIds.Count > 0 || Scene.Selection.SelectedEdgeIds.Count > 0;
+    public LayerListItemViewModel? SelectedLayerItem
+    {
+        get => selectedLayerItem;
+        set
+        {
+            if (SetProperty(ref selectedLayerItem, value))
+            {
+                selectedLayerId = value?.Layer.Id;
+                Raise(nameof(SelectedLayerHelperText));
+            }
+        }
+    }
+    public string SelectedLayerHelperText => "Layers separate physical routes, supply flows, and policy rules.";
+    public IReadOnlyList<ScenarioDefinitionModel> ScenarioDefinitions => network.ScenarioDefinitions;
+    public ScenarioDefinitionModel? SelectedScenarioDefinition
+    {
+        get => selectedScenarioDefinition;
+        set
+        {
+            if (SetProperty(ref selectedScenarioDefinition, value))
+            {
+                SelectedScenarioEvent = value?.Events.FirstOrDefault();
+                AddScenarioEventCommand.NotifyCanExecuteChanged();
+                RunScenarioCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+    public ScenarioEventModel? SelectedScenarioEvent
+    {
+        get => selectedScenarioEvent;
+        set
+        {
+            if (SetProperty(ref selectedScenarioEvent, value))
+            {
+                DeleteScenarioEventCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+    public NetworkIssueListItemViewModel? SelectedTopIssue
+    {
+        get => selectedTopIssue;
+        set
+        {
+            if (SetProperty(ref selectedTopIssue, value))
+            {
+                SelectIssueCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+    public string ScenarioResultSummary { get => scenarioResultSummary; private set => SetProperty(ref scenarioResultSummary, value); }
+    public string ExplanationSummary { get => explanationSummary; private set => SetProperty(ref explanationSummary, value); }
+    public IReadOnlyList<string> ExplanationCauses { get => explanationCauses; private set => SetProperty(ref explanationCauses, value); }
+    public IReadOnlyList<string> ExplanationActions { get => explanationActions; private set => SetProperty(ref explanationActions, value); }
     public InspectorEditMode CurrentInspectorEditMode => currentInspectorEditMode;
     public bool IsEditingNetwork => CurrentInspectorEditMode == InspectorEditMode.Network;
     public bool IsEditingNode => CurrentInspectorEditMode == InspectorEditMode.Node;
@@ -2251,6 +2362,8 @@ public sealed class WorkspaceViewModel : ObservableObject
         TimelinePosition = 0;
         pendingTrafficRemovalName = string.Empty;
         BuildSceneFromNetwork();
+        RefreshLayerItems();
+        RefreshScenarioItems();
         Viewport.Reset(Scene.GetContentBounds(), LastViewportSize);
         PopulateTrafficDefinitionList();
         PopulateDefaultPermissionRows();
@@ -2284,6 +2397,7 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     private void BuildSceneFromNetwork()
     {
+        networkLayerService.EnsureLayerIntegrity(network);
         RefreshDraftSuggestions();
         if (IsFacilityPlanningMode && SelectedFacilityNodes.Count > 0)
         {
@@ -2293,7 +2407,8 @@ public sealed class WorkspaceViewModel : ObservableObject
         Scene.Edges.Clear();
         var zoomTier = graphRenderer.GetZoomTier(Viewport.Zoom);
 
-        foreach (var node in network.Nodes)
+        var visibleLayers = network.Layers.Where(layer => layer.IsVisible).Select(layer => layer.Id).ToHashSet();
+        foreach (var node in network.Nodes.Where(node => visibleLayers.Contains(node.LayerId)))
         {
             var centerX = node.X ?? 0d;
             var centerY = node.Y ?? 0d;
@@ -2323,14 +2438,16 @@ public sealed class WorkspaceViewModel : ObservableObject
             Scene.Nodes.Add(sceneNode);
         }
 
-        foreach (var edge in network.Edges)
+        foreach (var edge in network.Edges.Where(edge => visibleLayers.Contains(edge.LayerId)))
         {
+            var layer = network.Layers.FirstOrDefault(item => item.Id == edge.LayerId);
+            var isLocked = layer?.IsLocked == true;
             Scene.Edges.Add(new GraphEdgeSceneItem
             {
                 Id = edge.Id,
                 FromNodeId = edge.FromNodeId,
                 ToNodeId = edge.ToNodeId,
-                Label = edge.RouteType ?? edge.Id,
+                Label = isLocked ? $"🔒 {edge.RouteType ?? edge.Id}" : edge.RouteType ?? edge.Id,
                 IsBidirectional = edge.IsBidirectional,
                 Capacity = edge.Capacity ?? 0d,
                 Cost = edge.Cost,
@@ -2338,16 +2455,138 @@ public sealed class WorkspaceViewModel : ObservableObject
                 LoadRatio = 0d,
                 FlowRate = 0d,
                 ToolTipText = BuildEdgeToolTipText(edge, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty, 0d, null),
-                HasWarning = false
+                HasWarning = isLocked
             });
         }
 
         ApplyIsochroneVisuals();
     }
 
+    private void RefreshLayerItems()
+    {
+        networkLayerService.EnsureLayerIntegrity(network);
+        LayerItems.Clear();
+        foreach (var layer in network.Layers.OrderBy(item => item.Order))
+        {
+            LayerItems.Add(new LayerListItemViewModel
+            {
+                Layer = layer,
+                NodeCount = network.Nodes.Count(node => node.LayerId == layer.Id),
+                EdgeCount = network.Edges.Count(edge => edge.LayerId == layer.Id)
+            });
+        }
+
+        SelectedLayerItem = LayerItems.FirstOrDefault(item => item.Layer.Id == selectedLayerId) ?? LayerItems.FirstOrDefault();
+    }
+
+    private void AddLayer()
+    {
+        var nextType = (NetworkLayerType)((network.Layers.Count % 3));
+        var layer = new NetworkLayerModel { Name = $"{nextType} Layer {network.Layers.Count + 1}", Type = nextType, Order = network.Layers.Count, IsVisible = true };
+        network.Layers.Add(layer);
+        selectedLayerId = layer.Id;
+        RefreshLayerItems();
+        MarkDirty();
+    }
+
+    private void DeleteSelectedLayer()
+    {
+        if (SelectedLayerItem is null)
+        {
+            return;
+        }
+
+        if (SelectedLayerItem.NodeCount > 0 || SelectedLayerItem.EdgeCount > 0)
+        {
+            StatusText = "Delete blocked: remove or reassign nodes and edges in this layer first.";
+            return;
+        }
+
+        network.Layers.RemoveAll(layer => layer.Id == SelectedLayerItem.Layer.Id);
+        RefreshLayerItems();
+        BuildSceneFromNetwork();
+    }
+
+    private void RefreshScenarioItems()
+    {
+        Raise(nameof(ScenarioDefinitions));
+        SelectedScenarioDefinition ??= network.ScenarioDefinitions.FirstOrDefault();
+    }
+
+    private void CreateScenario()
+    {
+        var scenario = new ScenarioDefinitionModel { Name = $"Scenario {network.ScenarioDefinitions.Count + 1}" };
+        network.ScenarioDefinitions.Add(scenario);
+        SelectedScenarioDefinition = scenario;
+        MarkDirty();
+    }
+
+    private void AddScenarioEvent()
+    {
+        if (SelectedScenarioDefinition is null)
+        {
+            return;
+        }
+
+        var evt = new ScenarioEventModel { Name = "New Event", Kind = ScenarioEventKind.NodeFailure, TargetKind = ScenarioTargetKind.Node, Time = 0d };
+        SelectedScenarioDefinition.Events.Add(evt);
+        SelectedScenarioEvent = evt;
+        MarkDirty();
+    }
+
+    private void DeleteScenarioEvent()
+    {
+        if (SelectedScenarioDefinition is null || SelectedScenarioEvent is null)
+        {
+            return;
+        }
+
+        SelectedScenarioDefinition.Events.Remove(SelectedScenarioEvent);
+        SelectedScenarioEvent = SelectedScenarioDefinition.Events.FirstOrDefault();
+        MarkDirty();
+    }
+
+    private void RunScenario()
+    {
+        if (SelectedScenarioDefinition is null)
+        {
+            return;
+        }
+
+        ScenarioWarnings.Clear();
+        foreach (var evt in SelectedScenarioDefinition.Events)
+        {
+            foreach (var error in scenarioValidationService.ValidateEvent(evt))
+            {
+                ScenarioWarnings.Add(error);
+            }
+        }
+
+        if (ScenarioWarnings.Count > 0)
+        {
+            ScenarioResultSummary = "Scenario has validation warnings. Fix fields and run again.";
+            return;
+        }
+
+        var result = scenarioRunner.Run(network, SelectedScenarioDefinition, new ScenarioRunOptions { EndTime = TimelineMaximum, DeltaTime = 1d });
+        PopulateTopIssues(result.Issues);
+        foreach (var warning in result.Warnings)
+        {
+            ScenarioWarnings.Add(warning);
+        }
+
+        ScenarioResultSummary = $"Scenario '{result.ScenarioName}' completed with {result.Issues.Count} top issues.";
+    }
+
     private bool CreateEdge(string sourceId, string targetId, bool isBidirectional)
     {
         CommitTransientEditorsToModel();
+        var layer = SelectedLayerItem?.Layer ?? networkLayerService.GetDefaultLayer(network);
+        if (layer.IsLocked)
+        {
+            StatusText = "Selected layer is locked. Unlock the layer to add routes.";
+            return false;
+        }
         var edgeId = $"{sourceId}->{targetId}";
         if (network.Edges.Any(edge => Comparer.Equals(edge.Id, edgeId)))
         {
@@ -2365,7 +2604,8 @@ public sealed class WorkspaceViewModel : ObservableObject
             Capacity = 30d,
             IsBidirectional = isBidirectional,
             RouteType = "Proposed route",
-            TrafficPermissions = []
+            TrafficPermissions = [],
+            LayerId = layer.Id
         });
         BuildSceneFromNetwork();
         RefreshInspector();
@@ -2381,6 +2621,12 @@ public sealed class WorkspaceViewModel : ObservableObject
         var index = network.Nodes.Count + 1;
         var id = $"node-{index}";
         var trafficName = network.TrafficTypes.First().Name;
+        var layer = SelectedLayerItem?.Layer ?? networkLayerService.GetDefaultLayer(network);
+        if (layer.IsLocked)
+        {
+            StatusText = "Selected layer is locked. Unlock the layer to add nodes.";
+            return string.Empty;
+        }
         network.Nodes.Add(new NodeModel
         {
             Id = id,
@@ -2392,6 +2638,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             Shape = NodeVisualShape.Square,
             NodeKind = NodeKind.Ordinary,
             TranshipmentCapacity = 40d,
+            LayerId = layer.Id,
             TrafficProfiles =
             [
                 new NodeTrafficProfile
@@ -2416,6 +2663,13 @@ public sealed class WorkspaceViewModel : ObservableObject
         var selectedNodes = Scene.Selection.SelectedNodeIds.ToHashSet(Comparer);
         var selectedEdges = Scene.Selection.SelectedEdgeIds.ToHashSet(Comparer);
 
+        if (network.Nodes.Any(node => selectedNodes.Contains(node.Id) && IsLockedLayer(node.LayerId)) ||
+            network.Edges.Any(edge => selectedEdges.Contains(edge.Id) && IsLockedLayer(edge.LayerId)))
+        {
+            StatusText = "Selected items include locked-layer content. Unlock the layer before deleting.";
+            return;
+        }
+
         network.Nodes.RemoveAll(node => selectedNodes.Contains(node.Id));
         network.Edges.RemoveAll(edge =>
             selectedEdges.Contains(edge.Id) ||
@@ -2429,6 +2683,40 @@ public sealed class WorkspaceViewModel : ObservableObject
         MarkDirty();
         NotifyVisualChanged();
         StatusText = "Deleted the current selection.";
+    }
+
+    private bool IsLockedLayer(Guid layerId) => network.Layers.FirstOrDefault(layer => layer.Id == layerId)?.IsLocked == true;
+
+    private void AssignSelectedNodesToLayer()
+    {
+        if (SelectedLayerItem is null)
+        {
+            return;
+        }
+
+        foreach (var node in network.Nodes.Where(node => Scene.Selection.SelectedNodeIds.Contains(node.Id)))
+        {
+            node.LayerId = SelectedLayerItem.Layer.Id;
+        }
+
+        RefreshLayerItems();
+        BuildSceneFromNetwork();
+    }
+
+    private void AssignSelectedEdgesToLayer()
+    {
+        if (SelectedLayerItem is null)
+        {
+            return;
+        }
+
+        foreach (var edge in network.Edges.Where(edge => Scene.Selection.SelectedEdgeIds.Contains(edge.Id)))
+        {
+            edge.LayerId = SelectedLayerItem.Layer.Id;
+        }
+
+        RefreshLayerItems();
+        BuildSceneFromNetwork();
     }
 
     private string? FocusNextConnectedEdge()
@@ -2492,6 +2780,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         lastTimelineStepResult = null;
         Raise(nameof(TrafficDeliveredColumnLabel));
         ApplySimulationOutcomes(outcomes.SelectMany(outcome => outcome.Allocations), null);
+        PopulateTopIssues(new BottleneckDetectionService().DetectIssues(network, new SimulationResult { Outcomes = outcomes }));
         StatusText = "Simulation finished.";
     }
 
@@ -2599,6 +2888,39 @@ public sealed class WorkspaceViewModel : ObservableObject
         PopulateNodePressureReports(timeline);
         PopulateQuickMetrics(timeline, edgeLoads);
         ApplyIsochroneVisuals();
+        RefreshInspector();
+        UpdateExplanationForSelection();
+        NotifyVisualChanged();
+    }
+
+    private void PopulateTopIssues(IReadOnlyList<NetworkIssue> issues)
+    {
+        TopIssues.Clear();
+        foreach (var issue in issues)
+        {
+            TopIssues.Add(new NetworkIssueListItemViewModel { Issue = issue });
+        }
+    }
+
+    private void SelectCurrentIssue()
+    {
+        if (SelectedTopIssue?.Issue is null)
+        {
+            return;
+        }
+
+        Scene.Selection.SelectedNodeIds.Clear();
+        Scene.Selection.SelectedEdgeIds.Clear();
+        var target = SelectedTopIssue.Issue.TargetId ?? SelectedTopIssue.Issue.TargetName;
+        if (network.Nodes.Any(node => Comparer.Equals(node.Id, target)))
+        {
+            Scene.Selection.SelectedNodeIds.Add(target);
+        }
+        else if (network.Edges.Any(edge => Comparer.Equals(edge.Id, target)))
+        {
+            Scene.Selection.SelectedEdgeIds.Add(target);
+        }
+
         RefreshInspector();
         NotifyVisualChanged();
     }
@@ -2808,6 +3130,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         EnsureEdgeEditorSelectionState();
         var selectedNodeIds = Scene.Selection.SelectedNodeIds.ToList();
         var selectedEdgeIds = Scene.Selection.SelectedEdgeIds.ToList();
+        UpdateExplanationForSelection(selectedNodeIds, selectedEdgeIds);
         currentInspectorEditMode = ResolveInspectorEditMode(selectedNodeIds.Count, selectedEdgeIds.Count);
         Raise(nameof(SelectionSummary));
         Raise(nameof(SessionSubtitle));
@@ -2835,6 +3158,8 @@ public sealed class WorkspaceViewModel : ObservableObject
         RemoveSelectedNodeInputRequirementCommand.NotifyCanExecuteChanged();
         AddFacilityOriginCommand.NotifyCanExecuteChanged();
         ApplyInspectorCommand.NotifyCanExecuteChanged();
+        AssignSelectedNodesToLayerCommand.NotifyCanExecuteChanged();
+        AssignSelectedEdgesToLayerCommand.NotifyCanExecuteChanged();
         Raise(nameof(ApplyInspectorLabel));
         Raise(nameof(CanApplyInspectorEdits));
         Raise(nameof(NodeTrafficRoleValidationText));
@@ -2915,6 +3240,42 @@ public sealed class WorkspaceViewModel : ObservableObject
         }
         SelectedNodeTrafficProfiles.Clear();
         SelectedNodeTrafficProfileItem = null;
+    }
+
+    private void UpdateExplanationForSelection(IReadOnlyList<string>? selectedNodeIds = null, IReadOnlyList<string>? selectedEdgeIds = null)
+    {
+        if (lastOutcomes.Count == 0)
+        {
+            ExplanationSummary = "Run a simulation to see constraints, delays, and unmet demand.";
+            ExplanationCauses = [];
+            ExplanationActions = [];
+            return;
+        }
+
+        var result = new SimulationResult { Outcomes = lastOutcomes };
+        var nodeIds = selectedNodeIds ?? Scene.Selection.SelectedNodeIds.ToList();
+        var edgeIds = selectedEdgeIds ?? Scene.Selection.SelectedEdgeIds.ToList();
+        if (nodeIds.Count == 1)
+        {
+            var explain = explainabilityService.ExplainNode(network, result, nodeIds[0]);
+            ExplanationSummary = explain.Summary;
+            ExplanationCauses = explain.Causes.Count == 0 ? ["No major issue detected for this item."] : explain.Causes;
+            ExplanationActions = explain.SuggestedActions;
+            return;
+        }
+
+        if (edgeIds.Count == 1)
+        {
+            var explain = explainabilityService.ExplainEdge(network, result, edgeIds[0]);
+            ExplanationSummary = explain.Summary;
+            ExplanationCauses = explain.Causes.Count == 0 ? ["No major issue detected for this item."] : explain.Causes;
+            ExplanationActions = explain.SuggestedActions;
+            return;
+        }
+
+        ExplanationSummary = "No major issue detected for this item.";
+        ExplanationCauses = [];
+        ExplanationActions = [];
     }
 
     private void PopulateNetworkEditor()
@@ -3200,6 +3561,10 @@ public sealed class WorkspaceViewModel : ObservableObject
     {
         var nodeId = NodeDraft.TargetNodeId ?? throw new InvalidOperationException("Select one node to edit.");
         var node = network.Nodes.First(model => Comparer.Equals(model.Id, nodeId));
+        if (IsLockedLayer(node.LayerId))
+        {
+            throw new InvalidOperationException("This node belongs to a locked layer. Unlock the layer to edit it.");
+        }
         var requestedNodeId = string.IsNullOrWhiteSpace(NodeIdText) ? node.Id : NodeIdText.Trim();
         if (!Comparer.Equals(node.Id, requestedNodeId) &&
             network.Nodes.Any(model => !ReferenceEquals(model, node) && Comparer.Equals(model.Id, requestedNodeId)))
@@ -3289,6 +3654,10 @@ public sealed class WorkspaceViewModel : ObservableObject
     {
         var edgeId = EdgeDraft.TargetEdgeId ?? throw new InvalidOperationException("Select one route to edit.");
         var edge = network.Edges.First(model => Comparer.Equals(model.Id, edgeId));
+        if (IsLockedLayer(edge.LayerId))
+        {
+            throw new InvalidOperationException("This route belongs to a locked layer. Unlock the layer to edit it.");
+        }
         edge.RouteType = NormalizeOptionalText(EdgeRouteTypeText);
         edge.Time = ParseNonNegativeDouble(EdgeTimeText, "Enter travel time as 0 or more.");
         edge.Cost = ParseNonNegativeDouble(EdgeCostText, "Enter travel cost as 0 or more.");

@@ -22,6 +22,7 @@ public sealed class NetworkSimulationEngine
         ArgumentNullException.ThrowIfNull(network);
         network = HierarchicalNetworkProjection.ProjectForSimulation(network);
         network = OrderNetworkForLayerProcessing(network);
+        network = ApplyPolicyRules(network);
 
         if (network.FacilityModeEnabled)
         {
@@ -156,11 +157,90 @@ public sealed class NetworkSimulationEngine
             TrafficTypes = network.TrafficTypes,
             TimelineEvents = network.TimelineEvents,
             ScenarioDefinitions = network.ScenarioDefinitions,
+            PolicyRules = network.PolicyRules,
             EdgeTrafficPermissionDefaults = network.EdgeTrafficPermissionDefaults,
             Subnetworks = network.Subnetworks,
             Nodes = network.Nodes.OrderBy(node => order.GetValueOrDefault(node.LayerId, int.MaxValue)).ThenBy(node => node.Name, StringComparer.OrdinalIgnoreCase).ToList(),
             Edges = network.Edges.OrderBy(edge => order.GetValueOrDefault(edge.LayerId, int.MaxValue)).ThenBy(edge => edge.Id, StringComparer.OrdinalIgnoreCase).ToList()
         };
+    }
+
+    private static NetworkModel ApplyPolicyRules(NetworkModel network)
+    {
+        if (network.PolicyRules.Count == 0)
+        {
+            return network;
+        }
+
+        foreach (var rule in network.PolicyRules.Where(rule => rule.IsEnabled))
+        {
+            var edges = network.Edges.Where(edge =>
+                (string.IsNullOrWhiteSpace(rule.TargetEdgeId) || Comparer.Equals(edge.Id, rule.TargetEdgeId)) &&
+                (string.IsNullOrWhiteSpace(rule.TargetNodeId) || Comparer.Equals(edge.FromNodeId, rule.TargetNodeId) || Comparer.Equals(edge.ToNodeId, rule.TargetNodeId)));
+
+            foreach (var edge in edges)
+            {
+                ApplyRuleToEdge(edge, rule);
+            }
+        }
+
+        return network;
+    }
+
+    private static void ApplyRuleToEdge(EdgeModel edge, PolicyRuleModel rule)
+    {
+        switch (rule.Effect)
+        {
+            case PolicyRuleEffect.BlockTraffic:
+                ApplyBlockRule(edge, rule, allowOnly: false);
+                break;
+            case PolicyRuleEffect.AllowOnlyTraffic:
+                ApplyBlockRule(edge, rule, allowOnly: true);
+                break;
+            case PolicyRuleEffect.CostMultiplier:
+                edge.Cost *= Math.Max(0d, rule.Value);
+                break;
+            case PolicyRuleEffect.CapacityMultiplier:
+                if (edge.Capacity.HasValue)
+                {
+                    edge.Capacity *= Math.Max(0d, rule.Value);
+                }
+                break;
+        }
+    }
+
+    private static void ApplyBlockRule(EdgeModel edge, PolicyRuleModel rule, bool allowOnly)
+    {
+        if (string.IsNullOrWhiteSpace(rule.TrafficTypeIdOrName))
+        {
+            edge.Capacity = 0d;
+            return;
+        }
+
+        if (!allowOnly)
+        {
+            edge.TrafficPermissions.Add(new EdgeTrafficPermissionRule
+            {
+                TrafficType = rule.TrafficTypeIdOrName,
+                Mode = EdgeTrafficPermissionMode.Blocked
+            });
+            return;
+        }
+
+        var existingTraffic = edge.TrafficPermissions
+            .Select(permission => permission.TrafficType)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(Comparer)
+            .ToList();
+
+        foreach (var traffic in existingTraffic.Where(traffic => !Comparer.Equals(traffic, rule.TrafficTypeIdOrName)))
+        {
+            edge.TrafficPermissions.Add(new EdgeTrafficPermissionRule
+            {
+                TrafficType = traffic,
+                Mode = EdgeTrafficPermissionMode.Blocked
+            });
+        }
     }
 
     /// <summary>

@@ -2634,8 +2634,120 @@ public sealed class ShellWindow : Window
                 }
             }
         });
+        tabControl.Items.Add(new TabItem
+        {
+            Header = "Layers",
+            Content = BuildLayersPanel(viewModel)
+        });
+        tabControl.Items.Add(new TabItem
+        {
+            Header = "Scenarios",
+            Content = BuildScenarioPanel(viewModel)
+        });
+        tabControl.Items.Add(new TabItem
+        {
+            Header = "Top Issues",
+            Content = BuildTopIssuesPanel(viewModel)
+        });
+        tabControl.Items.Add(new TabItem
+        {
+            Header = "Explanation",
+            Content = BuildExplanationPanel()
+        });
 
         return tabControl;
+    }
+
+    private static Control BuildLayersPanel(WorkspaceViewModel viewModel)
+    {
+        var list = new ListBox { MinHeight = 180 };
+        list.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.LayerItems)));
+        list.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedLayerItem), BindingMode.TwoWay));
+        list.ItemTemplate = new FuncDataTemplate<LayerListItemViewModel>((item, _) => new StackPanel
+        {
+            Children =
+            {
+                new TextBlock { Text = $"{item.Name} ({item.TypeLabel})" },
+                new TextBlock { Text = $"Nodes {item.NodeCount} · Edges {item.EdgeCount} · {item.VisibilityLabel} · {item.LockLabel}", FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
+            }
+        });
+
+        return new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock { [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.SelectedLayerHelperText)), TextWrapping = TextWrapping.Wrap },
+                list,
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 6,
+                    Children =
+                    {
+                        BuildButton("Add layer", viewModel.AddLayerCommand),
+                        BuildButton("Delete layer", viewModel.DeleteLayerCommand),
+                        BuildButton("Set selected node(s) to layer", viewModel.AssignSelectedNodesToLayerCommand),
+                        BuildButton("Set selected edge(s) to layer", viewModel.AssignSelectedEdgesToLayerCommand)
+                    }
+                }
+            }
+        };
+    }
+
+    private static Control BuildScenarioPanel(WorkspaceViewModel viewModel)
+    {
+        var scenarioList = new ComboBox();
+        scenarioList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.ScenarioDefinitions)));
+        scenarioList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedScenarioDefinition), BindingMode.TwoWay));
+        var eventList = new ListBox { MinHeight = 140 };
+        eventList.Bind(ItemsControl.ItemsSourceProperty, new Binding("SelectedScenarioDefinition.Events"));
+        eventList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedScenarioEvent), BindingMode.TwoWay));
+        return new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock { Text = "Scenarios test what happens when demand, cost, or network availability changes.", TextWrapping = TextWrapping.Wrap },
+                scenarioList,
+                eventList,
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { BuildButton("Create scenario", viewModel.CreateScenarioCommand), BuildButton("Add event", viewModel.AddScenarioEventCommand), BuildButton("Delete event", viewModel.DeleteScenarioEventCommand), BuildButton("Run scenario", viewModel.RunScenarioCommand, isPrimary: true) } },
+                BuildQuickStat("Result", nameof(WorkspaceViewModel.ScenarioResultSummary)),
+                new ItemsControl { [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ScenarioWarnings)) }
+            }
+        };
+    }
+
+    private static Control BuildTopIssuesPanel(WorkspaceViewModel viewModel)
+    {
+        var list = new ListBox();
+        list.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.TopIssues)));
+        list.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedTopIssue), BindingMode.TwoWay));
+        list.ItemTemplate = new FuncDataTemplate<NetworkIssueListItemViewModel>((item, _) => new StackPanel
+        {
+            Children =
+            {
+                new TextBlock { Text = $"{item.SeverityLabel} · {item.IssueTitle}", FontWeight = FontWeight.Bold },
+                new TextBlock { Text = item.TargetName },
+                new TextBlock { Text = item.Explanation, TextWrapping = TextWrapping.Wrap },
+                new TextBlock { Text = $"Suggested: {item.SuggestedAction}", TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
+            }
+        });
+        return new StackPanel { Spacing = 8, Children = { list, BuildButton("Select", viewModel.SelectIssueCommand) } };
+    }
+
+    private static Control BuildExplanationPanel()
+    {
+        return new StackPanel
+        {
+            Spacing = 6,
+            Children =
+            {
+                BuildQuickStat("Summary", nameof(WorkspaceViewModel.ExplanationSummary)),
+                new ItemsControl { [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ExplanationCauses)) },
+                new ItemsControl { [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ExplanationActions)) }
+            }
+        };
     }
 
     private void ToggleDashboardCollapsed()

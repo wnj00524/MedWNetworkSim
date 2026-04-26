@@ -1910,7 +1910,7 @@ public sealed class ShellWindow : Window
                 BuildValidatedScenarioInput("Start time", "ScenarioEditor.StartTimeText", "ScenarioEditor.ScenarioStartTimeError"),
                 BuildValidatedScenarioInput("End time", "ScenarioEditor.EndTimeText", "ScenarioEditor.ScenarioEndTimeError"),
                 BuildValidatedScenarioInput("Step size", "ScenarioEditor.DeltaTimeText", "ScenarioEditor.ScenarioDeltaTimeError"),
-                new StackPanel { Spacing = 10, Margin = new Thickness(0, 20, 0, 0), Children = { BuildLabeledCheckBox("Adaptive routing", "ScenarioEditor.EnableAdaptiveRouting") } }
+                BuildLabeledCheckBox("Adaptive routing", "ScenarioEditor.EnableAdaptiveRouting")
             }
         };
         Grid.SetColumn(detailsGrid.Children[1], 1);
@@ -1981,14 +1981,15 @@ public sealed class ShellWindow : Window
 
         var eventTimingGrid = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("*,8,*"),
+            ColumnDefinitions = new ColumnDefinitions("*,*"),
+            ColumnSpacing = 8,
             Children =
             {
                 BuildValidatedScenarioInput("Start time", "ScenarioEditor.EventStartTimeText", "ScenarioEditor.EventStartTimeError"),
                 BuildValidatedScenarioInput("End time", "ScenarioEditor.EventEndTimeText", "ScenarioEditor.EventEndTimeError")
             }
         };
-        Grid.SetColumn((Control)eventTimingGrid.Children[1], 2);
+        Grid.SetColumn(eventTimingGrid.Children[1], 1);
 
         var eventDetailsContent = new StackPanel
         {
@@ -2009,7 +2010,8 @@ public sealed class ShellWindow : Window
 
         var eventsTabBody = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("1.5*,16,1*"),
+            ColumnDefinitions = new ColumnDefinitions("1.5*,1*"),
+            ColumnSpacing = 16,
             Margin = new Thickness(0, 10, 0, 0),
             Children =
             {
@@ -2017,7 +2019,7 @@ public sealed class ShellWindow : Window
                 BuildScenarioEditorCard("Event Properties", "Edit the selected event.", new ScrollViewer { Content = eventDetailsContent, VerticalScrollBarVisibility = ScrollBarVisibility.Auto })
             }
         };
-        Grid.SetColumn((Control)eventsTabBody.Children[1], 2);
+        Grid.SetColumn(eventsTabBody.Children[1], 1);
 
         var eventsTab = new TabItem { Header = "Event Schedule", Content = eventsTabBody };
 

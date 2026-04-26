@@ -35,11 +35,17 @@ public partial class App : Application
         SplashWindow? splashWindow = null;
         try
         {
-            splashWindow = new SplashWindow();
-            desktop.MainWindow = splashWindow;
-            splashWindow.Show();
-
-            await Task.Delay(TimeSpan.FromMilliseconds(1500));
+            try
+            {
+                splashWindow = new SplashWindow();
+                desktop.MainWindow = splashWindow;
+                splashWindow.Show();
+                await Task.Delay(TimeSpan.FromMilliseconds(500));
+            }
+            catch (Exception splashEx)
+            {
+                Trace.WriteLine($"[{nameof(App)}] Splash failed, continuing to main window: {splashEx}");
+            }
 
             var shellWindow = new ShellWindow
             {

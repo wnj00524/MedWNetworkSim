@@ -49,7 +49,7 @@ public sealed class ScenarioValidationService : IScenarioValidationService
             errors.Add("Start time must be zero or greater.");
         }
 
-        if (evt.EndTime.HasValue && evt.EndTime.Value < evt.Time)
+        if (evt.EndTime.HasValue && evt.EndTime.Value <= evt.Time)
         {
             errors.Add("End time must be after start time.");
         }

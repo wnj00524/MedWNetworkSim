@@ -223,6 +223,106 @@ public sealed class AdvancedSimulationTests
         Assert.True(modified.TotalThroughput >= baseline.TotalThroughput || modified.TotalUnmetDemand >= baseline.TotalUnmetDemand);
     }
 
+    [Fact]
+    public void ScenarioRunner_RevertsTimedEvents_AfterEndTime()
+    {
+        var network = BuildNetwork();
+        var runner = new ScenarioRunner();
+        var edgeId = network.Edges[0].Id;
+        var scenario = new ScenarioDefinitionModel
+        {
+            Name = "Timed closure",
+            StartTime = 0,
+            EndTime = 2,
+            DeltaTime = 1,
+            Events =
+            [
+                new ScenarioEventModel
+                {
+                    Name = "Close edge briefly",
+                    Kind = ScenarioEventKind.EdgeClosure,
+                    TargetKind = ScenarioTargetKind.Edge,
+                    TargetId = edgeId,
+                    Time = 0,
+                    EndTime = 0.5
+                }
+            ]
+        };
+
+        var result = runner.Run(network, scenario, new ScenarioRunOptions { StartTime = 0, EndTime = 2, DeltaTime = 1 }).SimulationResult!;
+        var baseline = runner.Run(network, new ScenarioDefinitionModel { Name = "Base" }, new ScenarioRunOptions { StartTime = 0, EndTime = 2, DeltaTime = 1 }).SimulationResult!;
+
+        Assert.True(result.TotalThroughput < baseline.TotalThroughput);
+        Assert.True(result.TotalThroughput > 0d);
+    }
+
+    [Fact]
+    public void ScenarioRunner_EventWithoutEndTime_RemainsActive()
+    {
+        var network = BuildNetwork();
+        var runner = new ScenarioRunner();
+        var edgeId = network.Edges[0].Id;
+        var scenario = new ScenarioDefinitionModel
+        {
+            Name = "Always closed",
+            Events =
+            [
+                new ScenarioEventModel
+                {
+                    Name = "Close edge",
+                    Kind = ScenarioEventKind.EdgeClosure,
+                    TargetKind = ScenarioTargetKind.Edge,
+                    TargetId = edgeId,
+                    Time = 0
+                }
+            ]
+        };
+
+        var result = runner.Run(network, scenario, new ScenarioRunOptions { StartTime = 0, EndTime = 2, DeltaTime = 1 }).SimulationResult!;
+        Assert.Equal(0d, result.TotalThroughput);
+    }
+
+    [Fact]
+    public void ScenarioRunner_RevertRestoresExactSourceValues()
+    {
+        var network = BuildNetwork();
+        var originalCost = network.Edges[0].Cost;
+        var originalDemand = network.Nodes[1].TrafficProfiles[0].Consumption;
+        var runner = new ScenarioRunner();
+        var scenario = new ScenarioDefinitionModel
+        {
+            Name = "Timed modifiers",
+            Events =
+            [
+                new ScenarioEventModel
+                {
+                    Name = "Cost increase",
+                    Kind = ScenarioEventKind.EdgeCostChange,
+                    TargetKind = ScenarioTargetKind.Edge,
+                    TargetId = network.Edges[0].Id,
+                    Time = 0,
+                    EndTime = 0.5,
+                    Value = 10
+                },
+                new ScenarioEventModel
+                {
+                    Name = "Demand spike",
+                    Kind = ScenarioEventKind.DemandSpike,
+                    TargetKind = ScenarioTargetKind.Node,
+                    TargetId = network.Nodes[1].Id,
+                    TrafficTypeIdOrName = "Food",
+                    Time = 0,
+                    EndTime = 0.5,
+                    Value = 2
+                }
+            ]
+        };
+
+        _ = runner.Run(network, scenario, new ScenarioRunOptions { StartTime = 0, EndTime = 2, DeltaTime = 1 });
+        Assert.Equal(originalCost, network.Edges[0].Cost);
+        Assert.Equal(originalDemand, network.Nodes[1].TrafficProfiles[0].Consumption);
+    }
+
     private static NetworkModel BuildNetwork()
     {
         var a = Guid.NewGuid();

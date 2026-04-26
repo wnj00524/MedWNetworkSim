@@ -3021,10 +3021,19 @@ public sealed class ShellWindow : Window
         var list = new ListBox { MinHeight = 180 };
         list.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.LayerItems)));
         list.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedLayerItem), BindingMode.TwoWay));
-        list.ItemTemplate = new FuncDataTemplate<LayerListItemViewModel>((item, _) => new StackPanel
+        list.ItemTemplate = new FuncDataTemplate<LayerListItemViewModel>((item, _) => 
         {
-            Spacing = 4,
-            Children =
+            if (item == null)
+            {
+                return new StackPanel
+                {
+                  
+                };
+            }
+            return new StackPanel
+            {
+                Spacing = 4,
+                Children =
             {
                 new TextBlock { Text = $"{item.Name} ({item.TypeLabel})", FontWeight = FontWeight.SemiBold },
                 new TextBlock { Text = $"Nodes {item.NodeCount} · Edges {item.EdgeCount}", FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) },
@@ -3047,7 +3056,8 @@ public sealed class ShellWindow : Window
                         new TextBlock { Text = $"State: {item.VisibilityLabel} · {item.LockLabel}", FontSize = 11, VerticalAlignment = VerticalAlignment.Center }
                     }
                 }
-            }
+                }
+            };
         });
 
         return new StackPanel
@@ -3132,15 +3142,23 @@ public sealed class ShellWindow : Window
         var list = new ListBox();
         list.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.TopIssues)));
         list.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedTopIssue), BindingMode.TwoWay));
-        list.ItemTemplate = new FuncDataTemplate<NetworkIssueListItemViewModel>((item, _) => new StackPanel
+        list.ItemTemplate = new FuncDataTemplate<NetworkIssueListItemViewModel>((item, _) => 
         {
-            Children =
+            if (item is null)
+             {
+                return new TextBlock();
+             }
+            return new StackPanel
+            {
+                Children =
             {
                 new TextBlock { Text = $"{item.SeverityIcon} {item.SeverityLabel} · {item.IssueTitle}", FontWeight = FontWeight.Bold },
                 new TextBlock { Text = item.TargetName },
                 new TextBlock { Text = item.Explanation, TextWrapping = TextWrapping.Wrap },
                 new TextBlock { Text = $"Suggested: {item.SuggestedAction}", TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
             }
+            };
+               
         });
         return new StackPanel { Spacing = 8, Children = { list, BuildButton("Select", viewModel.SelectIssueCommand) } };
     }

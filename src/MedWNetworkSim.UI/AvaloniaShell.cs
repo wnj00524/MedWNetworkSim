@@ -2665,12 +2665,30 @@ public sealed class ShellWindow : Window
         list.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedLayerItem), BindingMode.TwoWay));
         list.ItemTemplate = new FuncDataTemplate<LayerListItemViewModel>((item, _) => new StackPanel
         {
-            Spacing = 2,
+            Spacing = 4,
             Children =
             {
-                new TextBlock { Text = $"{item.Name} ({item.TypeLabel})" },
+                new TextBlock { Text = $"{item.Name} ({item.TypeLabel})", FontWeight = FontWeight.SemiBold },
                 new TextBlock { Text = $"Nodes {item.NodeCount} · Edges {item.EdgeCount}", FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) },
-                new TextBlock { Text = $"Visible: {item.VisibilityLabel} · Locked: {item.LockLabel}", FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    Children =
+                    {
+                        new CheckBox
+                        {
+                            Content = "Visible",
+                            [!ToggleButton.IsCheckedProperty] = new Binding(nameof(LayerListItemViewModel.IsVisible), BindingMode.TwoWay)
+                        },
+                        new CheckBox
+                        {
+                            Content = "Locked",
+                            [!ToggleButton.IsCheckedProperty] = new Binding(nameof(LayerListItemViewModel.IsLocked), BindingMode.TwoWay)
+                        },
+                        new TextBlock { Text = $"State: {item.VisibilityLabel} · {item.LockLabel}", FontSize = 11, VerticalAlignment = VerticalAlignment.Center }
+                    }
+                }
             }
         });
 
@@ -2717,6 +2735,26 @@ public sealed class ShellWindow : Window
 
     private static Control BuildScenarioPanel(WorkspaceViewModel viewModel)
     {
+        static string BuildValidationStatus(ScenarioEventModel evt)
+        {
+            if (string.IsNullOrWhiteSpace(evt.Name))
+            {
+                return "Validation: Enter an event name.";
+            }
+
+            if (evt.Time < 0d)
+            {
+                return "Validation: Start time must be zero or greater.";
+            }
+
+            if (evt.EndTime.HasValue && evt.EndTime.Value <= evt.Time)
+            {
+                return "Validation: End time must be after start time.";
+            }
+
+            return "Validation: Ready";
+        }
+
         var scenarioList = new ComboBox();
         scenarioList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.ScenarioDefinitions)));
         scenarioList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedScenarioDefinition), BindingMode.TwoWay));
@@ -2725,10 +2763,12 @@ public sealed class ShellWindow : Window
         eventList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedScenarioEvent), BindingMode.TwoWay));
         eventList.ItemTemplate = new FuncDataTemplate<ScenarioEventModel>((item, _) => new StackPanel
         {
+            Spacing = 2,
             Children =
             {
                 new TextBlock { Text = $"{(item.IsEnabled ? "☑" : "☐")} {item.Kind} · {item.Name}", FontWeight = FontWeight.SemiBold },
-                new TextBlock { Text = $"Target {item.TargetId ?? "None"} · Start {item.Time:0.##} · End {(item.EndTime?.ToString("0.##") ?? "None")} · Value {item.Value:0.##}", FontSize = 11 }
+                new TextBlock { Text = $"Target {item.TargetId ?? "None"} · Traffic {(string.IsNullOrWhiteSpace(item.TrafficTypeIdOrName) ? "N/A" : item.TrafficTypeIdOrName)} · Start {item.Time:0.##} · End {(item.EndTime?.ToString("0.##") ?? "None")} · Value {item.Value:0.##}", FontSize = 11 },
+                new TextBlock { Text = BuildValidationStatus(item), FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
             }
         });
         return new StackPanel
@@ -2737,6 +2777,7 @@ public sealed class ShellWindow : Window
             Children =
             {
                 new TextBlock { Text = "Scenarios test what happens when demand, cost, or network availability changes.", TextWrapping = TextWrapping.Wrap },
+                new TextBlock { Text = "No scenarios yet. Create a scenario to test failures, closures, demand spikes, or cost changes.", TextWrapping = TextWrapping.Wrap, FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) },
                 scenarioList,
                 BuildLabeledInput("Scenario name", "SelectedScenarioDefinition.Name"),
                 BuildLabeledInput("Description", "SelectedScenarioDefinition.Description"),
@@ -2744,6 +2785,7 @@ public sealed class ShellWindow : Window
                 BuildLabeledTextBox("End time", "SelectedScenarioDefinition.EndTime"),
                 BuildLabeledTextBox("Step size", "SelectedScenarioDefinition.DeltaTime"),
                 BuildLabeledCheckBox("Enable adaptive routing", "SelectedScenarioDefinition.EnableAdaptiveRouting"),
+                new TextBlock { Text = "No events yet. Add an event such as a node failure, edge closure, or demand spike.", TextWrapping = TextWrapping.Wrap, FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) },
                 eventList,
                 BuildLabeledInput("Event name", "SelectedScenarioEvent.Name"),
                 BuildLabeledComboBox("Event type", nameof(WorkspaceViewModel.ScenarioEventKindOptions), "SelectedScenarioEvent.Kind"),

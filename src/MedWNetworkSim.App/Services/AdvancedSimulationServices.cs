@@ -439,28 +439,109 @@ public sealed class ScenarioRunner : IScenarioRunner
         var clonedNetwork = Clone(sourceNetwork);
         networkLayerService.EnsureLayerIntegrity(clonedNetwork);
 
-        foreach (var evt in scenario.Events
-                     .Where(evt => evt is not null && evt.IsEnabled)
-                     .OrderBy(evt => evt.Time)
-                     .ThenBy(evt => evt.Name, StringComparer.OrdinalIgnoreCase))
+        var activeEvents = new Dictionary<Guid, Action>(capacity: scenario.Events.Count);
+        var deliveredByTraffic = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var unmetByTraffic = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var productionByTraffic = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var consumptionByTraffic = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var unusedByTraffic = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var allocationsByTraffic = new Dictionary<string, List<RouteAllocation>>(StringComparer.OrdinalIgnoreCase);
+        var notesByTraffic = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        var routingByTraffic = new Dictionary<string, RoutingPreference>(StringComparer.OrdinalIgnoreCase);
+        var allocationModeByTraffic = new Dictionary<string, AllocationMode>(StringComparer.OrdinalIgnoreCase);
+        var simulationSteps = new List<TemporalNetworkSimulationEngine.TemporalSimulationStepResult>();
+        var orderedEvents = scenario.Events
+            .Where(evt => evt is not null && evt.IsEnabled)
+            .OrderBy(evt => evt.Time)
+            .ThenBy(evt => evt.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var currentTime = options.StartTime;
+        var deltaTime = options.DeltaTime <= 0d ? 1d : options.DeltaTime;
+        while (currentTime <= options.EndTime + ComparisonTolerance)
         {
-            if (evt.Time > options.EndTime + ComparisonTolerance || evt.Time < options.StartTime - ComparisonTolerance)
+            foreach (var evt in orderedEvents.Where(item => item.Time <= currentTime + ComparisonTolerance))
             {
-                continue;
+                if (activeEvents.ContainsKey(evt.Id))
+                {
+                    continue;
+                }
+
+                if (evt.EndTime.HasValue && evt.EndTime.Value < currentTime - ComparisonTolerance)
+                {
+                    continue;
+                }
+
+                if (TryApplyEvent(clonedNetwork, evt, warnings, out var revert))
+                {
+                    activeEvents[evt.Id] = revert;
+                }
             }
 
-            if (evt.EndTime.HasValue && evt.EndTime.Value <= options.StartTime + ComparisonTolerance)
+            var stepOutcomes = simulationEngine.Simulate(clonedNetwork);
+            foreach (var outcome in stepOutcomes)
             {
-                continue;
+                var traffic = outcome.TrafficType;
+                deliveredByTraffic[traffic] = deliveredByTraffic.GetValueOrDefault(traffic) + outcome.TotalDelivered;
+                unmetByTraffic[traffic] = unmetByTraffic.GetValueOrDefault(traffic) + outcome.UnmetDemand;
+                productionByTraffic[traffic] = productionByTraffic.GetValueOrDefault(traffic) + outcome.TotalProduction;
+                consumptionByTraffic[traffic] = consumptionByTraffic.GetValueOrDefault(traffic) + outcome.TotalConsumption;
+                unusedByTraffic[traffic] = unusedByTraffic.GetValueOrDefault(traffic) + outcome.UnusedSupply;
+                routingByTraffic.TryAdd(traffic, outcome.RoutingPreference);
+                allocationModeByTraffic.TryAdd(traffic, outcome.AllocationMode);
+                if (!allocationsByTraffic.TryGetValue(traffic, out var allocations))
+                {
+                    allocations = [];
+                    allocationsByTraffic[traffic] = allocations;
+                }
+
+                allocations.AddRange(outcome.Allocations);
+                if (!notesByTraffic.TryGetValue(traffic, out var notes))
+                {
+                    notes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    notesByTraffic[traffic] = notes;
+                }
+
+                foreach (var note in outcome.Notes)
+                {
+                    notes.Add(note);
+                }
             }
 
-            if (!TryApplyEvent(clonedNetwork, evt, warnings))
+            var nextTime = currentTime + deltaTime;
+            foreach (var evt in orderedEvents.Where(item => item.EndTime.HasValue && item.EndTime.Value < nextTime - ComparisonTolerance).ToList())
             {
-                continue;
+                if (!activeEvents.TryGetValue(evt.Id, out var revert))
+                {
+                    continue;
+                }
+
+                revert();
+                activeEvents.Remove(evt.Id);
             }
+
+            currentTime = nextTime;
         }
 
-        var simulation = new SimulationResult { Outcomes = simulationEngine.Simulate(clonedNetwork) };
+        var simulation = new SimulationResult
+        {
+            Outcomes = deliveredByTraffic.Keys
+                .Select(traffic => new TrafficSimulationOutcome
+                {
+                    TrafficType = traffic,
+                    RoutingPreference = routingByTraffic.GetValueOrDefault(traffic),
+                    AllocationMode = allocationModeByTraffic.GetValueOrDefault(traffic),
+                    TotalProduction = productionByTraffic.GetValueOrDefault(traffic),
+                    TotalConsumption = consumptionByTraffic.GetValueOrDefault(traffic),
+                    TotalDelivered = deliveredByTraffic.GetValueOrDefault(traffic),
+                    UnusedSupply = unusedByTraffic.GetValueOrDefault(traffic),
+                    UnmetDemand = unmetByTraffic.GetValueOrDefault(traffic),
+                    Allocations = allocationsByTraffic.GetValueOrDefault(traffic) ?? [],
+                    Notes = notesByTraffic.TryGetValue(traffic, out var notes) ? notes.ToList() : []
+                })
+                .ToList(),
+            Steps = simulationSteps
+        };
         var issues = bottleneckDetectionService.DetectIssues(clonedNetwork, simulation);
         return new ScenarioRunResult
         {
@@ -471,8 +552,9 @@ public sealed class ScenarioRunner : IScenarioRunner
         };
     }
 
-    private static bool TryApplyEvent(NetworkModel network, ScenarioEventModel evt, List<string> warnings)
+    private static bool TryApplyEvent(NetworkModel network, ScenarioEventModel evt, List<string> warnings, out Action revert)
     {
+        revert = static () => { };
         switch (evt.Kind)
         {
             case ScenarioEventKind.NodeFailure:
@@ -489,6 +571,10 @@ public sealed class ScenarioRunner : IScenarioRunner
                     return false;
                 }
 
+                var nodeSnapshots = node.TrafficProfiles
+                    .ToDictionary(
+                        profile => profile,
+                        profile => (profile.Production, profile.Consumption, profile.CanTransship));
                 foreach (var profile in node.TrafficProfiles)
                 {
                     profile.Production = 0d;
@@ -496,6 +582,15 @@ public sealed class ScenarioRunner : IScenarioRunner
                     profile.CanTransship = false;
                 }
 
+                revert = () =>
+                {
+                    foreach (var pair in nodeSnapshots)
+                    {
+                        pair.Key.Production = pair.Value.Production;
+                        pair.Key.Consumption = pair.Value.Consumption;
+                        pair.Key.CanTransship = pair.Value.CanTransship;
+                    }
+                };
                 return true;
             case ScenarioEventKind.EdgeClosure:
                 if (evt.TargetKind != ScenarioTargetKind.Edge || evt.TargetId is null)
@@ -511,7 +606,9 @@ public sealed class ScenarioRunner : IScenarioRunner
                     return false;
                 }
 
+                var previousCapacity = edge.Capacity;
                 edge.Capacity = 0d;
+                revert = () => edge.Capacity = previousCapacity;
                 return true;
             case ScenarioEventKind.DemandSpike:
                 if (evt.TargetKind != ScenarioTargetKind.Node || evt.TargetId is null || string.IsNullOrWhiteSpace(evt.TrafficTypeIdOrName))
@@ -527,11 +624,23 @@ public sealed class ScenarioRunner : IScenarioRunner
                     return false;
                 }
 
-                foreach (var profile in spikeNode.TrafficProfiles.Where(p => string.Equals(p.TrafficType, evt.TrafficTypeIdOrName, StringComparison.OrdinalIgnoreCase)))
+                var multiplier = Math.Max(1d, evt.Value);
+                var demandProfiles = spikeNode.TrafficProfiles
+                    .Where(p => string.Equals(p.TrafficType, evt.TrafficTypeIdOrName, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                var previousDemand = demandProfiles.ToDictionary(profile => profile, profile => profile.Consumption);
+                foreach (var profile in demandProfiles)
                 {
-                    profile.Consumption *= Math.Max(1d, evt.Value);
+                    profile.Consumption *= multiplier;
                 }
 
+                revert = () =>
+                {
+                    foreach (var pair in previousDemand)
+                    {
+                        pair.Key.Consumption = pair.Value;
+                    }
+                };
                 return true;
             case ScenarioEventKind.EdgeCostChange:
                 if (evt.TargetKind != ScenarioTargetKind.Edge || evt.TargetId is null)
@@ -547,12 +656,14 @@ public sealed class ScenarioRunner : IScenarioRunner
                     return false;
                 }
 
+                var previousCost = targetEdge.Cost;
                 targetEdge.Cost = Math.Max(0d, evt.Value);
+                revert = () => targetEdge.Cost = previousCost;
                 return true;
             case ScenarioEventKind.ProductionMultiplier:
-                return ApplyNodeProfileMultiplier(network, evt, warnings, applyProduction: true);
+                return ApplyNodeProfileMultiplier(network, evt, warnings, applyProduction: true, out revert);
             case ScenarioEventKind.ConsumptionMultiplier:
-                return ApplyNodeProfileMultiplier(network, evt, warnings, applyProduction: false);
+                return ApplyNodeProfileMultiplier(network, evt, warnings, applyProduction: false, out revert);
             case ScenarioEventKind.RouteCostMultiplier:
                 if (evt.TargetKind != ScenarioTargetKind.Edge || evt.TargetId is null)
                 {
@@ -567,7 +678,9 @@ public sealed class ScenarioRunner : IScenarioRunner
                     return false;
                 }
 
+                var previousRouteCost = routeEdge.Cost;
                 routeEdge.Cost *= Math.Max(0d, evt.Value);
+                revert = () => routeEdge.Cost = previousRouteCost;
                 return true;
             default:
                 warnings.Add($"Skipped unsupported event type '{evt.Kind}'.");
@@ -575,8 +688,9 @@ public sealed class ScenarioRunner : IScenarioRunner
         }
     }
 
-    private static bool ApplyNodeProfileMultiplier(NetworkModel network, ScenarioEventModel evt, List<string> warnings, bool applyProduction)
+    private static bool ApplyNodeProfileMultiplier(NetworkModel network, ScenarioEventModel evt, List<string> warnings, bool applyProduction, out Action revert)
     {
+        revert = static () => { };
         if (evt.TargetKind != ScenarioTargetKind.Node || evt.TargetId is null)
         {
             warnings.Add("Choose a node for this event.");
@@ -597,7 +711,9 @@ public sealed class ScenarioRunner : IScenarioRunner
         }
 
         var multiplier = Math.Max(0d, evt.Value);
-        foreach (var profile in node.TrafficProfiles.Where(p => string.Equals(p.TrafficType, evt.TrafficTypeIdOrName, StringComparison.OrdinalIgnoreCase)))
+        var matchingProfiles = node.TrafficProfiles.Where(p => string.Equals(p.TrafficType, evt.TrafficTypeIdOrName, StringComparison.OrdinalIgnoreCase)).ToList();
+        var snapshots = matchingProfiles.ToDictionary(profile => profile, profile => applyProduction ? profile.Production : profile.Consumption);
+        foreach (var profile in matchingProfiles)
         {
             if (applyProduction)
             {
@@ -609,6 +725,20 @@ public sealed class ScenarioRunner : IScenarioRunner
             }
         }
 
+        revert = () =>
+        {
+            foreach (var pair in snapshots)
+            {
+                if (applyProduction)
+                {
+                    pair.Key.Production = pair.Value;
+                }
+                else
+                {
+                    pair.Key.Consumption = pair.Value;
+                }
+            }
+        };
         return true;
     }
 

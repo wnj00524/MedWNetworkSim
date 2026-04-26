@@ -678,6 +678,7 @@ public sealed class BulkSelectionInspectorDraft : ObservableObject
 public sealed class LayerListItemViewModel : ObservableObject
 {
     public required NetworkLayerModel Layer { get; init; }
+    public Action? OnStateChanged { get; init; }
     public string Name => Layer.Name;
     public string TypeLabel => Layer.Type.ToString();
     public string VisibilityLabel => Layer.IsVisible ? "Visible" : "Hidden";
@@ -697,6 +698,7 @@ public sealed class LayerListItemViewModel : ObservableObject
             Layer.IsVisible = value;
             Raise(nameof(IsVisible));
             Raise(nameof(VisibilityLabel));
+            OnStateChanged?.Invoke();
         }
     }
 
@@ -713,6 +715,7 @@ public sealed class LayerListItemViewModel : ObservableObject
             Layer.IsLocked = value;
             Raise(nameof(IsLocked));
             Raise(nameof(LockLabel));
+            OnStateChanged?.Invoke();
         }
     }
 }
@@ -2557,7 +2560,12 @@ public sealed class WorkspaceViewModel : ObservableObject
             {
                 Layer = layer,
                 NodeCount = network.Nodes.Count(node => node.LayerId == layer.Id),
-                EdgeCount = network.Edges.Count(edge => edge.LayerId == layer.Id)
+                EdgeCount = network.Edges.Count(edge => edge.LayerId == layer.Id),
+                OnStateChanged = () =>
+                {
+                    BuildSceneFromNetwork();
+                    MarkDirty();
+                }
             });
         }
 

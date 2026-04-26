@@ -1,5 +1,6 @@
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Services.Facility;
+using System.Text.Json;
 
 namespace MedWNetworkSim.App.Services;
 
@@ -22,6 +23,7 @@ public sealed class NetworkSimulationEngine
         ArgumentNullException.ThrowIfNull(network);
         network = HierarchicalNetworkProjection.ProjectForSimulation(network);
         network = OrderNetworkForLayerProcessing(network);
+        network = Clone(network);
         network = ApplyPolicyRules(network);
 
         if (network.FacilityModeEnabled)
@@ -172,6 +174,12 @@ public sealed class NetworkSimulationEngine
             return network;
         }
 
+        var allTrafficTypes = network.TrafficTypes
+            .Select(trafficType => trafficType.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(Comparer)
+            .ToList();
+
         foreach (var rule in network.PolicyRules.Where(rule => rule.IsEnabled))
         {
             var edges = network.Edges.Where(edge =>
@@ -180,22 +188,22 @@ public sealed class NetworkSimulationEngine
 
             foreach (var edge in edges)
             {
-                ApplyRuleToEdge(edge, rule);
+                ApplyRuleToEdge(edge, rule, allTrafficTypes);
             }
         }
 
         return network;
     }
 
-    private static void ApplyRuleToEdge(EdgeModel edge, PolicyRuleModel rule)
+    private static void ApplyRuleToEdge(EdgeModel edge, PolicyRuleModel rule, IReadOnlyList<string> allTrafficTypes)
     {
         switch (rule.Effect)
         {
             case PolicyRuleEffect.BlockTraffic:
-                ApplyBlockRule(edge, rule, allowOnly: false);
+                ApplyBlockRule(edge, rule, allowOnly: false, allTrafficTypes);
                 break;
             case PolicyRuleEffect.AllowOnlyTraffic:
-                ApplyBlockRule(edge, rule, allowOnly: true);
+                ApplyBlockRule(edge, rule, allowOnly: true, allTrafficTypes);
                 break;
             case PolicyRuleEffect.CostMultiplier:
                 edge.Cost *= Math.Max(0d, rule.Value);
@@ -209,7 +217,7 @@ public sealed class NetworkSimulationEngine
         }
     }
 
-    private static void ApplyBlockRule(EdgeModel edge, PolicyRuleModel rule, bool allowOnly)
+    private static void ApplyBlockRule(EdgeModel edge, PolicyRuleModel rule, bool allowOnly, IReadOnlyList<string> allTrafficTypes)
     {
         if (string.IsNullOrWhiteSpace(rule.TrafficTypeIdOrName))
         {
@@ -227,13 +235,7 @@ public sealed class NetworkSimulationEngine
             return;
         }
 
-        var existingTraffic = edge.TrafficPermissions
-            .Select(permission => permission.TrafficType)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Distinct(Comparer)
-            .ToList();
-
-        foreach (var traffic in existingTraffic.Where(traffic => !Comparer.Equals(traffic, rule.TrafficTypeIdOrName)))
+        foreach (var traffic in allTrafficTypes.Where(traffic => !Comparer.Equals(traffic, rule.TrafficTypeIdOrName)))
         {
             edge.TrafficPermissions.Add(new EdgeTrafficPermissionRule
             {
@@ -241,6 +243,12 @@ public sealed class NetworkSimulationEngine
                 Mode = EdgeTrafficPermissionMode.Blocked
             });
         }
+    }
+
+    private static NetworkModel Clone(NetworkModel network)
+    {
+        var json = JsonSerializer.Serialize(network);
+        return JsonSerializer.Deserialize<NetworkModel>(json) ?? new NetworkModel();
     }
 
     /// <summary>

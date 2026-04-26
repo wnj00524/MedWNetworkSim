@@ -2777,7 +2777,7 @@ public sealed class ShellWindow : Window
                 new TextBlock { Text = $"Suggested: {item.SuggestedAction}", TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
             }
         });
-        return new StackPanel { Spacing = 8, Children = { list, BuildButton("Select", viewModel.SelectIssueCommand), BuildButton("Show on canvas", viewModel.SelectIssueCommand) } };
+        return new StackPanel { Spacing = 8, Children = { list, BuildButton("Select", viewModel.SelectIssueCommand) } };
     }
 
     private static Control BuildExplanationPanel()

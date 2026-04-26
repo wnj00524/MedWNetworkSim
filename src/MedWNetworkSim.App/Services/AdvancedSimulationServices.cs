@@ -395,7 +395,8 @@ public sealed class ExplainabilityService : IExplainabilityService
         explanation.SuggestedActions.Add("Increase capacity or redistribute demand across parallel routes.");
         foreach (var rule in network.PolicyRules.Where(rule => rule.IsEnabled && rule.Effect is PolicyRuleEffect.BlockTraffic or PolicyRuleEffect.AllowOnlyTraffic))
         {
-            if (!string.IsNullOrWhiteSpace(rule.TargetEdgeId) && string.Equals(rule.TargetEdgeId, edgeId, StringComparison.OrdinalIgnoreCase))
+            if ((string.IsNullOrWhiteSpace(rule.TargetEdgeId) || string.Equals(rule.TargetEdgeId, edgeId, StringComparison.OrdinalIgnoreCase)) &&
+                (string.IsNullOrWhiteSpace(rule.TargetNodeId) || string.Equals(rule.TargetNodeId, edge.FromNodeId, StringComparison.OrdinalIgnoreCase) || string.Equals(rule.TargetNodeId, edge.ToNodeId, StringComparison.OrdinalIgnoreCase)))
             {
                 explanation.Causes.Add($"This route is blocked by the policy rule '{rule.Name}'.");
             }
@@ -546,7 +547,7 @@ public sealed class ScenarioRunner : IScenarioRunner
                     return false;
                 }
 
-                targetEdge.Cost *= Math.Max(0d, evt.Value);
+                targetEdge.Cost = Math.Max(0d, evt.Value);
                 return true;
             case ScenarioEventKind.ProductionMultiplier:
                 return ApplyNodeProfileMultiplier(network, evt, warnings, applyProduction: true);

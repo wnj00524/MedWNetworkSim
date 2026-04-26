@@ -41,7 +41,24 @@ public interface IUiExceptionSink
 
 public static class UiExceptionBoundary
 {
-    public static IUiExceptionSink? Sink { get; set; }
+    private static WeakReference<IUiExceptionSink>? sinkReference;
+
+    public static IUiExceptionSink? Sink
+    {
+        get
+        {
+            if (sinkReference is not null && sinkReference.TryGetTarget(out var sink))
+            {
+                return sink;
+            }
+
+            return null;
+        }
+        set
+        {
+            sinkReference = value is null ? null : new WeakReference<IUiExceptionSink>(value);
+        }
+    }
 
     public static string BuildActionableMessage(string operation, string suggestion) =>
         $"{operation} failed. {suggestion}";
@@ -1539,7 +1556,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink
 
     public WorkspaceViewModel()
     {
-        UiExceptionBoundary.Sink ??= this;
+        UiExceptionBoundary.Sink = this;
         Scene = new GraphScene();
         Viewport = new GraphViewport();
         Inspector = new InspectorSection();

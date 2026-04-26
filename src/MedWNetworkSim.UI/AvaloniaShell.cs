@@ -1897,6 +1897,9 @@ public sealed class ShellWindow : Window
             });
 
         // TAB 1: SCENARIO OVERVIEW
+        var adaptiveRoutingCheckBox = BuildLabeledCheckBox("Adaptive routing", "ScenarioEditor.EnableAdaptiveRouting");
+        adaptiveRoutingCheckBox.Margin = new Thickness(0, 20, 0, 0);
+
         var detailsGrid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,*"),
@@ -1910,7 +1913,7 @@ public sealed class ShellWindow : Window
                 BuildValidatedScenarioInput("Start time", "ScenarioEditor.StartTimeText", "ScenarioEditor.ScenarioStartTimeError"),
                 BuildValidatedScenarioInput("End time", "ScenarioEditor.EndTimeText", "ScenarioEditor.ScenarioEndTimeError"),
                 BuildValidatedScenarioInput("Step size", "ScenarioEditor.DeltaTimeText", "ScenarioEditor.ScenarioDeltaTimeError"),
-                BuildLabeledCheckBox("Adaptive routing", "ScenarioEditor.EnableAdaptiveRouting")
+                adaptiveRoutingCheckBox
             }
         };
         Grid.SetColumn(detailsGrid.Children[1], 1);
@@ -1979,17 +1982,20 @@ public sealed class ShellWindow : Window
         var valueInput = BuildValidatedScenarioInput("Value", "ScenarioEditor.EventValueText", "ScenarioEditor.EventValueError");
         valueInput.Bind(IsVisibleProperty, new Binding("ScenarioEditor.EventUsesValue"));
 
+        var eventStartTimeInput = BuildValidatedScenarioInput("Start time", "ScenarioEditor.EventStartTimeText", "ScenarioEditor.EventStartTimeError");
+        var eventEndTimeInput = BuildValidatedScenarioInput("End time", "ScenarioEditor.EventEndTimeText", "ScenarioEditor.EventEndTimeError");
+        Grid.SetColumn(eventEndTimeInput, 1);
+
         var eventTimingGrid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,*"),
             ColumnSpacing = 8,
             Children =
             {
-                BuildValidatedScenarioInput("Start time", "ScenarioEditor.EventStartTimeText", "ScenarioEditor.EventStartTimeError"),
-                BuildValidatedScenarioInput("End time", "ScenarioEditor.EventEndTimeText", "ScenarioEditor.EventEndTimeError")
+                eventStartTimeInput,
+                eventEndTimeInput
             }
         };
-        Grid.SetColumn(eventTimingGrid.Children[1], 1);
 
         var eventDetailsContent = new StackPanel
         {
@@ -2008,6 +2014,10 @@ public sealed class ShellWindow : Window
             }
         };
 
+        var eventListCard = BuildScenarioEditorCard("Event List", "Timeline of occurrences.", new StackPanel { Spacing = 10, Children = { eventActions, eventList } });
+        var eventPropertiesCard = BuildScenarioEditorCard("Event Properties", "Edit the selected event.", new ScrollViewer { Content = eventDetailsContent, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        Grid.SetColumn(eventPropertiesCard, 1);
+
         var eventsTabBody = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("1.5*,1*"),
@@ -2015,11 +2025,10 @@ public sealed class ShellWindow : Window
             Margin = new Thickness(0, 10, 0, 0),
             Children =
             {
-                BuildScenarioEditorCard("Event List", "Timeline of occurrences.", new StackPanel { Spacing = 10, Children = { eventActions, eventList } }),
-                BuildScenarioEditorCard("Event Properties", "Edit the selected event.", new ScrollViewer { Content = eventDetailsContent, VerticalScrollBarVisibility = ScrollBarVisibility.Auto })
+                eventListCard,
+                eventPropertiesCard
             }
         };
-        Grid.SetColumn(eventsTabBody.Children[1], 1);
 
         var eventsTab = new TabItem { Header = "Event Schedule", Content = eventsTabBody };
 

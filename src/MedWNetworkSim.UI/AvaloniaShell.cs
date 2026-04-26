@@ -949,6 +949,7 @@ public sealed class GraphCanvasControl : Control
 
 public sealed class ShellWindow : Window
 {
+    private const string BrandName = "Turkey Oak";
     private const double BottomStripHeight = 300d;
     private const double BottomStripMinHeight = 220d;
     private const double BottomStripMaxHeight = 360d;
@@ -1025,12 +1026,12 @@ public sealed class ShellWindow : Window
         SystemDecorations = SystemDecorations.None;
         CanResize = true;
         WindowState = WindowState.FullScreen;
-        Title = viewModel.WindowTitle;
+        Title = FormatBrandedWindowTitle(viewModel.WindowTitle);
         viewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(WorkspaceViewModel.WindowTitle))
             {
-                Title = viewModel.WindowTitle;
+                Title = FormatBrandedWindowTitle(viewModel.WindowTitle);
             }
 
             if (e.PropertyName == nameof(WorkspaceViewModel.IsEditingNode) && !viewModel.IsEditingNode)
@@ -1055,6 +1056,7 @@ public sealed class ShellWindow : Window
                 }
             }
         };
+        viewModel.AboutRequested += HandleAboutRequested;
 
         Closing += HandleWindowClosing;
         KeyDown += HandleShellWindowKeyDown;
@@ -1209,6 +1211,7 @@ public sealed class ShellWindow : Window
             Spacing = 2,
             Children =
             {
+                BuildBrandBadge(),
                 new TextBlock
                 {
                     Text = "MedW Command Workstation",
@@ -1273,6 +1276,7 @@ public sealed class ShellWindow : Window
                 BuildButton("Step", viewModel.StepCommand, isPrimary: true, toolTip: "Advance the simulation by one period."),
                 BuildButton("Reset", viewModel.ResetTimelineCommand, toolTip: "Reset timeline to period 0."),
                 BuildButton("Fit", viewModel.FitCommand, toolTip: "Fit the graph to the viewport."),
+                BuildButton("About", viewModel.OpenAboutCommand, toolTip: "Show version and product details."),
                 BuildButton("Exit", new RelayCommand(() => _ = CloseWithConfirmationAsync()), toolTip: "Close the workstation.")
             }
         };
@@ -4445,6 +4449,78 @@ public sealed class ShellWindow : Window
         button.Content = isActive ? $"● {label}" : label;
         button.FontWeight = isActive ? FontWeight.ExtraBold : FontWeight.Bold;
         button.Classes.Set("active", isActive);
+    }
+
+    private static string FormatBrandedWindowTitle(string windowTitle) => $"{BrandName} — {windowTitle}";
+
+    private static Control BuildBrandBadge()
+    {
+        return new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children =
+            {
+                BuildBrandLogo(18d),
+                new TextBlock
+                {
+                    Text = BrandName,
+                    FontSize = 13,
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                    VerticalAlignment = VerticalAlignment.Center
+                }
+            }
+        };
+    }
+
+    private static Control BuildBrandLogo(double size)
+    {
+        var fallback = new Border
+        {
+            Width = size,
+            Height = size,
+            CornerRadius = new CornerRadius(size / 2d),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
+            Child = new TextBlock
+            {
+                Text = "T",
+                FontWeight = FontWeight.Bold,
+                FontSize = Math.Max(10d, size * 0.55d),
+                Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            }
+        };
+
+        try
+        {
+            using var logoStream = AssetLoader.Open(new Uri("avares://MedWNetworkSim.App.Avalonia/Assets/logo.jpg"));
+            var bitmap = new Bitmap(logoStream);
+            return new Image
+            {
+                Width = size,
+                Height = size,
+                Source = bitmap,
+                Stretch = Stretch.UniformToFill,
+                ClipToBounds = true
+            };
+        }
+        catch
+        {
+            return fallback;
+        }
+    }
+
+    private async void HandleAboutRequested(object? sender, EventArgs e)
+    {
+        await ShowAboutDialogAsync();
+    }
+
+    private async Task ShowAboutDialogAsync()
+    {
+        var dialog = new AboutDialog();
+        await dialog.ShowDialog(this);
     }
 
     private static Control BuildLabeledTextBox(string label, string propertyName)

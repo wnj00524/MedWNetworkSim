@@ -1603,6 +1603,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink
             Scene.Simulation.ReducedMotion = ReducedMotion;
             NotifyVisualChanged();
         });
+        OpenAboutCommand = new RelayCommand(() => AboutRequested?.Invoke(this, EventArgs.Empty));
         SelectToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.Select));
         AddNodeToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.AddNode));
         ConnectToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.Connect));
@@ -1734,6 +1735,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink
     public RelayCommand ResetTimelineCommand { get; }
     public RelayCommand FitCommand { get; }
     public RelayCommand ToggleMotionCommand { get; }
+    public RelayCommand OpenAboutCommand { get; }
     public RelayCommand SelectToolCommand { get; }
     public RelayCommand AddNodeToolCommand { get; }
     public RelayCommand ConnectToolCommand { get; }
@@ -1788,6 +1790,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink
     public RelayCommand DeleteScenarioEventCommand { get; }
     public RelayCommand RunScenarioCommand { get; }
     public RelayCommand SelectIssueCommand { get; }
+    public event EventHandler? AboutRequested;
 
     public GraphInteractionController InteractionController => interactionController;
     public bool HasUnsavedChanges

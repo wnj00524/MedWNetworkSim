@@ -420,11 +420,11 @@ public sealed class ScenarioRunner : IScenarioRunner
         networkLayerService.EnsureLayerIntegrity(clonedNetwork);
 
         foreach (var evt in scenario.Events
-                     .Where(evt => evt.IsEnabled)
+                     .Where(evt => evt is not null && evt.IsEnabled)
                      .OrderBy(evt => evt.Time)
                      .ThenBy(evt => evt.Name, StringComparer.OrdinalIgnoreCase))
         {
-            if (evt.Time > options.EndTime + ComparisonTolerance || evt.Time < options.StartTime - ComparisonTolerance)
+            if (evt.Time > options.EndTime + ComparisonTolerance)
             {
                 continue;
             }

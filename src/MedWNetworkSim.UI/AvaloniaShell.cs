@@ -1848,33 +1848,29 @@ public sealed class ShellWindow : Window
 
         var saveButton = BuildBoundButton("Save scenario", "ScenarioEditor.SaveScenarioCommand");
         saveButton.Classes.Add("primary");
-        var cancelButton = BuildButton("Cancel", new RelayCommand(() => _ = CloseScenarioEditorWithConfirmationAsync()), toolTip: "Return to the network workspace.");
-        var addEventButton = BuildBoundButton("Add event", "ScenarioEditor.AddScenarioEventCommand");
-        var deleteScenarioButton = BuildDestructiveButton("Delete scenario", new RelayCommand(() => _ = ConfirmDeleteScenarioAsync()), toolTip: "Delete the selected scenario after confirmation.");
+        var cancelButton = BuildButton("Back to Network", new RelayCommand(() => _ = CloseScenarioEditorWithConfirmationAsync()), toolTip: "Return to the network workspace.");
+
         Grid.SetColumn(saveButton, 1);
         Grid.SetColumn(cancelButton, 2);
-        Grid.SetColumn(addEventButton, 3);
-        Grid.SetColumn(deleteScenarioButton, 4);
         header.Children.Add(saveButton);
         header.Children.Add(cancelButton);
-        header.Children.Add(addEventButton);
-        header.Children.Add(deleteScenarioButton);
 
-        var scenarioList = new ListBox
-        {
-            MinHeight = 220
-        };
+        // LEFT PANE: Scenario List
+        var scenarioList = new ListBox { MinHeight = 220 };
         scenarioList.Bind(ItemsControl.ItemsSourceProperty, new Binding("ScenarioEditor.ScenarioDefinitions"));
         scenarioList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding("ScenarioEditor.SelectedScenarioDefinition", BindingMode.TwoWay));
-        scenarioList.ItemTemplate = new FuncDataTemplate<ScenarioDefinitionModel>((item, _) => new StackPanel
+        scenarioList.ItemTemplate = new FuncDataTemplate<ScenarioDefinitionModel>((item, _) =>
         {
-            Spacing = 3,
-            Margin = new Thickness(0, 3),
-            Children =
+            return new StackPanel
             {
-                new TextBlock { Text = string.IsNullOrWhiteSpace(item.Name) ? "(unnamed scenario)" : item.Name, FontWeight = FontWeight.SemiBold },
-                new TextBlock { Text = $"{item.Events.Count} event(s) | {item.StartTime:0.##} to {item.EndTime:0.##}", FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
-            }
+                Spacing = 3,
+                Margin = new Thickness(0, 3),
+                Children =
+                {
+                    new TextBlock { Text = string.IsNullOrWhiteSpace(item.Name) ? "(unnamed scenario)" : item.Name, FontWeight = FontWeight.SemiBold },
+                    new TextBlock { Text = $"{item.Events.Count} event(s) | {item.StartTime:0.##} to {item.EndTime:0.##}", FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
+                }
+            };
         });
         ApplyFocusVisual(scenarioList);
 
@@ -1886,7 +1882,7 @@ public sealed class ShellWindow : Window
         };
         emptyState.Bind(IsVisibleProperty, new Binding("ScenarioEditor.HasScenarios") { Converter = InverseBoolConverter.Instance });
 
-        var leftPane = BuildScenarioEditorCard("Scenarios", "Select a saved scenario or create a new one.",
+        var leftPane = BuildScenarioEditorCard("Scenarios", "Select or create a scenario.",
             new StackPanel
             {
                 Spacing = 10,
@@ -1895,10 +1891,12 @@ public sealed class ShellWindow : Window
                     BuildBoundButton("Create scenario", "ScenarioEditor.CreateScenarioCommand"),
                     emptyState,
                     scenarioList,
+                    BuildDestructiveButton("Delete scenario", new RelayCommand(() => _ = ConfirmDeleteScenarioAsync())),
                     BuildQuickStat("Run result", nameof(WorkspaceViewModel.ScenarioResultSummary))
                 }
             });
 
+        // TAB 1: SCENARIO OVERVIEW
         var detailsGrid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,*"),
@@ -1912,7 +1910,7 @@ public sealed class ShellWindow : Window
                 BuildValidatedScenarioInput("Start time", "ScenarioEditor.StartTimeText", "ScenarioEditor.ScenarioStartTimeError"),
                 BuildValidatedScenarioInput("End time", "ScenarioEditor.EndTimeText", "ScenarioEditor.ScenarioEndTimeError"),
                 BuildValidatedScenarioInput("Step size", "ScenarioEditor.DeltaTimeText", "ScenarioEditor.ScenarioDeltaTimeError"),
-                BuildLabeledCheckBox("Adaptive routing", "ScenarioEditor.EnableAdaptiveRouting")
+                new StackPanel { Spacing = 10, Margin = new Thickness(0, 20, 0, 0), Children = { BuildLabeledCheckBox("Adaptive routing", "ScenarioEditor.EnableAdaptiveRouting") } }
             }
         };
         Grid.SetColumn(detailsGrid.Children[1], 1);
@@ -1923,36 +1921,38 @@ public sealed class ShellWindow : Window
         Grid.SetRow(detailsGrid.Children[5], 2);
         Grid.SetColumn(detailsGrid.Children[5], 1);
 
-        var eventList = new ListBox
+        var overviewTab = new TabItem
         {
-            MinHeight = 180
+            Header = "Overview & Settings",
+            Content = new ScrollViewer
+            {
+                Content = BuildScenarioEditorCard("Scenario Configuration", "Configure the core timeline and rules for this scenario.", detailsGrid),
+                Padding = new Thickness(0, 10, 0, 0)
+            }
         };
+
+        // TAB 2: EVENT SCHEDULE (Side-by-Side Master/Detail)
+        var eventList = new ListBox { MinHeight = 180 };
         eventList.Bind(ItemsControl.ItemsSourceProperty, new Binding("ScenarioEditor.EventItems"));
         eventList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding("ScenarioEditor.SelectedEventItem", BindingMode.TwoWay));
         eventList.ItemTemplate = new FuncDataTemplate<ScenarioEventListItem>((item, _) =>
         {
-            // Add this guard clause to prevent the NRE
-            if (item == null)
+            if (item is null)
             {
                 return new TextBlock();
             }
-            var row = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("1.5*,1.1*,1.3*,1*,1*"),
-                ColumnSpacing = 8,
-                Margin = new Thickness(0, 4)
-            };
+
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("1.5*,1.1*,1*,1*"), ColumnSpacing = 8, Margin = new Thickness(0, 4) };
             var name = new TextBlock { Text = item.Name, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap };
-            var kind = new TextBlock { Text = item.KindText, TextWrapping = TextWrapping.Wrap };
             var target = new TextBlock { Text = item.TargetText, TextWrapping = TextWrapping.Wrap };
             var timing = new TextBlock { Text = item.TimingText, TextWrapping = TextWrapping.Wrap };
             var value = new TextBlock { Text = item.ValueStatusText, TextWrapping = TextWrapping.Wrap };
-            Grid.SetColumn(kind, 1);
-            Grid.SetColumn(target, 2);
-            Grid.SetColumn(timing, 3);
-            Grid.SetColumn(value, 4);
+
+            Grid.SetColumn(target, 1);
+            Grid.SetColumn(timing, 2);
+            Grid.SetColumn(value, 3);
+
             row.Children.Add(name);
-            row.Children.Add(kind);
             row.Children.Add(target);
             row.Children.Add(timing);
             row.Children.Add(value);
@@ -1967,7 +1967,6 @@ public sealed class ShellWindow : Window
             Children =
             {
                 BuildBoundButton("Add event", "ScenarioEditor.AddScenarioEventCommand"),
-                BuildBoundButton("Edit event", "ScenarioEditor.EditScenarioEventCommand"),
                 BuildBoundButton("Duplicate event", "ScenarioEditor.DuplicateScenarioEventCommand"),
                 BuildBoundButton("Delete event", "ScenarioEditor.DeleteScenarioEventCommand")
             }
@@ -1980,85 +1979,74 @@ public sealed class ShellWindow : Window
         var valueInput = BuildValidatedScenarioInput("Value", "ScenarioEditor.EventValueText", "ScenarioEditor.EventValueError");
         valueInput.Bind(IsVisibleProperty, new Binding("ScenarioEditor.EventUsesValue"));
 
-        var eventDetailsGrid = new Grid
+        var eventTimingGrid = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("*,*"),
-            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto"),
-            ColumnSpacing = 12,
-            RowSpacing = 10,
+            ColumnDefinitions = new ColumnDefinitions("*,8,*"),
+            Children =
+            {
+                BuildValidatedScenarioInput("Start time", "ScenarioEditor.EventStartTimeText", "ScenarioEditor.EventStartTimeError"),
+                BuildValidatedScenarioInput("End time", "ScenarioEditor.EventEndTimeText", "ScenarioEditor.EventEndTimeError")
+            }
+        };
+        Grid.SetColumn((Control)eventTimingGrid.Children[1], 2);
+
+        var eventDetailsContent = new StackPanel
+        {
+            Spacing = 10,
             Children =
             {
                 BuildValidatedScenarioInput("Event name", "ScenarioEditor.EventNameText", "ScenarioEditor.EventNameError"),
                 BuildLabeledComboBox("Event type", "ScenarioEditor.ScenarioEventKindOptions", "ScenarioEditor.EventKind"),
                 targetPicker,
                 trafficPicker,
-                BuildValidatedScenarioInput("Start", "ScenarioEditor.EventStartTimeText", "ScenarioEditor.EventStartTimeError"),
-                BuildValidatedScenarioInput("End", "ScenarioEditor.EventEndTimeText", "ScenarioEditor.EventEndTimeError"),
+                eventTimingGrid,
                 valueInput,
-                BuildLabeledCheckBox("Enabled", "ScenarioEditor.EventIsEnabled")
+                BuildValidatedScenarioInput("Notes", "ScenarioEditor.EventNotesText", string.Empty),
+                BuildLabeledCheckBox("Event is enabled", "ScenarioEditor.EventIsEnabled"),
+                BuildValidationBlock("ScenarioEditor.ValidationSummary")
             }
         };
-        Grid.SetColumn(eventDetailsGrid.Children[1], 1);
-        Grid.SetRow(eventDetailsGrid.Children[2], 1);
-        Grid.SetRow(eventDetailsGrid.Children[3], 1);
-        Grid.SetColumn(eventDetailsGrid.Children[3], 1);
-        Grid.SetRow(eventDetailsGrid.Children[4], 2);
-        Grid.SetRow(eventDetailsGrid.Children[5], 2);
-        Grid.SetColumn(eventDetailsGrid.Children[5], 1);
-        Grid.SetRow(eventDetailsGrid.Children[6], 3);
-        Grid.SetRow(eventDetailsGrid.Children[7], 3);
-        Grid.SetColumn(eventDetailsGrid.Children[7], 1);
 
-        var mainPaneContent = new StackPanel
+        var eventsTabBody = new Grid
         {
-            Spacing = 14,
+            ColumnDefinitions = new ColumnDefinitions("1.5*,16,1*"),
+            Margin = new Thickness(0, 10, 0, 0),
             Children =
             {
-                BuildScenarioEditorCard("Scenario details", "Name the scenario and describe the decision it tests.", detailsGrid),
-                BuildScenarioEditorCard("Events", "Review event timing, targets, values, and enabled status.", new StackPanel { Spacing = 10, Children = { eventActions, eventList } }),
-                BuildScenarioEditorCard("Event details", "Select an event to edit its full form.", new StackPanel
-                {
-                    Spacing = 10,
-                    Children =
-                    {
-                        eventDetailsGrid,
-                        BuildValidatedScenarioInput("Notes", "ScenarioEditor.EventNotesText", string.Empty),
-                        BuildValidationBlock("ScenarioEditor.ValidationSummary")
-                    }
-                })
+                BuildScenarioEditorCard("Event List", "Timeline of occurrences.", new StackPanel { Spacing = 10, Children = { eventActions, eventList } }),
+                BuildScenarioEditorCard("Event Properties", "Edit the selected event.", new ScrollViewer { Content = eventDetailsContent, VerticalScrollBarVisibility = ScrollBarVisibility.Auto })
             }
         };
+        Grid.SetColumn((Control)eventsTabBody.Children[1], 2);
 
-        var mainScroll = new ScrollViewer
+        var eventsTab = new TabItem { Header = "Event Schedule", Content = eventsTabBody };
+
+        // Combine into TabControl
+        var rightPaneTabs = new TabControl
         {
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = mainPaneContent
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            Margin = new Thickness(0),
+            Padding = new Thickness(0)
         };
+        rightPaneTabs.Items.Add(overviewTab);
+        rightPaneTabs.Items.Add(eventsTab);
 
+        // MAIN BODY GRID
         var body = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("320,16,*"),
             MinHeight = 0,
-            Children =
-            {
-                leftPane,
-                mainScroll
-            }
+            Children = { leftPane, rightPaneTabs }
         };
-        Grid.SetColumn(mainScroll, 2);
+        Grid.SetColumn(rightPaneTabs, 2);
 
         var layout = new Grid
         {
             RowDefinitions = new RowDefinitions("Auto,*"),
-            RowSpacing = 12,
+            RowSpacing = 16,
             MinHeight = 0,
             Margin = new Thickness(0, 12, 0, 0),
-            Children =
-            {
-                header,
-                body
-            }
+            Children = { header, body }
         };
         Grid.SetRow(body, 1);
 

@@ -2721,30 +2721,6 @@ static void TryDelete(string path)
     }
 }
 
-sealed class EquivalentOsmFixture : IDisposable
-{
-    public EquivalentOsmFixture(string directoryPath, string osmPath, string pbfPath)
-    {
-        DirectoryPath = directoryPath;
-        OsmPath = osmPath;
-        PbfPath = pbfPath;
-    }
-
-    public string DirectoryPath { get; }
-
-    public string OsmPath { get; }
-
-    public string PbfPath { get; }
-
-    public void Dispose()
-    {
-        if (Directory.Exists(DirectoryPath))
-        {
-            Directory.Delete(DirectoryPath, recursive: true);
-        }
-    }
-}
-
 static void AssertThrows<TException>(Action action, string expectedMessagePart, string scenario)
     where TException : Exception
 {
@@ -2843,6 +2819,30 @@ static void ScenarioBX_DemandCsvImporterValidatesRows()
     }
 
     AssertTrue(failed, "BX negative demand is rejected");
+}
+
+sealed class EquivalentOsmFixture : IDisposable
+{
+    public EquivalentOsmFixture(string directoryPath, string osmPath, string pbfPath)
+    {
+        DirectoryPath = directoryPath;
+        OsmPath = osmPath;
+        PbfPath = pbfPath;
+    }
+
+    public string DirectoryPath { get; }
+
+    public string OsmPath { get; }
+
+    public string PbfPath { get; }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(DirectoryPath))
+        {
+            Directory.Delete(DirectoryPath, recursive: true);
+        }
+    }
 }
 
 file sealed class CallbackScheduledEvent(double time, Action callback) : ISimulationScheduledEvent

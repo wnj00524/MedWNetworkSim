@@ -64,9 +64,14 @@ public sealed class NetworkLayerResolver : INetworkLayerResolver, INetworkLayerS
             network.Layers.Add(new NetworkLayerModel { Name = "Physical", Type = NetworkLayerType.Physical, Order = 0, IsVisible = true });
         }
 
+        foreach (var layer in network.Layers.Where(layer => layer is not null && layer.Id == Guid.Empty))
+        {
+            layer.Id = Guid.NewGuid();
+        }
+
         var unique = network.Layers
             .Where(layer => layer is not null)
-            .GroupBy(layer => layer.Id == Guid.Empty ? Guid.NewGuid() : layer.Id)
+            .GroupBy(layer => layer.Id)
             .Select(group => group.First())
             .ToList();
 
@@ -93,17 +98,12 @@ public sealed class NetworkLayerResolver : INetworkLayerResolver, INetworkLayerS
                      .OrderBy(layer => layer.Type == NetworkLayerType.Physical ? 0 : layer.Type == NetworkLayerType.Logical ? 1 : 2)
                      .ThenBy(layer => layer.Order))
         {
-            if (layer.Id == Guid.Empty)
-            {
-                layer.Id = Guid.NewGuid();
-            }
-
             layer.Order = order++;
             layer.Name = string.IsNullOrWhiteSpace(layer.Name) ? layer.Type.ToString() : layer.Name.Trim();
         }
 
         var validIds = network.Layers.Select(layer => layer.Id).ToHashSet();
-        var defaultLayerId = GetDefaultLayer(network).Id;
+        var defaultLayerId = network.Layers.First(layer => layer.Type == NetworkLayerType.Physical).Id;
         foreach (var node in network.Nodes)
         {
             if (node.LayerId == Guid.Empty || !validIds.Contains(node.LayerId))
@@ -393,9 +393,21 @@ public interface IScenarioRunner
 
 public sealed class ScenarioRunner : IScenarioRunner
 {
-    private readonly NetworkSimulationEngine simulationEngine = new();
-    private readonly INetworkLayerService networkLayerService = new NetworkLayerResolver();
-    private readonly IBottleneckDetectionService bottleneckDetectionService = new BottleneckDetectionService();
+    private const double ComparisonTolerance = 0.000001d;
+
+    private readonly NetworkSimulationEngine simulationEngine;
+    private readonly INetworkLayerService networkLayerService;
+    private readonly IBottleneckDetectionService bottleneckDetectionService;
+
+    public ScenarioRunner(
+        NetworkSimulationEngine? simulationEngine = null,
+        INetworkLayerService? networkLayerService = null,
+        IBottleneckDetectionService? bottleneckDetectionService = null)
+    {
+        this.simulationEngine = simulationEngine ?? new NetworkSimulationEngine();
+        this.networkLayerService = networkLayerService ?? new NetworkLayerResolver();
+        this.bottleneckDetectionService = bottleneckDetectionService ?? new BottleneckDetectionService();
+    }
 
     public ScenarioRunResult Run(NetworkModel sourceNetwork, ScenarioDefinitionModel scenario, ScenarioRunOptions options)
     {
@@ -407,26 +419,24 @@ public sealed class ScenarioRunner : IScenarioRunner
         var clonedNetwork = Clone(sourceNetwork);
         networkLayerService.EnsureLayerIntegrity(clonedNetwork);
 
-        var activeEvents = new List<ScenarioEventModel>();
-        for (var time = options.StartTime; time <= options.EndTime; time += Math.Max(0.01d, options.DeltaTime))
+        foreach (var evt in scenario.Events
+                     .Where(evt => evt.IsEnabled)
+                     .OrderBy(evt => evt.Time)
+                     .ThenBy(evt => evt.Name, StringComparer.OrdinalIgnoreCase))
         {
-            foreach (var evt in scenario.Events.Where(evt => evt.IsEnabled && Math.Abs(evt.Time - time) < 0.0001d))
+            if (evt.Time > options.EndTime + ComparisonTolerance || evt.Time < options.StartTime - ComparisonTolerance)
             {
-                if (!TryApplyEvent(clonedNetwork, evt, warnings))
-                {
-                    continue;
-                }
-
-                if (evt.EndTime.HasValue)
-                {
-                    activeEvents.Add(evt);
-                }
+                continue;
             }
 
-            foreach (var evt in activeEvents.Where(evt => evt.EndTime.HasValue && time >= evt.EndTime.Value).ToList())
+            if (evt.EndTime.HasValue && evt.EndTime.Value <= options.EndTime + ComparisonTolerance)
             {
-                RevertEvent(clonedNetwork, sourceNetwork, evt);
-                activeEvents.Remove(evt);
+                continue;
+            }
+
+            if (!TryApplyEvent(clonedNetwork, evt, warnings))
+            {
+                continue;
             }
         }
 
@@ -522,44 +532,6 @@ public sealed class ScenarioRunner : IScenarioRunner
             default:
                 warnings.Add($"Skipped unsupported event type '{evt.Kind}'.");
                 return false;
-        }
-    }
-
-    private static void RevertEvent(NetworkModel working, NetworkModel source, ScenarioEventModel evt)
-    {
-        if (evt.TargetId is null)
-        {
-            return;
-        }
-
-        switch (evt.Kind)
-        {
-            case ScenarioEventKind.EdgeClosure:
-            case ScenarioEventKind.EdgeCostChange:
-                var sourceEdge = source.Edges.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == evt.TargetId);
-                var workingEdge = working.Edges.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == evt.TargetId);
-                if (sourceEdge is not null && workingEdge is not null)
-                {
-                    workingEdge.Capacity = sourceEdge.Capacity;
-                    workingEdge.Cost = sourceEdge.Cost;
-                }
-
-                break;
-            case ScenarioEventKind.NodeFailure:
-            case ScenarioEventKind.DemandSpike:
-                var sourceNode = source.Nodes.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == evt.TargetId);
-                var workingNode = working.Nodes.FirstOrDefault(item => Guid.TryParse(item.Id, out var id) && id == evt.TargetId);
-                if (sourceNode is not null && workingNode is not null)
-                {
-                    for (var i = 0; i < Math.Min(sourceNode.TrafficProfiles.Count, workingNode.TrafficProfiles.Count); i++)
-                    {
-                        workingNode.TrafficProfiles[i].Production = sourceNode.TrafficProfiles[i].Production;
-                        workingNode.TrafficProfiles[i].Consumption = sourceNode.TrafficProfiles[i].Consumption;
-                        workingNode.TrafficProfiles[i].CanTransship = sourceNode.TrafficProfiles[i].CanTransship;
-                    }
-                }
-
-                break;
         }
     }
 

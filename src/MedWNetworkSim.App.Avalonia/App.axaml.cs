@@ -7,7 +7,9 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using MedWNetworkSim.Presentation;
 using MedWNetworkSim.UI;
+using System.Diagnostics;
 
 namespace MedWNetworkSim.App.Avalonia;
 
@@ -22,28 +24,97 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            ShowSplashThenMainWindowAsync(desktop);
+            _ = ShowSplashThenMainWindowAsync(desktop);
         }
 
         base.OnFrameworkInitializationCompleted();
     }
 
-    private async void ShowSplashThenMainWindowAsync(IClassicDesktopStyleApplicationLifetime desktop)
+    private async Task ShowSplashThenMainWindowAsync(IClassicDesktopStyleApplicationLifetime desktop)
     {
-        var splashWindow = new SplashWindow();
-        desktop.MainWindow = splashWindow;
-        splashWindow.Show();
-
-        await Task.Delay(TimeSpan.FromMilliseconds(1500));
-
-        var shellWindow = new ShellWindow
+        SplashWindow? splashWindow = null;
+        try
         {
-            WindowState = WindowState.FullScreen
-        };
+            splashWindow = new SplashWindow();
+            desktop.MainWindow = splashWindow;
+            splashWindow.Show();
 
-        desktop.MainWindow = shellWindow;
-        shellWindow.Show();
-        splashWindow.Close();
+            await Task.Delay(TimeSpan.FromMilliseconds(1500));
+
+            var shellWindow = new ShellWindow
+            {
+                WindowState = WindowState.FullScreen
+            };
+
+            desktop.MainWindow = shellWindow;
+            shellWindow.Show();
+        }
+        catch (Exception ex)
+        {
+            UiExceptionBoundary.Report(
+                ex,
+                UiExceptionBoundary.BuildActionableMessage(
+                    "App startup",
+                    "Try restarting the app. If this continues, verify app files and logo assets are intact."),
+                nameof(App));
+            var errorWindow = BuildStartupErrorWindow(ex.Message);
+            desktop.MainWindow = errorWindow;
+            errorWindow.Show();
+        }
+        finally
+        {
+            try
+            {
+                splashWindow?.Close();
+            }
+            catch (Exception closeEx)
+            {
+                Trace.WriteLine($"[{nameof(App)}] Failed to close splash window: {closeEx}");
+            }
+        }
+    }
+
+    private static Window BuildStartupErrorWindow(string message)
+    {
+        var detail = string.IsNullOrWhiteSpace(message) ? "Unknown startup error." : message;
+        var closeButton = new Button
+        {
+            Content = "Close",
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Padding = new Thickness(14, 8)
+        };
+        var window = new Window
+        {
+            Width = 620,
+            Height = 260,
+            Title = "MedWNetworkSim startup issue",
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            Content = new Border
+            {
+                Padding = new Thickness(20),
+                Child = new StackPanel
+                {
+                    Spacing = 12,
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = "The app could not open the main workspace.",
+                            FontWeight = FontWeight.Bold,
+                            FontSize = 20
+                        },
+                        new TextBlock
+                        {
+                            Text = $"{detail}\nTry restarting. If this repeats, reinstall or repair the app package.",
+                            TextWrapping = TextWrapping.Wrap
+                        },
+                        closeButton
+                    }
+                }
+            }
+        };
+        closeButton.Click += (_, _) => window.Close();
+        return window;
     }
 }
 
@@ -59,21 +130,48 @@ internal sealed class SplashWindow : Window
         ShowInTaskbar = false;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
-        using var logoStream = AssetLoader.Open(new Uri("avares://MedWNetworkSim.App.Avalonia/Assets/logo.jpg"));
-        var logoBitmap = new Bitmap(logoStream);
-        Content = new Grid
+        Content = BuildSplashContent();
+    }
+
+    private static Control BuildSplashContent()
+    {
+        try
         {
-            Background = Brushes.Black,
-            Children =
+            using var logoStream = AssetLoader.Open(new Uri("avares://MedWNetworkSim.App.Avalonia/Assets/logo.jpg"));
+            var logoBitmap = new Bitmap(logoStream);
+            return new Grid
             {
-                new Image
+                Background = Brushes.Black,
+                Children =
                 {
-                    Source = logoBitmap,
-                    Stretch = Stretch.UniformToFill,
-                    HorizontalAlignment = HorizontalAlignment.Stretch,
-                    VerticalAlignment = VerticalAlignment.Stretch
+                    new Image
+                    {
+                        Source = logoBitmap,
+                        Stretch = Stretch.UniformToFill,
+                        HorizontalAlignment = HorizontalAlignment.Stretch,
+                        VerticalAlignment = VerticalAlignment.Stretch
+                    }
                 }
-            }
-        };
+            };
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"[{nameof(SplashWindow)}] Logo splash asset load failed: {ex}");
+            return new Grid
+            {
+                Background = Brushes.Black,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "MedWNetworkSim is starting…",
+                        Foreground = Brushes.White,
+                        FontSize = 28,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        VerticalAlignment = VerticalAlignment.Center
+                    }
+                }
+            };
+        }
     }
 }

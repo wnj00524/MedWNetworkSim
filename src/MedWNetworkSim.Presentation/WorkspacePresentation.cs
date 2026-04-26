@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -33,6 +34,25 @@ public abstract class ObservableObject : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
 
+public interface IUiExceptionSink
+{
+    void ReportUiException(string safeMessage, Exception exception);
+}
+
+public static class UiExceptionBoundary
+{
+    public static IUiExceptionSink? Sink { get; set; }
+
+    public static string BuildActionableMessage(string operation, string suggestion) =>
+        $"{operation} failed. {suggestion}";
+
+    public static void Report(Exception exception, string safeMessage, string source)
+    {
+        Trace.WriteLine($"[{source}] {exception}");
+        Sink?.ReportUiException(safeMessage, exception);
+    }
+}
+
 public sealed class RelayCommand : ICommand
 {
     private readonly Action execute;
@@ -46,7 +66,21 @@ public sealed class RelayCommand : ICommand
 
     public event EventHandler? CanExecuteChanged;
     public bool CanExecute(object? parameter) => canExecute?.Invoke() ?? true;
-    public void Execute(object? parameter) => execute();
+    public void Execute(object? parameter)
+    {
+        try
+        {
+            execute();
+        }
+        catch (Exception ex)
+        {
+            var safeMessage = UiExceptionBoundary.BuildActionableMessage(
+                "The requested action",
+                "Please retry. If it keeps failing, save your network and restart the app.");
+            UiExceptionBoundary.Report(ex, safeMessage, nameof(RelayCommand));
+        }
+    }
+
     public void NotifyCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 }
 
@@ -1387,7 +1421,7 @@ public sealed class NetworkIssueListItemViewModel
     public string SuggestedAction => Issue.SuggestedAction;
 }
 
-public sealed class WorkspaceViewModel : ObservableObject
+public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink
 {
     private sealed class EdgeEditorSession
     {
@@ -1505,6 +1539,7 @@ public sealed class WorkspaceViewModel : ObservableObject
 
     public WorkspaceViewModel()
     {
+        UiExceptionBoundary.Sink ??= this;
         Scene = new GraphScene();
         Viewport = new GraphViewport();
         Inspector = new InspectorSection();
@@ -1788,6 +1823,12 @@ public sealed class WorkspaceViewModel : ObservableObject
     public string WindowTitle => $"{(HasUnsavedChanges ? "*" : string.Empty)}MedW Network Sim | Avalonia Workstation | {network.Name}";
     public string SessionSubtitle => $"Active network: {network.Name} · {SimulationSummary}";
     public string StatusText { get => statusText; set => SetProperty(ref statusText, value); }
+    public void ReportUiException(string safeMessage, Exception exception)
+    {
+        _ = exception;
+        StatusText = safeMessage;
+    }
+
     public string ToolStatusText { get => toolStatusText; private set => SetProperty(ref toolStatusText, value); }
     public string ToolInstructionText { get => toolInstructionText; private set => SetProperty(ref toolInstructionText, value); }
     public GraphToolMode ActiveToolMode { get => activeToolMode; private set => SetProperty(ref activeToolMode, value); }

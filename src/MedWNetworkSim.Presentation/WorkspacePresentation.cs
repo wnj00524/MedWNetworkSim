@@ -3040,7 +3040,7 @@ public sealed class WorkspaceViewModel : ObservableObject
         CommitTransientEditorsToModel();
         var outcomes = simulationEngine.Simulate(fileService.NormalizeAndValidate(network));
         lastOutcomes = outcomes;
-        lastConsumerCosts = simulationEngine.SummarizeConsumerCosts(outcomes);
+        lastConsumerCosts = simulationEngine.SummarizeConsumerCosts(outcomes.SelectMany(outcome => outcome.Allocations));
         lastTimelineStepResult = null;
         Raise(nameof(TrafficDeliveredColumnLabel));
         ApplySimulationOutcomes(outcomes.SelectMany(outcome => outcome.Allocations), null);
@@ -3528,7 +3528,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             ExplanationSummary = explain.Summary;
             ExplanationCauses = explain.Causes.Count == 0 ? ["No major issue detected for this item."] : explain.Causes;
             ExplanationActions = explain.SuggestedActions;
-            ExplanationRelatedIssues = TopIssues.Where(issue => string.Equals(issue.Issue.TargetNodeId, nodeIds[0], StringComparison.OrdinalIgnoreCase)).Select(issue => issue.IssueTitle).ToList();
+            ExplanationRelatedIssues = TopIssues.Where(issue => string.Equals(issue.Issue.TargetId, nodeIds[0], StringComparison.OrdinalIgnoreCase)).Select(issue => issue.IssueTitle).ToList();
             return;
         }
 
@@ -3539,7 +3539,7 @@ public sealed class WorkspaceViewModel : ObservableObject
             ExplanationSummary = explain.Summary;
             ExplanationCauses = explain.Causes.Count == 0 ? ["No major issue detected for this item."] : explain.Causes;
             ExplanationActions = explain.SuggestedActions;
-            ExplanationRelatedIssues = TopIssues.Where(issue => string.Equals(issue.Issue.TargetEdgeId, edgeIds[0], StringComparison.OrdinalIgnoreCase)).Select(issue => issue.IssueTitle).ToList();
+            ExplanationRelatedIssues = TopIssues.Where(issue => string.Equals(issue.Issue.TargetId, edgeIds[0], StringComparison.OrdinalIgnoreCase)).Select(issue => issue.IssueTitle).ToList();
             return;
         }
 

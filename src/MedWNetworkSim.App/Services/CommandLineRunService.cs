@@ -662,7 +662,7 @@ Examples:
         }
 
         var outcomes = networkSimulationEngine.Simulate(network);
-        var consumerCosts = networkSimulationEngine.SummarizeConsumerCosts(outcomes);
+        var consumerCosts = networkSimulationEngine.SummarizeConsumerCosts(outcomes.SelectMany(outcome => outcome.Allocations));
         reportExportService.SaveCurrentReport(network, outcomes, consumerCosts, options.OutputPath, options.ReportFormat);
         return $"Current report written to {options.OutputPath}";
     }

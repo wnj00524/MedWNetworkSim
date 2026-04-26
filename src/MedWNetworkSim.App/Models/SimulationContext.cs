@@ -1,3 +1,5 @@
+using MedWNetworkSim.App.Services;
+
 namespace MedWNetworkSim.App.Models;
 
 public sealed class SimulationContext

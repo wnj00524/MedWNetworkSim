@@ -133,6 +133,7 @@ public sealed class NetworkSimulationEngine
                 TotalDelivered = context.Allocations.Sum(allocation => allocation.Quantity),
                 UnusedSupply = context.Supply.Values.Sum(value => Math.Max(0d, value)),
                 UnmetDemand = context.Demand.Values.Sum(value => Math.Max(0d, value)),
+                NoPermittedPathDemand = context.NoPermittedPathDemand,
                 Allocations = context.Allocations.ToList(),
                 Notes = context.Notes.ToList()
             })

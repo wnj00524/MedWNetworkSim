@@ -416,15 +416,18 @@ public sealed class ScenarioRunner : IScenarioRunner
     private const double ComparisonTolerance = 0.000001d;
 
     private readonly NetworkSimulationEngine simulationEngine;
+    private readonly TemporalNetworkSimulationEngine temporalSimulationEngine;
     private readonly INetworkLayerService networkLayerService;
     private readonly IBottleneckDetectionService bottleneckDetectionService;
 
     public ScenarioRunner(
         NetworkSimulationEngine? simulationEngine = null,
+        TemporalNetworkSimulationEngine? temporalSimulationEngine = null,
         INetworkLayerService? networkLayerService = null,
         IBottleneckDetectionService? bottleneckDetectionService = null)
     {
         this.simulationEngine = simulationEngine ?? new NetworkSimulationEngine();
+        this.temporalSimulationEngine = temporalSimulationEngine ?? new TemporalNetworkSimulationEngine();
         this.networkLayerService = networkLayerService ?? new NetworkLayerResolver();
         this.bottleneckDetectionService = bottleneckDetectionService ?? new BottleneckDetectionService();
     }
@@ -455,6 +458,7 @@ public sealed class ScenarioRunner : IScenarioRunner
             .OrderBy(evt => evt.Time)
             .ThenBy(evt => evt.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        var temporalState = temporalSimulationEngine.Initialize(clonedNetwork);
 
         var currentTime = options.StartTime;
         var deltaTime = options.DeltaTime <= 0d ? 1d : options.DeltaTime;
@@ -478,6 +482,10 @@ public sealed class ScenarioRunner : IScenarioRunner
                 }
             }
 
+            simulationSteps.Add(temporalSimulationEngine.Advance(clonedNetwork, temporalState, new SimulationRunOptions
+            {
+                DeltaTime = deltaTime
+            }));
             var stepOutcomes = simulationEngine.Simulate(clonedNetwork);
             foreach (var outcome in stepOutcomes)
             {

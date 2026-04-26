@@ -8,6 +8,7 @@ namespace MedWNetworkSim.App.Services;
 /// </summary>
 public sealed class NetworkSimulationEngine
 {
+    private readonly INetworkLayerResolver layerResolver = new NetworkLayerResolver();
     private const double Epsilon = 0.000001d;
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
 
@@ -20,6 +21,7 @@ public sealed class NetworkSimulationEngine
     {
         ArgumentNullException.ThrowIfNull(network);
         network = HierarchicalNetworkProjection.ProjectForSimulation(network);
+        network = OrderNetworkForLayerProcessing(network);
 
         if (network.FacilityModeEnabled)
         {
@@ -134,6 +136,32 @@ public sealed class NetworkSimulationEngine
             .ToList();
     }
 
+
+    private NetworkModel OrderNetworkForLayerProcessing(NetworkModel network)
+    {
+        var order = layerResolver.GetSimulationOrder(network)
+            .Select((layer, index) => new { layer.Id, index })
+            .ToDictionary(item => item.Id, item => item.index);
+
+        return new NetworkModel
+        {
+            Name = network.Name,
+            Description = network.Description,
+            TimelineLoopLength = network.TimelineLoopLength,
+            DefaultAllocationMode = network.DefaultAllocationMode,
+            SimulationSeed = network.SimulationSeed,
+            FacilityModeEnabled = network.FacilityModeEnabled,
+            FacilityCoverageThreshold = network.FacilityCoverageThreshold,
+            Layers = network.Layers,
+            TrafficTypes = network.TrafficTypes,
+            TimelineEvents = network.TimelineEvents,
+            EdgeTrafficPermissionDefaults = network.EdgeTrafficPermissionDefaults,
+            Subnetworks = network.Subnetworks,
+            Nodes = network.Nodes.OrderBy(node => order.GetValueOrDefault(node.LayerId, int.MaxValue)).ThenBy(node => node.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+            Edges = network.Edges.OrderBy(edge => order.GetValueOrDefault(edge.LayerId, int.MaxValue)).ThenBy(edge => edge.Id, StringComparer.OrdinalIgnoreCase).ToList()
+        };
+    }
+
     /// <summary>
     /// Aggregates route allocations into landed-cost summaries for each consumer node and traffic type.
     /// </summary>
@@ -142,6 +170,32 @@ public sealed class NetworkSimulationEngine
     public IReadOnlyList<ConsumerCostSummary> SummarizeConsumerCosts(IEnumerable<TrafficSimulationOutcome> outcomes)
     {
         return SummarizeConsumerCosts(outcomes.SelectMany(outcome => outcome.Allocations));
+    }
+
+
+    private NetworkModel OrderNetworkForLayerProcessing(NetworkModel network)
+    {
+        var order = layerResolver.GetSimulationOrder(network)
+            .Select((layer, index) => new { layer.Id, index })
+            .ToDictionary(item => item.Id, item => item.index);
+
+        return new NetworkModel
+        {
+            Name = network.Name,
+            Description = network.Description,
+            TimelineLoopLength = network.TimelineLoopLength,
+            DefaultAllocationMode = network.DefaultAllocationMode,
+            SimulationSeed = network.SimulationSeed,
+            FacilityModeEnabled = network.FacilityModeEnabled,
+            FacilityCoverageThreshold = network.FacilityCoverageThreshold,
+            Layers = network.Layers,
+            TrafficTypes = network.TrafficTypes,
+            TimelineEvents = network.TimelineEvents,
+            EdgeTrafficPermissionDefaults = network.EdgeTrafficPermissionDefaults,
+            Subnetworks = network.Subnetworks,
+            Nodes = network.Nodes.OrderBy(node => order.GetValueOrDefault(node.LayerId, int.MaxValue)).ThenBy(node => node.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+            Edges = network.Edges.OrderBy(edge => order.GetValueOrDefault(edge.LayerId, int.MaxValue)).ThenBy(edge => edge.Id, StringComparer.OrdinalIgnoreCase).ToList()
+        };
     }
 
     /// <summary>

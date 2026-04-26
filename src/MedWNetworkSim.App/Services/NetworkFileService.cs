@@ -12,6 +12,8 @@ public sealed class NetworkFileService
 {
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
 
+    private readonly INetworkLayerResolver networkLayerResolver = new NetworkLayerResolver();
+
     private readonly JsonSerializerOptions serializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -93,6 +95,8 @@ public sealed class NetworkFileService
         ArgumentNullException.ThrowIfNull(model);
 
         // Rebuild the model into a predictable, validated shape before either rendering or saving it.
+        var layers = networkLayerResolver.GetSimulationOrder(model).ToList();
+        var defaultLayer = networkLayerResolver.GetDefaultLayer(model);
         var normalizedNodes = new List<NodeModel>();
         var nodeIds = new HashSet<string>(Comparer);
 
@@ -133,6 +137,7 @@ public sealed class NetworkFileService
                 ControllingActor = NormalizeOptionalText(node.ControllingActor),
                 Tags = NormalizeTags(node.Tags),
                 TemplateId = NormalizeOptionalText(node.TemplateId),
+                LayerId = node.LayerId == Guid.Empty ? defaultLayer.Id : node.LayerId,
                 TrafficProfiles = NormalizeProfiles(node.TrafficProfiles, nodeId)
             });
         }
@@ -200,7 +205,8 @@ public sealed class NetworkFileService
                 AccessNotes = NormalizeOptionalText(edge.AccessNotes),
                 SeasonalRisk = NormalizeOptionalText(edge.SeasonalRisk),
                 TollNotes = NormalizeOptionalText(edge.TollNotes),
-                SecurityNotes = NormalizeOptionalText(edge.SecurityNotes)
+                SecurityNotes = NormalizeOptionalText(edge.SecurityNotes),
+                LayerId = edge.LayerId == Guid.Empty ? defaultLayer.Id : edge.LayerId
             });
         }
 
@@ -247,6 +253,7 @@ public sealed class NetworkFileService
             TimelineLoopLength = timelineLoopLength,
             DefaultAllocationMode = defaultAllocationMode,
             SimulationSeed = model.SimulationSeed,
+            Layers = layers,
             Nodes = normalizedNodes,
             Edges = normalizedEdges,
             TrafficTypes = trafficDefinitions,
@@ -641,6 +648,12 @@ public sealed class NetworkFileService
             MergeInputRequirements(normalizedProfile.InputRequirements, inputRequirements);
             normalizedProfile.IsStore |= profile.IsStore;
             normalizedProfile.StoreCapacity ??= profile.StoreCapacity;
+            normalizedProfile.Inventory += Math.Max(0d, profile.Inventory);
+            normalizedProfile.UnitPrice = Math.Max(normalizedProfile.UnitPrice, Math.Max(0d, profile.UnitPrice));
+            normalizedProfile.HoldingCostPerTime = Math.Max(normalizedProfile.HoldingCostPerTime, Math.Max(0d, profile.HoldingCostPerTime));
+            normalizedProfile.Revenue += Math.Max(0d, profile.Revenue);
+            normalizedProfile.Profit += profile.Profit;
+            normalizedProfile.ShortagePenalty = Math.Max(normalizedProfile.ShortagePenalty, Math.Max(0d, profile.ShortagePenalty));
         }
 
         // Duplicate traffic rows on the same node are collapsed into one persisted profile per traffic type.

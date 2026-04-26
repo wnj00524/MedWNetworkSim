@@ -1,3 +1,4 @@
+using System;
 using System.Text.Json.Serialization;
 
 namespace MedWNetworkSim.App.Models;
@@ -33,6 +34,11 @@ public sealed class EdgeModel
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ToInterfaceNodeId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the layer identifier this edge belongs to.
+    /// </summary>
+    public Guid LayerId { get; set; }
 
     /// <summary>
     /// Gets or sets the time cost used when traffic prioritizes speed or total cost.

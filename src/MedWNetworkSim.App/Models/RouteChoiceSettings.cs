@@ -22,4 +22,6 @@ public sealed class RouteChoiceSettings
     public int IterationCount { get; set; } = 4;
 
     public bool InternalizeCongestion { get; set; } = true;
+
+    public bool AdaptiveRoutingEnabled { get; set; }
 }

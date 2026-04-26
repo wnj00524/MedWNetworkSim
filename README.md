@@ -134,3 +134,14 @@ src/
   MedWNetworkSim.Rendering/         Canvas and visual rendering
   MedWNetworkSim.Interaction/       Editing and interaction logic
   MedWNetworkSim.App.Verification/  Simulation verification tests
+## Advanced simulation foundations (incremental)
+
+The repository now includes additive foundations for advanced simulation without breaking existing JSON files:
+
+- **Network layers** (`Physical`, `Logical`, `Policy`) are stored in `NetworkModel.Layers`, with automatic backfill for legacy files and default layer assignment for nodes/edges.
+- **Continuous-time/event-driven primitives** are available via `SimulationClock`, `ISimulationEventQueue`, and `ISimulationScheduledEvent`, and are integrated into temporal simulation steps.
+- **Scenario engine primitives** include scenario events (node failure, edge closure, demand spike, edge cost change), isolated scenario execution, and baseline-vs-variant comparison.
+- **Adaptive routing memory** can add a learned penalty term when enabled in route choice settings.
+- **Economics/bottleneck/explainability/data I/O foundations** include economic summary calculation, top issue detection, explainability services, demand CSV import validation, and JSON/CSV simulation replay export.
+
+These additions are modular and backward compatible; existing behavior remains the default unless new options are enabled.

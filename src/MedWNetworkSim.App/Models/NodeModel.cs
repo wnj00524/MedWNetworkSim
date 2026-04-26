@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
@@ -46,6 +47,11 @@ public sealed class NodeModel
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? InterfaceName { get; set; }
+
+    /// <summary>
+    /// Gets or sets the layer identifier this node belongs to.
+    /// </summary>
+    public Guid LayerId { get; set; }
 
     /// <summary>
     /// Gets or sets the optional horizontal canvas position of the node center.

@@ -1827,6 +1827,31 @@ public sealed class ShellWindow : Window
             }
         };
 
+        var lockLayoutToggle = new CheckBox
+        {
+            Content = "Lock layout to map",
+            [!ToggleButton.IsCheckedProperty] = new Binding(nameof(WorkspaceViewModel.LockLayoutToMap), BindingMode.TwoWay),
+            [!InputElement.IsEnabledProperty] = new Binding(nameof(WorkspaceViewModel.IsLockLayoutToMapEnabled))
+        };
+        ApplyFocusVisual(lockLayoutToggle);
+
+        var lockLayoutHint = new TextBlock
+        {
+            Text = "Keeps graph mode aligned with OSM geography.",
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+            FontSize = 12
+        };
+        var lockLayoutDisabledHint = new TextBlock
+        {
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+            FontSize = 12
+        };
+        lockLayoutDisabledHint.Bind(TextBlock.TextProperty, new Binding(nameof(WorkspaceViewModel.LockLayoutToMapDisabledReason)));
+        lockLayoutDisabledHint.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsLockLayoutToMapEnabled))
+        {
+            Converter = new FuncValueConverter<bool, bool>(enabled => !enabled)
+        });
+
         viewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(WorkspaceViewModel.IsSankeyMode) or nameof(WorkspaceViewModel.IsMapMode))
@@ -1942,6 +1967,9 @@ public sealed class ShellWindow : Window
             Children =
             {
                 modeSelector,
+                lockLayoutToggle,
+                lockLayoutHint,
+                lockLayoutDisabledHint,
                 sankeyOptions,
                 mapOptions
             }
@@ -3322,7 +3350,7 @@ public sealed class ShellWindow : Window
                             BuildBoundButton("Delete role", nameof(WorkspaceViewModel.RemoveSelectedNodeTrafficProfileCommand))
                         }
                     },
-                    BuildLabeledRow("Traffic type", BuildBoundComboBox(nameof(WorkspaceViewModel.TrafficTypeNameOptions), nameof(WorkspaceViewModel.NodeTrafficTypeText))),
+                    BuildLabeledRow("Traffic type", BuildBoundComboBox(nameof(WorkspaceViewModel.TrafficTypeOptions), nameof(WorkspaceViewModel.SelectedTrafficType))),
                     BuildLabeledRow("Role", BuildBoundComboBox(nameof(WorkspaceViewModel.NodeRoleOptions), nameof(WorkspaceViewModel.NodeTrafficRoleText))),
                     BuildLabeledTextBox("Production", nameof(WorkspaceViewModel.NodeProductionText)),
                     BuildLabeledTextBox("Consumption", nameof(WorkspaceViewModel.NodeConsumptionText)),
@@ -5139,8 +5167,8 @@ public sealed class ShellWindow : Window
     private static Control BuildTrafficRoleEditor(out Control focusTarget)
     {
         var trafficTypeBox = BuildComboBox();
-        trafficTypeBox.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.TrafficTypeNameOptions)));
-        trafficTypeBox.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.NodeTrafficTypeText), BindingMode.TwoWay));
+        trafficTypeBox.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.TrafficTypeOptions)));
+        trafficTypeBox.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedTrafficType), BindingMode.TwoWay));
         focusTarget = trafficTypeBox;
 
         var roleBox = BuildComboBox();

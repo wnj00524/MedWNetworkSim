@@ -30,6 +30,8 @@ public sealed class GraphInteractionContext
     public required Action<string?, string?> SelectionChanged { get; init; }
     public required Action<string> StatusChanged { get; init; }
     public required Action<GraphToolMode> ToolModeChanged { get; init; }
+    public required Func<string, bool> CanDragNode { get; init; }
+    public required Func<string, string> GetNodeDragBlockedMessage { get; init; }
 }
 
 public sealed class GraphInteractionController
@@ -118,6 +120,12 @@ public sealed class GraphInteractionController
         if (hit.NodeId is not null)
         {
             SelectNode(context, hit.NodeId, additive: shiftPressed);
+            if (!context.CanDragNode(hit.NodeId))
+            {
+                context.StatusChanged(context.GetNodeDragBlockedMessage(hit.NodeId));
+                return;
+            }
+
             dragNodeId = hit.NodeId;
             dragNodeOrigin = context.Scene.FindNode(hit.NodeId)?.Bounds is { } bounds
                 ? new GraphPoint(bounds.X, bounds.Y)

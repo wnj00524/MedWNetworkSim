@@ -40,6 +40,11 @@ public sealed class NetworkModel
     public bool FacilityModeEnabled { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether graph layout should follow geographic map coordinates for geo-anchored nodes.
+    /// </summary>
+    public bool LockLayoutToMap { get; set; }
+
+    /// <summary>
     /// Gets or sets the optional maximum travel-time budget for facility catchments.
     /// Null or non-positive values mean unlimited reachability.
     /// </summary>

@@ -124,6 +124,36 @@ public sealed class OsmBoundingBoxImportTests
     }
 
     [Fact]
+    public void SelectedCoordinates_AreClampedToMercatorAndLongitudeLimits()
+    {
+        var start = new MapGeoCoordinate(95d, -240d);
+        var end = new MapGeoCoordinate(-95d, 240d);
+
+        var success = WorkspaceViewModel.TryCreateBoundingBoxFromCoordinates(start, end, out var bbox, out var error);
+
+        Assert.True(success, error);
+        Assert.Equal(-180d, bbox.MinLon, 8);
+        Assert.Equal(180d, bbox.MaxLon, 8);
+        Assert.Equal(OsmBoundingBox.MinLatitudeLimit, bbox.MinLat, 8);
+        Assert.Equal(OsmBoundingBox.MaxLatitudeLimit, bbox.MaxLat, 8);
+    }
+
+    [Fact]
+    public void EndSelection_RejectsTinyBoxesWithClearMessage()
+    {
+        var vm = new WorkspaceViewModel
+        {
+            IsOsmAreaSelectionEnabled = true
+        };
+
+        vm.BeginOsmSelection(new MapGeoCoordinate(51.5d, -0.12d));
+        vm.EndOsmSelection(new MapGeoCoordinate(51.5000005d, -0.1199995d));
+
+        Assert.Equal("Selected area is too small. Drag a larger box.", vm.OsmValidationMessage);
+        Assert.False(vm.CanImportOsmSelection);
+    }
+
+    [Fact]
     public void TooLargeSelection_IsRejectedByTiler()
     {
         var bbox = new OsmBoundingBox(-1.5, 50, 1.5, 51.5);

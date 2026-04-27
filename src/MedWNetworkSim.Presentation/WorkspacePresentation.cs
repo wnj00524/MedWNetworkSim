@@ -1654,6 +1654,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private VisualAnalyticsSnapshot? cachedSankeySnapshot;
     private string? cachedSankeyTrafficTypeFilter;
     private bool cachedSankeyShowUnmetDemand;
+    private bool cachedSankeyCollapseMinorFlows;
+    private int sankeyVersion;
+    private string? activeModeLabel;
+    private readonly HashSet<string> highlightedNodeIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> highlightedEdgeIds = new(StringComparer.OrdinalIgnoreCase);
 
     public WorkspaceViewModel()
     {
@@ -1733,6 +1738,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         SetGraphVisualisationCommand = new RelayCommand(() => VisualisationState.ActiveMode = VisualisationMode.Graph);
         SetSankeyVisualisationCommand = new RelayCommand(() => VisualisationState.ActiveMode = VisualisationMode.Sankey);
         SetMapVisualisationCommand = new RelayCommand(() => VisualisationState.ActiveMode = VisualisationMode.Map);
+        ShowGraphModeCommand = SetGraphVisualisationCommand;
+        ShowSankeyModeCommand = SetSankeyVisualisationCommand;
+        ShowMapModeCommand = SetMapVisualisationCommand;
         ToggleIsochroneModeCommand = new RelayCommand(() => SetIsochroneMode(!IsIsochroneModeEnabled));
         ToggleFacilityPlanningModeCommand = new RelayCommand(() => SetFacilityPlanningMode(!IsFacilityPlanningMode));
         AddFacilityOriginCommand = new RelayCommand(AddSelectedNodeAsFacilityOrigin, () => Scene.Selection.SelectedNodeIds.Count == 1);
@@ -1811,6 +1819,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         DeleteScenarioEventCommand = new RelayCommand(DeleteScenarioEvent, () => SelectedScenarioEvent is not null && SelectedScenarioDefinition is not null);
         RunScenarioCommand = new RelayCommand(RunScenario, () => SelectedScenarioDefinition is not null);
         SelectTopIssueCommand = new RelayCommand<TopIssueViewModel>(SelectTopIssue);
+        VisualisationState.PropertyChanged += HandleVisualisationStatePropertyChanged;
+        UpdateActiveModeState();
 
         CreateBlankNetwork();
         SetActiveTool(GraphToolMode.Select);
@@ -1871,6 +1881,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public RelayCommand SetGraphVisualisationCommand { get; }
     public RelayCommand SetSankeyVisualisationCommand { get; }
     public RelayCommand SetMapVisualisationCommand { get; }
+    public RelayCommand ShowGraphModeCommand { get; }
+    public RelayCommand ShowSankeyModeCommand { get; }
+    public RelayCommand ShowMapModeCommand { get; }
     public RelayCommand ToggleIsochroneModeCommand { get; }
     public RelayCommand ToggleFacilityPlanningModeCommand { get; }
     public RelayCommand AddFacilityOriginCommand { get; }
@@ -1958,6 +1971,21 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public string WindowTitle => $"{(HasUnsavedChanges ? "*" : string.Empty)}MedW Network Sim | Avalonia Workstation | {network.Name}";
     public string SessionSubtitle => $"Active network: {network.Name} · {SimulationSummary}";
     public string StatusText { get => statusText; set => SetProperty(ref statusText, value); }
+    public string ActiveModeLabel
+    {
+        get => activeModeLabel ?? "Graph view";
+        private set => SetProperty(ref activeModeLabel, value);
+    }
+    public bool IsGraphMode => VisualisationState.ActiveMode == VisualisationMode.Graph;
+    public bool IsSankeyMode => VisualisationState.ActiveMode == VisualisationMode.Sankey;
+    public bool IsMapMode => VisualisationState.ActiveMode == VisualisationMode.Map;
+    public IReadOnlyCollection<string> HighlightedNodeIds => highlightedNodeIds;
+    public IReadOnlyCollection<string> HighlightedEdgeIds => highlightedEdgeIds;
+    public int SankeyVersion
+    {
+        get => sankeyVersion;
+        private set => SetProperty(ref sankeyVersion, value);
+    }
     public void ReportUiException(string safeMessage, Exception exception)
     {
         _ = exception;
@@ -2721,11 +2749,13 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var snapshot = CreateVisualAnalyticsSnapshot();
         var filter = VisualisationState.ActiveTrafficTypeFilter;
         var showUnmetDemand = VisualisationState.ShowUnmetDemand;
+        var collapseMinorFlows = VisualisationState.CollapseMinorFlows;
 
         if (cachedSankeyDiagram is not null
             && ReferenceEquals(cachedSankeySnapshot, snapshot)
             && string.Equals(cachedSankeyTrafficTypeFilter, filter, StringComparison.OrdinalIgnoreCase)
-            && cachedSankeyShowUnmetDemand == showUnmetDemand)
+            && cachedSankeyShowUnmetDemand == showUnmetDemand
+            && cachedSankeyCollapseMinorFlows == collapseMinorFlows)
         {
             return cachedSankeyDiagram;
         }
@@ -2733,11 +2763,14 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         cachedSankeyDiagram = sankeyProjectionService.Build(snapshot, new SankeyProjectionOptions
         {
             TrafficTypeFilter = filter,
-            IncludeUnmetDemandSink = showUnmetDemand
+            IncludeUnmetDemandSink = showUnmetDemand,
+            CollapseMinorFlows = collapseMinorFlows
         });
         cachedSankeySnapshot = snapshot;
         cachedSankeyTrafficTypeFilter = filter;
         cachedSankeyShowUnmetDemand = showUnmetDemand;
+        cachedSankeyCollapseMinorFlows = collapseMinorFlows;
+        SankeyVersion++;
         return cachedSankeyDiagram;
     }
 
@@ -2751,16 +2784,77 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public void SelectInsight(NetworkInsight insight)
     {
         ArgumentNullException.ThrowIfNull(insight);
+        highlightedNodeIds.Clear();
+        highlightedEdgeIds.Clear();
         if (!string.IsNullOrWhiteSpace(insight.TargetNodeId))
         {
+            highlightedNodeIds.Add(insight.TargetNodeId);
             SelectNode(insight.TargetNodeId);
+            Raise(nameof(HighlightedNodeIds));
+            Raise(nameof(HighlightedEdgeIds));
             return;
         }
 
         if (!string.IsNullOrWhiteSpace(insight.TargetEdgeId))
         {
+            highlightedEdgeIds.Add(insight.TargetEdgeId);
             SelectEdge(insight.TargetEdgeId);
+            Raise(nameof(HighlightedNodeIds));
+            Raise(nameof(HighlightedEdgeIds));
         }
+    }
+
+    public void HighlightRouteEdges(IEnumerable<string> edgeIds)
+    {
+        highlightedEdgeIds.Clear();
+        foreach (var edgeId in edgeIds.Where(id => !string.IsNullOrWhiteSpace(id)))
+        {
+            highlightedEdgeIds.Add(edgeId);
+        }
+
+        Raise(nameof(HighlightedEdgeIds));
+    }
+
+    private void HandleVisualisationStatePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(VisualisationState.ActiveMode))
+        {
+            UpdateActiveModeState();
+            return;
+        }
+
+        if (e.PropertyName is nameof(VisualisationState.ActiveTrafficTypeFilter)
+            or nameof(VisualisationState.ShowUnmetDemand)
+            or nameof(VisualisationState.CollapseMinorFlows))
+        {
+            InvalidateSankeyCache();
+        }
+    }
+
+    private void UpdateActiveModeState()
+    {
+        ActiveModeLabel = VisualisationState.ActiveMode switch
+        {
+            VisualisationMode.Sankey => "Sankey view",
+            VisualisationMode.Map => "Map view",
+            _ => "Graph view"
+        };
+        Raise(nameof(IsGraphMode));
+        Raise(nameof(IsSankeyMode));
+        Raise(nameof(IsMapMode));
+        Raise(nameof(ToolStatusText));
+        NotifyVisualChanged();
+    }
+
+    private void InvalidateSankeyCache()
+    {
+        cachedSankeyDiagram = null;
+        cachedSankeySnapshot = null;
+        cachedSankeyTrafficTypeFilter = null;
+        cachedSankeyShowUnmetDemand = false;
+        cachedSankeyCollapseMinorFlows = false;
+        SankeyVersion++;
+        NotifyVisualChanged();
     }
 
 
@@ -2834,6 +2928,17 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         if (SyncNetworkNodePositionsFromScene())
         {
             MarkDirty();
+        }
+        Scene.Selection.HighlightedNodeIds.Clear();
+        foreach (var nodeId in highlightedNodeIds)
+        {
+            Scene.Selection.HighlightedNodeIds.Add(nodeId);
+        }
+
+        Scene.Selection.HighlightedEdgeIds.Clear();
+        foreach (var edgeId in highlightedEdgeIds)
+        {
+            Scene.Selection.HighlightedEdgeIds.Add(edgeId);
         }
 
         ViewportVersion++;

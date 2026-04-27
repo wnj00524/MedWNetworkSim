@@ -26,11 +26,57 @@ public sealed class WorkspaceVisualisationModeTests
         });
 
         workspace.SelectNode("a");
-        workspace.SetSankeyVisualisationCommand.Execute(null);
-        workspace.SetMapVisualisationCommand.Execute(null);
-        workspace.SetGraphVisualisationCommand.Execute(null);
+        workspace.ShowSankeyModeCommand.Execute(null);
+        workspace.ShowMapModeCommand.Execute(null);
+        workspace.ShowGraphModeCommand.Execute(null);
 
         Assert.Contains("a", workspace.Scene.Selection.SelectedNodeIds, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ShowSankeyModeCommand_SetsActiveMode()
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.ShowSankeyModeCommand.Execute(null);
+        Assert.Equal(VisualisationMode.Sankey, workspace.VisualisationState.ActiveMode);
+    }
+
+    [Fact]
+    public void ShowMapModeCommand_SetsActiveMode()
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.ShowMapModeCommand.Execute(null);
+        Assert.Equal(VisualisationMode.Map, workspace.VisualisationState.ActiveMode);
+    }
+
+    [Fact]
+    public void ChangingSankeyFilter_InvalidatesSankeyVersion()
+    {
+        var workspace = new WorkspaceViewModel();
+        var baseline = workspace.SankeyVersion;
+        workspace.VisualisationState.ActiveTrafficTypeFilter = "Food";
+        Assert.True(workspace.SankeyVersion > baseline);
+    }
+
+    [Fact]
+    public void Simulate_GeneratesInsights_WhenOutcomesExist()
+    {
+        var workspace = new WorkspaceViewModel();
+        LoadNetwork(workspace, new NetworkModel
+        {
+            TrafficTypes = [new TrafficTypeDefinition { Name = "Supply" }],
+            Nodes =
+            [
+                new NodeModel { Id = "p", Name = "Producer", X = 10, Y = 10, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Supply", Production = 10 }] },
+                new NodeModel { Id = "c", Name = "Consumer", X = 60, Y = 20, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Supply", Consumption = 20 }] }
+            ],
+            Edges = [new EdgeModel { Id = "e1", FromNodeId = "p", ToNodeId = "c", Capacity = 5, Time = 1, Cost = 1 }]
+        });
+
+        workspace.SimulateCommand.Execute(null);
+
+        Assert.NotNull(workspace.NetworkInsights);
+        Assert.NotEmpty(workspace.NetworkInsights);
     }
 
     private static void LoadNetwork(WorkspaceViewModel workspace, NetworkModel model)

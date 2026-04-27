@@ -24,6 +24,7 @@ using MedWNetworkSim.Rendering;
 using MedWNetworkSim.Rendering.Geo;
 using MedWNetworkSim.Rendering.VisualAnalytics.Sankey;
 using MedWNetworkSim.App.VisualAnalytics;
+using MedWNetworkSim.App.Insights;
 using MedWNetworkSim.UI.Controls;
 using SkiaSharp;
 
@@ -200,8 +201,11 @@ public sealed class GraphCanvasControl : Control
     private readonly GraphRenderer renderer = new();
     private readonly SankeyRenderer sankeyRenderer = new();
     private readonly MapGraphRenderer mapRenderer = new();
+    private readonly IMapProjectionService mapProjectionService = new MapWebMercatorProjectionService();
     private SankeyDiagramModel? lastSankeyModel;
     private SankeyRenderDiagram? lastSankeyDiagram;
+    private readonly Dictionary<string, SankeyNode> sankeyNodeById = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, SankeyLink> sankeyLinkById = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer animationTimer;
     private WriteableBitmap? bitmap;
     private DateTimeOffset lastFrame = DateTimeOffset.UtcNow;
@@ -287,8 +291,19 @@ public sealed class GraphCanvasControl : Control
                     {
                         EmptyStateMessage = model.EmptyStateMessage,
                         Nodes = model.Nodes.Select(n => new SankeyRenderNode { Id = n.Id, Label = n.Label, Kind = n.Kind.ToString() }).ToArray(),
-                        Links = model.Links.Select(l => new SankeyRenderLink { Id = l.Id, SourceNodeId = l.SourceNodeId, TargetNodeId = l.TargetNodeId, TrafficType = l.TrafficType, Value = l.Value, IsUnmetDemand = l.IsUnmetDemand }).ToArray()
+                        Links = model.Links.Select(l => new SankeyRenderLink { Id = l.Id, SourceNodeId = l.SourceNodeId, TargetNodeId = l.TargetNodeId, TrafficType = l.TrafficType, Value = l.Value, RouteSignature = l.RouteSignature, RouteEdgeIds = l.RouteEdgeIds, IsUnmetDemand = l.IsUnmetDemand }).ToArray()
                     };
+                    sankeyNodeById.Clear();
+                    foreach (var node in model.Nodes)
+                    {
+                        sankeyNodeById[node.Id] = node;
+                    }
+
+                    sankeyLinkById.Clear();
+                    foreach (var link in model.Links)
+                    {
+                        sankeyLinkById[link.Id] = link;
+                    }
                 }
 
                 if (lastSankeyDiagram is null)
@@ -392,6 +407,12 @@ public sealed class GraphCanvasControl : Control
                 return;
             }
 
+            if (button == GraphPointerButton.Left && ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map && TryHandleMapSelection(ViewModel, point, transform.LogicalViewport))
+            {
+                e.Handled = true;
+                return;
+            }
+
             ViewModel.InteractionController.OnPointerPressed(                interactionContext,
                 button,
                 point,
@@ -421,9 +442,9 @@ public sealed class GraphCanvasControl : Control
         if (!string.IsNullOrWhiteSpace(hit.Value.NodeId) && lastSankeyDiagram is not null)
         {
             var node = lastSankeyDiagram.Nodes.FirstOrDefault(n => string.Equals(n.Id, hit.Value.NodeId, StringComparison.OrdinalIgnoreCase));
-            if (node is not null && node.Id.StartsWith("node:", StringComparison.OrdinalIgnoreCase))
+            if (node is not null && sankeyNodeById.TryGetValue(node.Id, out var sourceNode) && !string.IsNullOrWhiteSpace(sourceNode.GraphNodeId))
             {
-                viewModel.SelectNode(node.Id[5..]);
+                viewModel.SelectNode(sourceNode.GraphNodeId);
                 viewModel.NotifyVisualChanged();
                 InvalidateVisual();
                 return true;
@@ -433,12 +454,16 @@ public sealed class GraphCanvasControl : Control
         if (!string.IsNullOrWhiteSpace(hit.Value.LinkId) && lastSankeyDiagram is not null)
         {
             var link = lastSankeyDiagram.Links.FirstOrDefault(l => string.Equals(l.Id, hit.Value.LinkId, StringComparison.OrdinalIgnoreCase));
-            if (link is not null)
+            if (link is not null && sankeyLinkById.TryGetValue(link.Id, out var sourceLink))
             {
-                var edgeHint = link.Id.Split(':').FirstOrDefault(part => part.StartsWith("edge", StringComparison.OrdinalIgnoreCase));
-                if (!string.IsNullOrWhiteSpace(edgeHint))
+                var edgeIds = sourceLink.RouteEdgeIds;
+                if (edgeIds.Count > 0)
                 {
-                    viewModel.SelectEdge(edgeHint);
+                    viewModel.HighlightRouteEdges(edgeIds);
+                    viewModel.SelectEdge(edgeIds[0]);
+                    viewModel.StatusText = edgeIds.Count > 1
+                        ? $"Sankey route selected: {sourceLink.RouteSignature ?? string.Join(" → ", edgeIds)}"
+                        : $"Sankey route selected: {edgeIds[0]}";
                 }
             }
         }
@@ -469,6 +494,46 @@ public sealed class GraphCanvasControl : Control
                 InvalidateVisual();
             }
         }), "isochrone selection");
+        return true;
+    }
+
+    private bool TryHandleMapSelection(WorkspaceViewModel viewModel, GraphPoint point, GraphSize viewportSize)
+    {
+        var geoLookup = viewModel.BuildGeoNodeLookup();
+        if (geoLookup.Count == 0)
+        {
+            return false;
+        }
+
+        var minLatitude = geoLookup.Values.Min(item => item.Latitude);
+        var maxLatitude = geoLookup.Values.Max(item => item.Latitude);
+        var minLongitude = geoLookup.Values.Min(item => item.Longitude);
+        var maxLongitude = geoLookup.Values.Max(item => item.Longitude);
+        var projectionViewport = new MapProjectionViewport(
+            viewportSize.Width,
+            viewportSize.Height,
+            (minLatitude + maxLatitude) / 2d,
+            (minLongitude + maxLongitude) / 2d,
+            Math.Max(0.0004d, viewModel.Viewport.Zoom * 0.0025d));
+
+        var nearestNode = geoLookup
+            .Select(item =>
+            {
+                var projected = mapProjectionService.Project(new MapGeoCoordinate(item.Value.Latitude, item.Value.Longitude), projectionViewport);
+                var distance = Math.Sqrt(Math.Pow(projected.X - point.X, 2d) + Math.Pow(projected.Y - point.Y, 2d));
+                return new { item.Key, Distance = distance };
+            })
+            .OrderBy(item => item.Distance)
+            .FirstOrDefault();
+
+        if (nearestNode is null || nearestNode.Distance > 20d)
+        {
+            return false;
+        }
+
+        viewModel.SelectNode(nearestNode.Key);
+        viewModel.NotifyVisualChanged();
+        InvalidateVisual();
         return true;
     }
 
@@ -831,6 +896,30 @@ public sealed class GraphCanvasControl : Control
 
     private void UpdateHoveredNodeToolTip(WorkspaceViewModel viewModel, GraphCanvasCoordinateTransform transform, PointerEventArgs e)
     {
+        if (viewModel.IsSankeyMode)
+        {
+            var sankeyHit = sankeyRenderer.HitTest(PointerToGraph(e, transform));
+            if (sankeyHit is null)
+            {
+                ToolTip.SetTip(this, null);
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(sankeyHit.Value.NodeId) && sankeyNodeById.TryGetValue(sankeyHit.Value.NodeId!, out var sankeyNode))
+            {
+                ToolTip.SetTip(this, $"{sankeyNode.Label}\nType: node\nFlow: {sankeyNode.Value:0.##}");
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(sankeyHit.Value.LinkId) && sankeyLinkById.TryGetValue(sankeyHit.Value.LinkId!, out var sankeyLink))
+            {
+                var routeLabel = string.IsNullOrWhiteSpace(sankeyLink.RouteSignature) ? "N/A" : sankeyLink.RouteSignature;
+                var unmet = sankeyLink.IsUnmetDemand ? "Yes" : "No";
+                ToolTip.SetTip(this, $"{sankeyLink.SourceNodeId} → {sankeyLink.TargetNodeId}\nTraffic: {sankeyLink.TrafficType}\nFlow: {sankeyLink.Value:0.##}\nRoute: {routeLabel}\nUnmet demand: {unmet}");
+                return;
+            }
+        }
+
         var interactionContext = viewModel.CreateInteractionContext(transform.LogicalViewport);
         var worldPoint = interactionContext.Viewport.ScreenToWorld(PointerToGraph(e, transform), interactionContext.ViewportSize);
         var hit = new GraphHitTester().HitTest(interactionContext.Scene, worldPoint);
@@ -1455,6 +1544,74 @@ public sealed class ShellWindow : Window
 
     private Control BuildCanvasArea(WorkspaceViewModel viewModel)
     {
+        var graphModeButton = BuildBoundButton("Graph", nameof(WorkspaceViewModel.ShowGraphModeCommand));
+        graphModeButton.Classes.Add("toolbar-button");
+        graphModeButton.Focusable = true;
+        var sankeyModeButton = BuildBoundButton("Sankey", nameof(WorkspaceViewModel.ShowSankeyModeCommand));
+        sankeyModeButton.Classes.Add("toolbar-button");
+        sankeyModeButton.Focusable = true;
+        var mapModeButton = BuildBoundButton("Map", nameof(WorkspaceViewModel.ShowMapModeCommand));
+        mapModeButton.Classes.Add("toolbar-button");
+        mapModeButton.Focusable = true;
+
+        void RefreshModeButtons()
+        {
+            ApplyToolButtonState(graphModeButton, viewModel.IsGraphMode);
+            ApplyToolButtonState(sankeyModeButton, viewModel.IsSankeyMode);
+            ApplyToolButtonState(mapModeButton, viewModel.IsMapMode);
+        }
+
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(WorkspaceViewModel.IsGraphMode) or nameof(WorkspaceViewModel.IsSankeyMode) or nameof(WorkspaceViewModel.IsMapMode))
+            {
+                RefreshModeButtons();
+            }
+        };
+        RefreshModeButtons();
+
+        var modeSelector = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            Children = { graphModeButton, sankeyModeButton, mapModeButton }
+        };
+
+        var sankeyOptions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 12,
+            IsVisible = viewModel.IsSankeyMode,
+            Children =
+            {
+                BuildLabeledComboBox("Traffic type", nameof(WorkspaceViewModel.TrafficTypeNameOptions), "VisualisationState.ActiveTrafficTypeFilter"),
+                new CheckBox { Content = "Collapse minor flows", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.CollapseMinorFlows", BindingMode.TwoWay) },
+                new CheckBox { Content = "Show unmet demand", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) }
+            }
+        };
+
+        var mapOptions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 12,
+            IsVisible = viewModel.IsMapMode,
+            Children =
+            {
+                new CheckBox { Content = "Show map background", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowMapBackground", BindingMode.TwoWay) },
+                new CheckBox { Content = "Show capacity utilisation", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowCapacityUtilisation", BindingMode.TwoWay) },
+                new CheckBox { Content = "Show unmet demand", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) }
+            }
+        };
+
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(WorkspaceViewModel.IsSankeyMode) or nameof(WorkspaceViewModel.IsMapMode))
+            {
+                sankeyOptions.IsVisible = viewModel.IsSankeyMode;
+                mapOptions.IsVisible = viewModel.IsMapMode;
+            }
+        };
+
         var header = new Border
         {
             Padding = new Thickness(12, 8),
@@ -1472,6 +1629,13 @@ public sealed class ShellWindow : Window
                         Text = "Network Topology",
                         FontSize = 16,
                         FontWeight = FontWeight.Bold,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+                        TextWrapping = TextWrapping.Wrap
+                    },
+                    new TextBlock
+                    {
+                        [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.ActiveModeLabel)),
+                        FontSize = 12,
                         Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
                         TextWrapping = TextWrapping.Wrap
                     },
@@ -1541,14 +1705,27 @@ public sealed class ShellWindow : Window
 
         var canvasSurface = new Grid
         {
-            RowDefinitions = new RowDefinitions("Auto,*"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,*"),
             Children =
             {
                 header
             }
         };
-        Grid.SetRow(graphCanvas, 1);
-        Grid.SetRow(fallbackPanel, 1);
+        var controlsStrip = new StackPanel
+        {
+            Margin = new Thickness(2, 6, 2, 8),
+            Spacing = 6,
+            Children =
+            {
+                modeSelector,
+                sankeyOptions,
+                mapOptions
+            }
+        };
+        Grid.SetRow(controlsStrip, 1);
+        canvasSurface.Children.Add(controlsStrip);
+        Grid.SetRow(graphCanvas, 2);
+        Grid.SetRow(fallbackPanel, 2);
         canvasSurface.Children.Add(graphCanvas);
         canvasSurface.Children.Add(fallbackPanel);
         var canvasHost = BuildDashboardPanel(
@@ -1721,6 +1898,21 @@ public sealed class ShellWindow : Window
 
     private Border BuildCompactInspector(WorkspaceViewModel viewModel)
     {
+        var insightsToggle = new CheckBox
+        {
+            Content = "Insights",
+            [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowInsights", BindingMode.TwoWay)
+        };
+        var insightsPanel = BuildInsightsPanel(viewModel);
+        insightsPanel.IsVisible = viewModel.VisualisationState.ShowInsights;
+        viewModel.VisualisationState.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(VisualisationState.ShowInsights))
+            {
+                insightsPanel.IsVisible = viewModel.VisualisationState.ShowInsights;
+            }
+        };
+
         var scrollViewer = new ScrollViewer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
@@ -1731,6 +1923,8 @@ public sealed class ShellWindow : Window
                 Children =
                 {
                     BuildHeadlineBlock(),
+                    insightsToggle,
+                    insightsPanel,
                     BuildInspectorDetails(),
                     BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
                     BuildCompactNodeInspector(viewModel),
@@ -1747,6 +1941,98 @@ public sealed class ShellWindow : Window
         Grid.SetColumn(border, 2);
         Grid.SetRow(border, 0);
         return border;
+    }
+
+    private static Control BuildInsightsPanel(WorkspaceViewModel viewModel)
+    {
+        var list = new ListBox
+        {
+            MinHeight = 120
+        };
+        list.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.NetworkInsights)));
+        list.ItemTemplate = new FuncDataTemplate<NetworkInsight>((item, _) =>
+        {
+            if (item is null)
+            {
+                return new TextBlock();
+            }
+
+            var severityIcon = item.Severity switch
+            {
+                InsightSeverity.Critical => "⛔",
+                InsightSeverity.Warning => "⚠",
+                _ => "ℹ"
+            };
+            var target = !string.IsNullOrWhiteSpace(item.TargetNodeId) ? $"Node {item.TargetNodeId}" :
+                !string.IsNullOrWhiteSpace(item.TargetEdgeId) ? $"Route {item.TargetEdgeId}" : "Network";
+            var recommendation = item.Recommendations.FirstOrDefault()?.Action ?? "Review this insight.";
+
+            var jumpButton = new Button
+            {
+                Content = "Jump to target",
+                Focusable = true,
+                Command = new RelayCommand(() => viewModel.SelectInsight(item))
+            };
+
+            return new Border
+            {
+                BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(8),
+                Child = new StackPanel
+                {
+                    Spacing = 3,
+                    Children =
+                    {
+                        new TextBlock { Text = $"{severityIcon} {item.Severity}", FontWeight = FontWeight.Bold },
+                        new TextBlock { Text = item.Title, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap },
+                        new TextBlock { Text = item.Summary, TextWrapping = TextWrapping.Wrap },
+                        new TextBlock { Text = $"Target: {target}", Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) },
+                        new TextBlock { Text = $"Top recommendation: {recommendation}", TextWrapping = TextWrapping.Wrap },
+                        jumpButton
+                    }
+                }
+            };
+        });
+
+        var emptyState = new TextBlock
+        {
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+            TextWrapping = TextWrapping.Wrap
+        };
+        void UpdateEmptyState()
+        {
+            if (!string.IsNullOrWhiteSpace(viewModel.InsightsEmptyStateText))
+            {
+                emptyState.Text = viewModel.InsightsEmptyStateText;
+            }
+            else
+            {
+                emptyState.Text = viewModel.NetworkInsights.Count == 0 ? "No major issues found." : string.Empty;
+            }
+        }
+
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(WorkspaceViewModel.InsightsEmptyStateText))
+            {
+                UpdateEmptyState();
+            }
+        };
+        viewModel.NetworkInsights.CollectionChanged += (_, _) => UpdateEmptyState();
+        UpdateEmptyState();
+
+        return new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock { Text = "Insights", FontWeight = FontWeight.Bold },
+                list,
+                emptyState
+            }
+        };
     }
 
     private Border BuildTrafficTypeWorkspace(WorkspaceViewModel viewModel)

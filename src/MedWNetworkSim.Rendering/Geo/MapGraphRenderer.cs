@@ -46,7 +46,7 @@ public sealed class MapGraphRenderer
         DrawBackground(canvas, viewportSize, showBackground);
         if (geoNodes.Count == 0)
         {
-            fallbackMessage = "This network has no geographic coordinates yet.";
+            fallbackMessage = "This network has no geographic coordinates yet. Import OSM data or add coordinates to use Map view.";
             new GraphRenderer().Render(canvas, scene, viewport, viewportSize);
             using var p = new SKPaint { Color = new SKColor(252, 219, 107), TextSize = 20f, IsAntialias = true };
             canvas.DrawText(fallbackMessage, 24f, 40f, p);

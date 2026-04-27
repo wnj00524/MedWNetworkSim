@@ -1499,7 +1499,10 @@ public sealed class TopIssueViewModel
     public required string Detail { get; init; }
     public required TopIssueTargetKind TargetKind { get; init; }
     public string? NodeId { get; init; }
+    public string? NodeDisplayName { get; init; }
     public string? EdgeId { get; init; }
+    public string? FromNodeName { get; init; }
+    public string? ToNodeName { get; init; }
     public required string Breadcrumb { get; init; }
 }
 
@@ -4069,10 +4072,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private TopIssueViewModel CreateTopIssueViewModel(NetworkIssue issue)
     {
-        var target = issue.TargetId ?? issue.TargetName;
-        if (!string.IsNullOrWhiteSpace(target) && network.Nodes.Any(node => Comparer.Equals(node.Id, target)))
+        var targetId = string.IsNullOrWhiteSpace(issue.TargetId) ? null : issue.TargetId.Trim();
+        if (!string.IsNullOrWhiteSpace(targetId) && network.Nodes.Any(node => Comparer.Equals(node.Id, targetId)))
         {
-            var node = network.Nodes.First(node => Comparer.Equals(node.Id, target));
+            var node = network.Nodes.First(node => Comparer.Equals(node.Id, targetId));
             var nodeLabel = string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name;
             return new TopIssueViewModel
             {
@@ -4080,19 +4083,26 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 Detail = issue.Explanation,
                 TargetKind = TopIssueTargetKind.Node,
                 NodeId = node.Id,
+                NodeDisplayName = nodeLabel,
                 Breadcrumb = $"Issue → Node {nodeLabel}"
             };
         }
 
-        if (!string.IsNullOrWhiteSpace(target) && network.Edges.Any(edge => Comparer.Equals(edge.Id, target)))
+        if (!string.IsNullOrWhiteSpace(targetId) && network.Edges.Any(edge => Comparer.Equals(edge.Id, targetId)))
         {
-            var edge = network.Edges.First(edge => Comparer.Equals(edge.Id, target));
+            var edge = network.Edges.First(edge => Comparer.Equals(edge.Id, targetId));
+            var from = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, edge.FromNodeId));
+            var to = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, edge.ToNodeId));
+            var fromLabel = string.IsNullOrWhiteSpace(from?.Name) ? edge.FromNodeId : from!.Name;
+            var toLabel = string.IsNullOrWhiteSpace(to?.Name) ? edge.ToNodeId : to!.Name;
             return new TopIssueViewModel
             {
                 Title = issue.Title,
                 Detail = issue.Explanation,
                 TargetKind = TopIssueTargetKind.Edge,
                 EdgeId = edge.Id,
+                FromNodeName = fromLabel,
+                ToNodeName = toLabel,
                 Breadcrumb = BuildIssueEdgeBreadcrumb(edge.Id)
             };
         }
@@ -5723,9 +5733,30 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         SelectedTopIssue = issue;
         SelectedIssueBreadcrumb = issue.Breadcrumb;
+        var networkContainsNode = !string.IsNullOrWhiteSpace(issue.NodeId) && network.Nodes.Any(node => Comparer.Equals(node.Id, issue.NodeId));
+        var networkContainsEdge = !string.IsNullOrWhiteSpace(issue.EdgeId) && network.Edges.Any(edge => Comparer.Equals(edge.Id, issue.EdgeId));
+        var sceneContainsNode = !string.IsNullOrWhiteSpace(issue.NodeId) && Scene.FindNode(issue.NodeId) is not null;
+        var sceneContainsEdge = !string.IsNullOrWhiteSpace(issue.EdgeId) && Scene.FindEdge(issue.EdgeId) is not null;
+        Trace.WriteLine(
+            "Top issue selected: " +
+            $"TargetKind={issue.TargetKind}; " +
+            $"NodeId={issue.NodeId ?? "(null)"}; " +
+            $"EdgeId={issue.EdgeId ?? "(null)"}; " +
+            $"Breadcrumb={issue.Breadcrumb}; " +
+            $"Network contains node? {networkContainsNode}; " +
+            $"Network contains edge? {networkContainsEdge}; " +
+            $"Scene contains node? {sceneContainsNode}; " +
+            $"Scene contains edge? {sceneContainsEdge}");
 
         if (issue.TargetKind == TopIssueTargetKind.Node && !string.IsNullOrWhiteSpace(issue.NodeId))
         {
+            if (!networkContainsNode)
+            {
+                StatusText = "Issue target is unavailable in the loaded network.";
+                NotifyVisualChanged();
+                return;
+            }
+
             SelectNodeForEdit(issue.NodeId);
             FocusElementFromIssue(issue.NodeId, null);
             OpenNodeEditor(issue.NodeId);
@@ -5734,6 +5765,13 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         }
         else if (issue.TargetKind == TopIssueTargetKind.Edge && !string.IsNullOrWhiteSpace(issue.EdgeId))
         {
+            if (!networkContainsEdge)
+            {
+                StatusText = "Issue target is unavailable in the loaded network.";
+                NotifyVisualChanged();
+                return;
+            }
+
             SelectRouteForEdit(issue.EdgeId);
             FocusElementFromIssue(null, issue.EdgeId);
             OpenRouteEditor(issue.EdgeId);
@@ -5752,7 +5790,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         if (!string.IsNullOrWhiteSpace(nodeId))
         {
-            var node = Scene.FindNode(nodeId);
+            var node = EnsureIssueTargetInScene(nodeId, null).Node;
             if (node is not null)
             {
                 CenterViewportOnPoint(new GraphPoint(node.Bounds.CenterX, node.Bounds.CenterY));
@@ -5771,7 +5809,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return;
         }
 
-        var edge = Scene.FindEdge(edgeId);
+        var ensured = EnsureIssueTargetInScene(null, edgeId);
+        var edge = ensured.Edge;
         if (edge is not null)
         {
             var from = Scene.FindNode(edge.FromNodeId);
@@ -5789,6 +5828,28 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         }
 
         NotifyVisualChanged();
+    }
+
+    private (GraphNodeSceneItem? Node, GraphEdgeSceneItem? Edge) EnsureIssueTargetInScene(string? nodeId, string? edgeId)
+    {
+        var sceneNode = string.IsNullOrWhiteSpace(nodeId) ? null : Scene.FindNode(nodeId);
+        var sceneEdge = string.IsNullOrWhiteSpace(edgeId) ? null : Scene.FindEdge(edgeId);
+        var missingNodeInScene = !string.IsNullOrWhiteSpace(nodeId) &&
+                                 network.Nodes.Any(node => Comparer.Equals(node.Id, nodeId)) &&
+                                 sceneNode is null;
+        var missingEdgeInScene = !string.IsNullOrWhiteSpace(edgeId) &&
+                                 network.Edges.Any(edge => Comparer.Equals(edge.Id, edgeId)) &&
+                                 sceneEdge is null;
+        if (!missingNodeInScene && !missingEdgeInScene)
+        {
+            return (sceneNode, sceneEdge);
+        }
+
+        BuildSceneFromNetwork();
+        NotifyVisualChanged();
+        return (
+            string.IsNullOrWhiteSpace(nodeId) ? null : Scene.FindNode(nodeId),
+            string.IsNullOrWhiteSpace(edgeId) ? null : Scene.FindEdge(edgeId));
     }
 
     private void SetPulse(string? nodeId, string? edgeId)

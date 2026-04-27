@@ -53,8 +53,13 @@ public sealed class MapGraphRenderer
             return;
         }
 
-        var center = geoNodes.Values.First();
-        var mapViewport = new MapProjectionViewport(viewportSize.Width, viewportSize.Height, center.Latitude, center.Longitude, Math.Max(0.0004d, viewport.Zoom * 0.0025d));
+        var minLatitude = geoNodes.Values.Min(item => item.Latitude);
+        var maxLatitude = geoNodes.Values.Max(item => item.Latitude);
+        var minLongitude = geoNodes.Values.Min(item => item.Longitude);
+        var maxLongitude = geoNodes.Values.Max(item => item.Longitude);
+        var centerLatitude = (minLatitude + maxLatitude) / 2d;
+        var centerLongitude = (minLongitude + maxLongitude) / 2d;
+        var mapViewport = new MapProjectionViewport(viewportSize.Width, viewportSize.Height, centerLatitude, centerLongitude, Math.Max(0.0004d, viewport.Zoom * 0.0025d));
         using var edgePaint = new SKPaint { Color = new SKColor(125, 188, 255, 180), StrokeWidth = 2f, IsAntialias = true, Style = SKPaintStyle.Stroke };
         using var nodePaint = new SKPaint { Color = new SKColor(93, 116, 160), IsAntialias = true, Style = SKPaintStyle.Fill };
         using var labelPaint = new SKPaint { Color = new SKColor(222, 232, 245), TextSize = 12f, IsAntialias = true };

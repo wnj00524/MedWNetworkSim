@@ -1650,6 +1650,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private IReadOnlyList<string> explanationActions = [];
     private IReadOnlyList<string> explanationRelatedIssues = [];
     private VisualAnalyticsSnapshot? visualAnalyticsSnapshot;
+    private SankeyDiagramModel? cachedSankeyDiagram;
+    private VisualAnalyticsSnapshot? cachedSankeySnapshot;
+    private string? cachedSankeyTrafficTypeFilter;
+    private bool cachedSankeyShowUnmetDemand;
 
     public WorkspaceViewModel()
     {
@@ -2712,11 +2716,30 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Period = CurrentPeriod
     };
 
-    public SankeyDiagramModel BuildSankeyDiagram() => sankeyProjectionService.Build(CreateVisualAnalyticsSnapshot(), new SankeyProjectionOptions
+    public SankeyDiagramModel BuildSankeyDiagram()
     {
-        TrafficTypeFilter = VisualisationState.ActiveTrafficTypeFilter,
-        IncludeUnmetDemandSink = VisualisationState.ShowUnmetDemand
-    });
+        var snapshot = CreateVisualAnalyticsSnapshot();
+        var filter = VisualisationState.ActiveTrafficTypeFilter;
+        var showUnmetDemand = VisualisationState.ShowUnmetDemand;
+
+        if (cachedSankeyDiagram is not null
+            && ReferenceEquals(cachedSankeySnapshot, snapshot)
+            && string.Equals(cachedSankeyTrafficTypeFilter, filter, StringComparison.OrdinalIgnoreCase)
+            && cachedSankeyShowUnmetDemand == showUnmetDemand)
+        {
+            return cachedSankeyDiagram;
+        }
+
+        cachedSankeyDiagram = sankeyProjectionService.Build(snapshot, new SankeyProjectionOptions
+        {
+            TrafficTypeFilter = filter,
+            IncludeUnmetDemandSink = showUnmetDemand
+        });
+        cachedSankeySnapshot = snapshot;
+        cachedSankeyTrafficTypeFilter = filter;
+        cachedSankeyShowUnmetDemand = showUnmetDemand;
+        return cachedSankeyDiagram;
+    }
 
     public IReadOnlyDictionary<string, (double Latitude, double Longitude)> BuildGeoNodeLookup()
     {

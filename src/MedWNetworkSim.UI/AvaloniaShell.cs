@@ -200,6 +200,7 @@ public sealed class GraphCanvasControl : Control
     private readonly GraphRenderer renderer = new();
     private readonly SankeyRenderer sankeyRenderer = new();
     private readonly MapGraphRenderer mapRenderer = new();
+    private SankeyDiagramModel? lastSankeyModel;
     private SankeyRenderDiagram? lastSankeyDiagram;
     private readonly DispatcherTimer animationTimer;
     private WriteableBitmap? bitmap;
@@ -279,12 +280,22 @@ public sealed class GraphCanvasControl : Control
             if (mode == VisualisationMode.Sankey)
             {
                 var model = ViewModel.BuildSankeyDiagram();
-                lastSankeyDiagram = new SankeyRenderDiagram
+                if (!ReferenceEquals(lastSankeyModel, model))
                 {
-                    EmptyStateMessage = model.EmptyStateMessage,
-                    Nodes = model.Nodes.Select(n => new SankeyRenderNode { Id = n.Id, Label = n.Label, Kind = n.Kind.ToString() }).ToArray(),
-                    Links = model.Links.Select(l => new SankeyRenderLink { Id = l.Id, SourceNodeId = l.SourceNodeId, TargetNodeId = l.TargetNodeId, TrafficType = l.TrafficType, Value = l.Value, IsUnmetDemand = l.IsUnmetDemand }).ToArray()
-                };
+                    lastSankeyModel = model;
+                    lastSankeyDiagram = new SankeyRenderDiagram
+                    {
+                        EmptyStateMessage = model.EmptyStateMessage,
+                        Nodes = model.Nodes.Select(n => new SankeyRenderNode { Id = n.Id, Label = n.Label, Kind = n.Kind.ToString() }).ToArray(),
+                        Links = model.Links.Select(l => new SankeyRenderLink { Id = l.Id, SourceNodeId = l.SourceNodeId, TargetNodeId = l.TargetNodeId, TrafficType = l.TrafficType, Value = l.Value, IsUnmetDemand = l.IsUnmetDemand }).ToArray()
+                    };
+                }
+
+                if (lastSankeyDiagram is null)
+                {
+                    return;
+                }
+
                 sankeyRenderer.Render(surface.Canvas, lastSankeyDiagram, transform.LogicalViewport, interactionContext.Scene.Selection.KeyboardNodeId, interactionContext.Scene.Selection.KeyboardEdgeId);
             }
             else if (mode == VisualisationMode.Map)

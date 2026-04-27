@@ -81,7 +81,7 @@ public sealed class SankeyProjectionService : ISankeyProjectionService
                 group.Key.TrafficType,
                 Quantity = group.Sum(item => item.Quantity),
                 RouteEdgeIds = group.SelectMany(item => item.PathEdgeIds ?? []).Distinct(Comparer).ToArray(),
-                RouteSignature = string.Join(" -> ", group.SelectMany(item => item.PathNodeIds ?? []).Distinct(Comparer))
+                RouteSignature = BuildDominantRouteSignature(group)
             })
             .Where(item => item.Quantity > 0d)
             .ToList();
@@ -182,5 +182,20 @@ public sealed class SankeyProjectionService : ISankeyProjectionService
         }
 
         node.Value += value;
+    }
+
+    private static string? BuildDominantRouteSignature(IEnumerable<TrafficAllocation> allocations)
+    {
+        var dominantRoute = allocations
+            .Where(item => item.PathNodeIds is { Count: > 0 })
+            .Select(item => new { item.Quantity, Signature = string.Join(" -> ", item.PathNodeIds!) })
+            .Where(item => !string.IsNullOrWhiteSpace(item.Signature))
+            .GroupBy(item => item.Signature, item => item.Quantity, Comparer)
+            .Select(group => new { Signature = group.Key, Quantity = group.Sum() })
+            .OrderByDescending(item => item.Quantity)
+            .ThenBy(item => item.Signature, Comparer)
+            .FirstOrDefault();
+
+        return dominantRoute?.Signature;
     }
 }

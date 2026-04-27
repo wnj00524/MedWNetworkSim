@@ -194,7 +194,7 @@ internal static class FacilityPlanningDialogs
     }
 }
 
-public sealed class GraphCanvasControl : Control
+public sealed class GraphCanvasControl : Control, IDisposable
 {
     public static readonly StyledProperty<WorkspaceViewModel?> ViewModelProperty =
         AvaloniaProperty.Register<GraphCanvasControl, WorkspaceViewModel?>(nameof(ViewModel));
@@ -219,6 +219,7 @@ public sealed class GraphCanvasControl : Control
     private string? hoveredNodeId;
     private string? hoveredEdgeId;
     private bool isDraggingOsmSelection;
+    private bool isDisposed;
 
     public GraphCanvasControl()
     {
@@ -236,17 +237,28 @@ public sealed class GraphCanvasControl : Control
                 animationTimer.Start();
             }
         };
-        DetachedFromVisualTree += (_, _) => animationTimer.Stop();
-        osmTileProvider.TilesChanged += (_, _) =>
+        DetachedFromVisualTree += (_, _) =>
         {
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (ViewModel?.VisualisationState.ActiveMode == VisualisationMode.Map)
-                {
-                    InvalidateVisual();
-                }
-            }, DispatcherPriority.Background);
+            animationTimer.Stop();
+            Dispose();
         };
+        osmTileProvider.TilesChanged += HandleTilesChanged;
+    }
+
+    private void HandleTilesChanged(object? sender, EventArgs args)
+    {
+        if (isDisposed)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (ViewModel?.VisualisationState.ActiveMode == VisualisationMode.Map)
+            {
+                InvalidateVisual();
+            }
+        }, DispatcherPriority.Background);
     }
 
     public event EventHandler<GraphCanvasStatusChangedEventArgs>? StatusChanged;
@@ -258,10 +270,30 @@ public sealed class GraphCanvasControl : Control
         set => SetValue(ViewModelProperty, value);
     }
 
+    public void Dispose()
+    {
+        if (isDisposed)
+        {
+            return;
+        }
+
+        isDisposed = true;
+        animationTimer.Stop();
+        bitmap?.Dispose();
+        bitmap = null;
+        osmTileProvider.TilesChanged -= HandleTilesChanged;
+        osmTileProvider.Dispose();
+    }
+
     public override void Render(DrawingContext context)
     {
         base.Render(context);
         DrawBaseBackground(context);
+        if (isDisposed)
+        {
+            UpdateStatus("Canvas detached", "This canvas has been detached from the visual tree.", isError: false, visibleFrame: false);
+            return;
+        }
 
         if (ViewModel is null)
         {

@@ -35,8 +35,8 @@ public sealed class NetworkInsightServiceTests
     [Fact]
     public void Generate_DetectsDisconnectedComponents()
     {
-        var nodes = [new NodeModel { Id = "n1", Name = "N1" }, new NodeModel { Id = "n2", Name = "N2" }];
-        var insights = CreateService().Generate(CreateSnapshot(nodes: nodes));
+        NodeModel[] nodes = [new NodeModel { Id = "n1", Name = "N1" }, new NodeModel { Id = "n2", Name = "N2" }];
+        var insights = CreateService().Generate(CreateSnapshot(nodes: nodes, edges: []));
         Assert.Contains(insights, insight => insight.Category == InsightCategory.Connectivity);
     }
 

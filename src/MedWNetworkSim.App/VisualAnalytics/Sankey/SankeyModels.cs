@@ -184,7 +184,7 @@ public sealed class SankeyProjectionService : ISankeyProjectionService
         node.Value += value;
     }
 
-    private static string? BuildDominantRouteSignature(IEnumerable<TrafficAllocation> allocations)
+    private static string? BuildDominantRouteSignature(IEnumerable<RouteAllocation> allocations)
     {
         var dominantRoute = allocations
             .Where(item => item.PathNodeIds is { Count: > 0 })

@@ -25,6 +25,7 @@ using MedWNetworkSim.Rendering.Geo;
 using MedWNetworkSim.Rendering.VisualAnalytics.Sankey;
 using MedWNetworkSim.App.VisualAnalytics;
 using MedWNetworkSim.App.Insights;
+using MedWNetworkSim.App.VisualAnalytics.Sankey;
 using MedWNetworkSim.UI.Controls;
 using SkiaSharp;
 

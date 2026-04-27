@@ -295,11 +295,32 @@ public sealed class BottleneckDetectionService : IBottleneckDetectionService
 
         foreach (var outcome in result.Outcomes.Where(outcome => outcome.UnmetDemand > 0.01d))
         {
-            issues.Add(new NetworkIssue
+            var nodePressureIssue = final?.NodePressureById
+                .Where(pair => pair.Value.BacklogQuantity > 0.01d)
+                .Select(pair =>
+                {
+                    var node = network.Nodes.FirstOrDefault(candidate => string.Equals(candidate.Id, pair.Key, StringComparison.OrdinalIgnoreCase));
+                    var nodeName = string.IsNullOrWhiteSpace(node?.Name) ? pair.Key : node!.Name;
+                    return new NetworkIssue
+                    {
+                        Type = NetworkIssueType.StarvedNode,
+                        Severity = NetworkIssueSeverity.Warning,
+                        TargetId = pair.Key,
+                        TargetName = nodeName,
+                        Title = "Node demand is not met",
+                        Explanation = $"Node backlog is {pair.Value.BacklogQuantity:0.##}; demand pressure remains unresolved.",
+                        SuggestedAction = "Add supply, increase route capacity, or reduce demand at the node.",
+                        Score = pair.Value.BacklogQuantity
+                    };
+                })
+                .OrderByDescending(issue => issue.Score)
+                .FirstOrDefault();
+
+            issues.Add(nodePressureIssue ?? new NetworkIssue
             {
                 Type = NetworkIssueType.StarvedNode,
                 Severity = NetworkIssueSeverity.Warning,
-                TargetId = outcome.TrafficType,
+                TargetId = null,
                 TargetName = outcome.TrafficType,
                 Title = "Node demand is not met",
                 Explanation = $"Unmet demand remains at {outcome.UnmetDemand:0.##} for this traffic type.",
@@ -313,7 +334,7 @@ public sealed class BottleneckDetectionService : IBottleneckDetectionService
                 {
                     Type = NetworkIssueType.PolicyBlockedFlow,
                     Severity = NetworkIssueSeverity.Critical,
-                    TargetId = outcome.TrafficType,
+                    TargetId = null,
                     TargetName = outcome.TrafficType,
                     Title = "Flow blocked by policy",
                     Explanation = $"{outcome.NoPermittedPathDemand:0.##} demand had no permitted route.",

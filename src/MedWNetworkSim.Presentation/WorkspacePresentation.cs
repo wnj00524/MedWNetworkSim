@@ -4063,19 +4063,23 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         TopIssues.Clear();
         foreach (var issue in issues)
         {
-            TopIssues.Add(CreateTopIssueViewModel(issue));
+            var viewModel = CreateTopIssueViewModel(issue);
+            if (viewModel is not null)
+            {
+                TopIssues.Add(viewModel);
+            }
         }
 
         SelectedTopIssue = null;
         SelectedIssueBreadcrumb = "Issue → (none selected)";
     }
 
-    private TopIssueViewModel CreateTopIssueViewModel(NetworkIssue issue)
+    private TopIssueViewModel? CreateTopIssueViewModel(NetworkIssue issue)
     {
         var targetId = string.IsNullOrWhiteSpace(issue.TargetId) ? null : issue.TargetId.Trim();
-        if (!string.IsNullOrWhiteSpace(targetId) && network.Nodes.Any(node => Comparer.Equals(node.Id, targetId)))
+        var node = ResolveNodeIssueTarget(issue, targetId);
+        if (node is not null)
         {
-            var node = network.Nodes.First(node => Comparer.Equals(node.Id, targetId));
             var nodeLabel = string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name;
             return new TopIssueViewModel
             {
@@ -4088,9 +4092,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             };
         }
 
-        if (!string.IsNullOrWhiteSpace(targetId) && network.Edges.Any(edge => Comparer.Equals(edge.Id, targetId)))
+        var edge = ResolveEdgeIssueTarget(issue, targetId);
+        if (edge is not null)
         {
-            var edge = network.Edges.First(edge => Comparer.Equals(edge.Id, targetId));
             var from = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, edge.FromNodeId));
             var to = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, edge.ToNodeId));
             var fromLabel = string.IsNullOrWhiteSpace(from?.Name) ? edge.FromNodeId : from!.Name;
@@ -4103,17 +4107,53 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 EdgeId = edge.Id,
                 FromNodeName = fromLabel,
                 ToNodeName = toLabel,
-                Breadcrumb = BuildIssueEdgeBreadcrumb(edge.Id)
+                Breadcrumb = $"Issue → Route {fromLabel} → {toLabel}"
             };
         }
 
-        return new TopIssueViewModel
+        return null;
+    }
+
+    private NodeModel? ResolveNodeIssueTarget(NetworkIssue issue, string? targetId)
+    {
+        if (string.IsNullOrWhiteSpace(targetId))
         {
-            Title = issue.Title,
-            Detail = issue.Explanation,
-            TargetKind = TopIssueTargetKind.None,
-            Breadcrumb = $"Issue → {issue.TargetName}"
-        };
+            return null;
+        }
+
+        var node = network.Nodes.FirstOrDefault(candidate => Comparer.Equals(candidate.Id, targetId));
+        if (node is not null)
+        {
+            return node;
+        }
+
+        if (issue.Type is NetworkIssueType.StarvedNode or NetworkIssueType.IsolatedNode)
+        {
+            node = network.Nodes.FirstOrDefault(candidate => Comparer.Equals(candidate.Name, targetId));
+        }
+
+        return node;
+    }
+
+    private EdgeModel? ResolveEdgeIssueTarget(NetworkIssue issue, string? targetId)
+    {
+        if (string.IsNullOrWhiteSpace(targetId))
+        {
+            return null;
+        }
+
+        var edge = network.Edges.FirstOrDefault(candidate => Comparer.Equals(candidate.Id, targetId));
+        if (edge is not null)
+        {
+            return edge;
+        }
+
+        if (issue.Type is NetworkIssueType.CongestedEdge or NetworkIssueType.HighCostRoute)
+        {
+            edge = network.Edges.FirstOrDefault(candidate => Comparer.Equals(candidate.FromNodeId, targetId) || Comparer.Equals(candidate.ToNodeId, targetId));
+        }
+
+        return edge;
     }
 
     private void PopulateReportMetrics(IEnumerable<ReportMetricViewModel> metrics)

@@ -8,6 +8,9 @@ using System.Windows.Input;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Services;
 using MedWNetworkSim.App.Services.Pathfinding;
+using MedWNetworkSim.App.VisualAnalytics;
+using MedWNetworkSim.App.Insights;
+using MedWNetworkSim.App.VisualAnalytics.Sankey;
 using MedWNetworkSim.Interaction;
 using MedWNetworkSim.Rendering;
 using SkiaSharp;
@@ -1553,6 +1556,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private readonly IScenarioRunner scenarioRunner = new ScenarioRunner();
     private readonly IScenarioValidationService scenarioValidationService = new ScenarioValidationService();
     private readonly IExplainabilityService explainabilityService = new ExplainabilityService();
+    private readonly ISankeyProjectionService sankeyProjectionService = new SankeyProjectionService();
+    private readonly INetworkInsightService networkInsightService = new NetworkInsightService();
 
     private NetworkModel network = new();
     private TemporalNetworkSimulationEngine.TemporalSimulationState? temporalState;
@@ -1644,6 +1649,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private IReadOnlyList<string> explanationCauses = [];
     private IReadOnlyList<string> explanationActions = [];
     private IReadOnlyList<string> explanationRelatedIssues = [];
+    private VisualAnalyticsSnapshot? visualAnalyticsSnapshot;
 
     public WorkspaceViewModel()
     {
@@ -1694,6 +1700,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         TopIssues = [];
         TopIssueAdvisories = [];
         ScenarioWarnings = [];
+        VisualisationState = new VisualisationState();
+        NetworkInsights = [];
         TopIssues.CollectionChanged += (_, _) => Raise(nameof(TopIssueEmptyStateText));
         TopIssueAdvisories.CollectionChanged += (_, _) => Raise(nameof(HasTopIssueAdvisories));
         ScenarioEditor = new ScenarioEditorViewModel(network, MarkDirty);
@@ -1718,6 +1726,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         SelectToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.Select));
         AddNodeToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.AddNode));
         ConnectToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.Connect));
+        SetGraphVisualisationCommand = new RelayCommand(() => VisualisationState.ActiveMode = VisualisationMode.Graph);
+        SetSankeyVisualisationCommand = new RelayCommand(() => VisualisationState.ActiveMode = VisualisationMode.Sankey);
+        SetMapVisualisationCommand = new RelayCommand(() => VisualisationState.ActiveMode = VisualisationMode.Map);
         ToggleIsochroneModeCommand = new RelayCommand(() => SetIsochroneMode(!IsIsochroneModeEnabled));
         ToggleFacilityPlanningModeCommand = new RelayCommand(() => SetFacilityPlanningMode(!IsFacilityPlanningMode));
         AddFacilityOriginCommand = new RelayCommand(AddSelectedNodeAsFacilityOrigin, () => Scene.Selection.SelectedNodeIds.Count == 1);
@@ -1828,6 +1839,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public EdgeInspectorDraft EdgeDraft { get; }
     public BulkSelectionInspectorDraft BulkDraft { get; }
     public ScenarioEditorViewModel ScenarioEditor { get; }
+    public VisualisationState VisualisationState { get; }
+    public ObservableCollection<NetworkInsight> NetworkInsights { get; }
 
     public Array NodeShapeOptions { get; } = Enum.GetValues(typeof(NodeVisualShape));
     public Array NodeKindOptions { get; } = Enum.GetValues(typeof(NodeKind));
@@ -1851,6 +1864,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public RelayCommand SelectToolCommand { get; }
     public RelayCommand AddNodeToolCommand { get; }
     public RelayCommand ConnectToolCommand { get; }
+    public RelayCommand SetGraphVisualisationCommand { get; }
+    public RelayCommand SetSankeyVisualisationCommand { get; }
+    public RelayCommand SetMapVisualisationCommand { get; }
     public RelayCommand ToggleIsochroneModeCommand { get; }
     public RelayCommand ToggleFacilityPlanningModeCommand { get; }
     public RelayCommand AddFacilityOriginCommand { get; }
@@ -2143,6 +2159,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public double PulseProgress { get => pulseProgress; private set => SetProperty(ref pulseProgress, value); }
     public string ScenarioResultSummary { get => scenarioResultSummary; private set => SetProperty(ref scenarioResultSummary, value); }
     public string ExplanationTitle { get => explanationTitle; private set => SetProperty(ref explanationTitle, value); }
+    public string InsightsEmptyStateText => lastOutcomes.Count == 0 ? "Run a simulation to generate insights." : string.Empty;
     public string ExplanationSummary { get => explanationSummary; private set => SetProperty(ref explanationSummary, value); }
     public IReadOnlyList<string> ExplanationCauses { get => explanationCauses; private set => SetProperty(ref explanationCauses, value); }
     public IReadOnlyList<string> ExplanationActions { get => explanationActions; private set => SetProperty(ref explanationActions, value); }
@@ -2686,6 +2703,43 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             StatusChanged = text => StatusText = text
         };
     }
+
+    public VisualAnalyticsSnapshot CreateVisualAnalyticsSnapshot() => visualAnalyticsSnapshot ?? new VisualAnalyticsSnapshot
+    {
+        Network = network,
+        TrafficOutcomes = lastOutcomes,
+        ConsumerCosts = lastConsumerCosts,
+        Period = CurrentPeriod
+    };
+
+    public SankeyDiagramModel BuildSankeyDiagram() => sankeyProjectionService.Build(CreateVisualAnalyticsSnapshot(), new SankeyProjectionOptions
+    {
+        TrafficTypeFilter = VisualisationState.ActiveTrafficTypeFilter,
+        IncludeUnmetDemandSink = VisualisationState.ShowUnmetDemand
+    });
+
+    public IReadOnlyDictionary<string, (double Latitude, double Longitude)> BuildGeoNodeLookup()
+    {
+        return network.Nodes
+            .Where(node => node.Latitude.HasValue && node.Longitude.HasValue)
+            .ToDictionary(node => node.Id, node => (node.Latitude!.Value, node.Longitude!.Value), StringComparer.OrdinalIgnoreCase);
+    }
+
+    public void SelectInsight(NetworkInsight insight)
+    {
+        ArgumentNullException.ThrowIfNull(insight);
+        if (!string.IsNullOrWhiteSpace(insight.TargetNodeId))
+        {
+            SelectNode(insight.TargetNodeId);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(insight.TargetEdgeId))
+        {
+            SelectEdge(insight.TargetEdgeId);
+        }
+    }
+
 
     private void HandleNodeDraftPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -3295,6 +3349,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(TrafficDeliveredColumnLabel));
         lastOutcomes = [];
         lastConsumerCosts = [];
+        visualAnalyticsSnapshot = null;
+        NetworkInsights.Clear();
         CurrentPeriod = 0;
         TimelineMaximum = Math.Max(8, network.TimelineLoopLength ?? 12);
         TimelinePosition = 0;
@@ -3952,6 +4008,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var outcomes = simulationEngine.Simulate(fileService.NormalizeAndValidate(network));
         lastOutcomes = outcomes;
         lastConsumerCosts = simulationEngine.SummarizeConsumerCosts(outcomes.SelectMany(outcome => outcome.Allocations));
+        visualAnalyticsSnapshot = new VisualAnalyticsSnapshot { Network = network, TrafficOutcomes = lastOutcomes, ConsumerCosts = lastConsumerCosts, Period = CurrentPeriod };
+        RefreshInsights();
         lastTimelineStepResult = null;
         Raise(nameof(TrafficDeliveredColumnLabel));
         ApplySimulationOutcomes(outcomes.SelectMany(outcome => outcome.Allocations), null);
@@ -3968,6 +4026,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         lastTimelineStepResult = result;
         Raise(nameof(TrafficDeliveredColumnLabel));
         lastConsumerCosts = simulationEngine.SummarizeConsumerCosts(result.Allocations);
+        visualAnalyticsSnapshot = new VisualAnalyticsSnapshot { Network = network, TrafficOutcomes = lastOutcomes, ConsumerCosts = lastConsumerCosts, Period = CurrentPeriod };
+        RefreshInsights();
         CurrentPeriod = result.Period;
         TimelinePosition = result.EffectivePeriod;
         ApplySimulationOutcomes(result.Allocations, result);
@@ -3981,6 +4041,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(TrafficDeliveredColumnLabel));
         lastOutcomes = [];
         lastConsumerCosts = [];
+        visualAnalyticsSnapshot = null;
+        NetworkInsights.Clear();
         CurrentPeriod = 0;
         TimelinePosition = 0;
         foreach (var edge in Scene.Edges)
@@ -5937,6 +5999,23 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Scene.Selection.PulseNodeId = nodeId;
         Scene.Selection.PulseEdgeId = edgeId;
         Scene.Selection.PulseProgress = PulseProgress;
+    }
+
+    private void RefreshInsights()
+    {
+        NetworkInsights.Clear();
+        if (lastOutcomes.Count == 0)
+        {
+            Raise(nameof(InsightsEmptyStateText));
+            return;
+        }
+
+        foreach (var insight in networkInsightService.Generate(CreateVisualAnalyticsSnapshot()))
+        {
+            NetworkInsights.Add(insight);
+        }
+
+        Raise(nameof(InsightsEmptyStateText));
     }
 
     private string BuildIssueEdgeBreadcrumb(string edgeId)

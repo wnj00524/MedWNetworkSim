@@ -16,6 +16,8 @@ public sealed class SankeyRenderLink
     public required string TargetNodeId { get; init; }
     public required string TrafficType { get; init; }
     public required double Value { get; init; }
+    public string? RouteSignature { get; init; }
+    public IReadOnlyList<string> RouteEdgeIds { get; init; } = [];
     public bool IsUnmetDemand { get; init; }
 }
 

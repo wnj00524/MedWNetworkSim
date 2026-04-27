@@ -28,6 +28,7 @@ public sealed class VisualisationState : ObservableObject
     private bool showMapBackground = true;
     private bool showUnmetDemand = true;
     private bool showCapacityUtilisation = true;
+    private bool collapseMinorFlows = true;
 
     public VisualisationMode ActiveMode
     {
@@ -63,5 +64,11 @@ public sealed class VisualisationState : ObservableObject
     {
         get => showCapacityUtilisation;
         set => SetProperty(ref showCapacityUtilisation, value);
+    }
+
+    public bool CollapseMinorFlows
+    {
+        get => collapseMinorFlows;
+        set => SetProperty(ref collapseMinorFlows, value);
     }
 }

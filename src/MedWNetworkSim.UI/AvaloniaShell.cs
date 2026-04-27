@@ -218,6 +218,9 @@ public sealed class GraphCanvasControl : Control, IDisposable
     private int statusNotificationVersion;
     private string? hoveredNodeId;
     private string? hoveredEdgeId;
+    private Point? lastMapPointerPosition;
+    private Point? mapPointerPressPosition;
+    private bool isMapPanning;
     private bool isDraggingOsmSelection;
     private bool isDisposed;
 
@@ -453,22 +456,25 @@ public sealed class GraphCanvasControl : Control, IDisposable
                 return;
             }
 
-            if (button == GraphPointerButton.Left &&
-                ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map &&
-                ViewModel.IsOsmAreaSelectionEnabled)
+            if (button == GraphPointerButton.Left && ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map)
             {
-                var mapViewport = ViewModel.BuildMapProjectionViewport(transform.LogicalViewport);
-                var geo = mapProjectionService.Unproject(point.X, point.Y, mapViewport);
-                ViewModel.BeginOsmSelection(geo);
-                isDraggingOsmSelection = true;
+                var localPoint = e.GetPosition(this);
+                lastMapPointerPosition = localPoint;
+                mapPointerPressPosition = localPoint;
+                if (ViewModel.IsOsmAreaSelectionEnabled)
+                {
+                    ViewModel.BeginOsmSelection(PointerToMapGeo(localPoint));
+                    isDraggingOsmSelection = true;
+                    isMapPanning = false;
+                }
+                else
+                {
+                    isMapPanning = true;
+                    isDraggingOsmSelection = false;
+                }
+
                 e.Pointer.Capture(this);
                 InvalidateVisual();
-                e.Handled = true;
-                return;
-            }
-
-            if (button == GraphPointerButton.Left && ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map && TryHandleMapSelection(ViewModel, point, transform.LogicalViewport))
-            {
                 e.Handled = true;
                 return;
             }
@@ -812,11 +818,35 @@ public sealed class GraphCanvasControl : Control, IDisposable
         try
         {
             var transform = GetCoordinateTransform();
-            if (isDraggingOsmSelection && ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map)
+            if (ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map && isDraggingOsmSelection)
             {
-                var point = PointerToGraph(e, transform);
-                var mapViewport = ViewModel.BuildMapProjectionViewport(transform.LogicalViewport);
-                ViewModel.UpdateOsmSelection(mapProjectionService.Unproject(point.X, point.Y, mapViewport));
+                ViewModel.UpdateOsmSelection(PointerToMapGeo(e.GetPosition(this)));
+                InvalidateVisual();
+                e.Handled = true;
+                return;
+            }
+
+            if (ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map && isMapPanning)
+            {
+                var current = e.GetPosition(this);
+                if (lastMapPointerPosition is { } previous)
+                {
+                    var delta = current - previous;
+                    if (mapPointerPressPosition is { } pressed)
+                    {
+                        var travelled = current - pressed;
+                        if (travelled.Length > 4d)
+                        {
+                            ViewModel.PanMap(-delta.X, -delta.Y);
+                        }
+                    }
+                    else
+                    {
+                        ViewModel.PanMap(-delta.X, -delta.Y);
+                    }
+                }
+
+                lastMapPointerPosition = current;
                 InvalidateVisual();
                 e.Handled = true;
                 return;
@@ -848,13 +878,33 @@ public sealed class GraphCanvasControl : Control, IDisposable
         try
         {
             var transform = GetCoordinateTransform();
-            if (isDraggingOsmSelection && ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map)
+            if (ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map && isDraggingOsmSelection)
             {
-                var point = PointerToGraph(e, transform);
-                var mapViewport = ViewModel.BuildMapProjectionViewport(transform.LogicalViewport);
-                ViewModel.EndOsmSelection(mapProjectionService.Unproject(point.X, point.Y, mapViewport));
+                ViewModel.EndOsmSelection(PointerToMapGeo(e.GetPosition(this)));
                 isDraggingOsmSelection = false;
+                isMapPanning = false;
+                mapPointerPressPosition = null;
+                lastMapPointerPosition = null;
                 e.Pointer.Capture(null);
+                InvalidateVisual();
+                e.Handled = true;
+                return;
+            }
+
+            if (ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map && isMapPanning)
+            {
+                var current = e.GetPosition(this);
+                var isClick = mapPointerPressPosition is { } pressed && (current - pressed).Length <= 4d;
+                isMapPanning = false;
+                mapPointerPressPosition = null;
+                lastMapPointerPosition = null;
+                e.Pointer.Capture(null);
+                if (isClick && TryHandleMapSelection(ViewModel, PointerToGraph(e, transform), transform.LogicalViewport))
+                {
+                    e.Handled = true;
+                    return;
+                }
+
                 InvalidateVisual();
                 e.Handled = true;
                 return;
@@ -968,6 +1018,9 @@ public sealed class GraphCanvasControl : Control, IDisposable
         if (e.Key == Key.Escape && viewModel.IsOsmAreaSelectionEnabled)
         {
             isDraggingOsmSelection = false;
+            isMapPanning = false;
+            mapPointerPressPosition = null;
+            lastMapPointerPosition = null;
             viewModel.ClearOsmSelection();
             return true;
         }
@@ -1009,6 +1062,14 @@ public sealed class GraphCanvasControl : Control, IDisposable
         var topLevel = TopLevel.GetTopLevel(this);
         var renderScale = topLevel?.RenderScaling ?? 1d;
         return GraphCanvasCoordinateTransform.Create(Bounds.Size, renderScale);
+    }
+
+    private MapGeoCoordinate PointerToMapGeo(Point localPoint)
+    {
+        var transform = GetCoordinateTransform();
+        var graphPoint = transform.PointerToGraph(localPoint);
+        var projectionViewport = ViewModel!.BuildMapProjectionViewport(transform.LogicalViewport);
+        return mapProjectionService.Unproject(graphPoint.X, graphPoint.Y, projectionViewport);
     }
 
     private GraphPoint PointerToGraph(PointerEventArgs e, GraphCanvasCoordinateTransform transform)

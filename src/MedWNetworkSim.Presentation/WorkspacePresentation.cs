@@ -1665,6 +1665,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private bool hasUserMovedMapCamera;
     private bool isOsmAreaSelectionEnabled;
     private OsmBoundingBox? osmSelection;
+    private MapGeoCoordinate? osmSelectionStartCoordinate;
     private string osmWestText = string.Empty;
     private string osmSouthText = string.Empty;
     private string osmEastText = string.Empty;
@@ -2888,23 +2889,38 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return;
         }
 
+        osmSelectionStartCoordinate = coordinate;
         ApplyOsmSelectionFromCoordinates(coordinate, coordinate);
         OsmValidationMessage = "Drag to select an area.";
     }
 
     public void UpdateOsmSelection(MapGeoCoordinate coordinate)
     {
-        if (!IsOsmAreaSelectionEnabled || osmSelection is null)
+        if (!IsOsmAreaSelectionEnabled || osmSelectionStartCoordinate is null)
         {
             return;
         }
 
-        ApplyOsmSelectionFromCoordinates(new MapGeoCoordinate(osmSelection.MinLat, osmSelection.MinLon), coordinate);
+        ApplyOsmSelectionFromCoordinates(osmSelectionStartCoordinate.Value, coordinate);
     }
 
     public void EndOsmSelection(MapGeoCoordinate coordinate)
     {
-        UpdateOsmSelection(coordinate);
+        if (!IsOsmAreaSelectionEnabled || osmSelectionStartCoordinate is null)
+        {
+            return;
+        }
+
+        if (TryCreateBoundingBoxFromCoordinates(osmSelectionStartCoordinate.Value, coordinate, out var bbox, out var error, enforceMinimumSize: true))
+        {
+            SetOsmSelection(bbox, updateText: true);
+        }
+        else
+        {
+            OsmValidationMessage = error ?? "Selected area is invalid.";
+        }
+
+        osmSelectionStartCoordinate = null;
         RefreshOsmSelectionMetrics();
     }
 
@@ -3005,6 +3021,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public void ClearOsmSelection()
     {
         osmSelection = null;
+        osmSelectionStartCoordinate = null;
         OsmWestText = string.Empty;
         OsmSouthText = string.Empty;
         OsmEastText = string.Empty;
@@ -3165,12 +3182,24 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                     : "Selected area ready. Choose Import selected area.";
     }
 
-    public static bool TryCreateBoundingBoxFromCoordinates(MapGeoCoordinate start, MapGeoCoordinate end, out OsmBoundingBox bbox, out string? error)
+    public static bool TryCreateBoundingBoxFromCoordinates(MapGeoCoordinate start, MapGeoCoordinate end, out OsmBoundingBox bbox, out string? error, bool enforceMinimumSize = false)
     {
-        var west = Math.Min(start.Longitude, end.Longitude);
-        var east = Math.Max(start.Longitude, end.Longitude);
-        var south = Math.Min(start.Latitude, end.Latitude);
-        var north = Math.Max(start.Latitude, end.Latitude);
+        var west = Math.Clamp(Math.Min(start.Longitude, end.Longitude), -180d, 180d);
+        var east = Math.Clamp(Math.Max(start.Longitude, end.Longitude), -180d, 180d);
+        var south = Math.Clamp(Math.Min(start.Latitude, end.Latitude), OsmBoundingBox.MinLatitudeLimit, OsmBoundingBox.MaxLatitudeLimit);
+        var north = Math.Clamp(Math.Max(start.Latitude, end.Latitude), OsmBoundingBox.MinLatitudeLimit, OsmBoundingBox.MaxLatitudeLimit);
+
+        if (enforceMinimumSize)
+        {
+            const double minimumSpanDegrees = 0.00001d;
+            if ((east - west) < minimumSpanDegrees || (north - south) < minimumSpanDegrees)
+            {
+                bbox = default;
+                error = "Selected area is too small. Drag a larger box.";
+                return false;
+            }
+        }
+
         return OsmBoundingBox.TryCreate(west, south, east, north, out bbox, out error);
     }
 

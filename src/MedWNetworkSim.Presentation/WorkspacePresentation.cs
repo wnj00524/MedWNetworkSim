@@ -199,7 +199,8 @@ public enum WorkspaceMode
 {
     Normal,
     EdgeEditor,
-    ScenarioEditor
+    ScenarioEditor,
+    OsmImport
 }
 
 public enum InspectorSectionTarget
@@ -1671,6 +1672,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private int osmNodeImportPercentage = 10;
     private string osmValidationMessage = "Drag to select an area.";
     private bool isOsmDownloadInProgress;
+    private OsmImportOptions osmImportOptions = new(true, 10, OsmRetentionStrategy.Balanced, true, true);
     private readonly HashSet<string> highlightedNodeIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> highlightedEdgeIds = new(StringComparer.OrdinalIgnoreCase);
 
@@ -1755,8 +1757,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ShowGraphModeCommand = SetGraphVisualisationCommand;
         ShowSankeyModeCommand = SetSankeyVisualisationCommand;
         ShowMapModeCommand = SetMapVisualisationCommand;
+        StartOsmAreaSelectionCommand = new RelayCommand(EnterOsmImportWorkspace);
         ToggleOsmAreaSelectionCommand = new RelayCommand(() => IsOsmAreaSelectionEnabled = !IsOsmAreaSelectionEnabled);
         ClearOsmSelectionCommand = new RelayCommand(ClearOsmSelection);
+        ImportOsmSelectionCommand = new RelayCommand(() => _ = ImportOsmSelectionAsync(), () => CanImportOsmSelection);
+        CancelOsmImportCommand = new RelayCommand(CancelOsmImport, () => IsOsmImportWorkspaceMode);
         FitMapToNetworkCommand = new RelayCommand(FitMapToNetwork);
         ToggleIsochroneModeCommand = new RelayCommand(() => SetIsochroneMode(!IsIsochroneModeEnabled));
         ToggleFacilityPlanningModeCommand = new RelayCommand(() => SetFacilityPlanningMode(!IsFacilityPlanningMode));
@@ -1902,8 +1907,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public RelayCommand ShowGraphModeCommand { get; }
     public RelayCommand ShowSankeyModeCommand { get; }
     public RelayCommand ShowMapModeCommand { get; }
+    public RelayCommand StartOsmAreaSelectionCommand { get; }
     public RelayCommand ToggleOsmAreaSelectionCommand { get; }
     public RelayCommand ClearOsmSelectionCommand { get; }
+    public RelayCommand ImportOsmSelectionCommand { get; }
+    public RelayCommand CancelOsmImportCommand { get; }
     public RelayCommand FitMapToNetworkCommand { get; }
     public bool IsOsmAreaSelectionEnabled
     {
@@ -1944,6 +1952,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public IReadOnlyList<int> OsmNodeImportPercentagePresets { get; } = [1, 2, 5, 10, 25, 50, 100];
     public string OsmValidationMessage { get => osmValidationMessage; private set => SetProperty(ref osmValidationMessage, value); }
     public string OsmSelectedAreaText => osmSelection is null ? "No area selected" : $"{osmSelection.AreaDegrees:0.####} square degrees";
+    public bool CanImportOsmSelection => osmSelection is not null && !IsOsmDownloadInProgress && IsOsmSelectionValid();
     public string OsmTileCountText
     {
         get
@@ -2292,6 +2301,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 Raise(nameof(IsNormalWorkspaceMode));
                 Raise(nameof(IsEdgeEditorWorkspaceMode));
                 Raise(nameof(IsScenarioEditorWorkspaceMode));
+                Raise(nameof(IsOsmImportWorkspaceMode));
                 Raise(nameof(CanOpenSelectedEdgeEditor));
                 Raise(nameof(CanSaveEdgeEditor));
                 Raise(nameof(CanDeleteSelectedEdgeEditor));
@@ -2300,6 +2310,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 SaveEdgeEditorCommand.NotifyCanExecuteChanged();
                 CancelEdgeEditorCommand.NotifyCanExecuteChanged();
                 CloseScenarioEditorCommand.NotifyCanExecuteChanged();
+                CancelOsmImportCommand.NotifyCanExecuteChanged();
                 DeleteSelectedEdgeEditorCommand.NotifyCanExecuteChanged();
                 AddEdgePermissionRuleCommand.NotifyCanExecuteChanged();
             }
@@ -2308,6 +2319,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public bool IsNormalWorkspaceMode => CurrentWorkspaceMode == WorkspaceMode.Normal;
     public bool IsEdgeEditorWorkspaceMode => CurrentWorkspaceMode == WorkspaceMode.EdgeEditor;
     public bool IsScenarioEditorWorkspaceMode => CurrentWorkspaceMode == WorkspaceMode.ScenarioEditor;
+    public bool IsOsmImportWorkspaceMode => CurrentWorkspaceMode == WorkspaceMode.OsmImport;
     public InspectorTabTarget SelectedInspectorTab
     {
         get => selectedInspectorTab;
@@ -2947,7 +2959,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     public async Task ImportOsmSelectionAsync(CancellationToken ct = default)
     {
-        if (osmSelection is null)
+        if (!CanImportOsmSelection || osmSelection is null)
         {
             OsmValidationMessage = "Select an OSM area first.";
             StatusText = OsmValidationMessage;
@@ -2964,16 +2976,19 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         try
         {
             IsOsmDownloadInProgress = true;
+            ImportOsmSelectionCommand.NotifyCanExecuteChanged();
             var tiles = OsmBoundingBoxTiler.CreateTiles(osmSelection);
             StatusText = tiles.Count > 1 ? $"Downloading OSM data in {tiles.Count} tiles." : "Downloading OSM data.";
+            osmImportOptions = osmImportOptions with { NodeRetentionPercentage = OsmNodeImportPercentage };
             var imported = await osmBoundingBoxImporter.ImportAsync(
                 osmSelection,
-                new OsmImportOptions(true, OsmNodeImportPercentage, OsmRetentionStrategy.Balanced, true, true),
+                osmImportOptions,
                 ct);
             LoadNetwork(imported, $"Imported {imported.Nodes.Count} nodes and {imported.Edges.Count} edges");
             VisualisationState.ActiveMode = VisualisationMode.Map;
             FitMapToNetwork();
             IsOsmAreaSelectionEnabled = false;
+            CurrentWorkspaceMode = WorkspaceMode.Normal;
         }
         catch (OsmImportException ex)
         {
@@ -2983,6 +2998,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         finally
         {
             IsOsmDownloadInProgress = false;
+            ImportOsmSelectionCommand.NotifyCanExecuteChanged();
         }
     }
 
@@ -2997,6 +3013,32 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(OsmSelection));
         RefreshOsmSelectionMetrics();
         NotifyVisualChanged();
+    }
+
+    public void EnterOsmImportWorkspace()
+    {
+        CurrentWorkspaceMode = WorkspaceMode.OsmImport;
+        VisualisationState.ActiveMode = VisualisationMode.Map;
+        IsOsmAreaSelectionEnabled = true;
+        ToolStatusText = "Pan and zoom the map, then drag to select an area.";
+        if (BuildGeoNodeLookup().Count > 0)
+        {
+            FitMapToNetwork();
+            StatusText = "OSM import mode ready. Drag to select an area.";
+            return;
+        }
+
+        MapCamera = new MapCameraState(51.5074d, -0.1278d, 0.0015d, false);
+        hasUserMovedMapCamera = false;
+        NotifyVisualChanged();
+        StatusText = "OSM import mode ready. Map centered on London by default.";
+    }
+
+    public void CancelOsmImport()
+    {
+        IsOsmAreaSelectionEnabled = false;
+        CurrentWorkspaceMode = WorkspaceMode.Normal;
+        ToolStatusText = "OSM import canceled.";
     }
 
     public void FitMapToNetwork()
@@ -3042,13 +3084,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private void ApplyOsmSelectionFromCoordinates(MapGeoCoordinate a, MapGeoCoordinate b)
     {
-        if (OsmBoundingBox.TryCreate(
-            Math.Min(a.Longitude, b.Longitude),
-            Math.Min(a.Latitude, b.Latitude),
-            Math.Max(a.Longitude, b.Longitude),
-            Math.Max(a.Latitude, b.Latitude),
-            out var bbox,
-            out var error))
+        if (TryCreateBoundingBoxFromCoordinates(a, b, out var bbox, out var error))
         {
             SetOsmSelection(bbox, updateText: true);
             return;
@@ -3112,18 +3148,48 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         Raise(nameof(OsmSelectedAreaText));
         Raise(nameof(OsmTileCountText));
+        Raise(nameof(CanImportOsmSelection));
+        ImportOsmSelectionCommand.NotifyCanExecuteChanged();
         if (osmSelection is null)
         {
+            OsmValidationMessage = "No selection yet. Pan and zoom the map, then drag to select an area.";
             return;
         }
 
         OsmValidationMessage = osmSelection.AreaDegrees > OsmBoundingBoxTiler.AutoTileAreaLimitDegrees
-            ? "Selected area is too large. Zoom in or reduce selection."
+            ? "Selected area is too large. Zoom in or select a smaller area."
             : osmSelection.AreaDegrees > OsmBoundingBoxTiler.MaxTileAreaDegrees
                 ? "Selection will be downloaded in tiles."
                 : osmSelection.AreaDegrees > 1d || OsmNodeImportPercentage > 50
                     ? "This may create a large network. Reduce area or node percentage."
-                    : "Ready to download OSM data.";
+                    : "Selected area ready. Choose Import selected area.";
+    }
+
+    public static bool TryCreateBoundingBoxFromCoordinates(MapGeoCoordinate start, MapGeoCoordinate end, out OsmBoundingBox bbox, out string? error)
+    {
+        var west = Math.Min(start.Longitude, end.Longitude);
+        var east = Math.Max(start.Longitude, end.Longitude);
+        var south = Math.Min(start.Latitude, end.Latitude);
+        var north = Math.Max(start.Latitude, end.Latitude);
+        return OsmBoundingBox.TryCreate(west, south, east, north, out bbox, out error);
+    }
+
+    private bool IsOsmSelectionValid()
+    {
+        if (osmSelection is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            _ = OsmBoundingBoxTiler.CreateTiles(osmSelection);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public void SelectInsight(NetworkInsight insight)
@@ -4946,6 +5012,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(IsNormalWorkspaceMode));
         Raise(nameof(IsEdgeEditorWorkspaceMode));
         Raise(nameof(IsScenarioEditorWorkspaceMode));
+        Raise(nameof(IsOsmImportWorkspaceMode));
         DeleteSelectionCommand.NotifyCanExecuteChanged();
         OpenSelectedEdgeEditorCommand.NotifyCanExecuteChanged();
         SaveEdgeEditorCommand.NotifyCanExecuteChanged();

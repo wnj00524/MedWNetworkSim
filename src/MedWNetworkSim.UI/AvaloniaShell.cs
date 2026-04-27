@@ -201,7 +201,8 @@ public sealed class GraphCanvasControl : Control
 
     private readonly GraphRenderer renderer = new();
     private readonly SankeyRenderer sankeyRenderer = new();
-    private readonly MapGraphRenderer mapRenderer = new();
+    private readonly OsmRasterTileProvider osmTileProvider = new();
+    private readonly MapGraphRenderer mapRenderer;
     private readonly IMapProjectionService mapProjectionService = new MapWebMercatorProjectionService();
     private SankeyDiagramModel? lastSankeyModel;
     private SankeyRenderDiagram? lastSankeyDiagram;
@@ -221,6 +222,7 @@ public sealed class GraphCanvasControl : Control
 
     public GraphCanvasControl()
     {
+        mapRenderer = new MapGraphRenderer(new MapWebMercatorProjectionService(), osmTileProvider);
         Focusable = true;
         ClipToBounds = true;
         MinHeight = 420;
@@ -235,6 +237,16 @@ public sealed class GraphCanvasControl : Control
             }
         };
         DetachedFromVisualTree += (_, _) => animationTimer.Stop();
+        osmTileProvider.TilesChanged += (_, _) =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (ViewModel?.VisualisationState.ActiveMode == VisualisationMode.Map)
+                {
+                    InvalidateVisual();
+                }
+            }, DispatcherPriority.Background);
+        };
     }
 
     public event EventHandler<GraphCanvasStatusChangedEventArgs>? StatusChanged;
@@ -930,7 +942,10 @@ public sealed class GraphCanvasControl : Control
 
         if (e.Key == Key.Enter)
         {
-            _ = viewModel.ImportOsmSelectionAsync();
+            if (viewModel.ImportOsmSelectionCommand.CanExecute(null))
+            {
+                viewModel.ImportOsmSelectionCommand.Execute(null);
+            }
             return true;
         }
 
@@ -1216,6 +1231,7 @@ public sealed class ShellWindow : Window
     private Control? edgeEditorWorkspaceFocusTarget;
     private Border? scenarioEditorWorkspaceHost;
     private Control? scenarioEditorWorkspaceFocusTarget;
+    private Border? osmImportWorkspaceHost;
     private Border? toolRailHost;
     private Border? canvasHost;
     private Border? inspectorHost;
@@ -1241,7 +1257,8 @@ public sealed class ShellWindow : Window
     {
         Standard,
         TrafficTypes,
-        ScenarioEditor
+        ScenarioEditor,
+        OsmImport
     }
 
     private enum UnsavedChangesChoice
@@ -1299,6 +1316,10 @@ public sealed class ShellWindow : Window
                 else if (viewModel.IsScenarioEditorWorkspaceMode)
                 {
                     FocusScenarioEditorWorkspace();
+                }
+                else if (viewModel.IsOsmImportWorkspaceMode)
+                {
+                    osmImportWorkspaceHost?.BringIntoView();
                 }
                 else
                 {
@@ -1365,6 +1386,8 @@ public sealed class ShellWindow : Window
         edgeEditorWorkspaceHost.IsVisible = false;
         scenarioEditorWorkspaceHost = BuildScenarioEditorWorkspace(viewModel);
         scenarioEditorWorkspaceHost.IsVisible = false;
+        osmImportWorkspaceHost = BuildOsmImportWorkspace(viewModel);
+        osmImportWorkspaceHost.IsVisible = false;
 
         var contentRoot = new Grid
         {
@@ -1373,7 +1396,8 @@ public sealed class ShellWindow : Window
                 standardWorkspaceHost,
                 trafficTypeWorkspaceHost,
                 edgeEditorWorkspaceHost,
-                scenarioEditorWorkspaceHost
+                scenarioEditorWorkspaceHost,
+                osmImportWorkspaceHost
             }
         };
 
@@ -1521,6 +1545,7 @@ public sealed class ShellWindow : Window
                 BuildButton("Open", new RelayCommand(() => _ = OpenNetworkFileAsync(viewModel)), toolTip: "Open a network JSON file."),
                 BuildButton("Save", new RelayCommand(() => _ = SaveNetworkAsync(viewModel)), toolTip: "Save the current network JSON."),
                 BuildButton("Import", new RelayCommand(() => _ = ImportGraphMlAsync(viewModel)), toolTip: "Import GraphML into the current workspace."),
+                BuildButton("Import from OpenStreetMap", viewModel.StartOsmAreaSelectionCommand, toolTip: "Open a full-screen map workspace and drag-select an OSM area."),
                 BuildButton("Export", new RelayCommand(() => _ = ExportGraphMlAsync(viewModel)), toolTip: "Export the active network as GraphML."),
                 BuildButton("Run", viewModel.SimulateCommand, isPrimary: true, toolTip: "Run the simulation timeline."),
                 BuildButton("Step", viewModel.StepCommand, isPrimary: true, toolTip: "Advance the simulation by one period."),
@@ -1689,8 +1714,8 @@ public sealed class ShellWindow : Window
                         new CheckBox { Content = "Show map background", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowMapBackground", BindingMode.TwoWay) },
                         new CheckBox { Content = "Show capacity utilisation", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowCapacityUtilisation", BindingMode.TwoWay) },
                         new CheckBox { Content = "Show unmet demand", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) },
-                        BuildToggleButton("Select OSM area", viewModel.ToggleOsmAreaSelectionCommand, "Drag to select an area up to 2 square degrees."),
-                        BuildButton("Download OSM data", new RelayCommand(() => _ = viewModel.ImportOsmSelectionAsync()), toolTip: "Download the selected OpenStreetMap area."),
+                        BuildToggleButton("Select area", viewModel.ToggleOsmAreaSelectionCommand, "Drag to select an area up to 2 square degrees."),
+                        BuildButton("Import selected area", viewModel.ImportOsmSelectionCommand, toolTip: "Download and import the selected OpenStreetMap area."),
                         BuildButton("Clear selection", viewModel.ClearOsmSelectionCommand, toolTip: "Clear the selected OSM area."),
                         BuildButton("Fit to network", viewModel.FitMapToNetworkCommand, toolTip: "Fit the map camera to imported network nodes.")
                     }
@@ -2210,6 +2235,66 @@ public sealed class ShellWindow : Window
                 list,
                 emptyState
             }
+        };
+    }
+
+    private Border BuildOsmImportWorkspace(WorkspaceViewModel viewModel)
+    {
+        var mapCanvas = new GraphCanvasControl
+        {
+            ViewModel = viewModel,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+
+        var rightPanel = BuildDashboardPanel(
+            new StackPanel
+            {
+                Spacing = 10,
+                Children =
+                {
+                    BuildSectionTitle("Import from OpenStreetMap", "Pan and zoom the map, then drag to select an area."),
+                    BuildReadOnlyRow("West", nameof(WorkspaceViewModel.OsmWestText)),
+                    BuildReadOnlyRow("South", nameof(WorkspaceViewModel.OsmSouthText)),
+                    BuildReadOnlyRow("East", nameof(WorkspaceViewModel.OsmEastText)),
+                    BuildReadOnlyRow("North", nameof(WorkspaceViewModel.OsmNorthText)),
+                    BuildReadOnlyRow("Selected area", nameof(WorkspaceViewModel.OsmSelectedAreaText)),
+                    BuildReadOnlyRow("Tile estimate", nameof(WorkspaceViewModel.OsmTileCountText)),
+                    BuildReadOnlyRow("Validation", nameof(WorkspaceViewModel.OsmValidationMessage)),
+                    BuildLabeledComboBox("Nodes to import", nameof(WorkspaceViewModel.OsmNodeImportPercentagePresets), nameof(WorkspaceViewModel.OsmNodeImportPercentage)),
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 8,
+                        Children =
+                        {
+                            BuildButton("Import selected area", viewModel.ImportOsmSelectionCommand, isPrimary: true),
+                            BuildButton("Clear selection", viewModel.ClearOsmSelectionCommand),
+                            BuildButton("Cancel", viewModel.CancelOsmImportCommand)
+                        }
+                    }
+                }
+            },
+            header: "OSM Area Import",
+            padding: new Thickness(12),
+            radius: new CornerRadius(14));
+        rightPanel.Width = 390;
+
+        var workspace = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+            ColumnSpacing = 12,
+            Children =
+            {
+                mapCanvas,
+                rightPanel
+            }
+        };
+        Grid.SetColumn(rightPanel, 1);
+
+        return new Border
+        {
+            Child = workspace
         };
     }
 
@@ -3980,18 +4065,20 @@ public sealed class ShellWindow : Window
 
     private void UpdateShellWorkspaceMode()
     {
-        if (standardWorkspaceHost is null || trafficTypeWorkspaceHost is null || edgeEditorWorkspaceHost is null || scenarioEditorWorkspaceHost is null)
+        if (standardWorkspaceHost is null || trafficTypeWorkspaceHost is null || edgeEditorWorkspaceHost is null || scenarioEditorWorkspaceHost is null || osmImportWorkspaceHost is null)
         {
             return;
         }
 
         var isTrafficTypeWorkspace = shellWorkspaceMode == ShellWorkspaceMode.TrafficTypes;
         var isScenarioEditorWorkspace = shellWorkspaceMode == ShellWorkspaceMode.ScenarioEditor || viewModel.IsScenarioEditorWorkspaceMode;
-        var isEdgeEditorWorkspace = !isTrafficTypeWorkspace && !isScenarioEditorWorkspace && viewModel.IsEdgeEditorWorkspaceMode;
-        standardWorkspaceHost.IsVisible = !isTrafficTypeWorkspace && !isEdgeEditorWorkspace && !isScenarioEditorWorkspace;
+        var isOsmImportWorkspace = shellWorkspaceMode == ShellWorkspaceMode.OsmImport || viewModel.IsOsmImportWorkspaceMode;
+        var isEdgeEditorWorkspace = !isTrafficTypeWorkspace && !isScenarioEditorWorkspace && !isOsmImportWorkspace && viewModel.IsEdgeEditorWorkspaceMode;
+        standardWorkspaceHost.IsVisible = !isTrafficTypeWorkspace && !isEdgeEditorWorkspace && !isScenarioEditorWorkspace && !isOsmImportWorkspace;
         trafficTypeWorkspaceHost.IsVisible = isTrafficTypeWorkspace;
         edgeEditorWorkspaceHost.IsVisible = isEdgeEditorWorkspace;
         scenarioEditorWorkspaceHost.IsVisible = isScenarioEditorWorkspace;
+        osmImportWorkspaceHost.IsVisible = isOsmImportWorkspace;
         refreshToolRailState?.Invoke();
     }
 
@@ -4063,6 +4150,13 @@ public sealed class ShellWindow : Window
         if (viewModel.IsScenarioEditorWorkspaceMode && e.Key == Key.Escape)
         {
             _ = CloseScenarioEditorWithConfirmationAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if (viewModel.IsOsmImportWorkspaceMode && e.Key == Key.Escape)
+        {
+            viewModel.CancelOsmImportCommand.Execute(null);
             e.Handled = true;
             return;
         }

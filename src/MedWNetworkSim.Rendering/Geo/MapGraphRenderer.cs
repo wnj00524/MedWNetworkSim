@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net.Http;
 using SkiaSharp;
 
@@ -82,12 +83,20 @@ public sealed class NoTileProvider : IMapTileProvider
 
 public sealed class OsmRasterTileProvider : IMapTileProvider, IDisposable
 {
-    private sealed record TileCacheEntry(SKBitmap? Bitmap, bool IsLoading, DateTimeOffset LastFailureAt);
+    private sealed record TileCacheEntry(SKBitmap? Bitmap, bool IsLoading, DateTimeOffset LastFailureAt, bool HasFailure);
 
+    private const int MaxCachedTiles = 256;
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
     private readonly HttpClient httpClient;
     private readonly bool ownsClient;
     private readonly ConcurrentDictionary<OsmTile, TileCacheEntry> cache = new();
-    private string? statusMessage;
+    private readonly Dictionary<OsmTile, LinkedListNode<OsmTile>> lruNodes = new();
+    private readonly LinkedList<OsmTile> lruList = new();
+    private readonly object cacheSync = new();
+    private readonly SemaphoreSlim downloadLimiter = new(2, 2);
+    private readonly CancellationTokenSource disposeCts = new();
+    private int failedTileCount;
+    private int isDisposed;
 
     public OsmRasterTileProvider(HttpClient? httpClient = null)
     {
@@ -100,13 +109,16 @@ public sealed class OsmRasterTileProvider : IMapTileProvider, IDisposable
     }
 
     public bool HasTiles => true;
-    public string? StatusMessage => statusMessage;
+    public string? StatusMessage => Volatile.Read(ref failedTileCount) > 0
+        ? "Could not load some map tiles. Check your connection and continue selecting an area."
+        : null;
     public event EventHandler? TilesChanged;
 
     public bool TryGetTile(OsmTile tile, out SKBitmap? bitmap)
     {
         if (cache.TryGetValue(tile, out var cached) && cached.Bitmap is not null)
         {
+            TouchTile(tile);
             bitmap = cached.Bitmap;
             return true;
         }
@@ -117,6 +129,11 @@ public sealed class OsmRasterTileProvider : IMapTileProvider, IDisposable
 
     public void RequestTile(OsmTile tile)
     {
+        if (Volatile.Read(ref isDisposed) != 0)
+        {
+            return;
+        }
+
         if (tile.Zoom is < 0 or > 19)
         {
             return;
@@ -129,58 +146,163 @@ public sealed class OsmRasterTileProvider : IMapTileProvider, IDisposable
             lastFailureAt = existing.LastFailureAt;
             if (existing.Bitmap is not null || existing.IsLoading)
             {
+                TouchTile(tile);
                 return;
             }
 
-            if (existing.LastFailureAt != default && now - existing.LastFailureAt < TimeSpan.FromSeconds(30))
+            if (existing.LastFailureAt != default && now - existing.LastFailureAt < RetryDelay)
             {
                 return;
             }
         }
 
-        cache[tile] = new TileCacheEntry(null, true, lastFailureAt);
-        _ = DownloadTileAsync(tile);
+        cache[tile] = new TileCacheEntry(null, true, lastFailureAt, false);
+        TouchTile(tile);
+        _ = DownloadTileAsync(tile, disposeCts.Token);
     }
 
     public void Dispose()
     {
-        foreach (var item in cache.Values)
+        if (Interlocked.Exchange(ref isDisposed, 1) != 0)
         {
-            item.Bitmap?.Dispose();
+            return;
         }
 
+        disposeCts.Cancel();
+
+        foreach (var item in cache)
+        {
+            item.Value.Bitmap?.Dispose();
+        }
+
+        cache.Clear();
+        lock (cacheSync)
+        {
+            lruNodes.Clear();
+            lruList.Clear();
+        }
+
+        disposeCts.Dispose();
+        downloadLimiter.Dispose();
         if (ownsClient)
         {
             httpClient.Dispose();
         }
     }
 
-    private async Task DownloadTileAsync(OsmTile tile)
+    private async Task DownloadTileAsync(OsmTile tile, CancellationToken cancellationToken)
     {
+        var limiterEntered = false;
         try
         {
-            using var response = await httpClient.GetAsync($"https://tile.openstreetmap.org/{tile.Zoom}/{tile.X}/{tile.Y}.png", HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+            await downloadLimiter.WaitAsync(cancellationToken).ConfigureAwait(false);
+            limiterEntered = true;
+            using var response = await httpClient.GetAsync($"https://tile.openstreetmap.org/{tile.Zoom}/{tile.X}/{tile.Y}.png", HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
-            var bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
             var bitmap = SKBitmap.Decode(bytes);
             if (bitmap is null)
             {
-                cache[tile] = new TileCacheEntry(null, false, DateTimeOffset.UtcNow);
-                statusMessage = "Some map tiles failed to decode. You can still select an area and import.";
+                SetFailure(tile);
                 TilesChanged?.Invoke(this, EventArgs.Empty);
                 return;
             }
 
-            cache[tile] = new TileCacheEntry(bitmap, false, default);
-            statusMessage = null;
+            var previous = cache.TryGetValue(tile, out var priorEntry) ? priorEntry : null;
+            cache[tile] = new TileCacheEntry(bitmap, false, default, false);
+            TouchTile(tile);
+            if (previous?.HasFailure == true)
+            {
+                Interlocked.Decrement(ref failedTileCount);
+            }
+
+            previous?.Bitmap?.Dispose();
+            EnforceCacheLimit();
             TilesChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch (Exception ex)
         {
-            _ = ex;
-            cache[tile] = new TileCacheEntry(null, false, DateTimeOffset.UtcNow);
-            statusMessage = "Could not download some map tiles. Check your connection and continue selecting an area.";
+            Trace.WriteLine($"[OsmRasterTileProvider] Tile download failed for {tile.Zoom}/{tile.X}/{tile.Y}: {ex}");
+            SetFailure(tile);
             TilesChanged?.Invoke(this, EventArgs.Empty);
+        }
+        finally
+        {
+            if (limiterEntered)
+            {
+                downloadLimiter.Release();
+            }
+        }
+    }
+
+    private void SetFailure(OsmTile tile)
+    {
+        var previous = cache.TryGetValue(tile, out var priorEntry) ? priorEntry : null;
+        cache[tile] = new TileCacheEntry(null, false, DateTimeOffset.UtcNow, true);
+        TouchTile(tile);
+        if (previous?.HasFailure != true)
+        {
+            Interlocked.Increment(ref failedTileCount);
+        }
+    }
+
+    private void TouchTile(OsmTile tile)
+    {
+        lock (cacheSync)
+        {
+            if (lruNodes.TryGetValue(tile, out var node))
+            {
+                lruList.Remove(node);
+            }
+            else
+            {
+                node = new LinkedListNode<OsmTile>(tile);
+                lruNodes[tile] = node;
+            }
+
+            lruList.AddFirst(node);
+        }
+    }
+
+    private void EnforceCacheLimit()
+    {
+        while (cache.Count > MaxCachedTiles)
+        {
+            OsmTile? tileToEvict = null;
+            lock (cacheSync)
+            {
+                var node = lruList.Last;
+                while (node is not null)
+                {
+                    if (cache.TryGetValue(node.Value, out var cached) && !cached.IsLoading)
+                    {
+                        tileToEvict = node.Value;
+                        lruList.Remove(node);
+                        lruNodes.Remove(node.Value);
+                        break;
+                    }
+
+                    node = node.Previous;
+                }
+            }
+
+            if (tileToEvict is null)
+            {
+                break;
+            }
+
+            if (cache.TryRemove(tileToEvict.Value, out var removed))
+            {
+                if (removed.HasFailure)
+                {
+                    Interlocked.Decrement(ref failedTileCount);
+                }
+
+                removed.Bitmap?.Dispose();
+            }
         }
     }
 }

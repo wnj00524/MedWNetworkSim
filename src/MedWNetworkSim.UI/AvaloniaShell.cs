@@ -217,6 +217,7 @@ public sealed class GraphCanvasControl : Control
     private int statusNotificationVersion;
     private string? hoveredNodeId;
     private string? hoveredEdgeId;
+    private bool isDraggingOsmSelection;
 
     public GraphCanvasControl()
     {
@@ -317,7 +318,7 @@ public sealed class GraphCanvasControl : Control
             else if (mode == VisualisationMode.Map)
             {
                 var geoLookup = ViewModel.BuildGeoNodeLookup().ToDictionary(item => item.Key, item => new MapGeoCoordinate(item.Value.Latitude, item.Value.Longitude), StringComparer.OrdinalIgnoreCase);
-                mapRenderer.Render(surface.Canvas, interactionContext.Scene, interactionContext.Viewport, transform.LogicalViewport, geoLookup, ViewModel.VisualisationState.ShowMapBackground, out _);
+                mapRenderer.Render(surface.Canvas, interactionContext.Scene, interactionContext.Viewport, transform.LogicalViewport, geoLookup, ViewModel.VisualisationState.ShowMapBackground, ViewModel.MapCamera, ViewModel.BuildMapSelectionOverlay(), out _);
             }
             else
             {
@@ -404,6 +405,20 @@ public sealed class GraphCanvasControl : Control
 
             if (button == GraphPointerButton.Left && ViewModel.VisualisationState.ActiveMode == VisualisationMode.Sankey && TryHandleSankeySelection(ViewModel, point))
             {
+                e.Handled = true;
+                return;
+            }
+
+            if (button == GraphPointerButton.Left &&
+                ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map &&
+                ViewModel.IsOsmAreaSelectionEnabled)
+            {
+                var mapViewport = ViewModel.BuildMapProjectionViewport(transform.LogicalViewport);
+                var geo = mapProjectionService.Unproject(point.X, point.Y, mapViewport);
+                ViewModel.BeginOsmSelection(geo);
+                isDraggingOsmSelection = true;
+                e.Pointer.Capture(this);
+                InvalidateVisual();
                 e.Handled = true;
                 return;
             }
@@ -506,16 +521,7 @@ public sealed class GraphCanvasControl : Control
             return false;
         }
 
-        var minLatitude = geoLookup.Values.Min(item => item.Latitude);
-        var maxLatitude = geoLookup.Values.Max(item => item.Latitude);
-        var minLongitude = geoLookup.Values.Min(item => item.Longitude);
-        var maxLongitude = geoLookup.Values.Max(item => item.Longitude);
-        var projectionViewport = new MapProjectionViewport(
-            viewportSize.Width,
-            viewportSize.Height,
-            (minLatitude + maxLatitude) / 2d,
-            (minLongitude + maxLongitude) / 2d,
-            Math.Max(0.0004d, viewModel.Viewport.Zoom * 0.0025d));
+        var projectionViewport = viewModel.BuildMapProjectionViewport(viewportSize);
 
         var nearestNode = geoLookup
             .Select(item =>
@@ -762,6 +768,16 @@ public sealed class GraphCanvasControl : Control
         try
         {
             var transform = GetCoordinateTransform();
+            if (isDraggingOsmSelection && ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map)
+            {
+                var point = PointerToGraph(e, transform);
+                var mapViewport = ViewModel.BuildMapProjectionViewport(transform.LogicalViewport);
+                ViewModel.UpdateOsmSelection(mapProjectionService.Unproject(point.X, point.Y, mapViewport));
+                InvalidateVisual();
+                e.Handled = true;
+                return;
+            }
+
             ViewModel.InteractionController.OnPointerMoved(
                 ViewModel.CreateInteractionContext(transform.LogicalViewport),
                 PointerToGraph(e, transform));
@@ -788,6 +804,18 @@ public sealed class GraphCanvasControl : Control
         try
         {
             var transform = GetCoordinateTransform();
+            if (isDraggingOsmSelection && ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map)
+            {
+                var point = PointerToGraph(e, transform);
+                var mapViewport = ViewModel.BuildMapProjectionViewport(transform.LogicalViewport);
+                ViewModel.EndOsmSelection(mapProjectionService.Unproject(point.X, point.Y, mapViewport));
+                isDraggingOsmSelection = false;
+                e.Pointer.Capture(null);
+                InvalidateVisual();
+                e.Handled = true;
+                return;
+            }
+
             var button = e.InitialPressMouseButton switch
             {
                 MouseButton.Middle => GraphPointerButton.Middle,
@@ -823,6 +851,14 @@ public sealed class GraphCanvasControl : Control
         try
         {
             var transform = GetCoordinateTransform();
+            if (ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map)
+            {
+                ViewModel.ZoomMapAt(PointerToGraph(e, transform), e.Delta.Y > 0d ? 1.25d : 0.8d);
+                InvalidateVisual();
+                e.Handled = true;
+                return;
+            }
+
             ViewModel.InteractionController.OnPointerWheel(
                 ViewModel.CreateInteractionContext(transform.LogicalViewport),
                 PointerToGraph(e, transform),
@@ -857,6 +893,13 @@ public sealed class GraphCanvasControl : Control
         try
         {
             var transform = GetCoordinateTransform();
+            if (ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map && TryHandleMapKeyDown(ViewModel, e))
+            {
+                InvalidateVisual();
+                e.Handled = true;
+                return;
+            }
+
             if (ViewModel.InteractionController.OnKeyDown(
                     ViewModel.CreateInteractionContext(transform.LogicalViewport),
                     e.Key.ToString(),
@@ -873,6 +916,45 @@ public sealed class GraphCanvasControl : Control
             ReportInputFailure("keyboard input", ex);
             e.Handled = true;
         }
+    }
+
+    private bool TryHandleMapKeyDown(WorkspaceViewModel viewModel, KeyEventArgs e)
+    {
+        const double pan = 64d;
+        if (e.Key == Key.Escape && viewModel.IsOsmAreaSelectionEnabled)
+        {
+            isDraggingOsmSelection = false;
+            viewModel.ClearOsmSelection();
+            return true;
+        }
+
+        if (e.Key == Key.Enter)
+        {
+            _ = viewModel.ImportOsmSelectionAsync();
+            return true;
+        }
+
+        if (e.Key is Key.Add or Key.OemPlus)
+        {
+            viewModel.ZoomMapAt(new GraphPoint(viewModel.LastViewportSize.Width / 2d, viewModel.LastViewportSize.Height / 2d), 1.2d);
+            return true;
+        }
+
+        if (e.Key is Key.Subtract or Key.OemMinus)
+        {
+            viewModel.ZoomMapAt(new GraphPoint(viewModel.LastViewportSize.Width / 2d, viewModel.LastViewportSize.Height / 2d), 0.8d);
+            return true;
+        }
+
+        if (e.Key is Key.Left or Key.Right or Key.Up or Key.Down)
+        {
+            var dx = e.Key == Key.Left ? -pan : e.Key == Key.Right ? pan : 0d;
+            var dy = e.Key == Key.Up ? -pan : e.Key == Key.Down ? pan : 0d;
+            viewModel.PanMap(dx, dy);
+            return true;
+        }
+
+        return false;
     }
 
     public GraphCanvasCoordinateTransform GetCoordinateTransform()
@@ -1593,14 +1675,27 @@ public sealed class ShellWindow : Window
 
         var mapOptions = new StackPanel
         {
-            Orientation = Orientation.Horizontal,
+            Orientation = Orientation.Vertical,
             Spacing = 12,
             IsVisible = viewModel.IsMapMode,
             Children =
             {
-                new CheckBox { Content = "Show map background", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowMapBackground", BindingMode.TwoWay) },
-                new CheckBox { Content = "Show capacity utilisation", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowCapacityUtilisation", BindingMode.TwoWay) },
-                new CheckBox { Content = "Show unmet demand", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) }
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 12,
+                    Children =
+                    {
+                        new CheckBox { Content = "Show map background", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowMapBackground", BindingMode.TwoWay) },
+                        new CheckBox { Content = "Show capacity utilisation", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowCapacityUtilisation", BindingMode.TwoWay) },
+                        new CheckBox { Content = "Show unmet demand", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) },
+                        BuildToggleButton("Select OSM area", viewModel.ToggleOsmAreaSelectionCommand, "Drag to select an area up to 2 square degrees."),
+                        BuildButton("Download OSM data", new RelayCommand(() => _ = viewModel.ImportOsmSelectionAsync()), toolTip: "Download the selected OpenStreetMap area."),
+                        BuildButton("Clear selection", viewModel.ClearOsmSelectionCommand, toolTip: "Clear the selected OSM area."),
+                        BuildButton("Fit to network", viewModel.FitMapToNetworkCommand, toolTip: "Fit the map camera to imported network nodes.")
+                    }
+                },
+                BuildOsmDownloadPanel(viewModel)
             }
         };
 
@@ -1865,6 +1960,88 @@ public sealed class ShellWindow : Window
                 uncoveredList
             }
         };
+    }
+
+    private Control BuildOsmDownloadPanel(WorkspaceViewModel viewModel)
+    {
+        var grid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*,*,*,Auto,*"),
+            RowDefinitions = new RowDefinitions("Auto,Auto"),
+            ColumnSpacing = 8,
+            RowSpacing = 5
+        };
+
+        AddCoordinate("West", nameof(WorkspaceViewModel.OsmWestText), 0);
+        AddCoordinate("South", nameof(WorkspaceViewModel.OsmSouthText), 1);
+        AddCoordinate("East", nameof(WorkspaceViewModel.OsmEastText), 2);
+        AddCoordinate("North", nameof(WorkspaceViewModel.OsmNorthText), 3);
+
+        var nodeSelector = new ComboBox
+        {
+            MinWidth = 92,
+            ItemsSource = viewModel.OsmNodeImportPercentagePresets,
+            [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(WorkspaceViewModel.OsmNodeImportPercentage), BindingMode.TwoWay)
+        };
+        ToolTip.SetTip(nodeSelector, "Percentage of reducible OSM shape nodes to retain. Junctions, dead ends, and connectivity nodes are always kept.");
+        var nodePanel = new StackPanel
+        {
+            Spacing = 3,
+            Children =
+            {
+                new TextBlock { Text = "Nodes to import", Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText), FontSize = 11 },
+                nodeSelector
+            }
+        };
+        Grid.SetColumn(nodePanel, 4);
+        grid.Children.Add(nodePanel);
+
+        var metrics = new StackPanel
+        {
+            Spacing = 2,
+            Children =
+            {
+                new TextBlock { [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.OsmSelectedAreaText)), Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText), TextWrapping = TextWrapping.Wrap },
+                new TextBlock { [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.OsmTileCountText)), Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText), TextWrapping = TextWrapping.Wrap },
+                new TextBlock { [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.OsmValidationMessage)), Foreground = new SolidColorBrush(AvaloniaDashboardTheme.Warning), TextWrapping = TextWrapping.Wrap }
+            }
+        };
+        Grid.SetColumn(metrics, 5);
+        grid.Children.Add(metrics);
+
+        return grid;
+
+        void AddCoordinate(string label, string bindingPath, int column)
+        {
+            var input = BuildTextBox(label);
+            input.MinWidth = 96;
+            input.Bind(TextBox.TextProperty, new Binding(bindingPath, BindingMode.TwoWay));
+            var panel = new StackPanel
+            {
+                Spacing = 3,
+                Children =
+                {
+                    new TextBlock { Text = label, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText), FontSize = 11 },
+                    input
+                }
+            };
+            Grid.SetColumn(panel, column);
+            grid.Children.Add(panel);
+        }
+    }
+
+    private ToggleButton BuildToggleButton(string text, ICommand command, string toolTip)
+    {
+        var button = new ToggleButton
+        {
+            Content = text,
+            Command = command,
+            Padding = new Thickness(12, 7),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ToolbarButtonBackground),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+        };
+        ToolTip.SetTip(button, toolTip);
+        return button;
     }
 
     private async Task AddSelectedFacilityOriginWithPromptAsync(WorkspaceViewModel viewModel)

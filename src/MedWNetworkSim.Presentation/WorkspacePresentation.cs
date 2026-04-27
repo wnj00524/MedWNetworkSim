@@ -6,6 +6,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using MedWNetworkSim.App.Models;
+using MedWNetworkSim.App.Import;
 using MedWNetworkSim.App.Services;
 using MedWNetworkSim.App.Services.Pathfinding;
 using MedWNetworkSim.App.VisualAnalytics;
@@ -13,6 +14,7 @@ using MedWNetworkSim.App.Insights;
 using MedWNetworkSim.App.VisualAnalytics.Sankey;
 using MedWNetworkSim.Interaction;
 using MedWNetworkSim.Rendering;
+using MedWNetworkSim.Rendering.Geo;
 using SkiaSharp;
 
 namespace MedWNetworkSim.Presentation;
@@ -1558,6 +1560,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private readonly IExplainabilityService explainabilityService = new ExplainabilityService();
     private readonly ISankeyProjectionService sankeyProjectionService = new SankeyProjectionService();
     private readonly INetworkInsightService networkInsightService = new NetworkInsightService();
+    private readonly OsmBoundingBoxImporter osmBoundingBoxImporter = new(new OsmApiClient());
 
     private NetworkModel network = new();
     private TemporalNetworkSimulationEngine.TemporalSimulationState? temporalState;
@@ -1657,6 +1660,17 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private bool cachedSankeyCollapseMinorFlows;
     private int sankeyVersion;
     private string? activeModeLabel;
+    private MapCameraState mapCamera = new(0d, 0d, 0.0008d, true);
+    private bool hasUserMovedMapCamera;
+    private bool isOsmAreaSelectionEnabled;
+    private OsmBoundingBox? osmSelection;
+    private string osmWestText = string.Empty;
+    private string osmSouthText = string.Empty;
+    private string osmEastText = string.Empty;
+    private string osmNorthText = string.Empty;
+    private int osmNodeImportPercentage = 10;
+    private string osmValidationMessage = "Drag to select an area.";
+    private bool isOsmDownloadInProgress;
     private readonly HashSet<string> highlightedNodeIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> highlightedEdgeIds = new(StringComparer.OrdinalIgnoreCase);
 
@@ -1741,6 +1755,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ShowGraphModeCommand = SetGraphVisualisationCommand;
         ShowSankeyModeCommand = SetSankeyVisualisationCommand;
         ShowMapModeCommand = SetMapVisualisationCommand;
+        ToggleOsmAreaSelectionCommand = new RelayCommand(() => IsOsmAreaSelectionEnabled = !IsOsmAreaSelectionEnabled);
+        ClearOsmSelectionCommand = new RelayCommand(ClearOsmSelection);
+        FitMapToNetworkCommand = new RelayCommand(FitMapToNetwork);
         ToggleIsochroneModeCommand = new RelayCommand(() => SetIsochroneMode(!IsIsochroneModeEnabled));
         ToggleFacilityPlanningModeCommand = new RelayCommand(() => SetFacilityPlanningMode(!IsFacilityPlanningMode));
         AddFacilityOriginCommand = new RelayCommand(AddSelectedNodeAsFacilityOrigin, () => Scene.Selection.SelectedNodeIds.Count == 1);
@@ -1828,6 +1845,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     public GraphScene Scene { get; }
     public GraphViewport Viewport { get; }
+    public MapCameraState MapCamera { get => mapCamera; private set => SetProperty(ref mapCamera, value); }
     public GraphSize LastViewportSize { get; private set; } = new(1440d, 860d);
     public int ViewportVersion { get; private set; }
     public InspectorSection Inspector { get; }
@@ -1884,6 +1902,69 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public RelayCommand ShowGraphModeCommand { get; }
     public RelayCommand ShowSankeyModeCommand { get; }
     public RelayCommand ShowMapModeCommand { get; }
+    public RelayCommand ToggleOsmAreaSelectionCommand { get; }
+    public RelayCommand ClearOsmSelectionCommand { get; }
+    public RelayCommand FitMapToNetworkCommand { get; }
+    public bool IsOsmAreaSelectionEnabled
+    {
+        get => isOsmAreaSelectionEnabled;
+        set
+        {
+            if (SetProperty(ref isOsmAreaSelectionEnabled, value))
+            {
+                ToolStatusText = value ? "Drag to select an area." : "Map selection disabled.";
+                NotifyVisualChanged();
+            }
+        }
+    }
+
+    public bool IsOsmDownloadInProgress { get => isOsmDownloadInProgress; private set => SetProperty(ref isOsmDownloadInProgress, value); }
+    public string OsmWestText { get => osmWestText; set => SetOsmCoordinateText(ref osmWestText, value, nameof(OsmWestText)); }
+    public string OsmSouthText { get => osmSouthText; set => SetOsmCoordinateText(ref osmSouthText, value, nameof(OsmSouthText)); }
+    public string OsmEastText { get => osmEastText; set => SetOsmCoordinateText(ref osmEastText, value, nameof(OsmEastText)); }
+    public string OsmNorthText { get => osmNorthText; set => SetOsmCoordinateText(ref osmNorthText, value, nameof(OsmNorthText)); }
+    public int OsmNodeImportPercentage
+    {
+        get => osmNodeImportPercentage;
+        set
+        {
+            if (value is < 1 or > 100)
+            {
+                OsmValidationMessage = "Choose a value between 1% and 100%.";
+                return;
+            }
+
+            if (SetProperty(ref osmNodeImportPercentage, value))
+            {
+                RefreshOsmSelectionMetrics();
+            }
+        }
+    }
+
+    public IReadOnlyList<int> OsmNodeImportPercentagePresets { get; } = [1, 2, 5, 10, 25, 50, 100];
+    public string OsmValidationMessage { get => osmValidationMessage; private set => SetProperty(ref osmValidationMessage, value); }
+    public string OsmSelectedAreaText => osmSelection is null ? "No area selected" : $"{osmSelection.AreaDegrees:0.####} square degrees";
+    public string OsmTileCountText
+    {
+        get
+        {
+            if (osmSelection is null)
+            {
+                return "0 tiles";
+            }
+
+            try
+            {
+                var count = OsmBoundingBoxTiler.CreateTiles(osmSelection).Count;
+                return count == 1 ? "1 tile" : $"{count.ToString(CultureInfo.InvariantCulture)} tiles";
+            }
+            catch
+            {
+                return "Too large";
+            }
+        }
+    }
+    public OsmBoundingBox? OsmSelection => osmSelection;
     public RelayCommand ToggleIsochroneModeCommand { get; }
     public RelayCommand ToggleFacilityPlanningModeCommand { get; }
     public RelayCommand AddFacilityOriginCommand { get; }
@@ -2779,6 +2860,270 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         return network.Nodes
             .Where(node => node.Latitude.HasValue && node.Longitude.HasValue)
             .ToDictionary(node => node.Id, node => (node.Latitude!.Value, node.Longitude!.Value), StringComparer.OrdinalIgnoreCase);
+    }
+
+    public MapProjectionViewport BuildMapProjectionViewport(GraphSize viewportSize)
+    {
+        LastViewportSize = viewportSize;
+        EnsureMapCamera(viewportSize);
+        return new MapProjectionViewport(viewportSize.Width, viewportSize.Height, MapCamera.CenterLatitude, MapCamera.CenterLongitude, MapCamera.Zoom);
+    }
+
+    public void BeginOsmSelection(MapGeoCoordinate coordinate)
+    {
+        if (!IsOsmAreaSelectionEnabled)
+        {
+            return;
+        }
+
+        ApplyOsmSelectionFromCoordinates(coordinate, coordinate);
+        OsmValidationMessage = "Drag to select an area.";
+    }
+
+    public void UpdateOsmSelection(MapGeoCoordinate coordinate)
+    {
+        if (!IsOsmAreaSelectionEnabled || osmSelection is null)
+        {
+            return;
+        }
+
+        ApplyOsmSelectionFromCoordinates(new MapGeoCoordinate(osmSelection.MinLat, osmSelection.MinLon), coordinate);
+    }
+
+    public void EndOsmSelection(MapGeoCoordinate coordinate)
+    {
+        UpdateOsmSelection(coordinate);
+        RefreshOsmSelectionMetrics();
+    }
+
+    public void PanMap(double screenDeltaX, double screenDeltaY)
+    {
+        var viewport = BuildMapProjectionViewport(LastViewportSize);
+        var projection = new MapWebMercatorProjectionService();
+        var centerScreen = new GraphPoint(LastViewportSize.Width / 2d, LastViewportSize.Height / 2d);
+        var next = projection.Unproject(centerScreen.X - screenDeltaX, centerScreen.Y - screenDeltaY, viewport);
+        MapCamera = MapCamera with { CenterLatitude = next.Latitude, CenterLongitude = next.Longitude, IsLockedToNetworkBounds = false };
+        hasUserMovedMapCamera = true;
+        NotifyVisualChanged();
+    }
+
+    public void ZoomMapAt(GraphPoint anchorScreen, double factor)
+    {
+        var oldViewport = BuildMapProjectionViewport(LastViewportSize);
+        var projection = new MapWebMercatorProjectionService();
+        var before = projection.Unproject(anchorScreen.X, anchorScreen.Y, oldViewport);
+        var newZoom = Math.Clamp(MapCamera.Zoom * factor, 0.0001d, 128d);
+        var temp = new MapProjectionViewport(LastViewportSize.Width, LastViewportSize.Height, MapCamera.CenterLatitude, MapCamera.CenterLongitude, newZoom);
+        var afterPoint = projection.Project(before, temp);
+        var shifted = projection.Unproject((LastViewportSize.Width / 2d) + (afterPoint.X - anchorScreen.X), (LastViewportSize.Height / 2d) + (afterPoint.Y - anchorScreen.Y), temp);
+        MapCamera = new MapCameraState(shifted.Latitude, shifted.Longitude, newZoom, false);
+        hasUserMovedMapCamera = true;
+        NotifyVisualChanged();
+    }
+
+    public MapSelectionOverlay? BuildMapSelectionOverlay()
+    {
+        if (osmSelection is null)
+        {
+            return null;
+        }
+
+        IReadOnlyList<OsmBoundingBox> tiles;
+        try
+        {
+            tiles = OsmBoundingBoxTiler.CreateTiles(osmSelection);
+        }
+        catch
+        {
+            tiles = [];
+        }
+
+        return new MapSelectionOverlay(
+            new MapGeoCoordinate(osmSelection.MinLat, osmSelection.MinLon),
+            new MapGeoCoordinate(osmSelection.MaxLat, osmSelection.MaxLon),
+            tiles.Select(tile => (new MapGeoCoordinate(tile.MinLat, tile.MinLon), new MapGeoCoordinate(tile.MaxLat, tile.MaxLon))).ToList(),
+            $"{OsmSelectedAreaText}, {OsmTileCountText}");
+    }
+
+    public async Task ImportOsmSelectionAsync(CancellationToken ct = default)
+    {
+        if (osmSelection is null)
+        {
+            OsmValidationMessage = "Select an OSM area first.";
+            StatusText = OsmValidationMessage;
+            return;
+        }
+
+        if (OsmNodeImportPercentage is < 1 or > 100)
+        {
+            OsmValidationMessage = "Choose a value between 1% and 100%.";
+            StatusText = OsmValidationMessage;
+            return;
+        }
+
+        try
+        {
+            IsOsmDownloadInProgress = true;
+            var tiles = OsmBoundingBoxTiler.CreateTiles(osmSelection);
+            StatusText = tiles.Count > 1 ? $"Downloading OSM data in {tiles.Count} tiles." : "Downloading OSM data.";
+            var imported = await osmBoundingBoxImporter.ImportAsync(
+                osmSelection,
+                new OsmImportOptions(true, OsmNodeImportPercentage, OsmRetentionStrategy.Balanced, true, true),
+                ct);
+            LoadNetwork(imported, $"Imported {imported.Nodes.Count} nodes and {imported.Edges.Count} edges");
+            VisualisationState.ActiveMode = VisualisationMode.Map;
+            FitMapToNetwork();
+            IsOsmAreaSelectionEnabled = false;
+        }
+        catch (OsmImportException ex)
+        {
+            OsmValidationMessage = ex.Message;
+            StatusText = ex.Message;
+        }
+        finally
+        {
+            IsOsmDownloadInProgress = false;
+        }
+    }
+
+    public void ClearOsmSelection()
+    {
+        osmSelection = null;
+        OsmWestText = string.Empty;
+        OsmSouthText = string.Empty;
+        OsmEastText = string.Empty;
+        OsmNorthText = string.Empty;
+        OsmValidationMessage = "Drag to select an area.";
+        Raise(nameof(OsmSelection));
+        RefreshOsmSelectionMetrics();
+        NotifyVisualChanged();
+    }
+
+    public void FitMapToNetwork()
+    {
+        var geo = BuildGeoNodeLookup();
+        if (geo.Count == 0)
+        {
+            StatusText = "This network has no geographic coordinates yet.";
+            return;
+        }
+
+        MapCamera = MapGraphRenderer.FitCameraToBoundingBox(
+            geo.Values.Min(item => item.Latitude),
+            geo.Values.Min(item => item.Longitude),
+            geo.Values.Max(item => item.Latitude),
+            geo.Values.Max(item => item.Longitude),
+            LastViewportSize.Width <= 0d ? new GraphSize(1440d, 860d) : LastViewportSize);
+        hasUserMovedMapCamera = false;
+        NotifyVisualChanged();
+        StatusText = "Fit map to network.";
+    }
+
+    private void EnsureMapCamera(GraphSize viewportSize)
+    {
+        if (hasUserMovedMapCamera && !MapCamera.IsLockedToNetworkBounds)
+        {
+            return;
+        }
+
+        var geo = BuildGeoNodeLookup();
+        if (geo.Count == 0)
+        {
+            return;
+        }
+
+        MapCamera = MapGraphRenderer.FitCameraToBoundingBox(
+            geo.Values.Min(item => item.Latitude),
+            geo.Values.Min(item => item.Longitude),
+            geo.Values.Max(item => item.Latitude),
+            geo.Values.Max(item => item.Longitude),
+            viewportSize);
+    }
+
+    private void ApplyOsmSelectionFromCoordinates(MapGeoCoordinate a, MapGeoCoordinate b)
+    {
+        if (OsmBoundingBox.TryCreate(
+            Math.Min(a.Longitude, b.Longitude),
+            Math.Min(a.Latitude, b.Latitude),
+            Math.Max(a.Longitude, b.Longitude),
+            Math.Max(a.Latitude, b.Latitude),
+            out var bbox,
+            out var error))
+        {
+            SetOsmSelection(bbox, updateText: true);
+            return;
+        }
+
+        OsmValidationMessage = error ?? "Selected area is invalid.";
+    }
+
+    private void SetOsmSelection(OsmBoundingBox bbox, bool updateText)
+    {
+        osmSelection = bbox.Normalize();
+        if (updateText)
+        {
+            osmWestText = osmSelection.MinLon.ToString("0.######", CultureInfo.InvariantCulture);
+            osmSouthText = osmSelection.MinLat.ToString("0.######", CultureInfo.InvariantCulture);
+            osmEastText = osmSelection.MaxLon.ToString("0.######", CultureInfo.InvariantCulture);
+            osmNorthText = osmSelection.MaxLat.ToString("0.######", CultureInfo.InvariantCulture);
+            Raise(nameof(OsmWestText));
+            Raise(nameof(OsmSouthText));
+            Raise(nameof(OsmEastText));
+            Raise(nameof(OsmNorthText));
+        }
+
+        Raise(nameof(OsmSelection));
+        RefreshOsmSelectionMetrics();
+        NotifyVisualChanged();
+    }
+
+    private void SetOsmCoordinateText(ref string field, string value, string propertyName)
+    {
+        if (!SetProperty(ref field, value, propertyName))
+        {
+            return;
+        }
+
+        TryUpdateOsmSelectionFromText();
+    }
+
+    private void TryUpdateOsmSelectionFromText()
+    {
+        if (!double.TryParse(osmWestText, NumberStyles.Float, CultureInfo.InvariantCulture, out var west) ||
+            !double.TryParse(osmSouthText, NumberStyles.Float, CultureInfo.InvariantCulture, out var south) ||
+            !double.TryParse(osmEastText, NumberStyles.Float, CultureInfo.InvariantCulture, out var east) ||
+            !double.TryParse(osmNorthText, NumberStyles.Float, CultureInfo.InvariantCulture, out var north))
+        {
+            OsmValidationMessage = "Enter west, south, east, and north coordinates.";
+            return;
+        }
+
+        if (OsmBoundingBox.TryCreate(west, south, east, north, out var bbox, out var error))
+        {
+            SetOsmSelection(bbox, updateText: false);
+        }
+        else
+        {
+            OsmValidationMessage = error ?? "Selected area is invalid.";
+        }
+    }
+
+    private void RefreshOsmSelectionMetrics()
+    {
+        Raise(nameof(OsmSelectedAreaText));
+        Raise(nameof(OsmTileCountText));
+        if (osmSelection is null)
+        {
+            return;
+        }
+
+        OsmValidationMessage = osmSelection.AreaDegrees > OsmBoundingBoxTiler.AutoTileAreaLimitDegrees
+            ? "Selected area is too large. Zoom in or reduce selection."
+            : osmSelection.AreaDegrees > OsmBoundingBoxTiler.MaxTileAreaDegrees
+                ? "Selection will be downloaded in tiles."
+                : osmSelection.AreaDegrees > 1d || OsmNodeImportPercentage > 50
+                    ? "This may create a large network. Reduce area or node percentage."
+                    : "Ready to download OSM data.";
     }
 
     public void SelectInsight(NetworkInsight insight)

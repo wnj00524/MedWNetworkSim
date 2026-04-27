@@ -11,7 +11,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="OsmSharp" Version="6.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="..\MedWNetworkSim.App\Models\*.cs" Link="Legacy\Models\%(Filename)%(Extension)" />
+    <Compile Include="..\MedWNetworkSim.App\Import\**\*.cs" Link="Legacy\Import\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\MedWNetworkSim.App\Services\**\*.cs" Exclude="..\MedWNetworkSim.App\Services\AppThemeManager.cs" Link="Legacy\Services\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\MedWNetworkSim.App\VisualAnalytics\**\*.cs" Link="Legacy\VisualAnalytics\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\MedWNetworkSim.App\Insights\**\*.cs" Link="Legacy\Insights\%(RecursiveDir)%(Filename)%(Extension)" />

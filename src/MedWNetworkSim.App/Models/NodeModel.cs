@@ -69,6 +69,31 @@ public sealed class NodeModel
     public double? TranshipmentCapacity { get; set; }
 
     /// <summary>
+    /// Gets or sets the optional geographic latitude in decimal degrees.
+    /// </summary>
+    public double? Latitude { get; set; }
+
+    /// <summary>
+    /// Gets or sets the optional geographic longitude in decimal degrees.
+    /// </summary>
+    public double? Longitude { get; set; }
+
+    /// <summary>
+    /// Gets or sets the optional OpenStreetMap identifier.
+    /// </summary>
+    public string? OsmId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the optional OpenStreetMap display name.
+    /// </summary>
+    public string? OsmName { get; set; }
+
+    /// <summary>
+    /// Gets or sets the optional OpenStreetMap highway classification.
+    /// </summary>
+    public string? OsmHighwayType { get; set; }
+
+    /// <summary>
     /// Gets or sets a value indicating whether this node acts as a facility origin in facility mode.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]

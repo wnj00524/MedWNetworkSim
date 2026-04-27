@@ -21,6 +21,9 @@ using MedWNetworkSim.App.Models;
 using MedWNetworkSim.Interaction;
 using MedWNetworkSim.Presentation;
 using MedWNetworkSim.Rendering;
+using MedWNetworkSim.Rendering.Geo;
+using MedWNetworkSim.Rendering.VisualAnalytics.Sankey;
+using MedWNetworkSim.App.VisualAnalytics;
 using MedWNetworkSim.UI.Controls;
 using SkiaSharp;
 
@@ -195,6 +198,9 @@ public sealed class GraphCanvasControl : Control
         AvaloniaProperty.Register<GraphCanvasControl, WorkspaceViewModel?>(nameof(ViewModel));
 
     private readonly GraphRenderer renderer = new();
+    private readonly SankeyRenderer sankeyRenderer = new();
+    private readonly MapGraphRenderer mapRenderer = new();
+    private SankeyRenderDiagram? lastSankeyDiagram;
     private readonly DispatcherTimer animationTimer;
     private WriteableBitmap? bitmap;
     private DateTimeOffset lastFrame = DateTimeOffset.UtcNow;
@@ -269,7 +275,27 @@ public sealed class GraphCanvasControl : Control
 
             surface.Canvas.Clear(SKColor.Empty);
             surface.Canvas.Scale((float)transform.ScaleX, (float)transform.ScaleY);
-            renderer.Render(surface.Canvas, interactionContext.Scene, interactionContext.Viewport, transform.LogicalViewport);
+            var mode = ViewModel.VisualisationState.ActiveMode;
+            if (mode == VisualisationMode.Sankey)
+            {
+                var model = ViewModel.BuildSankeyDiagram();
+                lastSankeyDiagram = new SankeyRenderDiagram
+                {
+                    EmptyStateMessage = model.EmptyStateMessage,
+                    Nodes = model.Nodes.Select(n => new SankeyRenderNode { Id = n.Id, Label = n.Label, Kind = n.Kind.ToString() }).ToArray(),
+                    Links = model.Links.Select(l => new SankeyRenderLink { Id = l.Id, SourceNodeId = l.SourceNodeId, TargetNodeId = l.TargetNodeId, TrafficType = l.TrafficType, Value = l.Value, IsUnmetDemand = l.IsUnmetDemand }).ToArray()
+                };
+                sankeyRenderer.Render(surface.Canvas, lastSankeyDiagram, transform.LogicalViewport, interactionContext.Scene.Selection.KeyboardNodeId, interactionContext.Scene.Selection.KeyboardEdgeId);
+            }
+            else if (mode == VisualisationMode.Map)
+            {
+                var geoLookup = ViewModel.BuildGeoNodeLookup().ToDictionary(item => item.Key, item => new MapGeoCoordinate(item.Value.Latitude, item.Value.Longitude), StringComparer.OrdinalIgnoreCase);
+                mapRenderer.Render(surface.Canvas, interactionContext.Scene, interactionContext.Viewport, transform.LogicalViewport, geoLookup, ViewModel.VisualisationState.ShowMapBackground, out _);
+            }
+            else
+            {
+                renderer.Render(surface.Canvas, interactionContext.Scene, interactionContext.Viewport, transform.LogicalViewport);
+            }
             surface.Canvas.Flush();
 
             context.DrawImage(
@@ -349,8 +375,13 @@ public sealed class GraphCanvasControl : Control
                 return;
             }
 
-            ViewModel.InteractionController.OnPointerPressed(
-                interactionContext,
+            if (button == GraphPointerButton.Left && ViewModel.VisualisationState.ActiveMode == VisualisationMode.Sankey && TryHandleSankeySelection(ViewModel, point))
+            {
+                e.Handled = true;
+                return;
+            }
+
+            ViewModel.InteractionController.OnPointerPressed(                interactionContext,
                 button,
                 point,
                 e.KeyModifiers.HasFlag(KeyModifiers.Shift),
@@ -366,6 +397,42 @@ public sealed class GraphCanvasControl : Control
             ReportInputFailure("pointer press", ex);
             e.Handled = true;
         }
+    }
+
+    private bool TryHandleSankeySelection(WorkspaceViewModel viewModel, GraphPoint point)
+    {
+        var hit = sankeyRenderer.HitTest(point);
+        if (hit is null)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(hit.Value.NodeId) && lastSankeyDiagram is not null)
+        {
+            var node = lastSankeyDiagram.Nodes.FirstOrDefault(n => string.Equals(n.Id, hit.Value.NodeId, StringComparison.OrdinalIgnoreCase));
+            if (node is not null && node.Id.StartsWith("node:", StringComparison.OrdinalIgnoreCase))
+            {
+                viewModel.SelectNode(node.Id[5..]);
+                viewModel.NotifyVisualChanged();
+                InvalidateVisual();
+                return true;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(hit.Value.LinkId) && lastSankeyDiagram is not null)
+        {
+            var link = lastSankeyDiagram.Links.FirstOrDefault(l => string.Equals(l.Id, hit.Value.LinkId, StringComparison.OrdinalIgnoreCase));
+            if (link is not null)
+            {
+                var edgeHint = link.Id.Split(':').FirstOrDefault(part => part.StartsWith("edge", StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrWhiteSpace(edgeHint))
+                {
+                    viewModel.SelectEdge(edgeHint);
+                }
+            }
+        }
+
+        return true;
     }
 
     private bool TryStartIsochroneSelection(WorkspaceViewModel viewModel, GraphInteractionContext interactionContext, GraphPoint point)

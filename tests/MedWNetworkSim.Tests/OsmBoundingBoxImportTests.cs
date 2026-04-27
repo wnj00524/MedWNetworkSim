@@ -90,7 +90,80 @@ public sealed class OsmBoundingBoxImportTests
 
         Assert.NotNull(vm.OsmSelection);
         Assert.Equal("1 tile", vm.OsmTileCountText);
-        Assert.Equal("Ready to download OSM data.", vm.OsmValidationMessage);
+        Assert.Equal("Selected area ready. Choose Import selected area.", vm.OsmValidationMessage);
+    }
+
+    [Fact]
+    public void SelectedCoordinates_ConvertToExpectedBoundingBox()
+    {
+        var start = new MapGeoCoordinate(51.6, -0.3);
+        var end = new MapGeoCoordinate(51.4, -0.1);
+
+        var success = WorkspaceViewModel.TryCreateBoundingBoxFromCoordinates(start, end, out var bbox, out var error);
+
+        Assert.True(success, error);
+        Assert.Equal(-0.3, bbox.MinLon, 8);
+        Assert.Equal(-0.1, bbox.MaxLon, 8);
+        Assert.Equal(51.4, bbox.MinLat, 8);
+        Assert.Equal(51.6, bbox.MaxLat, 8);
+    }
+
+    [Fact]
+    public void ReversedDragDirection_NormalizesBoundingBox()
+    {
+        var start = new MapGeoCoordinate(40.1, -73.5);
+        var end = new MapGeoCoordinate(39.9, -73.8);
+
+        var success = WorkspaceViewModel.TryCreateBoundingBoxFromCoordinates(start, end, out var bbox, out _);
+
+        Assert.True(success);
+        Assert.Equal(-73.8, bbox.MinLon, 8);
+        Assert.Equal(-73.5, bbox.MaxLon, 8);
+        Assert.Equal(39.9, bbox.MinLat, 8);
+        Assert.Equal(40.1, bbox.MaxLat, 8);
+    }
+
+    [Fact]
+    public void TooLargeSelection_IsRejectedByTiler()
+    {
+        var bbox = new OsmBoundingBox(-1.5, 50, 1.5, 51.5);
+        Assert.Throws<OsmImportException>(() => OsmBoundingBoxTiler.CreateTiles(bbox));
+    }
+
+    [Fact]
+    public void ImportCommand_DisabledWithoutValidSelection()
+    {
+        var vm = new WorkspaceViewModel();
+        vm.ClearOsmSelection();
+
+        Assert.False(vm.CanImportOsmSelection);
+        Assert.False(vm.ImportOsmSelectionCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void MapRenderer_WithNoGeoNodesAndSelectionOverlay_DoesNotThrow()
+    {
+        using var bitmap = new SKBitmap(800, 480);
+        using var canvas = new SKCanvas(bitmap);
+        var renderer = new MapGraphRenderer();
+        var overlay = new MapSelectionOverlay(
+            new MapGeoCoordinate(51.49, -0.2),
+            new MapGeoCoordinate(51.51, -0.1),
+            [],
+            "Selection preview");
+
+        var ex = Record.Exception(() => renderer.Render(
+            canvas,
+            new GraphScene(),
+            new GraphViewport(),
+            new GraphSize(800, 480),
+            new Dictionary<string, MapGeoCoordinate>(),
+            showBackground: true,
+            new MapCameraState(51.5074, -0.1278, 0.0015, false),
+            overlay,
+            out _));
+
+        Assert.Null(ex);
     }
 
     private static IReadOnlyList<OsmSharp.OsmGeo> CreateLongRoadFixture()

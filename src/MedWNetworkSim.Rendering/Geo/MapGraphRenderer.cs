@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Net.Http;
 using SkiaSharp;
 
 namespace MedWNetworkSim.Rendering.Geo;
@@ -51,11 +53,141 @@ public sealed class MapWebMercatorProjectionService : IMapProjectionService
     }
 }
 
-public interface IMapTileProvider { bool HasTiles { get; } }
-public sealed class NoTileProvider : IMapTileProvider { public bool HasTiles => false; }
+public readonly record struct OsmTile(int Zoom, int X, int Y);
+
+public interface IMapTileProvider
+{
+    bool HasTiles { get; }
+    string? StatusMessage { get; }
+    event EventHandler? TilesChanged;
+    bool TryGetTile(OsmTile tile, out SKBitmap? bitmap);
+    void RequestTile(OsmTile tile);
+}
+
+public sealed class NoTileProvider : IMapTileProvider
+{
+    public bool HasTiles => false;
+    public string? StatusMessage => "OSM tiles are unavailable. You can still drag to select an import area.";
+    public event EventHandler? TilesChanged { add { } remove { } }
+    public bool TryGetTile(OsmTile tile, out SKBitmap? bitmap)
+    {
+        bitmap = null;
+        return false;
+    }
+
+    public void RequestTile(OsmTile tile)
+    {
+    }
+}
+
+public sealed class OsmRasterTileProvider : IMapTileProvider, IDisposable
+{
+    private sealed record TileCacheEntry(SKBitmap? Bitmap, bool IsLoading, DateTimeOffset LastFailureAt);
+
+    private readonly HttpClient httpClient;
+    private readonly bool ownsClient;
+    private readonly ConcurrentDictionary<OsmTile, TileCacheEntry> cache = new();
+    private string? statusMessage;
+
+    public OsmRasterTileProvider(HttpClient? httpClient = null)
+    {
+        this.httpClient = httpClient ?? new HttpClient();
+        ownsClient = httpClient is null;
+        if (!this.httpClient.DefaultRequestHeaders.UserAgent.Any())
+        {
+            this.httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("MedWNetworkSim/2.0 (Avalonia OSM map renderer)");
+        }
+    }
+
+    public bool HasTiles => true;
+    public string? StatusMessage => statusMessage;
+    public event EventHandler? TilesChanged;
+
+    public bool TryGetTile(OsmTile tile, out SKBitmap? bitmap)
+    {
+        if (cache.TryGetValue(tile, out var cached) && cached.Bitmap is not null)
+        {
+            bitmap = cached.Bitmap;
+            return true;
+        }
+
+        bitmap = null;
+        return false;
+    }
+
+    public void RequestTile(OsmTile tile)
+    {
+        if (tile.Zoom is < 0 or > 19)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var lastFailureAt = default(DateTimeOffset);
+        if (cache.TryGetValue(tile, out var existing))
+        {
+            lastFailureAt = existing.LastFailureAt;
+            if (existing.Bitmap is not null || existing.IsLoading)
+            {
+                return;
+            }
+
+            if (existing.LastFailureAt != default && now - existing.LastFailureAt < TimeSpan.FromSeconds(30))
+            {
+                return;
+            }
+        }
+
+        cache[tile] = new TileCacheEntry(null, true, lastFailureAt);
+        _ = DownloadTileAsync(tile);
+    }
+
+    public void Dispose()
+    {
+        foreach (var item in cache.Values)
+        {
+            item.Bitmap?.Dispose();
+        }
+
+        if (ownsClient)
+        {
+            httpClient.Dispose();
+        }
+    }
+
+    private async Task DownloadTileAsync(OsmTile tile)
+    {
+        try
+        {
+            using var response = await httpClient.GetAsync($"https://tile.openstreetmap.org/{tile.Zoom}/{tile.X}/{tile.Y}.png", HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            var bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+            var bitmap = SKBitmap.Decode(bytes);
+            if (bitmap is null)
+            {
+                cache[tile] = new TileCacheEntry(null, false, DateTimeOffset.UtcNow);
+                statusMessage = "Some map tiles failed to decode. You can still select an area and import.";
+                TilesChanged?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
+            cache[tile] = new TileCacheEntry(bitmap, false, default);
+            statusMessage = null;
+            TilesChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            _ = ex;
+            cache[tile] = new TileCacheEntry(null, false, DateTimeOffset.UtcNow);
+            statusMessage = "Could not download some map tiles. Check your connection and continue selecting an area.";
+            TilesChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+}
 
 public sealed class MapGraphRenderer
 {
+    private const double EarthRadius = 6378137d;
     private readonly IMapProjectionService projectionService;
     private readonly IMapTileProvider tileProvider;
 
@@ -68,7 +200,7 @@ public sealed class MapGraphRenderer
     public void Render(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize, IReadOnlyDictionary<string, MapGeoCoordinate> geoNodes, bool showBackground, out string? fallbackMessage)
     {
         var camera = geoNodes.Count == 0
-            ? new MapCameraState(0d, 0d, Math.Max(0.0004d, viewport.Zoom * 0.0025d), true)
+            ? new MapCameraState(51.5074d, -0.1278d, 0.0015d, true)
             : FitCameraToBoundingBox(
                 geoNodes.Values.Min(item => item.Latitude),
                 geoNodes.Values.Min(item => item.Longitude),
@@ -82,16 +214,15 @@ public sealed class MapGraphRenderer
     {
         fallbackMessage = null;
         DrawBackground(canvas, viewportSize, showBackground);
-        if (geoNodes.Count == 0)
-        {
-            fallbackMessage = "This network has no geographic coordinates yet. Import OSM data or add coordinates to use Map view.";
-            new GraphRenderer().Render(canvas, scene, viewport, viewportSize);
-            using var p = new SKPaint { Color = new SKColor(252, 219, 107), TextSize = 20f, IsAntialias = true };
-            canvas.DrawText(fallbackMessage, 24f, 40f, p);
-            return;
-        }
 
         var mapViewport = new MapProjectionViewport(viewportSize.Width, viewportSize.Height, camera.CenterLatitude, camera.CenterLongitude, Math.Max(0.0001d, camera.Zoom));
+        var drewTiles = DrawTileBackground(canvas, mapViewport, showBackground);
+        if (!drewTiles)
+        {
+            DrawGridOverlay(canvas, viewportSize);
+            fallbackMessage = tileProvider.StatusMessage ?? "Map tiles are not available right now. You can still drag to select an area and import.";
+        }
+
         using var edgePaint = new SKPaint { Color = new SKColor(125, 188, 255, 180), StrokeWidth = 2f, IsAntialias = true, Style = SKPaintStyle.Stroke };
         using var nodePaint = new SKPaint { Color = new SKColor(93, 116, 160), IsAntialias = true, Style = SKPaintStyle.Fill };
         using var labelPaint = new SKPaint { Color = new SKColor(222, 232, 245), TextSize = 12f, IsAntialias = true };
@@ -115,7 +246,26 @@ public sealed class MapGraphRenderer
                 using var f = new SKPaint { Color = SKColors.Yellow, Style = SKPaintStyle.Stroke, StrokeWidth = 2f, PathEffect = SKPathEffect.CreateDash([5f, 4f], 0f) };
                 canvas.DrawCircle((float)p.X, (float)p.Y, r + 3f, f);
             }
+
             canvas.DrawText(node.Name, (float)p.X + 10f, (float)p.Y - 6f, labelPaint);
+        }
+
+        if (geoNodes.Count == 0)
+        {
+            var instruction = "Drag on the map to select an area, then choose Import selected area.";
+            using var panelPaint = new SKPaint { Color = new SKColor(10, 16, 28, 180), Style = SKPaintStyle.Fill };
+            using var panelBorder = new SKPaint { Color = new SKColor(252, 219, 107, 220), Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f };
+            var panelRect = new SKRect(18, 16, (float)viewportSize.Width - 18, 54);
+            canvas.DrawRoundRect(panelRect, 8f, 8f, panelPaint);
+            canvas.DrawRoundRect(panelRect, 8f, 8f, panelBorder);
+            canvas.DrawText(instruction, 28f, 39f, labelPaint);
+            fallbackMessage ??= instruction;
+        }
+
+        if (!string.IsNullOrWhiteSpace(tileProvider.StatusMessage))
+        {
+            using var warningPaint = new SKPaint { Color = new SKColor(255, 206, 122), TextSize = 12f, IsAntialias = true };
+            canvas.DrawText(tileProvider.StatusMessage, 24f, (float)viewportSize.Height - 44f, warningPaint);
         }
 
         using var scale = new SKPaint { Color = new SKColor(220, 225, 235), StrokeWidth = 3f };
@@ -141,6 +291,64 @@ public sealed class MapGraphRenderer
         return new MapCameraState(centerLatitude, centerLongitude, zoom, true);
     }
 
+    private bool DrawTileBackground(SKCanvas canvas, MapProjectionViewport viewport, bool showBackground)
+    {
+        if (!showBackground || !tileProvider.HasTiles)
+        {
+            return false;
+        }
+
+        var worldPixelsAtCameraZoom = Math.Max(256d, (Math.Max(0.0001d, viewport.Zoom) * (2d * Math.PI * EarthRadius)));
+        var slippyZoom = Math.Clamp((int)Math.Round(Math.Log(worldPixelsAtCameraZoom / 256d, 2d)), 0, 19);
+        var worldPixelsAtSlippyZoom = 256d * Math.Pow(2d, slippyZoom);
+        var scaleFactor = worldPixelsAtCameraZoom / worldPixelsAtSlippyZoom;
+        var centerPixelX = LongitudeToPixelX(viewport.CenterLongitude, slippyZoom);
+        var centerPixelY = LatitudeToPixelY(viewport.CenterLatitude, slippyZoom);
+        var halfWidth = viewport.Width / (2d * scaleFactor);
+        var halfHeight = viewport.Height / (2d * scaleFactor);
+
+        var minTileX = (int)Math.Floor((centerPixelX - halfWidth) / 256d);
+        var maxTileX = (int)Math.Ceiling((centerPixelX + halfWidth) / 256d);
+        var minTileY = (int)Math.Floor((centerPixelY - halfHeight) / 256d);
+        var maxTileY = (int)Math.Ceiling((centerPixelY + halfHeight) / 256d);
+        var tilesPerAxis = 1 << slippyZoom;
+        var drewAnyTile = false;
+
+        for (var tileY = minTileY; tileY <= maxTileY; tileY++)
+        {
+            if (tileY < 0 || tileY >= tilesPerAxis)
+            {
+                continue;
+            }
+
+            for (var tileX = minTileX; tileX <= maxTileX; tileX++)
+            {
+                var wrappedX = ((tileX % tilesPerAxis) + tilesPerAxis) % tilesPerAxis;
+                var tile = new OsmTile(slippyZoom, wrappedX, tileY);
+                var left = ((tileX * 256d) - centerPixelX) * scaleFactor + (viewport.Width / 2d);
+                var top = ((tileY * 256d) - centerPixelY) * scaleFactor + (viewport.Height / 2d);
+                var size = 256d * scaleFactor;
+                var rect = SKRect.Create((float)left, (float)top, (float)size, (float)size);
+
+                if (tileProvider.TryGetTile(tile, out var bitmap) && bitmap is not null)
+                {
+                    canvas.DrawBitmap(bitmap, rect);
+                    drewAnyTile = true;
+                }
+                else
+                {
+                    using var placeholder = new SKPaint { Color = new SKColor(30, 38, 52), Style = SKPaintStyle.Fill };
+                    using var outline = new SKPaint { Color = new SKColor(60, 76, 104), Style = SKPaintStyle.Stroke, StrokeWidth = 1f };
+                    canvas.DrawRect(rect, placeholder);
+                    canvas.DrawRect(rect, outline);
+                    tileProvider.RequestTile(tile);
+                }
+            }
+        }
+
+        return drewAnyTile;
+    }
+
     private void DrawOverlay(SKCanvas canvas, MapProjectionViewport viewport, MapSelectionOverlay? overlay)
     {
         if (overlay?.Start is null || overlay.End is null)
@@ -148,9 +356,9 @@ public sealed class MapGraphRenderer
             return;
         }
 
-        using var fill = new SKPaint { Color = new SKColor(252, 219, 107, 30), Style = SKPaintStyle.Fill };
-        using var stroke = new SKPaint { Color = new SKColor(252, 219, 107), Style = SKPaintStyle.Stroke, StrokeWidth = 2f, PathEffect = SKPathEffect.CreateDash([8f, 5f], 0f), IsAntialias = true };
-        using var tileStroke = new SKPaint { Color = new SKColor(105, 214, 214, 180), Style = SKPaintStyle.Stroke, StrokeWidth = 1.2f, IsAntialias = true };
+        using var fill = new SKPaint { Color = new SKColor(255, 214, 102, 48), Style = SKPaintStyle.Fill };
+        using var stroke = new SKPaint { Color = new SKColor(255, 222, 125), Style = SKPaintStyle.Stroke, StrokeWidth = 3f, PathEffect = SKPathEffect.CreateDash([12f, 6f], 0f), IsAntialias = true };
+        using var tileStroke = new SKPaint { Color = new SKColor(83, 245, 237, 210), Style = SKPaintStyle.Stroke, StrokeWidth = 1.6f, IsAntialias = true };
         using var labelPaint = new SKPaint { Color = new SKColor(245, 247, 250), TextSize = 12f, IsAntialias = true };
 
         foreach (var tile in overlay.Tiles)
@@ -184,8 +392,26 @@ public sealed class MapGraphRenderer
         if (!showBackground) return;
         using var bg = new SKPaint { Color = new SKColor(18, 25, 38) };
         canvas.DrawRect(new SKRect(0f, 0f, (float)viewportSize.Width, (float)viewportSize.Height), bg);
+    }
+
+    private static void DrawGridOverlay(SKCanvas canvas, GraphSize viewportSize)
+    {
         using var grid = new SKPaint { Color = new SKColor(64, 76, 99, 96), StrokeWidth = 1f };
         for (var x = 0f; x < viewportSize.Width; x += 80f) canvas.DrawLine(x, 0f, x, (float)viewportSize.Height, grid);
         for (var y = 0f; y < viewportSize.Height; y += 80f) canvas.DrawLine(0f, y, (float)viewportSize.Width, y, grid);
+    }
+
+    private static double LongitudeToPixelX(double longitude, int zoom)
+    {
+        var normalizedLongitude = ((longitude + 180d) % 360d + 360d) % 360d;
+        return normalizedLongitude / 360d * (256d * Math.Pow(2d, zoom));
+    }
+
+    private static double LatitudeToPixelY(double latitude, int zoom)
+    {
+        var clamped = Math.Clamp(latitude, -85.05112878d, 85.05112878d);
+        var radians = clamped * Math.PI / 180d;
+        var mercator = Math.Log(Math.Tan(Math.PI / 4d + radians / 2d));
+        return (1d - mercator / Math.PI) / 2d * (256d * Math.Pow(2d, zoom));
     }
 }

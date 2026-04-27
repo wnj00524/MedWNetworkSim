@@ -1,4 +1,5 @@
 using System.Globalization;
+using MedWNetworkSim.App.Geo;
 using MedWNetworkSim.App.Models;
 using OsmSharp;
 using OsmSharp.Streams;
@@ -188,6 +189,7 @@ public sealed class OsmToSimulationMapper
             .OrderBy(id => id)
             .Select(id => CreateNodeModel(id, nodes[id], wayNamesByNode))
             .ToList();
+        InitializeProjectedNodePositions(nodeModels);
 
         if (nodeModels.Count == 0 || edgeModels.Count == 0)
         {
@@ -211,9 +213,39 @@ public sealed class OsmToSimulationMapper
             [
                 new EdgeTrafficPermissionRule { TrafficType = "general", Mode = EdgeTrafficPermissionMode.Permitted }
             ],
+            LockLayoutToMap = nodeModels.Any(node => node.Latitude.HasValue && node.Longitude.HasValue),
             Nodes = nodeModels,
             Edges = edgeModels
         };
+    }
+
+    private static void InitializeProjectedNodePositions(IReadOnlyList<NodeModel> nodes)
+    {
+        var geoNodes = nodes.Where(node => node.Latitude.HasValue && node.Longitude.HasValue).ToList();
+        if (geoNodes.Count == 0)
+        {
+            return;
+        }
+
+        var minLatitude = geoNodes.Min(node => node.Latitude!.Value);
+        var maxLatitude = geoNodes.Max(node => node.Latitude!.Value);
+        var minLongitude = geoNodes.Min(node => node.Longitude!.Value);
+        var maxLongitude = geoNodes.Max(node => node.Longitude!.Value);
+        var viewport = new GeoProjectionViewport(1600d, 900d, (minLatitude + maxLatitude) / 2d, (minLongitude + maxLongitude) / 2d, 1d);
+        var projection = new WebMercatorProjectionService();
+        var sw = projection.Project(new GeoCoordinate(minLatitude, minLongitude), viewport);
+        var ne = projection.Project(new GeoCoordinate(maxLatitude, maxLongitude), viewport);
+        var spanX = Math.Max(1d, Math.Abs(ne.X - sw.X));
+        var spanY = Math.Max(1d, Math.Abs(ne.Y - sw.Y));
+        var zoom = Math.Max(0.0001d, Math.Min((viewport.Width * 0.8d) / spanX, (viewport.Height * 0.8d) / spanY));
+        viewport = viewport with { Zoom = zoom };
+
+        foreach (var node in geoNodes)
+        {
+            var projected = projection.Project(new GeoCoordinate(node.Latitude!.Value, node.Longitude!.Value), viewport);
+            node.X = projected.X;
+            node.Y = projected.Y;
+        }
     }
 
     private static bool IsSupportedRoad(Way way)

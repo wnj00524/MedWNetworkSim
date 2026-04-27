@@ -75,6 +75,12 @@ public sealed class OsmBoundingBoxImportTests
         Assert.NotEmpty(network.Nodes);
         Assert.NotEmpty(network.Edges);
         Assert.All(network.Nodes, node => Assert.True(node.Latitude.HasValue && node.Longitude.HasValue));
+        Assert.True(network.LockLayoutToMap);
+        Assert.All(network.Nodes, node =>
+        {
+            Assert.True(node.X.HasValue);
+            Assert.True(node.Y.HasValue);
+        });
     }
 
     [Fact]

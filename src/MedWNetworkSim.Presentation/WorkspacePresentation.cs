@@ -1662,6 +1662,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private int sankeyVersion;
     private string? activeModeLabel;
     private MapCameraState mapCamera = new(0d, 0d, 0.0008d, true);
+    private readonly MapWebMercatorProjectionService mapProjectionService = new();
     private bool hasUserMovedMapCamera;
     private bool isOsmAreaSelectionEnabled;
     private OsmBoundingBox? osmSelection;
@@ -1736,12 +1737,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         SimulateCommand = new RelayCommand(RunSimulation);
         StepCommand = new RelayCommand(AdvanceTimeline);
         ResetTimelineCommand = new RelayCommand(ResetTimeline);
-        FitCommand = new RelayCommand(() =>
-        {
-            Viewport.Reset(Scene.GetContentBounds(), LastViewportSize.Width <= 0d ? new GraphSize(1440d, 860d) : LastViewportSize);
-            NotifyVisualChanged();
-            StatusText = "Fit the graph to the current view.";
-        });
+        FitCommand = new RelayCommand(FitActiveView);
         ToggleMotionCommand = new RelayCommand(() =>
         {
             ReducedMotion = !ReducedMotion;
@@ -1804,7 +1800,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         CancelEdgeEditorCommand = new RelayCommand(CancelEdgeEditor, () => IsEdgeEditorWorkspaceMode);
         DeleteSelectedEdgeEditorCommand = new RelayCommand(DeleteSelectedEdgeFromEditor, () => CanDeleteSelectedEdgeEditor);
         AddEdgePermissionRuleCommand = new RelayCommand(AddEdgePermissionRule, () => CanAddEdgePermissionRule);
-        AddNodeTrafficProfileCommand = new RelayCommand(AddNodeTrafficProfile, () => IsEditingNode);
+        AddNodeTrafficProfileCommand = new RelayCommand(AddNodeTrafficProfile, () => IsEditingNode && TrafficTypeNameOptions.Count > 0);
         DuplicateSelectedNodeTrafficProfileCommand = new RelayCommand(DuplicateSelectedNodeTrafficProfile, () => IsEditingNode && SelectedNodeTrafficProfileItem is not null);
         RemoveSelectedNodeTrafficProfileCommand = new RelayCommand(RemoveSelectedNodeTrafficProfile, () => IsEditingNode && SelectedNodeTrafficProfileItem is not null);
         AddNodeProductionWindowCommand = new RelayCommand(AddNodeProductionWindow, () => SelectedNodeTrafficProfileItem is not null);
@@ -2070,6 +2066,42 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public bool IsGraphMode => VisualisationState.ActiveMode == VisualisationMode.Graph;
     public bool IsSankeyMode => VisualisationState.ActiveMode == VisualisationMode.Sankey;
     public bool IsMapMode => VisualisationState.ActiveMode == VisualisationMode.Map;
+    public bool HasGeoAnchoredNodes => network.Nodes.Any(node => node.Latitude.HasValue && node.Longitude.HasValue);
+    public bool IsLockLayoutToMapEnabled => HasGeoAnchoredNodes;
+    public string LockLayoutToMapDisabledReason => HasGeoAnchoredNodes
+        ? string.Empty
+        : "Import OSM data with coordinates to use map-locked layout.";
+    public bool LockLayoutToMap
+    {
+        get => network.LockLayoutToMap;
+        set
+        {
+            var next = value && HasGeoAnchoredNodes;
+            if (network.LockLayoutToMap == next)
+            {
+                return;
+            }
+
+            network.LockLayoutToMap = next;
+            BuildSceneFromNetwork();
+            if (VisualisationState.ActiveMode == VisualisationMode.Graph)
+            {
+                FitActiveView();
+            }
+            else
+            {
+                NotifyVisualChanged();
+            }
+
+            MarkDirty();
+            Raise(nameof(LockLayoutToMap));
+            Raise(nameof(IsMapLayoutLockedForGraph));
+            StatusText = next
+                ? "Graph layout locked to map coordinates."
+                : "Map layout unlocked. Graph positions can now be edited.";
+        }
+    }
+    public bool IsMapLayoutLockedForGraph => LockLayoutToMap && HasGeoAnchoredNodes;
     public IReadOnlyCollection<string> HighlightedNodeIds => highlightedNodeIds;
     public IReadOnlyCollection<string> HighlightedEdgeIds => highlightedEdgeIds;
     public int SankeyVersion
@@ -2505,6 +2537,12 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     public IReadOnlyList<string> TrafficTypeNameOptions =>
         network.TrafficTypes.Select(definition => definition.Name).Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(Comparer).OrderBy(name => name, Comparer).ToList();
+    public IReadOnlyList<string> TrafficTypeOptions => TrafficTypeNameOptions;
+    public string SelectedTrafficType
+    {
+        get => NodeTrafficTypeText;
+        set => NodeTrafficTypeText = value;
+    }
     public IReadOnlyList<string> SubnetworkIdSuggestions =>
         (network.Subnetworks ?? [])
             .Select(subnetwork => subnetwork.Id)
@@ -2528,6 +2566,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         {
             if (SetProperty(ref nodeTrafficTypeText, value))
             {
+                Raise(nameof(SelectedTrafficType));
                 RaiseNodeTrafficRoleValidationStateChanged();
                 PreviewSelectedNodeSceneLayout();
             }
@@ -2826,7 +2865,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             FocusNextConnectedEdge = FocusNextConnectedEdge,
             FocusNearbyNode = FocusNearbyNode,
             SelectionChanged = (_, _) => RefreshInspector(),
-            StatusChanged = text => StatusText = text
+            StatusChanged = text => StatusText = text,
+            CanDragNode = CanDragNodeInGraph,
+            GetNodeDragBlockedMessage = _ => "Unlock map layout to move this node."
         };
     }
 
@@ -2880,6 +2921,74 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         LastViewportSize = viewportSize;
         EnsureMapCamera(viewportSize);
         return new MapProjectionViewport(viewportSize.Width, viewportSize.Height, MapCamera.CenterLatitude, MapCamera.CenterLongitude, MapCamera.Zoom);
+    }
+
+    private bool CanDragNodeInGraph(string nodeId)
+    {
+        if (!IsMapLayoutLockedForGraph)
+        {
+            return true;
+        }
+
+        var node = network.Nodes.FirstOrDefault(candidate => Comparer.Equals(candidate.Id, nodeId));
+        return node is null || !node.Latitude.HasValue || !node.Longitude.HasValue;
+    }
+
+    private MapProjectionViewport BuildGraphProjectionViewport(GraphSize viewportSize)
+    {
+        var effectiveViewport = viewportSize.Width <= 0d || viewportSize.Height <= 0d ? new GraphSize(1440d, 860d) : viewportSize;
+        var geo = BuildGeoNodeLookup();
+        if (geo.Count == 0)
+        {
+            return new MapProjectionViewport(effectiveViewport.Width, effectiveViewport.Height, 0d, 0d, 0.0008d);
+        }
+
+        var fit = MapGraphRenderer.FitCameraToBoundingBox(
+            geo.Values.Min(item => item.Latitude),
+            geo.Values.Min(item => item.Longitude),
+            geo.Values.Max(item => item.Latitude),
+            geo.Values.Max(item => item.Longitude),
+            effectiveViewport);
+        return new MapProjectionViewport(effectiveViewport.Width, effectiveViewport.Height, fit.CenterLatitude, fit.CenterLongitude, fit.Zoom);
+    }
+
+    private bool TryProjectGeoNodeToGraph(NodeModel node, MapProjectionViewport projectionViewport, out GraphPoint point)
+    {
+        point = default;
+        if (!node.Latitude.HasValue || !node.Longitude.HasValue)
+        {
+            return false;
+        }
+
+        var projected = mapProjectionService.Project(new MapGeoCoordinate(node.Latitude.Value, node.Longitude.Value), projectionViewport);
+        point = new GraphPoint(projected.X, projected.Y);
+        return true;
+    }
+
+    private bool TryBuildProjectedGeoBounds(GraphSize viewportSize, out GraphRect bounds)
+    {
+        bounds = default;
+        var projectionViewport = BuildGraphProjectionViewport(viewportSize);
+        var points = new List<GraphPoint>();
+        foreach (var node in network.Nodes)
+        {
+            if (TryProjectGeoNodeToGraph(node, projectionViewport, out var projected))
+            {
+                points.Add(projected);
+            }
+        }
+
+        if (points.Count == 0)
+        {
+            return false;
+        }
+
+        var minX = points.Min(point => point.X);
+        var maxX = points.Max(point => point.X);
+        var minY = points.Min(point => point.Y);
+        var maxY = points.Max(point => point.Y);
+        bounds = new GraphRect(minX, minY, Math.Max(1d, maxX - minX), Math.Max(1d, maxY - minY));
+        return true;
     }
 
     public void BeginOsmSelection(MapGeoCoordinate coordinate)
@@ -3001,6 +3110,13 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 osmImportOptions,
                 ct);
             LoadNetwork(imported, $"Imported {imported.Nodes.Count} nodes and {imported.Edges.Count} edges");
+            if (HasGeoAnchoredNodes)
+            {
+                network.LockLayoutToMap = true;
+                Raise(nameof(LockLayoutToMap));
+                Raise(nameof(IsMapLayoutLockedForGraph));
+            }
+
             VisualisationState.ActiveMode = VisualisationMode.Map;
             FitMapToNetwork();
             IsOsmAreaSelectionEnabled = false;
@@ -3076,6 +3192,28 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         hasUserMovedMapCamera = false;
         NotifyVisualChanged();
         StatusText = "Fit map to network.";
+    }
+
+    private void FitActiveView()
+    {
+        var viewportSize = LastViewportSize.Width <= 0d ? new GraphSize(1440d, 860d) : LastViewportSize;
+        if (VisualisationState.ActiveMode == VisualisationMode.Map)
+        {
+            FitMapToNetwork();
+            return;
+        }
+
+        if (VisualisationState.ActiveMode == VisualisationMode.Graph && IsMapLayoutLockedForGraph && TryBuildProjectedGeoBounds(viewportSize, out var projectedBounds))
+        {
+            Viewport.Reset(projectedBounds, viewportSize);
+            NotifyVisualChanged();
+            StatusText = "Fit graph to projected map layout.";
+            return;
+        }
+
+        Viewport.Reset(Scene.GetContentBounds(), viewportSize);
+        NotifyVisualChanged();
+        StatusText = "Fit the graph to the current view.";
     }
 
     private void EnsureMapCamera(GraphSize viewportSize)
@@ -3283,6 +3421,13 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(IsSankeyMode));
         Raise(nameof(IsMapMode));
         Raise(nameof(ToolStatusText));
+        if (VisualisationState.ActiveMode == VisualisationMode.Graph && IsMapLayoutLockedForGraph)
+        {
+            BuildSceneFromNetwork();
+            FitActiveView();
+            return;
+        }
+
         NotifyVisualChanged();
     }
 
@@ -3953,6 +4098,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ClearDynamicReports();
         CurrentFilePath = currentFilePath;
         HasUnsavedChanges = false;
+        Raise(nameof(HasGeoAnchoredNodes));
+        Raise(nameof(IsLockLayoutToMapEnabled));
+        Raise(nameof(LockLayoutToMapDisabledReason));
+        Raise(nameof(LockLayoutToMap));
+        Raise(nameof(IsMapLayoutLockedForGraph));
         RefreshInspector();
         StatusText = status;
         NotifyVisualChanged();
@@ -3969,12 +4119,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Scene.Nodes.Clear();
         Scene.Edges.Clear();
         var zoomTier = graphRenderer.GetZoomTier(Viewport.Zoom);
+        var projectionViewport = IsMapLayoutLockedForGraph ? BuildGraphProjectionViewport(LastViewportSize) : (MapProjectionViewport?)null;
 
         var visibleLayers = network.Layers.Where(layer => layer.IsVisible).Select(layer => layer.Id).ToHashSet();
         foreach (var node in network.Nodes.Where(node => visibleLayers.Contains(node.LayerId)))
         {
             var centerX = node.X ?? 0d;
             var centerY = node.Y ?? 0d;
+            if (projectionViewport.HasValue && TryProjectGeoNodeToGraph(node, projectionViewport.Value, out var projected))
+            {
+                centerX = projected.X;
+                centerY = projected.Y;
+            }
             var detailLines = BuildNodeDetailLines(node, [], null);
             var typeLabel = string.IsNullOrWhiteSpace(node.PlaceType) ? "Node" : node.PlaceType!;
             var sceneNode = new GraphNodeSceneItem
@@ -5222,8 +5378,6 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private void PopulateNodeEditor(NodeModel node)
     {
-        EnsureDefaultTrafficType();
-
         isRefreshingInspectorDrafts = true;
         try
         {
@@ -5255,7 +5409,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             SelectedNodeProductionWindowItem = null;
             SelectedNodeConsumptionWindowItem = null;
             SelectedNodeInputRequirementItem = null;
-            NodeTrafficTypeText = string.Empty;
+            NodeTrafficTypeText = TrafficTypeOptions.FirstOrDefault() ?? string.Empty;
             NodeTrafficRoleText = NodeTrafficRoleCatalog.RoleOptions[0];
             NodeProductionText = "0";
             NodeConsumptionText = "0";
@@ -5272,7 +5426,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return;
         }
 
-        NodeTrafficTypeText = profile.TrafficType;
+        NodeTrafficTypeText = string.IsNullOrWhiteSpace(profile.TrafficType)
+            ? (TrafficTypeOptions.FirstOrDefault() ?? string.Empty)
+            : profile.TrafficType;
         NodeTrafficRoleText = NodeTrafficRoleCatalog.GetRoleName(profile.Production > 0d, profile.Consumption > 0d, profile.CanTransship);
         NodeProductionText = profile.Production.ToString("0.##", CultureInfo.InvariantCulture);
         NodeConsumptionText = profile.Consumption.ToString("0.##", CultureInfo.InvariantCulture);
@@ -5530,7 +5686,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             var trafficType = string.IsNullOrWhiteSpace(NodeTrafficTypeText) ? network.TrafficTypes.FirstOrDefault()?.Name : NodeTrafficTypeText.Trim();
             if (string.IsNullOrWhiteSpace(trafficType))
             {
-                throw new InvalidOperationException("Choose a traffic type before saving the traffic role.");
+                throw new InvalidOperationException("Select a traffic type before saving.");
             }
 
             if (!network.TrafficTypes.Any(definition => Comparer.Equals(definition.Name, trafficType)))
@@ -5635,11 +5791,16 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private void AddNodeTrafficProfile()
     {
-        EnsureDefaultTrafficType();
         var nodeId = NodeDraft.TargetNodeId;
         if (nodeId is null)
         {
             StatusText = "Select a node to add a traffic role.";
+            return;
+        }
+
+        if (network.TrafficTypes.Count == 0)
+        {
+            StatusText = "Create a traffic type before adding a role.";
             return;
         }
 
@@ -6039,6 +6200,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             TimelineLoopLength = source.TimelineLoopLength,
             DefaultAllocationMode = source.DefaultAllocationMode,
             SimulationSeed = source.SimulationSeed,
+            LockLayoutToMap = source.LockLayoutToMap,
             TrafficTypes = source.TrafficTypes.Select(definition => new TrafficTypeDefinition
             {
                 Name = definition.Name,
@@ -6069,6 +6231,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 X = node.X,
                 Y = node.Y,
                 TranshipmentCapacity = node.TranshipmentCapacity,
+                Latitude = node.Latitude,
+                Longitude = node.Longitude,
                 PlaceType = node.PlaceType,
                 LoreDescription = node.LoreDescription,
                 TrafficProfiles = node.TrafficProfiles.Select(profile => new NodeTrafficProfile
@@ -6615,10 +6779,15 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return string.Empty;
         }
 
+        if (TrafficTypeOptions.Count == 0)
+        {
+            return "Create a traffic type before adding a role.";
+        }
+
         var normalized = string.IsNullOrWhiteSpace(NodeTrafficTypeText) ? string.Empty : NodeTrafficTypeText.Trim();
         if (string.IsNullOrWhiteSpace(normalized))
         {
-            return "Traffic type is required.";
+            return "Select a traffic type before saving.";
         }
 
         return network.TrafficTypes.Any(definition => Comparer.Equals(definition.Name, normalized))
@@ -6842,7 +7011,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private void RaiseTrafficTypeOptionsChanged()
     {
         RaiseAutoCompleteOptionsChanged();
+        Raise(nameof(TrafficTypeOptions));
+        Raise(nameof(SelectedTrafficType));
         RaiseNodeTrafficRoleValidationStateChanged();
+        AddNodeTrafficProfileCommand.NotifyCanExecuteChanged();
     }
 
     private void RaiseAutoCompleteOptionsChanged()

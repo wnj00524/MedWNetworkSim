@@ -46,6 +46,7 @@ public sealed class NetworkInsightService : INetworkInsightService
     {
         var insights = new List<NetworkInsight>();
         var network = snapshot.Network;
+        var routedByEdgeId = BuildRoutedQuantityByEdge(snapshot);
 
         foreach (var outcome in snapshot.TrafficOutcomes)
         {
@@ -82,9 +83,7 @@ public sealed class NetworkInsightService : INetworkInsightService
 
         foreach (var edge in network.Edges.Where(edge => edge.Capacity.HasValue && edge.Capacity.Value > 0d))
         {
-            var routed = snapshot.TrafficOutcomes.SelectMany(outcome => outcome.Allocations)
-                .Where(allocation => allocation.PathEdgeIds.Contains(edge.Id, StringComparer.OrdinalIgnoreCase))
-                .Sum(allocation => allocation.Quantity);
+            var routed = routedByEdgeId.TryGetValue(edge.Id, out var quantity) ? quantity : 0d;
 
             var ratio = routed / edge.Capacity!.Value;
             if (ratio >= 0.9d)
@@ -136,7 +135,8 @@ public sealed class NetworkInsightService : INetworkInsightService
             });
         }
 
-        if (network.Edges.Any(edge => network.Nodes.All(node => !string.Equals(node.Id, edge.FromNodeId, StringComparison.OrdinalIgnoreCase) || !string.Equals(node.Id, edge.ToNodeId, StringComparison.OrdinalIgnoreCase))))
+        var nodeIds = network.Nodes.Select(node => node.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (network.Edges.Any(edge => !nodeIds.Contains(edge.FromNodeId) || !nodeIds.Contains(edge.ToNodeId)))
         {
             insights.Add(new NetworkInsight
             {
@@ -195,5 +195,30 @@ public sealed class NetworkInsightService : INetworkInsightService
         }
 
         return components;
+    }
+
+    private static Dictionary<string, double> BuildRoutedQuantityByEdge(VisualAnalytics.VisualAnalyticsSnapshot snapshot)
+    {
+        var routedByEdgeId = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var allocation in snapshot.TrafficOutcomes.SelectMany(outcome => outcome.Allocations))
+        {
+            if (allocation.Quantity <= 0d || allocation.PathEdgeIds is null)
+            {
+                continue;
+            }
+
+            foreach (var edgeId in allocation.PathEdgeIds)
+            {
+                if (string.IsNullOrWhiteSpace(edgeId))
+                {
+                    continue;
+                }
+
+                routedByEdgeId.TryGetValue(edgeId, out var current);
+                routedByEdgeId[edgeId] = current + allocation.Quantity;
+            }
+        }
+
+        return routedByEdgeId;
     }
 }

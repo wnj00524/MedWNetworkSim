@@ -100,6 +100,30 @@ public sealed class WorkspaceTopIssueSelectionTests
         Assert.All(workspace.TopIssues, issue => Assert.NotEqual(TopIssueTargetKind.None, issue.TargetKind));
     }
 
+    [Fact]
+    public void Timeline_NodePressureReport_WithActionablePressure_PopulatesTopIssues()
+    {
+        var workspace = new WorkspaceViewModel();
+        LoadNetwork(workspace, BuildNodeIssueNetworkModel());
+
+        workspace.StepCommand.Execute(null);
+
+        Assert.Contains(workspace.NodePressureReports, row => !string.Equals(row.PressureScore, "None", StringComparison.OrdinalIgnoreCase));
+        Assert.NotEmpty(workspace.TopIssues);
+    }
+
+    [Fact]
+    public void Timeline_RoutePressureReport_WithActionablePressure_PopulatesTopIssues()
+    {
+        var workspace = new WorkspaceViewModel();
+        LoadNetwork(workspace, BuildEdgeIssueNetworkModel());
+
+        workspace.StepCommand.Execute(null);
+
+        Assert.Contains(workspace.RouteReports, row => !string.Equals(row.Pressure, "None", StringComparison.OrdinalIgnoreCase));
+        Assert.NotEmpty(workspace.TopIssues);
+    }
+
     private static NetworkModel BuildNetworkModel()
     {
         return new NetworkModel

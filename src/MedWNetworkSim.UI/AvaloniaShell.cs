@@ -3172,6 +3172,28 @@ public sealed class ShellWindow : Window
                 return new TextBlock();
             }
 
+            var nodeLabel = string.IsNullOrWhiteSpace(item.NodeDisplayName) ? item.NodeId ?? "Unknown node" : item.NodeDisplayName;
+            var fromNodeName = string.IsNullOrWhiteSpace(item.FromNodeName) ? "?" : item.FromNodeName;
+            var toNodeName = string.IsNullOrWhiteSpace(item.ToNodeName) ? "?" : item.ToNodeName;
+            var hasAmbiguousRouteNames = string.Equals(fromNodeName, toNodeName, StringComparison.OrdinalIgnoreCase);
+            var shouldShowEdgeId = string.IsNullOrWhiteSpace(item.FromNodeName) ||
+                                   string.IsNullOrWhiteSpace(item.ToNodeName) ||
+                                   hasAmbiguousRouteNames;
+
+            var targetText = item.TargetKind switch
+            {
+                TopIssueTargetKind.Node => $"Node: {nodeLabel}",
+                TopIssueTargetKind.Edge => $"Route: {fromNodeName} → {toNodeName}",
+                _ => "Target: Unspecified"
+            };
+
+            var targetTooltip = item.TargetKind switch
+            {
+                TopIssueTargetKind.Node => $"Selects node: {nodeLabel} ({item.NodeId ?? "Unknown"})",
+                TopIssueTargetKind.Edge => $"Selects route: {fromNodeName} → {toNodeName} ({item.EdgeId ?? "Unknown route"})",
+                _ => "Selects issue target."
+            };
+
             var issueButton = new Button
             {
                 HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -3188,6 +3210,21 @@ public sealed class ShellWindow : Window
                         new TextBlock { Text = item.Detail, TextWrapping = TextWrapping.Wrap },
                         new TextBlock
                         {
+                            Text = targetText,
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+                            FontWeight = FontWeight.SemiBold,
+                            TextWrapping = TextWrapping.Wrap
+                        },
+                        new TextBlock
+                        {
+                            Text = $"Route ID: {item.EdgeId ?? "Unknown route"}",
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                            FontSize = 11,
+                            IsVisible = item.TargetKind == TopIssueTargetKind.Edge && shouldShowEdgeId,
+                            TextWrapping = TextWrapping.Wrap
+                        },
+                        new TextBlock
+                        {
                             Text = item.Breadcrumb,
                             Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
                             FontSize = 11
@@ -3195,6 +3232,7 @@ public sealed class ShellWindow : Window
                     }
                 }
             };
+            ToolTip.SetTip(issueButton, targetTooltip);
             issueButton.KeyDown += (_, keyEvent) =>
             {
                 if (keyEvent.Key is Key.Enter or Key.Space && viewModel.SelectTopIssueCommand.CanExecute(item))

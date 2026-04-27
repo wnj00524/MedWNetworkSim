@@ -1635,6 +1635,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private string scenarioResultSummary = string.Empty;
     private TopIssueViewModel? selectedTopIssue;
     private string selectedIssueBreadcrumb = "Issue → (none selected)";
+    private string topIssueUnmappedSummary = string.Empty;
     private string? pulseNodeId;
     private string? pulseEdgeId;
     private double pulseProgress;
@@ -1691,7 +1692,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         SelectedFacilityNodes = [];
         LayerItems = [];
         TopIssues = [];
+        TopIssueAdvisories = [];
         ScenarioWarnings = [];
+        TopIssues.CollectionChanged += (_, _) => Raise(nameof(TopIssueEmptyStateText));
+        TopIssueAdvisories.CollectionChanged += (_, _) => Raise(nameof(HasTopIssueAdvisories));
         ScenarioEditor = new ScenarioEditorViewModel(network, MarkDirty);
         DefaultTrafficPermissionRows.CollectionChanged += (_, _) => RaiseTrafficTypeDisplayStateChanged();
         NewCommand = new RelayCommand(CreateBlankNetwork);
@@ -1818,6 +1822,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public ObservableCollection<FacilityOriginItem> SelectedFacilityNodes { get; }
     public ObservableCollection<LayerListItemViewModel> LayerItems { get; }
     public ObservableCollection<TopIssueViewModel> TopIssues { get; }
+    public ObservableCollection<string> TopIssueAdvisories { get; }
     public ObservableCollection<string> ScenarioWarnings { get; }
     public NodeInspectorDraft NodeDraft { get; }
     public EdgeInspectorDraft EdgeDraft { get; }
@@ -2128,6 +2133,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         }
     }
     public string SelectedIssueBreadcrumb { get => selectedIssueBreadcrumb; private set => SetProperty(ref selectedIssueBreadcrumb, value); }
+    public bool HasTopIssueAdvisories => TopIssueAdvisories.Count > 0;
+    public string TopIssueUnmappedSummary { get => topIssueUnmappedSummary; private set => SetProperty(ref topIssueUnmappedSummary, value); }
+    public string TopIssueEmptyStateText => TopIssues.Count == 0
+        ? "No node or route issues found. Run a simulation or check network-wide advisories."
+        : string.Empty;
     public string? PulseNodeId { get => pulseNodeId; private set => SetProperty(ref pulseNodeId, value); }
     public string? PulseEdgeId { get => pulseEdgeId; private set => SetProperty(ref pulseEdgeId, value); }
     public double PulseProgress { get => pulseProgress; private set => SetProperty(ref pulseProgress, value); }
@@ -4061,57 +4071,79 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private void PopulateTopIssues(IReadOnlyList<NetworkIssue> issues)
     {
         TopIssues.Clear();
+        TopIssueAdvisories.Clear();
+        var unmappedIssueCount = 0;
         foreach (var issue in issues)
         {
-            var viewModel = CreateTopIssueViewModel(issue);
-            if (viewModel is not null)
+            var targetId = string.IsNullOrWhiteSpace(issue.TargetId) ? null : issue.TargetId.Trim();
+            var node = ResolveNodeIssueTarget(issue, targetId);
+            var edge = ResolveEdgeIssueTarget(issue, targetId);
+            var viewModel = node is not null
+                ? CreateNodeTopIssue(issue.Title, issue.Explanation, node)
+                : CreateEdgeTopIssue(issue.Title, issue.Explanation, edge);
+            if (viewModel is null)
             {
-                TopIssues.Add(viewModel);
+                unmappedIssueCount++;
+                TopIssueAdvisories.Add($"{issue.Title}: {issue.Explanation}");
+                continue;
             }
+
+            TopIssues.Add(viewModel);
         }
 
+        TopIssueUnmappedSummary = unmappedIssueCount > 0
+            ? "Some network-wide issues are not linked to a node or route."
+            : string.Empty;
         SelectedTopIssue = null;
         SelectedIssueBreadcrumb = "Issue → (none selected)";
     }
 
-    private TopIssueViewModel? CreateTopIssueViewModel(NetworkIssue issue)
+    private TopIssueViewModel? CreateNodeTopIssue(
+        string title,
+        string detail,
+        NodeModel? node)
     {
-        var targetId = string.IsNullOrWhiteSpace(issue.TargetId) ? null : issue.TargetId.Trim();
-        var node = ResolveNodeIssueTarget(issue, targetId);
-        if (node is not null)
+        if (node is null)
         {
-            var nodeLabel = string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name;
-            return new TopIssueViewModel
-            {
-                Title = issue.Title,
-                Detail = issue.Explanation,
-                TargetKind = TopIssueTargetKind.Node,
-                NodeId = node.Id,
-                NodeDisplayName = nodeLabel,
-                Breadcrumb = $"Issue → Node {nodeLabel}"
-            };
+            return null;
         }
 
-        var edge = ResolveEdgeIssueTarget(issue, targetId);
-        if (edge is not null)
+        var nodeLabel = string.IsNullOrWhiteSpace(node.Name) ? node.Id : node.Name;
+        return new TopIssueViewModel
         {
-            var from = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, edge.FromNodeId));
-            var to = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, edge.ToNodeId));
-            var fromLabel = string.IsNullOrWhiteSpace(from?.Name) ? edge.FromNodeId : from!.Name;
-            var toLabel = string.IsNullOrWhiteSpace(to?.Name) ? edge.ToNodeId : to!.Name;
-            return new TopIssueViewModel
-            {
-                Title = issue.Title,
-                Detail = issue.Explanation,
-                TargetKind = TopIssueTargetKind.Edge,
-                EdgeId = edge.Id,
-                FromNodeName = fromLabel,
-                ToNodeName = toLabel,
-                Breadcrumb = $"Issue → Route {fromLabel} → {toLabel}"
-            };
+            Title = title,
+            Detail = detail,
+            TargetKind = TopIssueTargetKind.Node,
+            NodeId = node.Id,
+            NodeDisplayName = nodeLabel,
+            Breadcrumb = $"Issue → Node {nodeLabel}"
+        };
+    }
+
+    private TopIssueViewModel? CreateEdgeTopIssue(
+        string title,
+        string detail,
+        EdgeModel? edge)
+    {
+        if (edge is null)
+        {
+            return null;
         }
 
-        return null;
+        var from = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, edge.FromNodeId));
+        var to = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, edge.ToNodeId));
+        var fromLabel = string.IsNullOrWhiteSpace(from?.Name) ? edge.FromNodeId : from!.Name;
+        var toLabel = string.IsNullOrWhiteSpace(to?.Name) ? edge.ToNodeId : to!.Name;
+        return new TopIssueViewModel
+        {
+            Title = title,
+            Detail = detail,
+            TargetKind = TopIssueTargetKind.Edge,
+            EdgeId = edge.Id,
+            FromNodeName = fromLabel,
+            ToNodeName = toLabel,
+            Breadcrumb = $"Issue → Route {fromLabel} → {toLabel}"
+        };
     }
 
     private NodeModel? ResolveNodeIssueTarget(NetworkIssue issue, string? targetId)
@@ -4354,6 +4386,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         TrafficReports.Clear();
         RouteReports.Clear();
         NodePressureReports.Clear();
+        TopIssues.Clear();
+        TopIssueAdvisories.Clear();
+        TopIssueUnmappedSummary = string.Empty;
+        SelectedTopIssue = null;
+        SelectedIssueBreadcrumb = "Issue → (none selected)";
     }
 
     private void RefreshInspector()

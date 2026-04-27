@@ -3152,20 +3152,20 @@ public sealed class ShellWindow : Window
 
     private static Control BuildTopIssuesPanel(WorkspaceViewModel viewModel)
     {
-        var list = new ListBox();
-        list.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.TopIssues)));
-        list.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedTopIssue), BindingMode.TwoWay));
-        list.KeyDown += (_, e) =>
+        var actionableList = new ListBox();
+        actionableList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.TopIssues)));
+        actionableList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedTopIssue), BindingMode.TwoWay));
+        actionableList.KeyDown += (_, e) =>
         {
             if (e.Key is Key.Enter or Key.Space &&
-                list.SelectedItem is TopIssueViewModel selectedIssue &&
+                actionableList.SelectedItem is TopIssueViewModel selectedIssue &&
                 viewModel.SelectTopIssueCommand.CanExecute(selectedIssue))
             {
                 viewModel.SelectTopIssueCommand.Execute(selectedIssue);
                 e.Handled = true;
             }
         };
-        list.ItemTemplate = new FuncDataTemplate<TopIssueViewModel>((item, _) =>
+        actionableList.ItemTemplate = new FuncDataTemplate<TopIssueViewModel>((item, _) =>
         {
             if (item is null)
             {
@@ -3243,12 +3243,47 @@ public sealed class ShellWindow : Window
             };
             return issueButton;
         });
+
+        var advisoryHeader = new TextBlock
+        {
+            Text = "Network-wide advisories",
+            FontWeight = FontWeight.SemiBold
+        };
+        advisoryHeader.Bind(Visual.IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.HasTopIssueAdvisories)));
+        var advisoryList = new ItemsControl();
+        advisoryList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.TopIssueAdvisories)));
+        advisoryList.Bind(Visual.IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.HasTopIssueAdvisories)));
+        advisoryList.ItemTemplate = new FuncDataTemplate<string>((item, _) =>
+            new TextBlock
+            {
+                Text = $"• {item}",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
+            });
+
+        var unmappedSummary = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
+        };
+        unmappedSummary.Bind(TextBlock.TextProperty, new Binding(nameof(WorkspaceViewModel.TopIssueUnmappedSummary)));
+        var emptyState = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
+        };
+        emptyState.Bind(TextBlock.TextProperty, new Binding(nameof(WorkspaceViewModel.TopIssueEmptyStateText)));
+
         return new StackPanel
         {
             Spacing = 8,
             Children =
             {
-                list,
+                actionableList,
+                emptyState,
+                advisoryHeader,
+                advisoryList,
+                unmappedSummary,
                 BuildQuickStat("Location", nameof(WorkspaceViewModel.SelectedIssueBreadcrumb))
             }
         };

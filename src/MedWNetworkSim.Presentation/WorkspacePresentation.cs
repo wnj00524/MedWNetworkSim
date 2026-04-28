@@ -1547,6 +1547,50 @@ public sealed class SimulationActorMetricsViewModel
     public string CooperationIndex { get; init; } = string.Empty;
 }
 
+public sealed class ActorTrafficTypeSelectionRow : ObservableObject
+{
+    private readonly Action<ActorTrafficTypeSelectionRow>? onChanged;
+    private bool isAllowed;
+    private bool isUpdating;
+
+    public ActorTrafficTypeSelectionRow(string trafficType, bool isAllowed, Action<ActorTrafficTypeSelectionRow>? onChanged = null)
+    {
+        TrafficType = trafficType;
+        this.isAllowed = isAllowed;
+        this.onChanged = onChanged;
+        ToggleCommand = new RelayCommand(() => IsAllowed = !IsAllowed);
+    }
+
+    public string TrafficType { get; }
+
+    public bool IsAllowed
+    {
+        get => isAllowed;
+        set
+        {
+            if (SetProperty(ref isAllowed, value) && !isUpdating)
+            {
+                onChanged?.Invoke(this);
+            }
+        }
+    }
+
+    public ICommand ToggleCommand { get; }
+
+    public void SetAllowedSilently(bool value)
+    {
+        isUpdating = true;
+        try
+        {
+            IsAllowed = value;
+        }
+        finally
+        {
+            isUpdating = false;
+        }
+    }
+}
+
 public enum SelectionSource
 {
     User,
@@ -1718,6 +1762,15 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private int actorRunTicks = 1;
     private bool hasActorPreview;
     private string actorStatusMessage = string.Empty;
+    private string actorNameText = string.Empty;
+    private string actorBudgetText = "0";
+    private string actorCashText = "0";
+    private string actorRiskToleranceText = "0.5";
+    private string actorCooperationWeightText = "0.5";
+    private string actorNotesText = string.Empty;
+    private bool actorIsEnabled = true;
+    private bool actorAllowAllTrafficTypes = true;
+    private string actorValidationText = string.Empty;
 
     public WorkspaceViewModel()
     {
@@ -1771,6 +1824,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         VisualisationState = new VisualisationState();
         NetworkInsights = [];
         SimulationActors = [];
+        ActorTrafficTypeRows = [];
         ActorDecisions = [];
         ActorActionOutcomes = [];
         ActorMetrics = [];
@@ -1896,6 +1950,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         AssignSelectedNodeToActorCommand = new RelayCommand(AssignSelectedNodeToActor, () => SelectedSimulationActor is not null);
         AssignSelectedEdgeToActorCommand = new RelayCommand(AssignSelectedEdgeToActor, () => SelectedSimulationActor is not null);
         ClearActorAssignmentsCommand = new RelayCommand(ClearActorAssignments, () => SelectedSimulationActor is not null);
+        ApplySelectedActorCommand = new RelayCommand(ApplySelectedActorCommandExecute, () => SelectedSimulationActor is not null);
         VisualisationState.PropertyChanged += HandleVisualisationStatePropertyChanged;
         UpdateActiveModeState();
 
@@ -1934,6 +1989,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public VisualisationState VisualisationState { get; }
     public ObservableCollection<NetworkInsight> NetworkInsights { get; }
     public ObservableCollection<SimulationActorState> SimulationActors { get; }
+    public ObservableCollection<ActorTrafficTypeSelectionRow> ActorTrafficTypeRows { get; }
     public ObservableCollection<SimulationActorDecisionViewModel> ActorDecisions { get; }
     public ObservableCollection<SimulationActorActionOutcomeViewModel> ActorActionOutcomes { get; }
     public ObservableCollection<SimulationActorMetricsViewModel> ActorMetrics { get; }
@@ -2085,6 +2141,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public RelayCommand AssignSelectedNodeToActorCommand { get; }
     public RelayCommand AssignSelectedEdgeToActorCommand { get; }
     public RelayCommand ClearActorAssignmentsCommand { get; }
+    public RelayCommand ApplySelectedActorCommand { get; }
     public RelayCommand OpenScenarioEditorCommand { get; }
     public RelayCommand CloseScenarioEditorCommand { get; }
     public RelayCommand CreateScenarioCommand { get; }
@@ -2317,11 +2374,14 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         {
             if (SetProperty(ref selectedSimulationActor, value))
             {
+                LoadSelectedActorDraft();
+                RefreshSelectedActorDisplayState();
                 RemoveSelectedActorCommand.NotifyCanExecuteChanged();
                 DuplicateSelectedActorCommand.NotifyCanExecuteChanged();
                 AssignSelectedNodeToActorCommand.NotifyCanExecuteChanged();
                 AssignSelectedEdgeToActorCommand.NotifyCanExecuteChanged();
                 ClearActorAssignmentsCommand.NotifyCanExecuteChanged();
+                ApplySelectedActorCommand.NotifyCanExecuteChanged();
             }
         }
     }
@@ -2329,6 +2389,58 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public int ActorRunTicks { get => actorRunTicks; set => SetProperty(ref actorRunTicks, Math.Max(1, value)); }
     public bool HasActorPreview { get => hasActorPreview; private set => SetProperty(ref hasActorPreview, value); }
     public string ActorStatusMessage { get => actorStatusMessage; private set => SetProperty(ref actorStatusMessage, value); }
+    public string ActorNameText { get => actorNameText; set => SetProperty(ref actorNameText, value); }
+    public string ActorBudgetText { get => actorBudgetText; set => SetProperty(ref actorBudgetText, value); }
+    public string ActorCashText { get => actorCashText; set => SetProperty(ref actorCashText, value); }
+    public string ActorRiskToleranceText { get => actorRiskToleranceText; set => SetProperty(ref actorRiskToleranceText, value); }
+    public string ActorCooperationWeightText { get => actorCooperationWeightText; set => SetProperty(ref actorCooperationWeightText, value); }
+    public string ActorNotesText { get => actorNotesText; set => SetProperty(ref actorNotesText, value); }
+    public bool ActorIsEnabled { get => actorIsEnabled; set => SetProperty(ref actorIsEnabled, value); }
+    public bool ActorAllowAllTrafficTypes
+    {
+        get => actorAllowAllTrafficTypes;
+        set
+        {
+            if (SetProperty(ref actorAllowAllTrafficTypes, value))
+            {
+                Raise(nameof(ShowActorTrafficTypeChecklist));
+                if (!value)
+                {
+                    EnsureAllowedTrafficTypesOnlyKnownValues();
+                }
+
+                ApplyActorTrafficScopeFromDraft(markDirty: true);
+            }
+        }
+    }
+    public string ActorValidationText { get => actorValidationText; private set => SetProperty(ref actorValidationText, value); }
+    public string SelectedActorNodeCountText => SelectedSimulationActor is null ? "Nodes: 0" : $"Nodes: {SelectedSimulationActor.ControlledNodeIds.Count}";
+    public string SelectedActorEdgeCountText => SelectedSimulationActor is null ? "Routes: 0" : $"Routes: {SelectedSimulationActor.ControlledEdgeIds.Count}";
+    public string SelectedActorTrafficScopeText
+    {
+        get
+        {
+            if (SelectedSimulationActor?.Capability is null)
+            {
+                return "Traffic scope: none";
+            }
+
+            if (SelectedSimulationActor.Capability.AllowAllTrafficTypes)
+            {
+                return "Traffic scope: all traffic types";
+            }
+
+            var allowed = SelectedSimulationActor.Capability.AllowedTrafficTypes?.Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(Comparer).ToList() ?? [];
+            return allowed.Count == 0 ? "Traffic scope: no traffic types selected" : $"Traffic scope: {string.Join(", ", allowed)}";
+        }
+    }
+    public string SelectedActorControlledNodesDisplay => SelectedSimulationActor is null || SelectedSimulationActor.ControlledNodeIds.Count == 0
+        ? "None"
+        : string.Join(", ", SelectedSimulationActor.ControlledNodeIds);
+    public string SelectedActorControlledEdgesDisplay => SelectedSimulationActor is null || SelectedSimulationActor.ControlledEdgeIds.Count == 0
+        ? "None"
+        : string.Join(", ", SelectedSimulationActor.ControlledEdgeIds);
+    public bool ShowActorTrafficTypeChecklist => !ActorAllowAllTrafficTypes;
     public LayerListItemViewModel? SelectedLayerItem
     {
         get => selectedLayerItem;
@@ -4203,7 +4315,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         SimulationActors.Clear();
         foreach (var actor in network.Actors)
         {
-            actor.Capability ??= SimulationActorCapabilityCatalog.ForKind(actor.Id, actor.Kind);
+            EnsureActorCapability(actor);
             SimulationActors.Add(actor);
         }
         ActorDecisions.Clear();
@@ -4881,12 +4993,244 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         StatusText = "Simulation finished.";
     }
 
+    private void LoadSelectedActorDraft()
+    {
+        var actor = SelectedSimulationActor;
+        if (actor is null)
+        {
+            actorNameText = string.Empty;
+            actorBudgetText = "0";
+            actorCashText = "0";
+            actorRiskToleranceText = "0.5";
+            actorCooperationWeightText = "0.5";
+            actorNotesText = string.Empty;
+            actorIsEnabled = true;
+            actorAllowAllTrafficTypes = true;
+            ActorValidationText = string.Empty;
+            ActorTrafficTypeRows.Clear();
+            RaiseActorDraftProperties();
+            return;
+        }
+
+        EnsureActorCapability(actor);
+        EnsureAllowedTrafficTypesOnlyKnownValues(actor);
+        actorNameText = actor.Name;
+        actorBudgetText = actor.Budget.ToString("0.##", CultureInfo.InvariantCulture);
+        actorCashText = actor.Cash.ToString("0.##", CultureInfo.InvariantCulture);
+        actorRiskToleranceText = actor.RiskTolerance.ToString("0.##", CultureInfo.InvariantCulture);
+        actorCooperationWeightText = actor.CooperationWeight.ToString("0.##", CultureInfo.InvariantCulture);
+        actorNotesText = actor.Notes;
+        actorIsEnabled = actor.IsEnabled;
+        actorAllowAllTrafficTypes = actor.Capability.AllowAllTrafficTypes;
+        ActorValidationText = string.Empty;
+        RebuildActorTrafficTypeRows();
+        RaiseActorDraftProperties();
+    }
+
+    private void RaiseActorDraftProperties()
+    {
+        Raise(nameof(ActorNameText));
+        Raise(nameof(ActorBudgetText));
+        Raise(nameof(ActorCashText));
+        Raise(nameof(ActorRiskToleranceText));
+        Raise(nameof(ActorCooperationWeightText));
+        Raise(nameof(ActorNotesText));
+        Raise(nameof(ActorIsEnabled));
+        Raise(nameof(ActorAllowAllTrafficTypes));
+        Raise(nameof(ShowActorTrafficTypeChecklist));
+    }
+
+    private void RefreshSelectedActorDisplayState()
+    {
+        Raise(nameof(SelectedActorNodeCountText));
+        Raise(nameof(SelectedActorEdgeCountText));
+        Raise(nameof(SelectedActorTrafficScopeText));
+        Raise(nameof(SelectedActorControlledNodesDisplay));
+        Raise(nameof(SelectedActorControlledEdgesDisplay));
+    }
+
+    private void RebuildActorTrafficTypeRows()
+    {
+        ActorTrafficTypeRows.Clear();
+        if (SelectedSimulationActor?.Capability is null)
+        {
+            return;
+        }
+
+        var allowed = SelectedSimulationActor.Capability.AllowedTrafficTypes.ToHashSet(Comparer);
+        foreach (var trafficType in network.TrafficTypes
+                     .Select(definition => definition.Name)
+                     .Where(name => !string.IsNullOrWhiteSpace(name))
+                     .Distinct(Comparer)
+                     .OrderBy(name => name, Comparer))
+        {
+            ActorTrafficTypeRows.Add(new ActorTrafficTypeSelectionRow(trafficType, allowed.Contains(trafficType), ToggleActorTrafficType));
+        }
+    }
+
+    private void ToggleActorTrafficType(ActorTrafficTypeSelectionRow row)
+    {
+        if (SelectedSimulationActor?.Capability is null || ActorAllowAllTrafficTypes)
+        {
+            return;
+        }
+
+        var allowed = SelectedSimulationActor.Capability.AllowedTrafficTypes.ToHashSet(Comparer);
+        if (row.IsAllowed)
+        {
+            allowed.Add(row.TrafficType);
+        }
+        else
+        {
+            allowed.RemoveWhere(name => Comparer.Equals(name, row.TrafficType));
+        }
+
+        SelectedSimulationActor.Capability.AllowedTrafficTypes = allowed.OrderBy(name => name, Comparer).ToArray();
+        MarkDirty();
+        RefreshSelectedActorDisplayState();
+    }
+
+    private void ApplySelectedActorCommandExecute()
+    {
+        if (SelectedSimulationActor is null)
+        {
+            ActorValidationText = "Select an actor first.";
+            return;
+        }
+
+        if (!TryParseActorDouble(ActorBudgetText, out var budget) || budget < 0d)
+        {
+            ActorValidationText = "Budget must be >= 0.";
+            return;
+        }
+
+        if (!TryParseActorDouble(ActorCashText, out var cash) || cash < 0d)
+        {
+            ActorValidationText = "Cash must be >= 0.";
+            return;
+        }
+
+        if (!TryParseActorDouble(ActorRiskToleranceText, out var riskTolerance) || riskTolerance < 0d || riskTolerance > 1d)
+        {
+            ActorValidationText = "Risk tolerance must be 0..1.";
+            return;
+        }
+
+        if (!TryParseActorDouble(ActorCooperationWeightText, out var cooperationWeight) || cooperationWeight < 0d || cooperationWeight > 1d)
+        {
+            ActorValidationText = "Cooperation weight must be 0..1.";
+            return;
+        }
+
+        var actor = SelectedSimulationActor;
+        actor.Name = string.IsNullOrWhiteSpace(ActorNameText) ? actor.Name : ActorNameText.Trim();
+        actor.Budget = budget;
+        actor.Cash = cash;
+        actor.RiskTolerance = riskTolerance;
+        actor.CooperationWeight = cooperationWeight;
+        actor.Notes = ActorNotesText?.Trim() ?? string.Empty;
+        actor.IsEnabled = ActorIsEnabled;
+        EnsureActorCapability(actor);
+        ApplyActorTrafficScopeFromDraft(markDirty: false);
+        network.Actors = SimulationActors.ToList();
+        MarkDirty();
+        Raise(nameof(SimulationActors));
+        RefreshSelectedActorDisplayState();
+        ActorValidationText = string.Empty;
+        ActorStatusMessage = $"Updated actor '{actor.Name}'.";
+    }
+
+    private void ApplyActorTrafficScopeFromDraft(bool markDirty)
+    {
+        if (SelectedSimulationActor?.Capability is null)
+        {
+            return;
+        }
+
+        SelectedSimulationActor.Capability.AllowAllTrafficTypes = ActorAllowAllTrafficTypes;
+        if (ActorAllowAllTrafficTypes)
+        {
+            SelectedSimulationActor.Capability.AllowedTrafficTypes = [];
+        }
+        else
+        {
+            var allowed = ActorTrafficTypeRows.Where(row => row.IsAllowed).Select(row => row.TrafficType).Distinct(Comparer).OrderBy(name => name, Comparer).ToArray();
+            SelectedSimulationActor.Capability.AllowedTrafficTypes = allowed;
+        }
+
+        if (markDirty)
+        {
+            MarkDirty();
+        }
+
+        RefreshSelectedActorDisplayState();
+    }
+
+    private void EnsureAllowedTrafficTypesOnlyKnownValues(SimulationActorState? actor = null)
+    {
+        actor ??= SelectedSimulationActor;
+        if (actor?.Capability is null)
+        {
+            return;
+        }
+
+        var known = network.TrafficTypes.Select(type => type.Name).Where(name => !string.IsNullOrWhiteSpace(name)).ToHashSet(Comparer);
+        actor.Capability.AllowedTrafficTypes = actor.Capability.AllowedTrafficTypes
+            .Where(type => known.Contains(type))
+            .Distinct(Comparer)
+            .OrderBy(type => type, Comparer)
+            .ToArray();
+    }
+
+    private static bool TryParseActorDouble(string text, out double value) =>
+        double.TryParse(text?.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out value) ||
+        double.TryParse(text?.Trim(), NumberStyles.Float, CultureInfo.CurrentCulture, out value);
+
+    private static bool IsPolicyOnlyAction(SimulationActorActionKind kind) =>
+        kind is SimulationActorActionKind.AdjustRoutePermission
+            or SimulationActorActionKind.BanTrafficOnEdge
+            or SimulationActorActionKind.TaxRoute
+            or SimulationActorActionKind.SubsidiseCapacity
+            or SimulationActorActionKind.SetNodePolicy
+            or SimulationActorActionKind.SetEdgePolicy;
+
+    private void EnsureActorCapability(SimulationActorState actor, bool preserveTrafficScope = true)
+    {
+        var previousCapability = actor.Capability;
+        var preservedAllowAll = preserveTrafficScope && previousCapability is not null && previousCapability.AllowAllTrafficTypes;
+        var preservedAllowedTraffic = preserveTrafficScope && previousCapability is not null
+            ? previousCapability.AllowedTrafficTypes.ToArray()
+            : Array.Empty<string>();
+
+        actor.Capability = SimulationActorCapabilityCatalog.ForKind(actor.Id, actor.Kind);
+        actor.Capability.ActorId = actor.Id;
+        if (preserveTrafficScope)
+        {
+            actor.Capability.AllowAllTrafficTypes = preservedAllowAll;
+            actor.Capability.AllowedTrafficTypes = preservedAllowAll
+                ? []
+                : preservedAllowedTraffic.Where(type => !string.IsNullOrWhiteSpace(type)).Distinct(Comparer).ToArray();
+            EnsureAllowedTrafficTypesOnlyKnownValues(actor);
+        }
+
+        actor.Capability.AllowedActionKinds = actor.Capability.AllowedActionKinds
+            .Where(kind => actor.Kind switch
+            {
+                SimulationActorKind.Firm => !IsPolicyOnlyAction(kind),
+                SimulationActorKind.Government => kind is not SimulationActorActionKind.BuyTraffic and not SimulationActorActionKind.SellTraffic,
+                SimulationActorKind.LogisticsPlanner => kind is SimulationActorActionKind.PreferRoute or SimulationActorActionKind.AdjustEdgeCapacity or SimulationActorActionKind.AdjustEdgeCost,
+                _ => kind == SimulationActorActionKind.NoOp
+            })
+            .ToArray();
+    }
+
     private void AddFirmActor() => AddActor(CreateDefaultActor(SimulationActorKind.Firm));
     private void AddGovernmentActor() => AddActor(CreateDefaultActor(SimulationActorKind.Government));
     private void AddLogisticsPlannerActor() => AddActor(CreateDefaultActor(SimulationActorKind.LogisticsPlanner));
 
     private void AddActor(SimulationActorState actor)
     {
+        EnsureActorCapability(actor, preserveTrafficScope: true);
         SimulationActors.Add(actor);
         network.Actors = SimulationActors.ToList();
         SelectedSimulationActor = actor;
@@ -4971,7 +5315,17 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         copy.CooperationWeight = SelectedSimulationActor.CooperationWeight;
         copy.ControlledNodeIds = [.. SelectedSimulationActor.ControlledNodeIds];
         copy.ControlledEdgeIds = [.. SelectedSimulationActor.ControlledEdgeIds];
-        copy.Capability = SelectedSimulationActor.Capability;
+        copy.Notes = SelectedSimulationActor.Notes;
+        copy.IsEnabled = SelectedSimulationActor.IsEnabled;
+        copy.Capability = new SimulationActorCapability
+        {
+            ActorId = copy.Id,
+            AllowedActionKinds = [.. SelectedSimulationActor.Capability.AllowedActionKinds],
+            AllowAllTrafficTypes = SelectedSimulationActor.Capability.AllowAllTrafficTypes,
+            AllowedTrafficTypes = [.. SelectedSimulationActor.Capability.AllowedTrafficTypes],
+            IsCustomActorType = SelectedSimulationActor.Capability.IsCustomActorType,
+            CustomActorTypeName = SelectedSimulationActor.Capability.CustomActorTypeName
+        };
         AddActor(copy);
     }
 
@@ -5096,42 +5450,88 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private void AssignSelectedNodeToActor()
     {
-        if (SelectedSimulationActor is null) return;
-        var selectedNodeId = Scene.Selection.SelectedNodeIds.FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(selectedNodeId))
+        if (SelectedSimulationActor is null)
         {
-            ActorStatusMessage = "Select a node or edge first, then assign it to an actor.";
+            ActorStatusMessage = "Select an actor first.";
             return;
         }
-        if (!SelectedSimulationActor.ControlledNodeIds.Contains(selectedNodeId, Comparer))
+
+        var selectedNodeIds = Scene.Selection.SelectedNodeIds
+            .Where(id => network.Nodes.Any(node => Comparer.Equals(node.Id, id)))
+            .Distinct(Comparer)
+            .ToList();
+        if (selectedNodeIds.Count == 0)
         {
-            SelectedSimulationActor.ControlledNodeIds.Add(selectedNodeId);
-            MarkDirty();
+            ActorStatusMessage = "Select one or more nodes/routes first.";
+            return;
         }
+
+        var current = SelectedSimulationActor.ControlledNodeIds.ToHashSet(Comparer);
+        foreach (var nodeId in selectedNodeIds)
+        {
+            if (!current.Add(nodeId))
+            {
+                current.Remove(nodeId);
+            }
+        }
+
+        SelectedSimulationActor.ControlledNodeIds = current.OrderBy(id => id, Comparer).ToList();
+        network.Actors = SimulationActors.ToList();
+        MarkDirty();
+        RefreshSelectedActorDisplayState();
+        Raise(nameof(SimulationActors));
+        ActorStatusMessage = "Updated actor node assignments.";
     }
 
     private void AssignSelectedEdgeToActor()
     {
-        if (SelectedSimulationActor is null) return;
-        var selectedEdgeId = Scene.Selection.SelectedEdgeIds.FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(selectedEdgeId))
+        if (SelectedSimulationActor is null)
         {
-            ActorStatusMessage = "Select a node or edge first, then assign it to an actor.";
+            ActorStatusMessage = "Select an actor first.";
             return;
         }
-        if (!SelectedSimulationActor.ControlledEdgeIds.Contains(selectedEdgeId, Comparer))
+
+        var selectedEdgeIds = Scene.Selection.SelectedEdgeIds
+            .Where(id => network.Edges.Any(edge => Comparer.Equals(edge.Id, id)))
+            .Distinct(Comparer)
+            .ToList();
+        if (selectedEdgeIds.Count == 0)
         {
-            SelectedSimulationActor.ControlledEdgeIds.Add(selectedEdgeId);
-            MarkDirty();
+            ActorStatusMessage = "Select one or more nodes/routes first.";
+            return;
         }
+
+        var current = SelectedSimulationActor.ControlledEdgeIds.ToHashSet(Comparer);
+        foreach (var edgeId in selectedEdgeIds)
+        {
+            if (!current.Add(edgeId))
+            {
+                current.Remove(edgeId);
+            }
+        }
+
+        SelectedSimulationActor.ControlledEdgeIds = current.OrderBy(id => id, Comparer).ToList();
+        network.Actors = SimulationActors.ToList();
+        MarkDirty();
+        RefreshSelectedActorDisplayState();
+        Raise(nameof(SimulationActors));
+        ActorStatusMessage = "Updated actor route assignments.";
     }
 
     private void ClearActorAssignments()
     {
-        if (SelectedSimulationActor is null) return;
+        if (SelectedSimulationActor is null)
+        {
+            ActorStatusMessage = "Select an actor first.";
+            return;
+        }
+
         SelectedSimulationActor.ControlledNodeIds.Clear();
         SelectedSimulationActor.ControlledEdgeIds.Clear();
+        network.Actors = SimulationActors.ToList();
         MarkDirty();
+        RefreshSelectedActorDisplayState();
+        Raise(nameof(SimulationActors));
     }
 
     private void AdvanceTimeline()
@@ -7497,6 +7897,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(SelectedTrafficType));
         RaiseNodeTrafficRoleValidationStateChanged();
         AddNodeTrafficProfileCommand.NotifyCanExecuteChanged();
+        EnsureAllowedTrafficTypesOnlyKnownValues();
+        RebuildActorTrafficTypeRows();
+        RefreshSelectedActorDisplayState();
     }
 
     private void RaiseAutoCompleteOptionsChanged()

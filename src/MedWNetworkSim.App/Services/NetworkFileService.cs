@@ -265,6 +265,9 @@ public sealed class NetworkFileService
             EdgeTrafficPermissionDefaults = edgeTrafficPermissionDefaults,
             TimelineEvents = timelineEvents,
             ScenarioDefinitions = (model.ScenarioDefinitions ?? []).Where(s => s is not null).ToList(),
+            Actors = (model.Actors ?? []).Where(actor => actor is not null).ToList(),
+            ActorDecisions = (model.ActorDecisions ?? []).Where(decision => decision is not null).ToList(),
+            ActorMetrics = (model.ActorMetrics ?? []).Where(metric => metric is not null).ToList(),
             Subnetworks = NormalizeSubnetworks(model.Subnetworks, normalizedNodes, normalizedEdges, forceLayoutAllNodes, depth, ancestry)
         };
     }

@@ -234,8 +234,8 @@ public sealed class GraphCanvasControl : Control, IDisposable
         mapRenderer = new MapGraphRenderer(new MapWebMercatorProjectionService(), osmTileProvider);
         Focusable = true;
         ClipToBounds = true;
-        MinHeight = 420;
-        MinWidth = 720;
+        MinHeight = 240;
+        MinWidth = 480;
 
         animationTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(33), DispatcherPriority.Background, HandleAnimationTick);
         AttachedToVisualTree += (_, _) =>
@@ -1518,40 +1518,33 @@ public sealed class ShellWindow : Window
         DockPanel.SetDock(topBar, Dock.Top);
         dockRoot.Children.Add(topBar);
 
-        workspaceGrid = new Grid
+        dockRoot.Children.Add(BuildWorkspaceContentRoot(viewModel));
+
+        overlayLayer = new Grid
         {
-            Margin = new Thickness(0, 12, 0, 0),
-            ColumnDefinitions = new ColumnDefinitions("76,340,*,340"),
-            RowDefinitions =
-            {
-                new RowDefinition(GridLength.Star),
-                new RowDefinition(new GridLength(230))
-                {
-                    MinHeight = 170,
-                    MaxHeight = 320
-                }
-            }
+            IsHitTestVisible = false
         };
-
-        toolRailHost = (Border)BuildToolRail(viewModel);
-        canvasHost = (Border)BuildCanvasArea(viewModel);
-        inspectorHost = BuildRightAnalyticsColumn(viewModel);
-        dashboardStripHost = BuildDashboardStrip(viewModel);
-        var leftDashboardHost = BuildLeftDashboardColumn(viewModel);
-
-        workspaceGrid.Children.Add(toolRailHost);
-        workspaceGrid.Children.Add(leftDashboardHost);
-        workspaceGrid.Children.Add(canvasHost);
-        workspaceGrid.Children.Add(inspectorHost);
-        workspaceGrid.Children.Add(dashboardStripHost);
-
-        standardWorkspaceHost = new Grid
+        overlayBackdrop = new Border
         {
-            Children =
-            {
-                workspaceGrid
-            }
+            Background = new SolidColorBrush(Color.FromArgb(150, 20, 18, 15)),
+            IsVisible = false
         };
+        overlayBackdrop.PointerPressed += (_, _) => CloseFullNodeEditor();
+        overlayLayer.Children.Add(overlayBackdrop);
+        fullNodeEditorDrawer = BuildFullNodeEditorDrawer(viewModel);
+        overlayLayer.Children.Add(fullNodeEditorDrawer);
+
+        var root = new Grid();
+        root.Children.Add(dockRoot);
+        root.Children.Add(overlayLayer);
+        UpdateDashboardLayout();
+        UpdateShellWorkspaceMode();
+        return root;
+    }
+
+    private Grid BuildWorkspaceContentRoot(WorkspaceViewModel viewModel)
+    {
+        standardWorkspaceHost = BuildStandardWorkspaceShell(viewModel);
         trafficTypeWorkspaceHost = BuildTrafficTypeWorkspace(viewModel);
         trafficTypeWorkspaceHost.IsVisible = false;
         edgeEditorWorkspaceHost = BuildEdgeEditorWorkspace(viewModel);
@@ -1576,29 +1569,73 @@ public sealed class ShellWindow : Window
             }
         };
 
-        dockRoot.Children.Remove(workspaceGrid);
-        dockRoot.Children.Add(contentRoot);
+        return contentRoot;
+    }
 
-        overlayLayer = new Grid
+    private Grid BuildStandardWorkspaceShell(WorkspaceViewModel viewModel)
+    {
+        workspaceGrid = new Grid
         {
-            IsHitTestVisible = false
+            Margin = new Thickness(0, 12, 0, 0),
+            ColumnSpacing = 12,
+            RowSpacing = 10,
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto)
+                {
+                    MinWidth = 300,
+                    MaxWidth = 360
+                }
+            },
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Star),
+                new RowDefinition(new GridLength(BottomStripHeight))
+                {
+                    MinHeight = BottomStripMinHeight,
+                    MaxHeight = BottomStripMaxHeight
+                }
+            }
         };
-        overlayBackdrop = new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(150, 20, 18, 15)),
-            IsVisible = false
-        };
-        overlayBackdrop.PointerPressed += (_, _) => CloseFullNodeEditor();
-        overlayLayer.Children.Add(overlayBackdrop);
-        fullNodeEditorDrawer = BuildFullNodeEditorDrawer(viewModel);
-        overlayLayer.Children.Add(fullNodeEditorDrawer);
 
-        var root = new Grid();
-        root.Children.Add(dockRoot);
-        root.Children.Add(overlayLayer);
-        UpdateDashboardLayout();
-        UpdateShellWorkspaceMode();
-        return root;
+        toolRailHost = (Border)BuildToolRail(viewModel);
+        canvasHost = (Border)BuildCanvasArea(viewModel);
+        inspectorHost = BuildRightAnalyticsColumn(viewModel);
+        dashboardStripHost = BuildDashboardStrip(viewModel);
+
+        Place(toolRailHost, column: 0, row: 0, rowSpan: 2);
+        Place(canvasHost, column: 1, row: 0);
+        Place(inspectorHost, column: 2, row: 0);
+        Place(dashboardStripHost, column: 1, row: 1, columnSpan: 2);
+
+        workspaceGrid.Children.Add(toolRailHost);
+        workspaceGrid.Children.Add(canvasHost);
+        workspaceGrid.Children.Add(inspectorHost);
+        workspaceGrid.Children.Add(dashboardStripHost);
+
+        return workspaceGrid;
+    }
+
+    private static void Place(Control control, int column, int row, int columnSpan = 1, int rowSpan = 1)
+    {
+        Grid.SetColumn(control, column);
+        Grid.SetRow(control, row);
+        Grid.SetColumnSpan(control, columnSpan);
+        Grid.SetRowSpan(control, rowSpan);
+    }
+
+    private static WrapPanel BuildWrapPanel(params Control[] controls)
+    {
+        var panel = new WrapPanel();
+        foreach (var control in controls)
+        {
+            control.Margin = new Thickness(0, 0, 8, 8);
+            panel.Children.Add(control);
+        }
+
+        return panel;
     }
 
     private static Border BuildDashboardPanel(Control content, string? header = null, bool includeHeader = true, Thickness? padding = null, CornerRadius? radius = null)
@@ -1651,7 +1688,7 @@ public sealed class ShellWindow : Window
     {
         var grid = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("2*,*,Auto"),
+            ColumnDefinitions = new ColumnDefinitions("2*,*,2*"),
             ColumnSpacing = 18
         };
 
@@ -1709,26 +1746,20 @@ public sealed class ShellWindow : Window
         Grid.SetColumn(centerStatus, 1);
         grid.Children.Add(centerStatus);
 
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            VerticalAlignment = VerticalAlignment.Center,
-            Children =
-            {
-                BuildButton("New", new RelayCommand(() => _ = CreateBlankNetworkAsync(viewModel)), toolTip: "Create a blank network."),
-                BuildButton("Open", new RelayCommand(() => _ = OpenNetworkFileAsync(viewModel)), toolTip: "Open a network JSON file."),
-                BuildButton("Save", new RelayCommand(() => _ = SaveNetworkAsync(viewModel)), toolTip: "Save the current network JSON."),
-                BuildButton("Import", new RelayCommand(() => _ = ImportGraphMlAsync(viewModel)), toolTip: "Import GraphML into the current workspace."),
-                BuildButton("Export", new RelayCommand(() => _ = ExportGraphMlAsync(viewModel)), toolTip: "Export the active network as GraphML."),
-                BuildButton("Run", viewModel.SimulateCommand, isPrimary: true, toolTip: "Run the simulation timeline."),
-                BuildButton("Step", viewModel.StepCommand, isPrimary: true, toolTip: "Advance the simulation by one period."),
-                BuildButton("Reset", viewModel.ResetTimelineCommand, toolTip: "Reset timeline to period 0."),
-                BuildButton("Fit", viewModel.FitCommand, toolTip: "Fit the graph to the viewport."),
-                BuildButton("About", viewModel.OpenAboutCommand, toolTip: "Show version and product details."),
-                BuildButton("Exit", new RelayCommand(() => _ = CloseWithConfirmationAsync()), toolTip: "Close the workstation.")
-            }
-        };
+        var buttons = BuildWrapPanel(
+            BuildButton("New", new RelayCommand(() => _ = CreateBlankNetworkAsync(viewModel)), toolTip: "Create a blank network."),
+            BuildButton("Open", new RelayCommand(() => _ = OpenNetworkFileAsync(viewModel)), toolTip: "Open a network JSON file."),
+            BuildButton("Save", new RelayCommand(() => _ = SaveNetworkAsync(viewModel)), toolTip: "Save the current network JSON."),
+            BuildButton("Import", new RelayCommand(() => _ = ImportGraphMlAsync(viewModel)), toolTip: "Import GraphML into the current workspace."),
+            BuildButton("Export", new RelayCommand(() => _ = ExportGraphMlAsync(viewModel)), toolTip: "Export the active network as GraphML."),
+            BuildButton("Run", viewModel.SimulateCommand, isPrimary: true, toolTip: "Run the simulation timeline."),
+            BuildButton("Step", viewModel.StepCommand, isPrimary: true, toolTip: "Advance the simulation by one period."),
+            BuildButton("Reset", viewModel.ResetTimelineCommand, toolTip: "Reset timeline to period 0."),
+            BuildButton("Fit", viewModel.FitCommand, toolTip: "Fit the graph to the viewport."),
+            BuildButton("About", viewModel.OpenAboutCommand, toolTip: "Show version and product details."),
+            BuildButton("Exit", new RelayCommand(() => _ = CloseWithConfirmationAsync()), toolTip: "Close the workstation."));
+        buttons.HorizontalAlignment = HorizontalAlignment.Right;
+        buttons.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(buttons, 2);
         grid.Children.Add(buttons);
         return grid;
@@ -1794,13 +1825,9 @@ public sealed class ShellWindow : Window
 
         var border = BuildDashboardPanel(
             new ScrollViewer { Content = content },
-            header: " ",
+            header: "Navigation",
             padding: new Thickness(6),
             radius: new CornerRadius(14));
-        border.Margin = new Thickness(0, 0, 12, 0);
-        Grid.SetColumn(border, 0);
-        Grid.SetRow(border, 0);
-        Grid.SetRowSpan(border, 2);
         return border;
     }
 
@@ -1832,25 +1859,13 @@ public sealed class ShellWindow : Window
         };
         RefreshModeButtons();
 
-        var modeSelector = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 6,
-            Children = { graphModeButton, sankeyModeButton, mapModeButton }
-        };
+        var modeSelector = BuildWrapPanel(graphModeButton, sankeyModeButton, mapModeButton);
 
-        var sankeyOptions = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 12,
-            IsVisible = viewModel.IsSankeyMode,
-            Children =
-            {
-                BuildLabeledComboBox("Traffic type", nameof(WorkspaceViewModel.TrafficTypeNameOptions), "VisualisationState.ActiveTrafficTypeFilter"),
-                new CheckBox { Content = "Collapse minor flows", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.CollapseMinorFlows", BindingMode.TwoWay) },
-                new CheckBox { Content = "Show unmet demand", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) }
-            }
-        };
+        var sankeyOptions = BuildWrapPanel(
+            BuildLabeledComboBox("Traffic type", nameof(WorkspaceViewModel.TrafficTypeNameOptions), "VisualisationState.ActiveTrafficTypeFilter"),
+            new CheckBox { Content = "Collapse minor flows", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.CollapseMinorFlows", BindingMode.TwoWay) },
+            new CheckBox { Content = "Show unmet demand", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) });
+        sankeyOptions.IsVisible = viewModel.IsSankeyMode;
 
         var mapOptions = new StackPanel
         {
@@ -1859,21 +1874,14 @@ public sealed class ShellWindow : Window
             IsVisible = viewModel.IsMapMode,
             Children =
             {
-                new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    Spacing = 12,
-                    Children =
-                    {
-                        new CheckBox { Content = "Show map background", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowMapBackground", BindingMode.TwoWay) },
-                        new CheckBox { Content = "Show capacity utilisation", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowCapacityUtilisation", BindingMode.TwoWay) },
-                        new CheckBox { Content = "Show unmet demand", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) },
-                        BuildToggleButton("Select area", viewModel.ToggleOsmAreaSelectionCommand, "Drag to select an area up to 2 square degrees."),
-                        BuildButton("Import selected area", viewModel.ImportOsmSelectionCommand, toolTip: "Download and import the selected OpenStreetMap area."),
-                        BuildButton("Clear selection", viewModel.ClearOsmSelectionCommand, toolTip: "Clear the selected OSM area."),
-                        BuildButton("Fit to network", viewModel.FitMapToNetworkCommand, toolTip: "Fit the map camera to imported network nodes.")
-                    }
-                },
+                BuildWrapPanel(
+                    new CheckBox { Content = "Show map background", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowMapBackground", BindingMode.TwoWay) },
+                    new CheckBox { Content = "Show capacity utilisation", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowCapacityUtilisation", BindingMode.TwoWay) },
+                    new CheckBox { Content = "Show unmet demand", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) },
+                    BuildToggleButton("Select area", viewModel.ToggleOsmAreaSelectionCommand, "Drag to select an area up to 2 square degrees."),
+                    BuildButton("Import selected area", viewModel.ImportOsmSelectionCommand, toolTip: "Download and import the selected OpenStreetMap area."),
+                    BuildButton("Clear selection", viewModel.ClearOsmSelectionCommand, toolTip: "Clear the selected OSM area."),
+                    BuildButton("Fit to network", viewModel.FitMapToNetworkCommand, toolTip: "Fit the map camera to imported network nodes.")),
                 BuildOsmDownloadPanel(viewModel)
             }
         };
@@ -2038,11 +2046,9 @@ public sealed class ShellWindow : Window
             header: "Workspace",
             padding: new Thickness(10),
             radius: new CornerRadius(18));
-        canvasHost.MinHeight = 520;
-        canvasHost.MinWidth = 760;
+        canvasHost.MinHeight = 260;
+        canvasHost.MinWidth = 480;
 
-        Grid.SetColumn(canvasHost, 1);
-        Grid.SetRow(canvasHost, 0);
         return canvasHost;
     }
 
@@ -2173,18 +2179,12 @@ public sealed class ShellWindow : Window
 
     private Control BuildOsmDownloadPanel(WorkspaceViewModel viewModel)
     {
-        var grid = new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitions("*,*,*,*,Auto,*"),
-            RowDefinitions = new RowDefinitions("Auto,Auto"),
-            ColumnSpacing = 8,
-            RowSpacing = 5
-        };
+        var wrap = new WrapPanel();
 
-        AddCoordinate("West", nameof(WorkspaceViewModel.OsmWestText), 0);
-        AddCoordinate("South", nameof(WorkspaceViewModel.OsmSouthText), 1);
-        AddCoordinate("East", nameof(WorkspaceViewModel.OsmEastText), 2);
-        AddCoordinate("North", nameof(WorkspaceViewModel.OsmNorthText), 3);
+        AddCoordinate("West", nameof(WorkspaceViewModel.OsmWestText));
+        AddCoordinate("South", nameof(WorkspaceViewModel.OsmSouthText));
+        AddCoordinate("East", nameof(WorkspaceViewModel.OsmEastText));
+        AddCoordinate("North", nameof(WorkspaceViewModel.OsmNorthText));
 
         var nodeSelector = new ComboBox
         {
@@ -2202,12 +2202,14 @@ public sealed class ShellWindow : Window
                 nodeSelector
             }
         };
-        Grid.SetColumn(nodePanel, 4);
-        grid.Children.Add(nodePanel);
+        nodePanel.Margin = new Thickness(0, 0, 8, 8);
+        wrap.Children.Add(nodePanel);
 
         var metrics = new StackPanel
         {
             Spacing = 2,
+            MinWidth = 220,
+            MaxWidth = 360,
             Children =
             {
                 new TextBlock { [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.OsmSelectedAreaText)), Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText), TextWrapping = TextWrapping.Wrap },
@@ -2215,17 +2217,17 @@ public sealed class ShellWindow : Window
                 new TextBlock { [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.OsmValidationMessage)), Foreground = new SolidColorBrush(AvaloniaDashboardTheme.Warning), TextWrapping = TextWrapping.Wrap }
             }
         };
-        Grid.SetColumn(metrics, 5);
-        grid.Children.Add(metrics);
+        metrics.Margin = new Thickness(0, 0, 8, 8);
+        wrap.Children.Add(metrics);
 
-        return grid;
+        return wrap;
 
-        void AddCoordinate(string label, string bindingPath, int column)
+        void AddCoordinate(string label, string bindingPath)
         {
             var input = BuildTextBox(label);
             input.MinWidth = 96;
             input.Bind(TextBox.TextProperty, new Binding(bindingPath, BindingMode.TwoWay));
-            var panel = new StackPanel
+            var coordinatePanel = new StackPanel
             {
                 Spacing = 3,
                 Children =
@@ -2234,8 +2236,8 @@ public sealed class ShellWindow : Window
                     input
                 }
             };
-            Grid.SetColumn(panel, column);
-            grid.Children.Add(panel);
+            coordinatePanel.Margin = new Thickness(0, 0, 8, 8);
+            wrap.Children.Add(coordinatePanel);
         }
     }
 
@@ -2599,6 +2601,8 @@ public sealed class ShellWindow : Window
             Spacing = 10,
             Children =
             {
+                BuildAgentMonitorCard(viewModel),
+                BuildNodeOverviewCard(),
                 BuildPieChartCard("Traffic Load", "Flow pressure snapshot.", viewModel.NodeUtilizationMixData, [AvaloniaDashboardTheme.Accent, AvaloniaDashboardTheme.Warning, AvaloniaDashboardTheme.Danger]),
                 BuildPieChartCard("Production Yield", "Delivered vs unmet proxy.", viewModel.AgentStatusDistributionData, [AvaloniaDashboardTheme.Success, AvaloniaDashboardTheme.Accent, AvaloniaDashboardTheme.Warning]),
                 BuildPieChartCard("Agent Status Distribution", "Running actor state split.", viewModel.AgentStatusDistributionData, [AvaloniaDashboardTheme.Accent, AvaloniaDashboardTheme.Success, AvaloniaDashboardTheme.Warning]),
@@ -2609,9 +2613,7 @@ public sealed class ShellWindow : Window
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Content = content
-        }, header: "Network Analytics", padding: new Thickness(10));
-        Grid.SetColumn(panel, 3);
-        Grid.SetRow(panel, 0);
+        }, header: "Analytics", padding: new Thickness(10));
         return panel;
     }
 
@@ -3785,10 +3787,11 @@ public sealed class ShellWindow : Window
         dashboardStripContentGrid.Children.Add(body);
 
         var strip = BuildDashboardPanel(dashboardStripContentGrid, includeHeader: false, padding: new Thickness(14, 12), radius: new CornerRadius(14));
-        strip.Margin = new Thickness(12, 10, 0, 0);
-        Grid.SetColumn(strip, 1);
-        Grid.SetColumnSpan(strip, 2);
-        Grid.SetRow(strip, 1);
+        strip.MinHeight = BottomStripCollapsedHeight;
+        strip.Height = BottomStripHeight;
+        strip.MaxHeight = BottomStripMaxHeight;
+        strip.HorizontalAlignment = HorizontalAlignment.Stretch;
+        strip.VerticalAlignment = VerticalAlignment.Stretch;
         return strip;
     }
 
@@ -4912,13 +4915,11 @@ public sealed class ShellWindow : Window
         var isExpanded = dashboardLayoutState == DashboardLayoutState.Expanded;
         var isCollapsed = dashboardLayoutState == DashboardLayoutState.Collapsed;
 
-        workspaceGrid.ColumnDefinitions[0].Width = isExpanded ? new GridLength(0) : new GridLength(240);
-        workspaceGrid.ColumnDefinitions[2].Width = isExpanded ? new GridLength(0) : new GridLength(460);
         toolRailHost.IsVisible = !isExpanded;
         inspectorHost.IsVisible = !isExpanded;
 
         workspaceGrid.RowDefinitions[0].Height = isExpanded
-            ? GridLength.Auto
+            ? new GridLength(ExpandedCanvasPreviewHeight)
             : GridLength.Star;
         workspaceGrid.RowDefinitions[1].Height = isCollapsed
             ? new GridLength(BottomStripCollapsedHeight)
@@ -4929,15 +4930,18 @@ public sealed class ShellWindow : Window
         workspaceGrid.RowDefinitions[1].MaxHeight = isExpanded ? double.PositiveInfinity : isCollapsed ? BottomStripCollapsedHeight : BottomStripMaxHeight;
 
         dashboardStripBody.IsVisible = !isCollapsed;
+        dashboardStripHost.MinHeight = BottomStripCollapsedHeight;
+        dashboardStripHost.Height = isExpanded
+            ? double.NaN
+            : isCollapsed
+                ? BottomStripCollapsedHeight
+                : BottomStripHeight;
+        dashboardStripHost.MaxHeight = isExpanded ? double.PositiveInfinity : BottomStripMaxHeight;
+        dashboardStripHost.HorizontalAlignment = HorizontalAlignment.Stretch;
+        dashboardStripHost.VerticalAlignment = VerticalAlignment.Stretch;
 
-        Grid.SetRow(canvasHost, 0);
-        Grid.SetColumn(canvasHost, 1);
-        Grid.SetColumnSpan(canvasHost, 1);
         canvasHost.MaxHeight = isExpanded ? ExpandedCanvasPreviewHeight : double.PositiveInfinity;
-        canvasHost.MinHeight = isExpanded ? ExpandedCanvasPreviewHeight : 520;
-
-        Grid.SetColumn(dashboardStripHost, isExpanded ? 0 : 1);
-        Grid.SetColumnSpan(dashboardStripHost, isExpanded ? 3 : 2);
+        canvasHost.MinHeight = isExpanded ? ExpandedCanvasPreviewHeight : 260;
     }
 
     private void OpenFullNodeEditor()
@@ -6172,7 +6176,7 @@ public sealed class ShellWindow : Window
             Content = glyph,
             Command = command,
             Width = 46,
-            Height = 42,
+            Height = 44,
             FontWeight = FontWeight.Bold,
             Background = new SolidColorBrush(AvaloniaDashboardTheme.ToolbarButtonBackground),
             Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),

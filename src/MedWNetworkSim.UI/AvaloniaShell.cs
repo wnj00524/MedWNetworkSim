@@ -4100,7 +4100,7 @@ public sealed class ShellWindow : Window
                                 }
                             }
                         },
-                        new TextBlock { Text = entry is null ? string.Empty : $"Outcome: {entry.Outcome} | Utility: {(entry.UtilityScore.HasValue ? entry.UtilityScore.Value.ToString(\"0.###\", CultureInfo.InvariantCulture) : \"n/a\")}", FontSize = 11 }
+                        new TextBlock { Text = entry is null ? string.Empty : $"Outcome: {entry.Outcome} | Utility: {(entry.UtilityScore.HasValue ? entry.UtilityScore.Value.ToString("0.###", CultureInfo.InvariantCulture) : "n/a")}", FontSize = 11 }
                     }
                 }
             };

@@ -2478,6 +2478,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public string SimulationSummary => temporalState is null ? "Static mode" : $"Timeline period {CurrentPeriod}";
     public string TrafficDeliveredColumnLabel => lastTimelineStepResult is null ? "Delivered" : "Started this period";
     public string SelectionSummary => BuildSelectionSummary();
+    public string SelectedNodeIdText => BuildSelectedNodeIdText();
+    public string SelectedNodeRoleSummaryText => BuildSelectedNodeRoleSummaryText();
     public bool CanDeleteSelection => Scene.Selection.SelectedNodeIds.Count > 0 || Scene.Selection.SelectedEdgeIds.Count > 0;
     public SimulationActorState? SelectedSimulationActor
     {
@@ -3651,7 +3653,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             const double minimumSpanDegrees = 0.00001d;
             if ((east - west) < minimumSpanDegrees || (north - south) < minimumSpanDegrees)
             {
-                bbox = default;
+                bbox = default!;
                 error = "Selected area is too small. Drag a larger box.";
                 return false;
             }
@@ -3850,6 +3852,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(WindowTitle));
         Raise(nameof(SessionSubtitle));
         Raise(nameof(SelectionSummary));
+        Raise(nameof(SelectedNodeIdText));
+        Raise(nameof(SelectedNodeRoleSummaryText));
         Raise(nameof(SimulationSummary));
         Raise(nameof(HasAnyNodes));
         RaiseAutoCompleteOptionsChanged();
@@ -6136,6 +6140,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         UpdateExplanationForSelection(selectedNodeIds, selectedEdgeIds);
         currentInspectorEditMode = ResolveInspectorEditMode(selectedNodeIds.Count, selectedEdgeIds.Count);
         Raise(nameof(SelectionSummary));
+        Raise(nameof(SelectedNodeIdText));
+        Raise(nameof(SelectedNodeRoleSummaryText));
         Raise(nameof(SessionSubtitle));
         Raise(nameof(CurrentInspectorEditMode));
         Raise(nameof(IsEditingNetwork));
@@ -7386,6 +7392,73 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         return "No selection";
     }
+
+    private string BuildSelectedNodeIdText()
+    {
+        if (Scene.Selection.SelectedNodeIds.Count != 1)
+        {
+            return Scene.Selection.SelectedNodeIds.Count == 0 ? "None" : $"{Scene.Selection.SelectedNodeIds.Count} nodes";
+        }
+
+        var nodeId = Scene.Selection.SelectedNodeIds.First();
+        var node = network.Nodes.FirstOrDefault(model => Comparer.Equals(model.Id, nodeId));
+        return node is null || string.IsNullOrWhiteSpace(node.Name) || Comparer.Equals(node.Name, node.Id)
+            ? nodeId
+            : $"{node.Name} ({node.Id})";
+    }
+
+    private string BuildSelectedNodeRoleSummaryText()
+    {
+        if (Scene.Selection.SelectedNodeIds.Count != 1)
+        {
+            return Scene.Selection.SelectedNodeIds.Count == 0 ? "No node selected" : "Multiple nodes selected";
+        }
+
+        var node = network.Nodes.FirstOrDefault(model => Comparer.Equals(model.Id, Scene.Selection.SelectedNodeIds.First()));
+        if (node is null)
+        {
+            return "Node not found";
+        }
+
+        var parts = new List<string>();
+        var producers = FormatSelectedNodeTrafficList(node.TrafficProfiles.Where(profile => profile.Production > 0d), profile => profile.Production);
+        var consumers = FormatSelectedNodeTrafficList(node.TrafficProfiles.Where(profile => profile.Consumption > 0d), profile => profile.Consumption);
+        var stores = FormatSelectedNodeTrafficList(node.TrafficProfiles.Where(profile => profile.IsStore), profile => profile.StoreCapacity.GetValueOrDefault());
+
+        if (node.NodeKind == NodeKind.CompositeSubnetwork)
+        {
+            parts.Add($"Composite {node.ReferencedSubnetworkId ?? "(unassigned)"}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(producers))
+        {
+            parts.Add($"Produces {producers}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(consumers))
+        {
+            parts.Add($"Needs {consumers}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(stores))
+        {
+            parts.Add($"Stores {stores}");
+        }
+
+        if (node.TrafficProfiles.Any(profile => profile.CanTransship))
+        {
+            parts.Add(node.TranshipmentCapacity.HasValue
+                ? $"Transships up to {ReportExportService.FormatNumber(node.TranshipmentCapacity)}"
+                : "Can transship");
+        }
+
+        return parts.Count == 0 ? "No configured traffic role" : string.Join("; ", parts);
+    }
+
+    private static string FormatSelectedNodeTrafficList(IEnumerable<NodeTrafficProfile> profiles, Func<NodeTrafficProfile, double> valueSelector) =>
+        string.Join(", ", profiles
+            .Select(profile => $"{ReportExportService.FormatNumber(valueSelector(profile))} {profile.TrafficType}")
+            .Where(text => !string.IsNullOrWhiteSpace(text)));
 
     private static InspectorEditMode ResolveInspectorEditMode(int selectedNodeCount, int selectedEdgeCount)
     {

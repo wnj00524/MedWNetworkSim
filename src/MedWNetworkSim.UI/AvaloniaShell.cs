@@ -4050,6 +4050,36 @@ public sealed class ShellWindow : Window
                 new DataGridTextColumn { Header = "Action", Binding = new Binding(nameof(SimulationActorActionOutcomeViewModel.ActionKind)) }
             }
         };
+        var trafficTypeChecklist = new Border
+        {
+            Padding = new Thickness(8),
+            BorderThickness = new Thickness(1),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.Border),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+            Child = new StackPanel
+            {
+                Spacing = 6,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "Traffic types",
+                        FontWeight = FontWeight.SemiBold
+                    },
+                    new ItemsControl
+                    {
+                        [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ActorTrafficTypeRows)),
+                        ItemTemplate = new FuncDataTemplate<ActorTrafficTypeSelectionRow>((row, _) =>
+                            new CheckBox
+                            {
+                                Content = row?.TrafficType ?? string.Empty,
+                                [!ToggleButton.IsCheckedProperty] = new Binding(nameof(ActorTrafficTypeSelectionRow.IsAllowed), BindingMode.TwoWay)
+                            })
+                    }
+                }
+            }
+        };
+        trafficTypeChecklist.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.ShowActorTrafficTypeChecklist)));
 
         return new ScrollViewer
         {
@@ -4070,11 +4100,27 @@ public sealed class ShellWindow : Window
                             BuildButton("Add Government", viewModel.AddGovernmentActorCommand),
                             BuildButton("Add Logistics Planner", viewModel.AddLogisticsPlannerActorCommand),
                             BuildButton("Remove actor", viewModel.RemoveSelectedActorCommand),
-                            BuildButton("Assign selected node", viewModel.AssignSelectedNodeToActorCommand),
-                            BuildButton("Assign selected edge", viewModel.AssignSelectedEdgeToActorCommand),
+                            BuildButton("Assign selected nodes", viewModel.AssignSelectedNodeToActorCommand),
+                            BuildButton("Assign selected routes", viewModel.AssignSelectedEdgeToActorCommand),
                             BuildButton("Clear assignments", viewModel.ClearActorAssignmentsCommand)
                         }
                     },
+                    BuildLabeledTextBox("Name", nameof(WorkspaceViewModel.ActorNameText)),
+                    BuildLabeledTextBox("Budget", nameof(WorkspaceViewModel.ActorBudgetText)),
+                    BuildLabeledTextBox("Cash", nameof(WorkspaceViewModel.ActorCashText)),
+                    BuildLabeledTextBox("Risk tolerance (0..1)", nameof(WorkspaceViewModel.ActorRiskToleranceText)),
+                    BuildLabeledTextBox("Cooperation weight (0..1)", nameof(WorkspaceViewModel.ActorCooperationWeightText)),
+                    BuildLabeledTextBox("Notes", nameof(WorkspaceViewModel.ActorNotesText)),
+                    BuildLabeledCheckBox("Enabled", nameof(WorkspaceViewModel.ActorIsEnabled)),
+                    BuildLabeledCheckBox("Allow all traffic", nameof(WorkspaceViewModel.ActorAllowAllTrafficTypes)),
+                    trafficTypeChecklist,
+                    BuildButton("Apply actor changes", viewModel.ApplySelectedActorCommand),
+                    BuildReadOnlyRow("Actor validation", nameof(WorkspaceViewModel.ActorValidationText)),
+                    BuildReadOnlyRow("Controlled node count", nameof(WorkspaceViewModel.SelectedActorNodeCountText)),
+                    BuildReadOnlyRow("Controlled route count", nameof(WorkspaceViewModel.SelectedActorEdgeCountText)),
+                    BuildReadOnlyRow("Traffic scope", nameof(WorkspaceViewModel.SelectedActorTrafficScopeText)),
+                    BuildReadOnlyRow("Controlled node ids", nameof(WorkspaceViewModel.SelectedActorControlledNodesDisplay)),
+                    BuildReadOnlyRow("Controlled route ids", nameof(WorkspaceViewModel.SelectedActorControlledEdgesDisplay)),
                     BuildReadOnlyRow("Actor status", nameof(WorkspaceViewModel.ActorStatusMessage)),
                     BuildLabeledRow("Ticks", new NumericUpDown { [!NumericUpDown.ValueProperty] = new Binding(nameof(WorkspaceViewModel.ActorRunTicks), BindingMode.TwoWay), Minimum = 1, Maximum = 1000 }),
                     new WrapPanel

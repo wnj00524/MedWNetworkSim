@@ -1,5 +1,6 @@
 using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
+using MedWNetworkSim.Presentation;
 using Xunit;
 
 namespace MedWNetworkSim.Tests;
@@ -263,6 +264,90 @@ public sealed class SimulationActorsTests
         Assert.Contains("traffic type", outcomes.Single().Reason, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void SelectedNodeAssignment_TogglesControlledNodeIds()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+        vm.AddFirmActorCommand.Execute(null);
+        var actor = Assert.IsType<SimulationActorState>(vm.SelectedSimulationActor);
+
+        vm.Scene.Selection.SelectedNodeIds.Add("producer");
+        vm.Scene.Selection.SelectedNodeIds.Add("consumer");
+        vm.AssignSelectedNodeToActorCommand.Execute(null);
+        Assert.Contains("producer", actor.ControlledNodeIds);
+        Assert.Contains("consumer", actor.ControlledNodeIds);
+
+        vm.AssignSelectedNodeToActorCommand.Execute(null);
+        Assert.DoesNotContain("producer", actor.ControlledNodeIds);
+        Assert.DoesNotContain("consumer", actor.ControlledNodeIds);
+    }
+
+    [Fact]
+    public void SelectedEdgeAssignment_TogglesControlledEdgeIds()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+        vm.AddFirmActorCommand.Execute(null);
+        var actor = Assert.IsType<SimulationActorState>(vm.SelectedSimulationActor);
+
+        vm.Scene.Selection.SelectedEdgeIds.Add("edge-a");
+        vm.AssignSelectedEdgeToActorCommand.Execute(null);
+        Assert.Contains("edge-a", actor.ControlledEdgeIds);
+
+        vm.AssignSelectedEdgeToActorCommand.Execute(null);
+        Assert.DoesNotContain("edge-a", actor.ControlledEdgeIds);
+    }
+
+    [Fact]
+    public void BudgetEditsPersist()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+        vm.AddFirmActorCommand.Execute(null);
+        vm.ActorBudgetText = "420";
+        vm.ActorCashText = "111";
+        vm.ActorRiskToleranceText = "0.7";
+        vm.ActorCooperationWeightText = "0.4";
+        vm.ApplySelectedActorCommand.Execute(null);
+
+        var path = Path.GetTempFileName();
+        try
+        {
+            vm.SaveNetwork(path);
+            var loaded = new MedWNetworkSim.App.Services.NetworkFileService().Load(path);
+            Assert.Single(loaded.Actors);
+            Assert.Equal(420d, loaded.Actors[0].Budget);
+            Assert.Equal(111d, loaded.Actors[0].Cash);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void AllowedTrafficTypesPersist()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+        vm.AddFirmActorCommand.Execute(null);
+        vm.ActorAllowAllTrafficTypes = false;
+        var row = Assert.Single(vm.ActorTrafficTypeRows);
+        row.IsAllowed = true;
+        vm.ApplySelectedActorCommand.Execute(null);
+
+        var path = Path.GetTempFileName();
+        try
+        {
+            vm.SaveNetwork(path);
+            var loaded = new MedWNetworkSim.App.Services.NetworkFileService().Load(path);
+            Assert.Single(loaded.Actors);
+            Assert.False(loaded.Actors[0].Capability.AllowAllTrafficTypes);
+            Assert.Contains("Food", loaded.Actors[0].Capability.AllowedTrafficTypes);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     private static NetworkModel BuildNetwork()
     {
         var layerId = Guid.NewGuid();
@@ -303,5 +388,15 @@ public sealed class SimulationActorsTests
                 }
             ]
         };
+    }
+
+    private static WorkspaceViewModel BuildWorkspaceViewModelWithNetwork()
+    {
+        var vm = new WorkspaceViewModel();
+        var path = Path.GetTempFileName();
+        File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(BuildNetwork(), new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase }));
+        vm.OpenNetwork(path);
+        File.Delete(path);
+        return vm;
     }
 }

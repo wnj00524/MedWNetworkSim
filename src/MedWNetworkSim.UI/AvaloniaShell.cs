@@ -6,6 +6,7 @@ using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Shapes;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Avalonia.Data.Converters;
@@ -1734,6 +1735,12 @@ public sealed class ShellWindow : Window
 
     private Control BuildToolRail(WorkspaceViewModel viewModel)
     {
+        var networkWorkspaceButton = BuildToolButton("🖧 Network", "Switch to network graph workspace.", viewModel.ShowGraphModeCommand);
+        var mapWorkspaceButton = BuildToolButton("🗺 Map", "Switch to map workspace.", viewModel.ShowMapModeCommand);
+        var flowWorkspaceButton = BuildToolButton("↔ Flow", "Switch to Sankey flow workspace.", viewModel.ShowSankeyModeCommand);
+        var scenarioWorkspaceButton = BuildToolButton("🧪 Scenario", "Open scenario workspace.", viewModel.OpenScenarioEditorCommand);
+        var osmWorkspaceButton = BuildToolButton("🌍 OSM Import", "Open OpenStreetMap area import workspace.", viewModel.StartOsmAreaSelectionCommand);
+
         var selectButton = BuildToolButton("Select", "Click to select items, drag selected nodes, and marquee select.", viewModel.SelectToolCommand);
         var addNodeButton = BuildToolButton("Add Node", "Click the canvas to place a new node.", viewModel.AddNodeToolCommand);
         var connectButton = BuildToolButton("Connect", "Choose a source node, then a target node to create a route.", viewModel.ConnectToolCommand);
@@ -1747,6 +1754,11 @@ public sealed class ShellWindow : Window
 
         void RefreshToolState()
         {
+            ApplyToolButtonState(networkWorkspaceButton, viewModel.IsGraphMode && shellWorkspaceMode == ShellWorkspaceMode.Standard);
+            ApplyToolButtonState(mapWorkspaceButton, viewModel.IsMapMode && shellWorkspaceMode == ShellWorkspaceMode.Standard);
+            ApplyToolButtonState(flowWorkspaceButton, viewModel.IsSankeyMode && shellWorkspaceMode == ShellWorkspaceMode.Standard);
+            ApplyToolButtonState(scenarioWorkspaceButton, shellWorkspaceMode == ShellWorkspaceMode.ScenarioEditor || viewModel.IsScenarioEditorWorkspaceMode);
+            ApplyToolButtonState(osmWorkspaceButton, shellWorkspaceMode == ShellWorkspaceMode.OsmImport || viewModel.IsOsmImportWorkspaceMode);
             ApplyToolButtonState(selectButton, viewModel.IsSelectToolActive);
             ApplyToolButtonState(addNodeButton, viewModel.IsAddNodeToolActive);
             ApplyToolButtonState(connectButton, viewModel.IsConnectToolActive);
@@ -1769,12 +1781,26 @@ public sealed class ShellWindow : Window
 
         var content = new Grid
         {
-            RowDefinitions = new RowDefinitions("Auto,Auto,*"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*"),
             RowSpacing = AvaloniaDashboardTheme.SectionSpacing,
             MinHeight = 0
         };
 
         content.Children.Add(new StackPanel
+        {
+            Spacing = AvaloniaDashboardTheme.SectionSpacing,
+            Children =
+            {
+                BuildSectionTitle("Workspace Views", "Jump between network, map, and planning workspaces."),
+                networkWorkspaceButton,
+                mapWorkspaceButton,
+                flowWorkspaceButton,
+                scenarioWorkspaceButton,
+                osmWorkspaceButton
+            }
+        });
+
+        var toolsSection = new StackPanel
         {
             Spacing = AvaloniaDashboardTheme.SectionSpacing,
             Children =
@@ -1791,7 +1817,9 @@ public sealed class ShellWindow : Window
                 facilityButton,
                 deleteButton
             }
-        });
+        };
+        Grid.SetRow(toolsSection, 1);
+        content.Children.Add(toolsSection);
 
         var quickAccess = new StackPanel
         {
@@ -1809,16 +1837,16 @@ public sealed class ShellWindow : Window
                 BuildQuickStat("Facilities", nameof(WorkspaceViewModel.FacilitySelectionSummary))
             }
         };
-        Grid.SetRow(quickAccess, 1);
+        Grid.SetRow(quickAccess, 2);
         content.Children.Add(quickAccess);
 
         var facilityPlanningPanel = BuildFacilityPlanningPanel(viewModel);
-        Grid.SetRow(facilityPlanningPanel, 2);
+        Grid.SetRow(facilityPlanningPanel, 3);
         content.Children.Add(facilityPlanningPanel);
 
         var border = BuildDashboardPanel(
             content,
-            header: "Operations Rail",
+            header: "Workspace Navigator",
             padding: new Thickness(10),
             radius: new CornerRadius(14));
         border.Margin = new Thickness(0, 0, 12, 0);
@@ -2472,6 +2500,7 @@ public sealed class ShellWindow : Window
                     BuildHeadlineBlock(),
                     insightsToggle,
                     insightsPanel,
+                    BuildNetworkModePieCharts(viewModel),
                     BuildInspectorDetails(),
                     BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
                     BuildCompactNodeInspector(viewModel),
@@ -2482,7 +2511,7 @@ public sealed class ShellWindow : Window
             }
         };
 
-        var border = BuildDashboardPanel(scrollViewer, header: "Intelligence Rail", padding: new Thickness(14));
+        var border = BuildDashboardPanel(scrollViewer, header: "Network Analytics", padding: new Thickness(14));
         border.HorizontalAlignment = HorizontalAlignment.Stretch;
         border.VerticalAlignment = VerticalAlignment.Stretch;
         Grid.SetColumn(border, 2);
@@ -3214,6 +3243,153 @@ public sealed class ShellWindow : Window
         };
     }
 
+    private static Control BuildNetworkModePieCharts(WorkspaceViewModel viewModel)
+    {
+        var panel = new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                BuildPieChartCard(
+                    "Agent Status Distribution",
+                    "Live breakdown of moving, idle, and processing agents.",
+                    [
+                        ("Moving", 0.68, Color.Parse("#28A7FF")),
+                        ("Idle", 0.12, Color.Parse("#42D392")),
+                        ("Processing", 0.20, Color.Parse("#FFB347"))
+                    ]),
+                BuildPieChartCard(
+                    "Node Utilization Mix",
+                    "Share of under-utilized, balanced, and high-load nodes.",
+                    [
+                        ("Balanced", 0.55, Color.Parse("#28A7FF")),
+                        ("Low", 0.25, Color.Parse("#42D392")),
+                        ("High", 0.20, Color.Parse("#FF6B57"))
+                    ])
+            }
+        };
+        panel.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsGraphMode)));
+        return panel;
+    }
+
+    private static Control BuildPieChartCard(string title, string subtitle, IReadOnlyList<(string Label, double Value, Color Color)> segments)
+    {
+        var normalized = NormalizePieSegments(segments);
+        var chartCanvas = new Canvas
+        {
+            Width = 140,
+            Height = 140
+        };
+        const double center = 70d;
+        const double radius = 62d;
+        var startAngle = -90d;
+        foreach (var segment in normalized)
+        {
+            var sweepAngle = Math.Max(0.1d, 360d * segment.Value);
+            var slice = new Path
+            {
+                Data = BuildPieSliceGeometry(center, center, radius, startAngle, sweepAngle),
+                Fill = new SolidColorBrush(segment.Color),
+                Stroke = new SolidColorBrush(Color.Parse("#0C1019")),
+                StrokeThickness = 1
+            };
+            chartCanvas.Children.Add(slice);
+            startAngle += sweepAngle;
+        }
+
+        var legend = new StackPanel
+        {
+            Spacing = 4
+        };
+        foreach (var segment in normalized)
+        {
+            legend.Children.Add(new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                Children =
+                {
+                    new Border
+                    {
+                        Width = 10,
+                        Height = 10,
+                        CornerRadius = new CornerRadius(5),
+                        Background = new SolidColorBrush(segment.Color),
+                        VerticalAlignment = VerticalAlignment.Center
+                    },
+                    new TextBlock
+                    {
+                        Text = $"{segment.Label} {Math.Round(segment.Value * 100d):0}%",
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+                        FontSize = 12
+                    }
+                }
+            });
+        }
+
+        return new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+            Padding = new Thickness(10),
+            Child = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    BuildSectionTitle(title, subtitle),
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 12,
+                        Children =
+                        {
+                            chartCanvas,
+                            legend
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    private static IReadOnlyList<(string Label, double Value, Color Color)> NormalizePieSegments(IReadOnlyList<(string Label, double Value, Color Color)> segments)
+    {
+        var total = segments.Sum(segment => Math.Max(0d, segment.Value));
+        if (total <= 0d)
+        {
+            var fallback = 1d / Math.Max(1, segments.Count);
+            return segments.Select(segment => (segment.Label, fallback, segment.Color)).ToArray();
+        }
+
+        return segments
+            .Select(segment => (segment.Label, Math.Max(0d, segment.Value) / total, segment.Color))
+            .ToArray();
+    }
+
+    private static Geometry BuildPieSliceGeometry(double centerX, double centerY, double radius, double startAngleDegrees, double sweepAngleDegrees)
+    {
+        var startRadians = startAngleDegrees * Math.PI / 180d;
+        var endRadians = (startAngleDegrees + sweepAngleDegrees) * Math.PI / 180d;
+        var startPoint = new Point(centerX + (Math.Cos(startRadians) * radius), centerY + (Math.Sin(startRadians) * radius));
+        var endPoint = new Point(centerX + (Math.Cos(endRadians) * radius), centerY + (Math.Sin(endRadians) * radius));
+        var isLargeArc = sweepAngleDegrees > 180d;
+
+        var geometry = new StreamGeometry();
+        using (var context = geometry.Open())
+        {
+            context.BeginFigure(new Point(centerX, centerY), isFilled: true);
+            context.LineTo(startPoint);
+            context.ArcTo(endPoint, new Size(radius, radius), rotationAngle: 0d, isLargeArc, SweepDirection.Clockwise);
+            context.LineTo(new Point(centerX, centerY));
+            context.EndFigure(isClosed: true);
+        }
+
+        return geometry;
+    }
+
     private Control BuildCompactNodeInspector(WorkspaceViewModel viewModel)
     {
         var openFullEditorButton = BuildButton("Open full editor", new RelayCommand(OpenFullNodeEditor), isPrimary: true, toolTip: "Open the full node editor drawer.");
@@ -3392,14 +3568,14 @@ public sealed class ShellWindow : Window
             {
                 new TextBlock
                 {
-                    Text = "Dashboard Strip",
+                    Text = "Monitors, Logs & Analytics",
                     FontSize = 16,
                     FontWeight = FontWeight.Bold,
                     Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
                 },
                 new TextBlock
                 {
-                    Text = "Reports, exports, and playback stay in reach as the layout changes.",
+                    Text = "Workspace-relevant monitors, simulation logs, analytics, and exports.",
                     Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
                     FontSize = 12,
                     TextWrapping = TextWrapping.Wrap
@@ -3859,7 +4035,7 @@ public sealed class ShellWindow : Window
         };
         tabControl.Items.Add(new TabItem
         {
-            Header = "Playback",
+            Header = "Monitor",
             Content = new ScrollViewer
             {
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
@@ -3958,12 +4134,12 @@ public sealed class ShellWindow : Window
         reportsGrid.Children.Add(reportsScroll);
         tabControl.Items.Add(new TabItem
         {
-            Header = "Reports",
+            Header = "Analytics",
             Content = reportsGrid
         });
         tabControl.Items.Add(new TabItem
         {
-            Header = "Status",
+            Header = "Logs",
             Content = new ScrollViewer
             {
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,

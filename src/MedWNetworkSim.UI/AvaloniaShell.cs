@@ -225,7 +225,6 @@ public sealed class GraphCanvasControl : Control, IDisposable
     private Point? mapPointerDownPoint;
     private Point? lastMapPointerPosition;
     private bool isMapPanning;
-    private bool isMiddleMousePanning;
     private bool isDraggingOsmSelection;
     private bool didMapDrag;
     private bool isDisposed;
@@ -426,7 +425,6 @@ public sealed class GraphCanvasControl : Control, IDisposable
 
             if (button == GraphPointerButton.Middle && ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map)
             {
-                isMiddleMousePanning = true;
                 isMapPanning = true;
                 isDraggingOsmSelection = false;
                 mapPointerDownPoint = e.GetPosition(this);
@@ -913,7 +911,6 @@ public sealed class GraphCanvasControl : Control, IDisposable
                 mapPointerDownPoint = null;
                 lastMapPointerPosition = null;
                 isMapPanning = false;
-                isMiddleMousePanning = false;
                 isDraggingOsmSelection = false;
                 didMapDrag = false;
                 Cursor = null;
@@ -993,7 +990,6 @@ public sealed class GraphCanvasControl : Control, IDisposable
     {
         base.OnPointerCaptureLost(e);
         isMapPanning = false;
-        isMiddleMousePanning = false;
         isDraggingOsmSelection = false;
         mapPointerDownPoint = null;
         lastMapPointerPosition = null;
@@ -1044,7 +1040,6 @@ public sealed class GraphCanvasControl : Control, IDisposable
         {
             isDraggingOsmSelection = false;
             isMapPanning = false;
-            isMiddleMousePanning = false;
             mapPointerDownPoint = null;
             lastMapPointerPosition = null;
             didMapDrag = false;
@@ -3479,7 +3474,7 @@ public sealed class ShellWindow : Window
         foreach (var segment in normalized)
         {
             var sweepAngle = Math.Max(0.1d, 360d * segment.Value);
-            var slice = new Path
+            var slice = new Avalonia.Controls.Shapes.Path
             {
                 Data = BuildPieSliceGeometry(center, center, radius, startAngle, sweepAngle),
                 Fill = new SolidColorBrush(segment.Color),

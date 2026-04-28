@@ -137,6 +137,13 @@ public sealed class SimulationActorDecision
     public string ActorId { get; set; } = string.Empty;
     public int Tick { get; set; }
     public List<SimulationActorAction> Actions { get; set; } = [];
+    public string ActionType { get; set; } = string.Empty;
+    public string TargetId { get; set; } = string.Empty;
+    public string ReasonSummary { get; set; } = string.Empty;
+    public List<string> Factors { get; set; } = [];
+    public List<string>? Alternatives { get; set; }
+    public string ExpectedOutcome { get; set; } = string.Empty;
+    public double Utility { get; set; }
     public double UtilityBefore { get; set; }
     public double ExpectedUtilityAfter { get; set; }
     public string Explanation { get; set; } = string.Empty;

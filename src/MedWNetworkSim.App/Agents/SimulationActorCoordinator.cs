@@ -10,11 +10,16 @@ public sealed class SimulationActorCoordinator
     private readonly NetworkSimulationEngine simulationEngine = new();
     private readonly INetworkInsightService insightService;
     private readonly SimulationActorActionApplier actionApplier;
+    private readonly IAgentActionLogger actionLogger;
 
-    public SimulationActorCoordinator(INetworkInsightService? insightService = null, SimulationActorActionApplier? actionApplier = null)
+    public SimulationActorCoordinator(
+        INetworkInsightService? insightService = null,
+        SimulationActorActionApplier? actionApplier = null,
+        IAgentActionLogger? actionLogger = null)
     {
         this.insightService = insightService ?? new NetworkInsightService();
         this.actionApplier = actionApplier ?? new SimulationActorActionApplier();
+        this.actionLogger = actionLogger ?? new AgentActionLogger();
     }
 
     public SimulationActorRunResult RunActorsForTicks(NetworkModel network, IReadOnlyList<SimulationActorState> actors, int ticks)
@@ -70,6 +75,7 @@ public sealed class SimulationActorCoordinator
         };
 
         var decisions = orderedActors.Select(actor => actor.Decide(context)).ToList();
+        LogDecisions(decisions, outcomes: baseSnapshot.TrafficOutcomes, tick);
         var actorMap = BuildActorMap(actorStates);
         var actorKindsById = actorMap.ToDictionary(pair => pair.Key, pair => pair.Value.Kind, StringComparer.OrdinalIgnoreCase);
         var resolvedActions = ResolveConflicts(decisions.SelectMany(d => d.Actions).ToList(), actorKindsById);
@@ -296,5 +302,51 @@ public sealed class SimulationActorCoordinator
     private static NetworkModel Clone(NetworkModel network)
     {
         return NetworkModelCloneUtility.Clone(network);
+    }
+
+    private void LogDecisions(IReadOnlyList<SimulationActorDecision> decisions, IReadOnlyList<TrafficSimulationOutcome> outcomes, int tick)
+    {
+        var delivered = outcomes.Sum(o => o.TotalDelivered);
+        var unmet = outcomes.Sum(o => o.UnmetDemand);
+        var movementCost = outcomes.Sum(o => o.Allocations.Sum(a => a.TotalMovementCost));
+        var demand = outcomes.Sum(o => o.TotalConsumption);
+
+        foreach (var decision in decisions)
+        {
+            var agentId = Guid.TryParse(decision.ActorId, out var parsedAgentId) ? parsedAgentId : CreateStableGuid(decision.ActorId);
+            foreach (var action in decision.Actions)
+            {
+                actionLogger.Log(new AgentActionLogEntry
+                {
+                    Id = Guid.NewGuid(),
+                    AgentId = agentId,
+                    Timestamp = DateTime.UtcNow,
+                    SimulationTick = tick,
+                    ActionType = action.Kind.ToString(),
+                    TargetId = action.TargetEdgeId ?? action.TargetNodeId ?? "(none)",
+                    StateMetrics = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["total_delivered"] = delivered,
+                        ["total_unmet_demand"] = unmet,
+                        ["total_movement_cost"] = movementCost,
+                        ["total_demand"] = demand
+                    },
+                    DecisionSummary = decision.ReasonSummary,
+                    DecisionFactors = decision.Factors.Count == 0 ? [action.Reason] : [.. decision.Factors],
+                    AlternativesConsidered = decision.Alternatives is { Count: > 0 } ? [.. decision.Alternatives] : null,
+                    Outcome = action.ExpectedEffect,
+                    UtilityScore = decision.Utility
+                });
+            }
+        }
+    }
+
+    private static Guid CreateStableGuid(string value)
+    {
+        var source = string.IsNullOrWhiteSpace(value) ? "unknown-agent" : value.Trim();
+        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(source));
+        var guidBytes = new byte[16];
+        Array.Copy(bytes, guidBytes, guidBytes.Length);
+        return new Guid(guidBytes);
     }
 }

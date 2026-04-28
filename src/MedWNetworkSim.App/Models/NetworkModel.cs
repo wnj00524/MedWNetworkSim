@@ -120,6 +120,11 @@ public sealed class NetworkModel
     public List<SimulationActorActionOutcome> ActorActionOutcomes { get; set; } = [];
 
     /// <summary>
+    /// Gets or sets optional persisted detailed actor action logs.
+    /// </summary>
+    public List<AgentActionLogEntry> AgentActionLogs { get; set; } = [];
+
+    /// <summary>
     /// Gets or sets the persisted actor simulation tick.
     /// </summary>
     public int ActorTick { get; set; }

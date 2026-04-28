@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Windows.Input;
 using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
@@ -1547,6 +1548,85 @@ public sealed class SimulationActorMetricsViewModel
     public string CooperationIndex { get; init; } = string.Empty;
 }
 
+public sealed class AgentLogViewModel : ObservableObject
+{
+    private Guid? selectedAgentId;
+    private int? minTick;
+    private int? maxTick;
+    private readonly ObservableCollection<AgentActionLogEntry> allEntries = [];
+    private readonly ObservableCollection<Guid> availableAgentIds = [];
+
+    public ObservableCollection<AgentActionLogEntry> Entries { get; } = [];
+    public ObservableCollection<Guid> AvailableAgentIds => availableAgentIds;
+
+    public Guid? SelectedAgentId
+    {
+        get => selectedAgentId;
+        set
+        {
+            if (SetProperty(ref selectedAgentId, value))
+            {
+                ApplyFilters();
+            }
+        }
+    }
+
+    public int? MinTick
+    {
+        get => minTick;
+        set
+        {
+            if (SetProperty(ref minTick, value))
+            {
+                ApplyFilters();
+            }
+        }
+    }
+
+    public int? MaxTick
+    {
+        get => maxTick;
+        set
+        {
+            if (SetProperty(ref maxTick, value))
+            {
+                ApplyFilters();
+            }
+        }
+    }
+
+    public void SetEntries(IEnumerable<AgentActionLogEntry> entries)
+    {
+        allEntries.Clear();
+        foreach (var entry in entries.OrderBy(e => e.SimulationTick).ThenBy(e => e.Timestamp))
+        {
+            allEntries.Add(entry);
+        }
+
+        availableAgentIds.Clear();
+        foreach (var agentId in allEntries.Select(e => e.AgentId).Distinct().OrderBy(id => id))
+        {
+            availableAgentIds.Add(agentId);
+        }
+
+        ApplyFilters();
+    }
+
+    private void ApplyFilters()
+    {
+        var filtered = allEntries.Where(entry =>
+            (!SelectedAgentId.HasValue || entry.AgentId == SelectedAgentId.Value) &&
+            (!MinTick.HasValue || entry.SimulationTick >= MinTick.Value) &&
+            (!MaxTick.HasValue || entry.SimulationTick <= MaxTick.Value));
+
+        Entries.Clear();
+        foreach (var entry in filtered)
+        {
+            Entries.Add(entry);
+        }
+    }
+}
+
 public sealed class ActorTrafficTypeSelectionRow : ObservableObject
 {
     private readonly Action<ActorTrafficTypeSelectionRow>? onChanged;
@@ -1641,7 +1721,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private readonly ISankeyProjectionService sankeyProjectionService = new SankeyProjectionService();
     private readonly INetworkInsightService networkInsightService = new NetworkInsightService();
     private readonly OsmBoundingBoxImporter osmBoundingBoxImporter = new(new OsmApiClient());
-    private readonly SimulationActorCoordinator simulationActorCoordinator = new();
+    private readonly IAgentActionLogger agentActionLogger;
+    private readonly SimulationActorCoordinator simulationActorCoordinator;
 
     private NetworkModel network = new();
     private TemporalNetworkSimulationEngine.TemporalSimulationState? temporalState;
@@ -1773,8 +1854,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private string actorValidationText = string.Empty;
     private bool showAgentTools;
 
-    public WorkspaceViewModel()
+    public WorkspaceViewModel(IAgentActionLogger? agentActionLogger = null, SimulationActorCoordinator? simulationActorCoordinator = null)
     {
+        this.agentActionLogger = agentActionLogger ?? new AgentActionLogger();
+        this.simulationActorCoordinator = simulationActorCoordinator ?? new SimulationActorCoordinator(actionLogger: this.agentActionLogger);
         UiExceptionBoundary.Sink = this;
         Scene = new GraphScene();
         Viewport = new GraphViewport();
@@ -1829,6 +1912,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ActorDecisions = [];
         ActorActionOutcomes = [];
         ActorMetrics = [];
+        AgentLog = new AgentLogViewModel();
         TopIssues.CollectionChanged += (_, _) => Raise(nameof(TopIssueEmptyStateText));
         TopIssueAdvisories.CollectionChanged += (_, _) => Raise(nameof(HasTopIssueAdvisories));
         ScenarioEditor = new ScenarioEditorViewModel(network, MarkDirty);
@@ -1950,6 +2034,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RunActorTicksCommand = new RelayCommand(RunActorTicks);
         ApplyPreviewedActorActionsCommand = new RelayCommand(RunActorStep);
         ResetActorHistoryCommand = new RelayCommand(ResetActorHistory);
+        ExportAgentLogsCommand = new RelayCommand(() => ExportAgentLogsRequested?.Invoke(this, EventArgs.Empty));
         AssignSelectedNodeToActorCommand = new RelayCommand(AssignSelectedNodeToActor, () => SelectedSimulationActor is not null);
         AssignSelectedEdgeToActorCommand = new RelayCommand(AssignSelectedEdgeToActor, () => SelectedSimulationActor is not null);
         ClearActorAssignmentsCommand = new RelayCommand(ClearActorAssignments, () => SelectedSimulationActor is not null);
@@ -1996,6 +2081,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public ObservableCollection<SimulationActorDecisionViewModel> ActorDecisions { get; }
     public ObservableCollection<SimulationActorActionOutcomeViewModel> ActorActionOutcomes { get; }
     public ObservableCollection<SimulationActorMetricsViewModel> ActorMetrics { get; }
+    public AgentLogViewModel AgentLog { get; }
 
     public Array NodeShapeOptions { get; } = Enum.GetValues(typeof(NodeVisualShape));
     public Array NodeKindOptions { get; } = Enum.GetValues(typeof(NodeKind));
@@ -2143,6 +2229,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public RelayCommand RunActorTicksCommand { get; }
     public RelayCommand ApplyPreviewedActorActionsCommand { get; }
     public RelayCommand ResetActorHistoryCommand { get; }
+    public RelayCommand ExportAgentLogsCommand { get; }
     public RelayCommand AssignSelectedNodeToActorCommand { get; }
     public RelayCommand AssignSelectedEdgeToActorCommand { get; }
     public RelayCommand ClearActorAssignmentsCommand { get; }
@@ -2160,6 +2247,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public RelayCommand RunScenarioCommand { get; }
     public ICommand SelectTopIssueCommand { get; }
     public event EventHandler? AboutRequested;
+    public event EventHandler? ExportAgentLogsRequested;
 
     public GraphInteractionController InteractionController => interactionController;
     public bool HasUnsavedChanges
@@ -3836,6 +3924,15 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         StatusText = $"Exported {results.Count} timeline periods to '{Path.GetFileName(path)}'.";
     }
 
+    public void ExportAgentLogsJson(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        var options = new JsonSerializerOptions { WriteIndented = true };
+        var entries = agentActionLogger.GetAll();
+        File.WriteAllText(path, JsonSerializer.Serialize(entries, options));
+        StatusText = $"Exported {entries.Count} agent action logs to '{Path.GetFileName(path)}'.";
+    }
+
     public void SetActiveTool(GraphToolMode toolMode)
     {
         ActiveToolMode = toolMode;
@@ -4380,6 +4477,12 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 CooperationIndex = metric.CooperationIndex.ToString("0.##", CultureInfo.InvariantCulture)
             });
         }
+        agentActionLogger.Clear();
+        foreach (var entry in network.AgentActionLogs)
+        {
+            agentActionLogger.Log(entry);
+        }
+        AgentLog.SetEntries(agentActionLogger.GetAll());
         ActorTick = network.ActorTick;
         SelectedSimulationActor = SimulationActors.FirstOrDefault();
         RefreshInspector();
@@ -5427,6 +5530,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         network.ActorDecisions.AddRange(step.Decisions);
         network.ActorActionOutcomes.AddRange(step.ActionOutcomes);
         network.ActorMetrics.Add(step.Metrics);
+        network.AgentActionLogs = [.. agentActionLogger.GetAll()];
         ActorTick += 1;
         network.ActorTick = ActorTick;
         foreach (var decision in step.Decisions.SelectMany(d => d.Actions, (d, a) => (d, a)))
@@ -5444,6 +5548,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 Actor = outcome.Action.ActorId
             });
         }
+        AgentLog.SetEntries(agentActionLogger.GetAll());
         ActorMetrics.Add(new SimulationActorMetricsViewModel
         {
             Tick = step.Metrics.Tick,
@@ -5487,12 +5592,15 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private void ResetActorHistory()
     {
+        agentActionLogger.Clear();
         ActorDecisions.Clear();
         ActorActionOutcomes.Clear();
         ActorMetrics.Clear();
+        AgentLog.SetEntries(agentActionLogger.GetAll());
         network.ActorDecisions.Clear();
         network.ActorActionOutcomes.Clear();
         network.ActorMetrics.Clear();
+        network.AgentActionLogs.Clear();
         ActorTick = 0;
         network.ActorTick = 0;
         HasActorPreview = false;

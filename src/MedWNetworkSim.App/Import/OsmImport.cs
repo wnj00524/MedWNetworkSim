@@ -134,8 +134,13 @@ public sealed class OsmToSimulationMapper
 
         var adjacency = BuildAdjacency(ways, nodes);
         var wayNamesByNode = BuildWayNamesByNode(ways);
-        var mandatory = BuildMandatoryNodeSet(ways, adjacency, wayNamesByNode, options.PreserveConnectivity);
-        var retained = BuildRetainedNodeSet(ways, mandatory, retention, options);
+        var mandatory = BuildMandatoryNodeSet(ways, nodes, adjacency, options.PreserveConnectivity);
+        var allRoadNodeIds = ways
+            .SelectMany(way => way.Nodes ?? [])
+            .Where(nodes.ContainsKey)
+            .Distinct()
+            .ToList();
+        var retained = BuildRetainedNodeSet(ways, nodes, adjacency, wayNamesByNode, mandatory, allRoadNodeIds, retention, options);
         var edgeModels = new List<EdgeModel>();
         var usedNodeIds = new HashSet<long>();
         var edgeKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -148,19 +153,25 @@ public sealed class OsmToSimulationMapper
                 continue;
             }
 
-            var segmentStartIndex = 0;
-            for (var index = 1; index < rawIds.Length; index++)
+            var previousRetainedIndex = -1;
+            for (var index = 0; index < rawIds.Length; index++)
             {
-                if (!retained.Contains(rawIds[index]) && index < rawIds.Length - 1)
+                if (!retained.Contains(rawIds[index]))
                 {
                     continue;
                 }
 
-                var fromId = rawIds[segmentStartIndex];
-                var toId = rawIds[index];
-                if (fromId != toId && retained.Contains(fromId) && retained.Contains(toId))
+                if (previousRetainedIndex < 0)
                 {
-                    var distance = CalculatePathDistanceKm(rawIds, segmentStartIndex, index, nodes);
+                    previousRetainedIndex = index;
+                    continue;
+                }
+
+                var fromId = rawIds[previousRetainedIndex];
+                var toId = rawIds[index];
+                if (fromId != toId)
+                {
+                    var distance = CalculatePathDistanceKm(rawIds, previousRetainedIndex, index, nodes);
                     var edgeId = $"osm-way-{way.Id}-{fromId}-{toId}";
                     var key = $"{fromId}->{toId}";
                     if (edgeKeys.Add(key))
@@ -181,7 +192,7 @@ public sealed class OsmToSimulationMapper
                     }
                 }
 
-                segmentStartIndex = index;
+                previousRetainedIndex = index;
             }
         }
 
@@ -199,7 +210,7 @@ public sealed class OsmToSimulationMapper
         return new NetworkModel
         {
             Name = "Imported OSM network",
-            Description = $"Imported from OpenStreetMap data with {retention.ToString(CultureInfo.InvariantCulture)}% reducible-node retention.",
+            Description = $"Imported from OpenStreetMap data with {retention.ToString(CultureInfo.InvariantCulture)}% target node retention ({nodeModels.Count.ToString(CultureInfo.InvariantCulture)} of {allRoadNodeIds.Count.ToString(CultureInfo.InvariantCulture)} road nodes kept).",
             TrafficTypes =
             [
                 new TrafficTypeDefinition
@@ -309,14 +320,14 @@ public sealed class OsmToSimulationMapper
 
     private static HashSet<long> BuildMandatoryNodeSet(
         IReadOnlyList<Way> ways,
+        IReadOnlyDictionary<long, Node> nodes,
         IReadOnlyDictionary<long, HashSet<long>> adjacency,
-        IReadOnlyDictionary<long, HashSet<string>> wayNamesByNode,
         bool preserveConnectivity)
     {
         var mandatory = new HashSet<long>();
         foreach (var way in ways)
         {
-            var ids = way.Nodes ?? [];
+            var ids = (way.Nodes ?? []).Where(nodes.ContainsKey).ToArray();
             if (ids.Length == 0)
             {
                 continue;
@@ -328,12 +339,12 @@ public sealed class OsmToSimulationMapper
 
         foreach (var (nodeId, neighbors) in adjacency)
         {
-            if (neighbors.Count != 2)
+            if (neighbors.Count >= 3 || neighbors.Count == 1)
             {
                 mandatory.Add(nodeId);
             }
 
-            if (wayNamesByNode.TryGetValue(nodeId, out var names) && names.Count > 1)
+            if (nodes.TryGetValue(nodeId, out var node) && HasExplicitNodeName(node))
             {
                 mandatory.Add(nodeId);
             }
@@ -343,64 +354,246 @@ public sealed class OsmToSimulationMapper
         {
             foreach (var id in FindArticulationPoints(adjacency))
             {
-                mandatory.Add(id);
+                if (adjacency.TryGetValue(id, out var neighbors) && neighbors.Count >= 3)
+                {
+                    mandatory.Add(id);
+                }
             }
         }
 
         return mandatory;
     }
 
-    private static HashSet<long> BuildRetainedNodeSet(IReadOnlyList<Way> ways, HashSet<long> mandatory, int retentionPercentage, OsmImportOptions options)
+    private static HashSet<long> BuildRetainedNodeSet(
+        IReadOnlyList<Way> ways,
+        IReadOnlyDictionary<long, Node> nodes,
+        IReadOnlyDictionary<long, HashSet<long>> adjacency,
+        IReadOnlyDictionary<long, HashSet<string>> wayNamesByNode,
+        HashSet<long> mandatory,
+        IReadOnlyList<long> allRoadNodeIds,
+        int retentionPercentage,
+        OsmImportOptions options)
     {
         if (!options.Simplify || retentionPercentage >= 100)
         {
-            return ways.SelectMany(way => way.Nodes ?? []).ToHashSet();
+            return allRoadNodeIds.ToHashSet();
         }
 
-        var retained = new HashSet<long>(mandatory);
-        foreach (var way in ways.OrderBy(way => way.Id.GetValueOrDefault()))
+        var anchors = mandatory.Where(nodes.ContainsKey).ToHashSet();
+        var retained = new HashSet<long>(anchors);
+        var targetTotal = (int)Math.Ceiling(allRoadNodeIds.Count * (retentionPercentage / 100d));
+        var minimumSafeTarget = Math.Min(allRoadNodeIds.Count, anchors.Count);
+        targetTotal = Math.Clamp(targetTotal, minimumSafeTarget, allRoadNodeIds.Count);
+        if (retained.Count >= targetTotal)
         {
-            var ids = way.Nodes ?? [];
-            var currentRun = new List<long>();
-            foreach (var id in ids)
+            return retained;
+        }
+
+        var detailCandidates = allRoadNodeIds
+            .Where(id => !retained.Contains(id))
+            .OrderByDescending(id => ScoreReducibleNode(id, adjacency, wayNamesByNode, nodes, options))
+            .ThenBy(id => id)
+            .ToList();
+        var remainingQuota = targetTotal - retained.Count;
+
+        if (remainingQuota > 0 && options.RetentionStrategy != OsmRetentionStrategy.PreserveJunctionImportance)
+        {
+            var spacingCandidates = BuildEvenSpacingCandidatesByWay(ways, nodes, retained, remainingQuota, options.RetentionStrategy);
+            foreach (var id in spacingCandidates)
             {
-                if (mandatory.Contains(id))
+                if (remainingQuota <= 0)
                 {
-                    RetainPercentageFromRun(currentRun, retained, retentionPercentage);
-                    currentRun.Clear();
-                    retained.Add(id);
+                    break;
                 }
-                else
+
+                if (retained.Add(id))
                 {
-                    currentRun.Add(id);
+                    remainingQuota--;
                 }
             }
+        }
 
-            RetainPercentageFromRun(currentRun, retained, retentionPercentage);
+        if (remainingQuota > 0)
+        {
+            foreach (var id in detailCandidates)
+            {
+                if (remainingQuota <= 0)
+                {
+                    break;
+                }
+
+                if (retained.Add(id))
+                {
+                    remainingQuota--;
+                }
+            }
+        }
+
+        if (remainingQuota > 0 && options.RetentionStrategy == OsmRetentionStrategy.PreserveJunctionImportance)
+        {
+            var spacingCandidates = BuildEvenSpacingCandidatesByWay(ways, nodes, retained, remainingQuota, options.RetentionStrategy);
+            foreach (var id in spacingCandidates)
+            {
+                if (remainingQuota <= 0)
+                {
+                    break;
+                }
+
+                if (retained.Add(id))
+                {
+                    remainingQuota--;
+                }
+            }
         }
 
         return retained;
     }
 
-    private static void RetainPercentageFromRun(IReadOnlyList<long> reducibleRun, ISet<long> retained, int percentage)
+    private static IReadOnlyList<long> BuildEvenSpacingCandidatesByWay(
+        IReadOnlyList<Way> ways,
+        IReadOnlyDictionary<long, Node> nodes,
+        IReadOnlySet<long> retained,
+        int remainingQuota,
+        OsmRetentionStrategy strategy)
     {
-        if (reducibleRun.Count == 0)
+        if (remainingQuota <= 0)
         {
-            return;
+            return [];
         }
 
-        var keepCount = Math.Min(reducibleRun.Count, (int)Math.Ceiling(reducibleRun.Count * (percentage / 100d)));
-        if (keepCount <= 0)
+        var reducibleByWay = ways
+            .OrderBy(way => way.Id.GetValueOrDefault())
+            .Select(way => (way, ids: (way.Nodes ?? []).Where(nodes.ContainsKey).Where(id => !retained.Contains(id)).ToArray()))
+            .Where(item => item.ids.Length > 0)
+            .ToList();
+        var totalReducible = reducibleByWay.Sum(item => item.ids.Length);
+        if (totalReducible == 0)
         {
-            return;
+            return [];
         }
 
+        var allocations = new Dictionary<long, int>();
+        var assigned = 0;
+        foreach (var item in reducibleByWay)
+        {
+            var share = (int)Math.Floor((item.ids.Length / (double)totalReducible) * remainingQuota);
+            var allocation = Math.Min(item.ids.Length, share);
+            if (allocation <= 0 && remainingQuota > assigned && item.ids.Length >= 8)
+            {
+                allocation = 1;
+            }
+
+            allocations[item.way.Id!.Value] = allocation;
+            assigned += allocation;
+        }
+
+        var stillAvailable = remainingQuota - assigned;
+        if (stillAvailable > 0)
+        {
+            foreach (var item in reducibleByWay
+                         .OrderByDescending(item => item.ids.Length)
+                         .ThenBy(item => item.way.Id.GetValueOrDefault()))
+            {
+                if (stillAvailable <= 0)
+                {
+                    break;
+                }
+
+                var key = item.way.Id!.Value;
+                if (allocations[key] >= item.ids.Length)
+                {
+                    continue;
+                }
+
+                allocations[key]++;
+                stillAvailable--;
+            }
+        }
+
+        var output = new List<long>();
+        foreach (var item in reducibleByWay)
+        {
+            var wayId = item.way.Id!.Value;
+            var keepCount = Math.Clamp(allocations[wayId], 0, item.ids.Length);
+            if (keepCount == 0)
+            {
+                continue;
+            }
+
+            var selected = SelectEvenlySpaced(item.ids, keepCount);
+            if (strategy == OsmRetentionStrategy.PreserveShape)
+            {
+                output.AddRange(selected);
+            }
+            else if (strategy == OsmRetentionStrategy.PreserveJunctionImportance)
+            {
+                output.AddRange(selected.OrderBy(id => id));
+            }
+            else
+            {
+                output.AddRange(selected.OrderBy(id => id % 3).ThenBy(id => id));
+            }
+        }
+
+        return output;
+    }
+
+    private static IReadOnlyList<long> SelectEvenlySpaced(IReadOnlyList<long> ids, int keepCount)
+    {
+        if (keepCount >= ids.Count)
+        {
+            return ids.ToList();
+        }
+
+        var selected = new List<long>(keepCount);
         for (var i = 0; i < keepCount; i++)
         {
-            var index = (int)Math.Round(((i + 1d) * (reducibleRun.Count + 1d) / (keepCount + 1d)) - 1d);
-            retained.Add(reducibleRun[Math.Clamp(index, 0, reducibleRun.Count - 1)]);
+            var index = (int)Math.Round(((i + 1d) * (ids.Count + 1d) / (keepCount + 1d)) - 1d);
+            selected.Add(ids[Math.Clamp(index, 0, ids.Count - 1)]);
         }
+
+        return selected;
     }
+
+    private static double ScoreReducibleNode(
+        long id,
+        IReadOnlyDictionary<long, HashSet<long>> adjacency,
+        IReadOnlyDictionary<long, HashSet<string>> wayNamesByNode,
+        IReadOnlyDictionary<long, Node> nodes,
+        OsmImportOptions options)
+    {
+        _ = options;
+        var degree = adjacency.TryGetValue(id, out var neighbors) ? neighbors.Count : 0;
+        var score = 0d;
+        if (degree >= 3)
+        {
+            score += 1000d;
+        }
+        else if (degree == 1)
+        {
+            score += 500d;
+        }
+
+        if (nodes.TryGetValue(id, out var node) && HasExplicitNodeName(node))
+        {
+            score += 100d;
+        }
+
+        if (wayNamesByNode.TryGetValue(id, out var names) && names.Count > 1)
+        {
+            score += 30d;
+        }
+
+        score += degree;
+        score += (id % 1000) / 1000000d;
+        return score;
+    }
+
+    private static bool HasExplicitNodeName(Node node) =>
+        !string.IsNullOrWhiteSpace(GetTag(node, "name")) ||
+        !string.IsNullOrWhiteSpace(GetTag(node, "ref")) ||
+        !string.IsNullOrWhiteSpace(GetTag(node, "junction:name")) ||
+        !string.IsNullOrWhiteSpace(GetTag(node, "official_name"));
 
     private static IReadOnlySet<long> FindArticulationPoints(IReadOnlyDictionary<long, HashSet<long>> adjacency)
     {

@@ -223,6 +223,7 @@ public sealed class GraphCanvasControl : Control, IDisposable
     private Point? mapPointerDownPoint;
     private Point? lastMapPointerPosition;
     private bool isMapPanning;
+    private bool isMiddleMousePanning;
     private bool isDraggingOsmSelection;
     private bool didMapDrag;
     private bool isDisposed;
@@ -421,6 +422,20 @@ public sealed class GraphCanvasControl : Control, IDisposable
                 _ => GraphPointerButton.Left
             };
 
+            if (button == GraphPointerButton.Middle && ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map)
+            {
+                isMiddleMousePanning = true;
+                isMapPanning = true;
+                isDraggingOsmSelection = false;
+                mapPointerDownPoint = e.GetPosition(this);
+                lastMapPointerPosition = mapPointerDownPoint;
+                didMapDrag = false;
+                Cursor = new Cursor(StandardCursorType.SizeAll);
+                e.Pointer.Capture(this);
+                e.Handled = true;
+                return;
+            }
+
             if (button == GraphPointerButton.Right)
             {
                 ShowContextMenu(ViewModel, interactionContext, point);
@@ -567,7 +582,7 @@ public sealed class GraphCanvasControl : Control, IDisposable
         return true;
     }
 
-    private bool TryHandleMapSelection(WorkspaceViewModel viewModel, GraphPoint point, GraphSize viewportSize)
+    private bool TryHandleMapSelection(WorkspaceViewModel viewModel, Point screenPoint, GraphCanvasCoordinateTransform transform)
     {
         var geoLookup = viewModel.BuildGeoNodeLookup();
         if (geoLookup.Count == 0)
@@ -575,13 +590,14 @@ public sealed class GraphCanvasControl : Control, IDisposable
             return false;
         }
 
-        var projectionViewport = viewModel.BuildMapProjectionViewport(viewportSize);
+        var projectionViewport = viewModel.BuildMapProjectionViewport(transform.LogicalViewport);
+        var worldPoint = ScreenToWorld(screenPoint, transform);
 
         var nearestNode = geoLookup
             .Select(item =>
             {
-                var projected = mapProjectionService.Project(new MapGeoCoordinate(item.Value.Latitude, item.Value.Longitude), projectionViewport);
-                var distance = Math.Sqrt(Math.Pow(projected.X - point.X, 2d) + Math.Pow(projected.Y - point.Y, 2d));
+                var projected = GeoToScreen(item.Value.Longitude, item.Value.Latitude, projectionViewport);
+                var distance = Math.Sqrt(Math.Pow(projected.X - worldPoint.X, 2d) + Math.Pow(projected.Y - worldPoint.Y, 2d));
                 return new { item.Key, Distance = distance };
             })
             .OrderBy(item => item.Distance)
@@ -883,20 +899,22 @@ public sealed class GraphCanvasControl : Control, IDisposable
             if (ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map)
             {
                 var current = e.GetPosition(this);
-                if (isDraggingOsmSelection)
+                if (isDraggingOsmSelection && e.InitialPressMouseButton == MouseButton.Left)
                 {
                     ViewModel.EndOsmSelection(LocalPointToMapGeo(current, transform));
                 }
-                else if (!didMapDrag)
+                else if (!didMapDrag && e.InitialPressMouseButton == MouseButton.Left)
                 {
-                    TryHandleMapSelection(ViewModel, LocalPointToGraph(current, transform), transform.LogicalViewport);
+                    TryHandleMapSelection(ViewModel, current, transform);
                 }
 
                 mapPointerDownPoint = null;
                 lastMapPointerPosition = null;
                 isMapPanning = false;
+                isMiddleMousePanning = false;
                 isDraggingOsmSelection = false;
                 didMapDrag = false;
+                Cursor = null;
                 e.Pointer.Capture(null);
                 InvalidateVisual();
                 e.Handled = true;
@@ -969,6 +987,18 @@ public sealed class GraphCanvasControl : Control, IDisposable
         ToolTip.SetTip(this, null);
     }
 
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        isMapPanning = false;
+        isMiddleMousePanning = false;
+        isDraggingOsmSelection = false;
+        mapPointerDownPoint = null;
+        lastMapPointerPosition = null;
+        didMapDrag = false;
+        Cursor = null;
+    }
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
@@ -1012,9 +1042,11 @@ public sealed class GraphCanvasControl : Control, IDisposable
         {
             isDraggingOsmSelection = false;
             isMapPanning = false;
+            isMiddleMousePanning = false;
             mapPointerDownPoint = null;
             lastMapPointerPosition = null;
             didMapDrag = false;
+            Cursor = null;
             viewModel.ClearOsmSelection();
             return true;
         }
@@ -1075,6 +1107,41 @@ public sealed class GraphCanvasControl : Control, IDisposable
         return transform.PointerToGraph(localPoint);
     }
 
+    private GraphPoint ScreenToWorld(Point screenPoint, GraphCanvasCoordinateTransform transform)
+    {
+        var localGraphPoint = LocalPointToGraph(screenPoint, transform);
+        if (ViewModel?.VisualisationState.ActiveMode == VisualisationMode.Map)
+        {
+            return localGraphPoint;
+        }
+
+        var interactionContext = ViewModel?.CreateInteractionContext(transform.LogicalViewport);
+        return interactionContext is null
+            ? localGraphPoint
+            : interactionContext.Viewport.ScreenToWorld(localGraphPoint, interactionContext.ViewportSize);
+    }
+
+    private GraphPoint WorldToScreen(GraphPoint worldPoint, GraphCanvasCoordinateTransform transform)
+    {
+        if (ViewModel?.VisualisationState.ActiveMode == VisualisationMode.Map)
+        {
+            return worldPoint;
+        }
+
+        var interactionContext = ViewModel?.CreateInteractionContext(transform.LogicalViewport);
+        return interactionContext is null
+            ? worldPoint
+            : interactionContext.Viewport.WorldToScreen(worldPoint, interactionContext.ViewportSize);
+    }
+
+    private GraphPoint GeoToWorld(double lon, double lat, MapProjectionViewport viewport)
+    {
+        var projected = mapProjectionService.Project(new MapGeoCoordinate(lat, lon), viewport);
+        return new GraphPoint(projected.X, projected.Y);
+    }
+
+    private GraphPoint GeoToScreen(double lon, double lat, MapProjectionViewport viewport) => GeoToWorld(lon, lat, viewport);
+
     private GraphPoint PointerToGraph(PointerEventArgs e, GraphCanvasCoordinateTransform transform)
     {
         var local = e.GetPosition(this);
@@ -1090,7 +1157,7 @@ public sealed class GraphCanvasControl : Control, IDisposable
 
     private MapGeoCoordinate LocalPointToMapGeo(Point localPoint, GraphCanvasCoordinateTransform transform)
     {
-        var graphPoint = LocalPointToGraph(localPoint, transform);
+        var graphPoint = ScreenToWorld(localPoint, transform);
         var mapViewport = ViewModel!.BuildMapProjectionViewport(transform.LogicalViewport);
         return mapProjectionService.Unproject(graphPoint.X, graphPoint.Y, mapViewport);
     }
@@ -1834,10 +1901,11 @@ public sealed class ShellWindow : Window
             [!InputElement.IsEnabledProperty] = new Binding(nameof(WorkspaceViewModel.IsLockLayoutToMapEnabled))
         };
         ApplyFocusVisual(lockLayoutToggle);
+        ToolTip.SetTip(lockLayoutToggle, "Keep node positions tied to their map coordinates while panning or zooming.");
 
         var lockLayoutHint = new TextBlock
         {
-            Text = "Keeps graph mode aligned with OSM geography.",
+            Text = "Middle mouse pans. Mouse wheel zooms toward pointer focus.",
             Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
             FontSize = 12
         };
@@ -1905,6 +1973,7 @@ public sealed class ShellWindow : Window
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch
         };
+        ToolTip.SetTip(graphCanvas, "Middle mouse drag pans the canvas. Mouse wheel zooms to the pointer focus.");
 
         var fallbackTitle = new TextBlock
         {
@@ -2230,6 +2299,143 @@ public sealed class ShellWindow : Window
         }
     }
 
+    private async Task ShowBulkApplyTrafficRoleDialogAsync(WorkspaceViewModel viewModel)
+    {
+        if (!viewModel.HasAnyNodes)
+        {
+            viewModel.StatusText = "Add at least one node before using bulk traffic role apply.";
+            return;
+        }
+
+        var selectedNodeCount = viewModel.Scene.Selection.SelectedNodeIds.Count;
+        var applyToAllNodes = selectedNodeCount == 0;
+        var trafficType = viewModel.TrafficTypeNameOptions.FirstOrDefault() ?? string.Empty;
+        var role = viewModel.NodeRoleOptions.FirstOrDefault() ?? "Transshipment";
+
+        var dialog = new Window
+        {
+            Width = 460,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            SystemDecorations = SystemDecorations.None,
+            ExtendClientAreaToDecorationsHint = true,
+            ExtendClientAreaChromeHints = ExtendClientAreaChromeHints.NoChrome,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            Title = "Bulk Apply Traffic Role"
+        };
+
+        var applyToAllCheck = new CheckBox
+        {
+            Content = "Apply to all nodes",
+            IsChecked = applyToAllNodes
+        };
+        ToolTip.SetTip(applyToAllCheck, "Apply this role to every node in the network, not just selected nodes.");
+        applyToAllCheck.IsCheckedChanged += (_, _) => applyToAllNodes = applyToAllCheck.IsChecked == true;
+
+        var trafficTypeBox = new ComboBox
+        {
+            ItemsSource = viewModel.TrafficTypeNameOptions,
+            SelectedItem = trafficType,
+            MinWidth = 220
+        };
+        trafficTypeBox.SelectionChanged += (_, _) => trafficType = trafficTypeBox.SelectedItem?.ToString() ?? string.Empty;
+
+        var roleBox = new ComboBox
+        {
+            ItemsSource = viewModel.NodeRoleOptions,
+            SelectedItem = role,
+            MinWidth = 220
+        };
+        roleBox.SelectionChanged += (_, _) => role = roleBox.SelectedItem?.ToString() ?? string.Empty;
+
+        var statusText = new TextBlock
+        {
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+            TextWrapping = TextWrapping.Wrap,
+            Text = selectedNodeCount == 0
+                ? "No nodes are selected. Apply to all nodes is enabled by default."
+                : $"{selectedNodeCount} node(s) selected."
+        };
+
+        var applyButton = new Button
+        {
+            Content = "Apply",
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.Accent),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            Padding = new Thickness(14, 8)
+        };
+
+        applyButton.Click += async (_, _) =>
+        {
+            if (applyToAllNodes && viewModel.WouldBulkApplyTrafficRoleOverwrite(true, trafficType))
+            {
+                var confirmed = await ShowConfirmationDialogAsync(
+                    "Apply role to all nodes?",
+                    "This will overwrite existing node traffic roles.",
+                    "Apply",
+                    isDestructive: false);
+                if (!confirmed)
+                {
+                    return;
+                }
+            }
+
+            if (!viewModel.TryBulkApplyTrafficRole(role, trafficType, applyToAllNodes, out var message))
+            {
+                statusText.Text = message;
+                statusText.Foreground = new SolidColorBrush(AvaloniaDashboardTheme.Danger);
+                return;
+            }
+
+            dialog.Close();
+        };
+
+        var cancelButton = new Button
+        {
+            Content = "Cancel",
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ToolbarButtonBackground),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            Padding = new Thickness(14, 8)
+        };
+        cancelButton.Click += (_, _) => dialog.Close();
+
+        dialog.Content = new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(16),
+            Padding = new Thickness(18),
+            Child = new StackPanel
+            {
+                Spacing = 10,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "Bulk Apply Traffic Role",
+                        FontSize = 20,
+                        FontWeight = FontWeight.Bold,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                    },
+                    BuildLabeledRow("Traffic type", trafficTypeBox),
+                    BuildLabeledRow("Role", roleBox),
+                    applyToAllCheck,
+                    statusText,
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Spacing = 8,
+                        Children = { applyButton, cancelButton }
+                    }
+                }
+            }
+        };
+
+        await dialog.ShowDialog(this);
+    }
+
     private Border BuildCompactInspector(WorkspaceViewModel viewModel)
     {
         var insightsToggle = new CheckBox
@@ -2263,7 +2469,7 @@ public sealed class ShellWindow : Window
                     BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
                     BuildCompactNodeInspector(viewModel),
                     BuildCompactEdgeInspector(viewModel),
-                    BuildCompactBulkInspector(),
+                    BuildCompactBulkInspector(viewModel),
                     BuildCompactNetworkSummary()
                 }
             }
@@ -3085,8 +3291,19 @@ public sealed class ShellWindow : Window
         return card;
     }
 
-    private static Control BuildCompactBulkInspector()
+    private Control BuildCompactBulkInspector(WorkspaceViewModel viewModel)
     {
+        var bulkApplyRoleCommand = new RelayCommand(
+            () => _ = ShowBulkApplyTrafficRoleDialogAsync(viewModel),
+            () => viewModel.HasAnyNodes);
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(WorkspaceViewModel.HasAnyNodes))
+            {
+                bulkApplyRoleCommand.NotifyCanExecuteChanged();
+            }
+        };
+
         var card = new Border
         {
             Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
@@ -3103,7 +3320,8 @@ public sealed class ShellWindow : Window
                     BuildLabeledAutoCompleteTextBox("Place type", "BulkDraft.PlaceTypeText", "BulkDraft.PlaceTypeSuggestions", "Type or choose a place type"),
                     BuildLabeledTextBox("Transhipment capacity", "BulkDraft.TranshipmentCapacityText"),
                     BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
-                    BuildBoundButton("Apply bulk changes", nameof(WorkspaceViewModel.ApplyInspectorCommand))
+                    BuildBoundButton("Apply bulk changes", nameof(WorkspaceViewModel.ApplyInspectorCommand)),
+                    BuildButton("Bulk Apply Traffic Role", bulkApplyRoleCommand, toolTip: "Apply one traffic role to selected nodes or to all nodes.")
                 }
             }
         };

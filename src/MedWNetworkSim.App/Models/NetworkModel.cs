@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using MedWNetworkSim.App.Agents;
 
 namespace MedWNetworkSim.App.Models;
 
@@ -97,4 +98,19 @@ public sealed class NetworkModel
     /// Gets or sets the edges that connect nodes and define time, cost, and optional capacity.
     /// </summary>
     public List<EdgeModel> Edges { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets autonomous actor configuration persisted with the network.
+    /// </summary>
+    public List<SimulationActorState> Actors { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets optional persisted actor decision history.
+    /// </summary>
+    public List<SimulationActorDecision> ActorDecisions { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets optional persisted actor metrics by tick.
+    /// </summary>
+    public List<SimulationActorMetrics> ActorMetrics { get; set; } = [];
 }

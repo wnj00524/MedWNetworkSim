@@ -20,6 +20,7 @@
     <Compile Include="..\MedWNetworkSim.App\Services\**\*.cs" Exclude="..\MedWNetworkSim.App\Services\AppThemeManager.cs" Link="Legacy\Services\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\MedWNetworkSim.App\VisualAnalytics\**\*.cs" Link="Legacy\VisualAnalytics\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\MedWNetworkSim.App\Insights\**\*.cs" Link="Legacy\Insights\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\MedWNetworkSim.App\Agents\**\*.cs" Link="Legacy\Agents\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\MedWNetworkSim.App\Geo\**\*.cs" Link="Legacy\Geo\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

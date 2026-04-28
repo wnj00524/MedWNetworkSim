@@ -3,6 +3,7 @@ using MedWNetworkSim.App.Import;
 using MedWNetworkSim.Presentation;
 using MedWNetworkSim.Rendering;
 using MedWNetworkSim.Rendering.Geo;
+using OsmSharp;
 using Xunit;
 
 namespace MedWNetworkSim.Tests;
@@ -62,6 +63,69 @@ public sealed class OsmBoundingBoxImportTests
             Assert.Contains(reduced.Nodes, node => node.Id == edge.FromNodeId);
             Assert.Contains(reduced.Nodes, node => node.Id == edge.ToNodeId);
         });
+    }
+
+    [Fact]
+    public void Mapper_LongWayAtTenPercent_ReducesNodesAggressively()
+    {
+        var geos = CreateLinearWayGeos(100);
+        var network = new OsmToSimulationMapper().Map(geos, new OsmImportOptions(true, 10));
+
+        Assert.InRange(network.Nodes.Count, 2, 15);
+    }
+
+    [Fact]
+    public void Mapper_GridNetwork_RetainsDegreeThreeOrHigherJunctions()
+    {
+        var geos = CreateCrossRoadGeos();
+        var network = new OsmToSimulationMapper().Map(geos, new OsmImportOptions(true, 10));
+
+        Assert.Contains(network.Nodes, node => node.Id == "osm-node-3");
+    }
+
+    [Fact]
+    public void Mapper_CollapsedEdge_UsesPathDistanceSum()
+    {
+        var geos = CreateLinearWayGeos(20);
+        var network = new OsmToSimulationMapper().Map(geos, new OsmImportOptions(true, 10));
+
+        var first = network.Nodes.Select(node => long.Parse(node.OsmId!)).Min();
+        var last = network.Nodes.Select(node => long.Parse(node.OsmId!)).Max();
+        var edge = Assert.Single(network.Edges.Where(e => e.FromNodeId == $"osm-node-{first}" && e.ToNodeId == $"osm-node-{last}"));
+        var expectedDistance = SumPathDistance(geos, 1, 20);
+        Assert.InRange(Math.Abs(edge.Cost - expectedDistance), 0d, 0.00001d);
+    }
+
+    [Fact]
+    public void Mapper_EdgesAlwaysReferenceExistingNodes()
+    {
+        var geos = CreateLinearWayGeos(80);
+        var network = new OsmToSimulationMapper().Map(geos, new OsmImportOptions(true, 5));
+        var nodeIds = network.Nodes.Select(node => node.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        Assert.All(network.Edges, edge =>
+        {
+            Assert.Contains(edge.FromNodeId, nodeIds);
+            Assert.Contains(edge.ToNodeId, nodeIds);
+        });
+    }
+
+    [Fact]
+    public void Mapper_RetentionHundred_PreservesAllRoadNodes()
+    {
+        var geos = CreateLinearWayGeos(40);
+        var network = new OsmToSimulationMapper().Map(geos, new OsmImportOptions(true, 100));
+
+        Assert.Equal(40, network.Nodes.Count);
+    }
+
+    [Fact]
+    public void Mapper_PreserveConnectivity_DoesNotKeepDegreeTwoArticulationNodesByDefault()
+    {
+        var geos = CreateLinearWayGeos(60);
+        var network = new OsmToSimulationMapper().Map(geos, new OsmImportOptions(true, 10, PreserveConnectivity: true));
+
+        Assert.InRange(network.Nodes.Count, 2, 15);
     }
 
     [Fact]
@@ -229,6 +293,83 @@ public sealed class OsmBoundingBoxImportTests
         builder.AppendLine("</osm>");
         return builder.ToString();
     }
+
+    private static IReadOnlyList<OsmGeo> CreateLinearWayGeos(int nodeCount)
+    {
+        var geos = new List<OsmGeo>();
+        for (long i = 1; i <= nodeCount; i++)
+        {
+            geos.Add(new Node
+            {
+                Id = i,
+                Latitude = 40d + (i * 0.001d),
+                Longitude = -74d + (i * 0.001d)
+            });
+        }
+
+        geos.Add(new Way
+        {
+            Id = 100,
+            Nodes = Enumerable.Range(1, nodeCount).Select(value => (long)value).ToArray(),
+            Tags = new TagsCollection { { "highway", "residential" }, { "name", "Linear Way" } }
+        });
+
+        return geos;
+    }
+
+    private static IReadOnlyList<OsmGeo> CreateCrossRoadGeos()
+    {
+        var geos = new List<OsmGeo>
+        {
+            new Node { Id = 1, Latitude = 41.0000, Longitude = -73.0000 },
+            new Node { Id = 2, Latitude = 41.0010, Longitude = -73.0000 },
+            new Node { Id = 3, Latitude = 41.0020, Longitude = -73.0000 },
+            new Node { Id = 4, Latitude = 41.0030, Longitude = -73.0000 },
+            new Node { Id = 5, Latitude = 41.0020, Longitude = -73.0010 },
+            new Node { Id = 6, Latitude = 41.0020, Longitude = -72.9990 }
+        };
+
+        geos.Add(new Way
+        {
+            Id = 201,
+            Nodes = [1, 2, 3, 4],
+            Tags = new TagsCollection { { "highway", "residential" }, { "name", "North South" } }
+        });
+        geos.Add(new Way
+        {
+            Id = 202,
+            Nodes = [5, 3, 6],
+            Tags = new TagsCollection { { "highway", "residential" }, { "name", "East West" } }
+        });
+
+        return geos;
+    }
+
+    private static double SumPathDistance(IReadOnlyList<OsmGeo> geos, long startNodeId, long endNodeId)
+    {
+        var nodes = geos.OfType<Node>().ToDictionary(node => node.Id!.Value);
+        var total = 0d;
+        for (var id = startNodeId + 1; id <= endNodeId; id++)
+        {
+            total += HaversineKm(nodes[id - 1], nodes[id]);
+        }
+
+        return total;
+    }
+
+    private static double HaversineKm(Node a, Node b)
+    {
+        const double radiusKm = 6371.0088d;
+        var dLat = DegreesToRadians(b.Latitude!.Value - a.Latitude!.Value);
+        var dLon = DegreesToRadians(b.Longitude!.Value - a.Longitude!.Value);
+        var lat1 = DegreesToRadians(a.Latitude.Value);
+        var lat2 = DegreesToRadians(b.Latitude.Value);
+        var h = Math.Sin(dLat / 2d) * Math.Sin(dLat / 2d) +
+                Math.Cos(lat1) * Math.Cos(lat2) * Math.Sin(dLon / 2d) * Math.Sin(dLon / 2d);
+        return 2d * radiusKm * Math.Asin(Math.Min(1d, Math.Sqrt(h)));
+    }
+
+    private static double DegreesToRadians(double value) => value * Math.PI / 180d;
 
     private sealed class FakeOsmApiClient(string xml) : IOsmApiClient
     {

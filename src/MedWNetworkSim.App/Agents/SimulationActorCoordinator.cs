@@ -70,9 +70,9 @@ public sealed class SimulationActorCoordinator
         };
 
         var decisions = orderedActors.Select(actor => actor.Decide(context)).ToList();
-        var resolvedActions = ResolveConflicts(decisions.SelectMany(d => d.Actions).ToList());
-
-        var actorMap = actorStates.ToDictionary(a => a.Id, a => a, StringComparer.OrdinalIgnoreCase);
+        var actorMap = BuildActorMap(actorStates);
+        var actorKindsById = actorMap.ToDictionary(pair => pair.Key, pair => pair.Value.Kind, StringComparer.OrdinalIgnoreCase);
+        var resolvedActions = ResolveConflicts(decisions.SelectMany(d => d.Actions).ToList(), actorKindsById);
         var flowByEdge = BuildFlowByEdge(baseSnapshot.TrafficOutcomes);
         var (appliedNetwork, outcomes) = actionApplier.Apply(network, resolvedActions, actorMap, flowByEdge);
 
@@ -122,10 +122,12 @@ public sealed class SimulationActorCoordinator
             .ToList();
     }
 
-    private IReadOnlyList<SimulationActorAction> ResolveConflicts(IReadOnlyList<SimulationActorAction> actions)
+    private IReadOnlyList<SimulationActorAction> ResolveConflicts(
+        IReadOnlyList<SimulationActorAction> actions,
+        IReadOnlyDictionary<string, SimulationActorKind> actorKindsById)
     {
         var ordered = actions
-            .OrderBy(a => GetOrder(GetKind(a)))
+            .OrderBy(a => GetOrder(GetKind(a, actorKindsById)))
             .ThenBy(a => a.IsPolicyAction ? 0 : 1)
             .ThenBy(a => a.Id, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -241,14 +243,47 @@ public sealed class SimulationActorCoordinator
         _ => 99
     };
 
-    private static SimulationActorKind GetKind(SimulationActorAction action)
+    private static SimulationActorKind GetKind(
+        SimulationActorAction action,
+        IReadOnlyDictionary<string, SimulationActorKind> actorKindsById)
     {
+        if (actorKindsById.TryGetValue(action.ActorId, out var kind))
+        {
+            return kind;
+        }
+
         return action.IsPolicyAction ? SimulationActorKind.Government : SimulationActorKind.Firm;
+    }
+
+    private static IReadOnlyDictionary<string, SimulationActorState> BuildActorMap(IReadOnlyList<SimulationActorState> actorStates)
+    {
+        var actorMap = new Dictionary<string, SimulationActorState>(StringComparer.OrdinalIgnoreCase);
+        var duplicateIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var actorState in actorStates)
+        {
+            if (string.IsNullOrWhiteSpace(actorState.Id))
+            {
+                continue;
+            }
+
+            if (!actorMap.TryAdd(actorState.Id, actorState))
+            {
+                duplicateIds.Add(actorState.Id);
+            }
+        }
+
+        if (duplicateIds.Count > 0)
+        {
+            var duplicateList = string.Join(", ", duplicateIds.OrderBy(id => id, StringComparer.OrdinalIgnoreCase));
+            throw new InvalidOperationException($"Duplicate actor ids are not supported: {duplicateList}.");
+        }
+
+        return actorMap;
     }
 
     private static NetworkModel Clone(NetworkModel network)
     {
-        var json = System.Text.Json.JsonSerializer.Serialize(network);
-        return System.Text.Json.JsonSerializer.Deserialize<NetworkModel>(json) ?? new NetworkModel();
+        return NetworkModelCloneUtility.Clone(network);
     }
 }

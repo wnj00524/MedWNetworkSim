@@ -247,6 +247,8 @@ public sealed class NodePressureReportRowViewModel
     public required string UnmetNeed { get; init; }
 }
 
+public sealed record PieChartSegmentViewModel(string Label, double Value);
+
 public sealed class UncoveredNodePlanningItem
 {
     public required string NodeName { get; init; }
@@ -1843,6 +1845,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private int actorRunTicks = 1;
     private bool hasActorPreview;
     private string actorStatusMessage = string.Empty;
+    private string agentSearchText = string.Empty;
     private string actorNameText = string.Empty;
     private string actorBudgetText = "0";
     private string actorCashText = "0";
@@ -1853,6 +1856,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private bool actorAllowAllTrafficTypes = true;
     private string actorValidationText = string.Empty;
     private bool showAgentTools;
+    private IReadOnlyList<PieChartSegmentViewModel> agentStatusDistributionData =
+    [
+        new("Moving", 0d),
+        new("Idle", 1d),
+        new("Processing", 0d)
+    ];
+    private IReadOnlyList<PieChartSegmentViewModel> nodeUtilizationMixData =
+    [
+        new("Balanced", 0d),
+        new("Low", 1d),
+        new("High", 0d)
+    ];
 
     public WorkspaceViewModel(IAgentActionLogger? agentActionLogger = null, SimulationActorCoordinator? simulationActorCoordinator = null)
     {
@@ -1908,6 +1923,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         VisualisationState = new VisualisationState();
         NetworkInsights = [];
         SimulationActors = [];
+        FilteredSimulationActors = [];
         ActorTrafficTypeRows = [];
         ActorDecisions = [];
         ActorActionOutcomes = [];
@@ -2077,6 +2093,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public VisualisationState VisualisationState { get; }
     public ObservableCollection<NetworkInsight> NetworkInsights { get; }
     public ObservableCollection<SimulationActorState> SimulationActors { get; }
+    public ObservableCollection<SimulationActorState> FilteredSimulationActors { get; }
     public ObservableCollection<ActorTrafficTypeSelectionRow> ActorTrafficTypeRows { get; }
     public ObservableCollection<SimulationActorDecisionViewModel> ActorDecisions { get; }
     public ObservableCollection<SimulationActorActionOutcomeViewModel> ActorActionOutcomes { get; }
@@ -2503,6 +2520,17 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public int ActorRunTicks { get => actorRunTicks; set => SetProperty(ref actorRunTicks, Math.Max(1, value)); }
     public bool HasActorPreview { get => hasActorPreview; private set => SetProperty(ref hasActorPreview, value); }
     public string ActorStatusMessage { get => actorStatusMessage; private set => SetProperty(ref actorStatusMessage, value); }
+    public string AgentSearchText
+    {
+        get => agentSearchText;
+        set
+        {
+            if (SetProperty(ref agentSearchText, value))
+            {
+                RefreshFilteredSimulationActors();
+            }
+        }
+    }
     public string ActorNameText { get => actorNameText; set => SetProperty(ref actorNameText, value); }
     public string ActorBudgetText { get => actorBudgetText; set => SetProperty(ref actorBudgetText, value); }
     public string ActorCashText { get => actorCashText; set => SetProperty(ref actorCashText, value); }
@@ -2528,6 +2556,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         }
     }
     public string ActorValidationText { get => actorValidationText; private set => SetProperty(ref actorValidationText, value); }
+    public IReadOnlyList<PieChartSegmentViewModel> AgentStatusDistributionData
+    {
+        get => agentStatusDistributionData;
+        private set => SetProperty(ref agentStatusDistributionData, value);
+    }
+
+    public IReadOnlyList<PieChartSegmentViewModel> NodeUtilizationMixData
+    {
+        get => nodeUtilizationMixData;
+        private set => SetProperty(ref nodeUtilizationMixData, value);
+    }
+
     public string SelectedActorNodeCountText => SelectedSimulationActor is null ? "Nodes: 0" : $"Nodes: {SelectedSimulationActor.ControlledNodeIds.Count}";
     public string SelectedActorEdgeCountText => SelectedSimulationActor is null ? "Routes: 0" : $"Routes: {SelectedSimulationActor.ControlledEdgeIds.Count}";
     public string SelectedActorTrafficScopeText
@@ -4489,6 +4529,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         AgentLog.SetEntries(agentActionLogger.GetAll());
         ActorTick = network.ActorTick;
         SelectedSimulationActor = SimulationActors.FirstOrDefault();
+        RefreshFilteredSimulationActors();
+        RefreshNetworkAnalyticsPieChartData();
         RefreshInspector();
         StatusText = status;
         NotifyVisualChanged();
@@ -5392,6 +5434,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         SimulationActors.Add(actor);
         network.Actors = SimulationActors.ToList();
         SelectedSimulationActor = actor;
+        RefreshFilteredSimulationActors();
         MarkDirty();
         ActorStatusMessage = $"Added actor '{actor.Name}'.";
     }
@@ -5458,6 +5501,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         SimulationActors.Remove(SelectedSimulationActor);
         network.Actors = SimulationActors.ToList();
         SelectedSimulationActor = SimulationActors.FirstOrDefault();
+        RefreshFilteredSimulationActors();
         MarkDirty();
     }
 
@@ -5485,6 +5529,24 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             CustomActorTypeName = SelectedSimulationActor.Capability.CustomActorTypeName
         };
         AddActor(copy);
+    }
+
+    private void RefreshFilteredSimulationActors()
+    {
+        var query = AgentSearchText?.Trim() ?? string.Empty;
+        var results = string.IsNullOrWhiteSpace(query)
+            ? SimulationActors
+            : new ObservableCollection<SimulationActorState>(
+                SimulationActors.Where(actor =>
+                    actor.Id.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                    actor.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                    actor.Kind.ToString().Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                    actor.Objective.ToString().Contains(query, StringComparison.OrdinalIgnoreCase)));
+        FilteredSimulationActors.Clear();
+        foreach (var actor in results)
+        {
+            FilteredSimulationActors.Add(actor);
+        }
     }
 
     private bool ValidateActorRun()
@@ -5801,6 +5863,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         PopulateRouteReports(timeline, edgeLoads);
         PopulateNodePressureReports(timeline);
         PopulateQuickMetrics(timeline, edgeLoads);
+        RefreshNetworkAnalyticsPieChartData();
         ApplyIsochroneVisuals();
         RefreshInspector();
         UpdateExplanationForSelection();
@@ -6130,6 +6193,79 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         TopIssueUnmappedSummary = string.Empty;
         SelectedTopIssue = null;
         SelectedIssueBreadcrumb = "Issue → (none selected)";
+        RefreshNetworkAnalyticsPieChartData();
+    }
+
+    private void RefreshNetworkAnalyticsPieChartData()
+    {
+        AgentStatusDistributionData = BuildAgentStatusDistributionData();
+        NodeUtilizationMixData = BuildNodeUtilizationMixData();
+    }
+
+    private IReadOnlyList<PieChartSegmentViewModel> BuildAgentStatusDistributionData()
+    {
+        var latestActions = agentActionLogger
+            .GetAll()
+            .GroupBy(entry => entry.AgentId)
+            .Select(group => group.OrderByDescending(entry => entry.Timestamp).First())
+            .ToList();
+        var moving = latestActions.Count(entry => entry.ActionType.Contains("move", StringComparison.OrdinalIgnoreCase));
+        var processing = latestActions.Count(entry => entry.ActionType.Contains("process", StringComparison.OrdinalIgnoreCase)
+            || entry.ActionType.Contains("load", StringComparison.OrdinalIgnoreCase)
+            || entry.ActionType.Contains("unload", StringComparison.OrdinalIgnoreCase));
+        var knownAgentCount = Math.Max(SimulationActors.Count, latestActions.Count);
+        var idle = Math.Max(0, knownAgentCount - moving - processing);
+        if (knownAgentCount == 0)
+        {
+            idle = 1;
+        }
+
+        return
+        [
+            new PieChartSegmentViewModel("Moving", moving),
+            new PieChartSegmentViewModel("Idle", idle),
+            new PieChartSegmentViewModel("Processing", processing)
+        ];
+    }
+
+    private IReadOnlyList<PieChartSegmentViewModel> BuildNodeUtilizationMixData()
+    {
+        if (network.Nodes.Count == 0)
+        {
+            return
+            [
+                new PieChartSegmentViewModel("Balanced", 0d),
+                new PieChartSegmentViewModel("Low", 1d),
+                new PieChartSegmentViewModel("High", 0d)
+            ];
+        }
+
+        var low = 0;
+        var balanced = 0;
+        var high = 0;
+        foreach (var node in network.Nodes)
+        {
+            var score = lastTimelineStepResult?.NodePressureById.GetValueOrDefault(node.Id).Score ?? 0d;
+            if (score < 0.25d)
+            {
+                low++;
+            }
+            else if (score < 0.7d)
+            {
+                balanced++;
+            }
+            else
+            {
+                high++;
+            }
+        }
+
+        return
+        [
+            new PieChartSegmentViewModel("Balanced", balanced),
+            new PieChartSegmentViewModel("Low", low),
+            new PieChartSegmentViewModel("High", high)
+        ];
     }
 
     private void RefreshInspector()

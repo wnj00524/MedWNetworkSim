@@ -127,6 +127,7 @@ public sealed class GraphNodeSceneItem
     public GraphNodeTextLayoutResult? CachedLayout { get; set; }
     public double CachedLayoutWidth { get; set; }
     public double CachedLayoutHeight { get; set; }
+    public bool IsActorControlled { get; set; }
 }
 
 public sealed class GraphEdgeSceneItem
@@ -144,6 +145,7 @@ public sealed class GraphEdgeSceneItem
     public string ToolTipText { get; set; } = string.Empty;
     public required bool HasWarning { get; set; }
     public double VisualOpacity { get; set; } = 1d;
+    public bool IsActorControlled { get; set; }
 }
 
 public sealed class GraphTransientState
@@ -175,6 +177,7 @@ public sealed class GraphSimulationSceneState
     public bool ReducedMotion { get; set; }
     public bool ShowDepthLayer { get; set; } = true;
     public double AnimationTime { get; set; }
+    public bool ShowAgentOverlays { get; set; }
 }
 
 public sealed class GraphScene
@@ -210,24 +213,58 @@ public readonly record struct GraphHitResult(string? NodeId, string? EdgeId);
 
 public sealed class GraphHitTester
 {
-    public GraphHitResult HitTest(GraphScene scene, GraphPoint worldPoint)
+    public double NodeHitPadding { get; set; } = 6d;
+    public double EdgeHitRadius { get; set; } = 10d;
+    public double EdgeHandleRadius { get; set; } = 10d;
+
+    public GraphHitResult HitTest(GraphScene scene, GraphPoint worldPoint, double zoom = 1d)
     {
+        var safeZoom = Math.Max(0.05d, zoom);
+        var nodePaddingWorld = NodeHitPadding / safeZoom;
+        var edgeRadiusWorld = EdgeHitRadius / safeZoom;
+        var edgeHandleRadiusWorld = EdgeHandleRadius / safeZoom;
+
         foreach (var node in scene.Nodes.OrderByDescending(node => node.Bounds.Top))
         {
-            if (node.Bounds.Contains(worldPoint))
+            var padded = new GraphRect(
+                node.Bounds.X - nodePaddingWorld,
+                node.Bounds.Y - nodePaddingWorld,
+                node.Bounds.Width + (nodePaddingWorld * 2d),
+                node.Bounds.Height + (nodePaddingWorld * 2d));
+            if (padded.Contains(worldPoint))
             {
                 return new GraphHitResult(node.Id, null);
             }
         }
 
+        var handleHit = scene.Edges
+            .Select(candidate => new { Edge = candidate, Distance = DistanceToMidpoint(scene, candidate, worldPoint) })
+            .Where(candidate => candidate.Distance <= edgeHandleRadiusWorld)
+            .OrderBy(candidate => candidate.Distance)
+            .FirstOrDefault();
+        if (handleHit is not null)
+        {
+            return new GraphHitResult(null, handleHit.Edge.Id);
+        }
+
         var edge = scene.Edges
             .Select(candidate => new { Edge = candidate, Distance = DistanceToEdge(scene, candidate, worldPoint) })
-            .Where(candidate => candidate.Distance <= 12d)
+            .Where(candidate => candidate.Distance <= edgeRadiusWorld)
             .OrderBy(candidate => candidate.Distance)
             .FirstOrDefault();
 
         return edge is null ? default : new GraphHitResult(null, edge.Edge.Id);
     }
+
+    public static GraphPoint GetEdgeMidpoint(GraphScene scene, GraphEdgeSceneItem edge)
+    {
+        var start = GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId);
+        var end = GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId);
+        return new GraphPoint((start.X + end.X) / 2d, (start.Y + end.Y) / 2d);
+    }
+
+    private static double DistanceToMidpoint(GraphScene scene, GraphEdgeSceneItem edge, GraphPoint worldPoint) =>
+        (worldPoint - GetEdgeMidpoint(scene, edge)).Length;
 
     private static double DistanceToEdge(GraphScene scene, GraphEdgeSceneItem edge, GraphPoint worldPoint)
     {
@@ -496,22 +533,38 @@ public sealed class GraphRenderer
     {
         using var overlayPaint = new SKPaint { IsAntialias = true, StrokeWidth = 6f, Style = SKPaintStyle.Stroke, StrokeCap = SKStrokeCap.Round };
         using var arrowPaint = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill };
-        foreach (var edge in scene.Edges.Where(edge => scene.Selection.SelectedEdgeIds.Contains(edge.Id) || scene.Selection.HighlightedEdgeIds.Contains(edge.Id)))
+        var overlayEdges = scene.Edges.Where(edge =>
+            scene.Selection.SelectedEdgeIds.Contains(edge.Id) ||
+            scene.Selection.HighlightedEdgeIds.Contains(edge.Id) ||
+            string.Equals(scene.Selection.HoverEdgeId, edge.Id, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(scene.Selection.KeyboardEdgeId, edge.Id, StringComparison.OrdinalIgnoreCase));
+        foreach (var edge in overlayEdges)
         {
             var start = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId), viewportSize);
             var end = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId), viewportSize);
             var isSelected = scene.Selection.SelectedEdgeIds.Contains(edge.Id);
+            var isHovered = string.Equals(scene.Selection.HoverEdgeId, edge.Id, StringComparison.OrdinalIgnoreCase);
+            var isKeyboard = string.Equals(scene.Selection.KeyboardEdgeId, edge.Id, StringComparison.OrdinalIgnoreCase);
             var pulse = GetPulseState(
                 scene,
                 isSelected && string.Equals(scene.Selection.PulseEdgeId, edge.Id, StringComparison.OrdinalIgnoreCase),
                 scene.Selection.PulseProgress);
-            overlayPaint.Color = (pulse.IsActive ? PulseColor : FocusColor).WithAlpha((byte)(isSelected ? 190 : 145));
-            overlayPaint.StrokeWidth = (float)((isSelected ? 6f : 4.5f) + pulse.StrokeBoost);
+            overlayPaint.Color = (pulse.IsActive ? PulseColor : isKeyboard ? SKColor.Parse("#F2D38B") : FocusColor).WithAlpha((byte)(isSelected ? 190 : isHovered ? 180 : 145));
+            overlayPaint.StrokeWidth = (float)((isSelected ? 6f : isHovered ? 5.5f : 4.5f) + pulse.StrokeBoost);
             canvas.DrawLine((float)start.X, (float)start.Y, (float)end.X, (float)end.Y, overlayPaint);
             if (!edge.IsBidirectional)
             {
                 arrowPaint.Color = overlayPaint.Color;
                 DrawDirectionalArrow(canvas, start, end, overlayPaint.StrokeWidth, arrowPaint);
+            }
+
+            if (isSelected)
+            {
+                var midpoint = viewport.WorldToScreen(GraphHitTester.GetEdgeMidpoint(scene, edge), viewportSize);
+                using var handleFill = new SKPaint { IsAntialias = true, Color = SKColor.Parse("#08111D") };
+                using var handleStroke = new SKPaint { IsAntialias = true, Color = FocusColor, Style = SKPaintStyle.Stroke, StrokeWidth = 2.4f };
+                canvas.DrawCircle((float)midpoint.X, (float)midpoint.Y, 6.5f, handleFill);
+                canvas.DrawCircle((float)midpoint.X, (float)midpoint.Y, 6.5f, handleStroke);
             }
         }
     }
@@ -540,6 +593,8 @@ public sealed class GraphRenderer
 
             var isSelected = scene.Selection.SelectedNodeIds.Contains(node.Id);
             var isHighlighted = scene.Selection.HighlightedNodeIds.Contains(node.Id);
+            var isHovered = string.Equals(scene.Selection.HoverNodeId, node.Id, StringComparison.OrdinalIgnoreCase);
+            var isKeyboard = string.Equals(scene.Selection.KeyboardNodeId, node.Id, StringComparison.OrdinalIgnoreCase);
             var pulse = GetPulseState(
                 scene,
                 isSelected && string.Equals(scene.Selection.PulseNodeId, node.Id, StringComparison.OrdinalIgnoreCase),
@@ -550,7 +605,7 @@ public sealed class GraphRenderer
             {
                 Color = (isSelected ? (pulse.IsActive ? PulseColor : FocusColor) : node.StrokeColor).WithAlpha(nodeAlpha),
                 IsAntialias = true,
-                StrokeWidth = isSelected ? (float)(3.2f + pulse.StrokeBoost) : 1.6f,
+                StrokeWidth = isSelected ? (float)(3.2f + pulse.StrokeBoost) : isHovered ? 2.4f : 1.6f,
                 Style = SKPaintStyle.Stroke
             };
 
@@ -560,6 +615,16 @@ public sealed class GraphRenderer
             {
                 using var highlight = new SKPaint { Color = FocusColor.WithAlpha(150), Style = SKPaintStyle.Stroke, StrokeWidth = 2f, PathEffect = SKPathEffect.CreateDash([6f, 4f], 0f), IsAntialias = true };
                 canvas.DrawRoundRect(new SKRect(screenRect.Left - 3f, screenRect.Top - 3f, screenRect.Right + 3f, screenRect.Bottom + 3f), NodeCornerRadius, NodeCornerRadius, highlight);
+            }
+            if (isKeyboard)
+            {
+                using var keyboardPaint = new SKPaint { Color = FocusColor.WithAlpha(220), Style = SKPaintStyle.Stroke, StrokeWidth = 1.8f, IsAntialias = true };
+                canvas.DrawRoundRect(new SKRect(screenRect.Left - 6f, screenRect.Top - 6f, screenRect.Right + 6f, screenRect.Bottom + 6f), NodeCornerRadius, NodeCornerRadius, keyboardPaint);
+            }
+            if (scene.Simulation.ShowAgentOverlays && node.IsActorControlled)
+            {
+                using var badge = new SKPaint { Color = SKColor.Parse("#C084FC"), IsAntialias = true, Style = SKPaintStyle.Fill };
+                canvas.DrawCircle(screenRect.Right - 8f, screenRect.Top + 8f, 5f, badge);
             }
             DrawFacilityCoverageOverlay(canvas, node, screenRect, nodeAlpha);
         }

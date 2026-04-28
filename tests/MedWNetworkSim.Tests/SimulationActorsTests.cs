@@ -265,7 +265,7 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
-    public void SelectedNodeAssignment_TogglesControlledNodeIds()
+    public void SelectedNodeAssignment_AddsWithoutDuplicates()
     {
         var vm = BuildWorkspaceViewModelWithNetwork();
         vm.AddFirmActorCommand.Execute(null);
@@ -277,13 +277,13 @@ public sealed class SimulationActorsTests
         Assert.Contains("producer", actor.ControlledNodeIds);
         Assert.Contains("consumer", actor.ControlledNodeIds);
 
+        var firstCount = actor.ControlledNodeIds.Count;
         vm.AssignSelectedNodeToActorCommand.Execute(null);
-        Assert.DoesNotContain("producer", actor.ControlledNodeIds);
-        Assert.DoesNotContain("consumer", actor.ControlledNodeIds);
+        Assert.Equal(firstCount, actor.ControlledNodeIds.Count);
     }
 
     [Fact]
-    public void SelectedEdgeAssignment_TogglesControlledEdgeIds()
+    public void SelectedEdgeAssignment_AddsWithoutDuplicates()
     {
         var vm = BuildWorkspaceViewModelWithNetwork();
         vm.AddFirmActorCommand.Execute(null);
@@ -293,8 +293,9 @@ public sealed class SimulationActorsTests
         vm.AssignSelectedEdgeToActorCommand.Execute(null);
         Assert.Contains("edge-a", actor.ControlledEdgeIds);
 
+        var firstCount = actor.ControlledEdgeIds.Count;
         vm.AssignSelectedEdgeToActorCommand.Execute(null);
-        Assert.DoesNotContain("edge-a", actor.ControlledEdgeIds);
+        Assert.Equal(firstCount, actor.ControlledEdgeIds.Count);
     }
 
     [Fact]
@@ -346,6 +347,41 @@ public sealed class SimulationActorsTests
         {
             File.Delete(path);
         }
+    }
+
+    [Fact]
+    public void AgentTools_AreOffByDefault_AndCanBeEnabled()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+        Assert.False(vm.ShowAgentTools);
+        vm.ToggleAgentToolsCommand.Execute(null);
+        Assert.True(vm.ShowAgentTools);
+    }
+
+    [Fact]
+    public void DeletingNode_RemovesActorControlledNodeReference()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+        vm.AddFirmActorCommand.Execute(null);
+        var actor = Assert.IsType<SimulationActorState>(vm.SelectedSimulationActor);
+        actor.ControlledNodeIds = ["producer"];
+
+        vm.DeleteNodeById("producer");
+
+        Assert.DoesNotContain("producer", actor.ControlledNodeIds);
+    }
+
+    [Fact]
+    public void DeletingEdge_RemovesActorControlledEdgeReference()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+        vm.AddFirmActorCommand.Execute(null);
+        var actor = Assert.IsType<SimulationActorState>(vm.SelectedSimulationActor);
+        actor.ControlledEdgeIds = ["edge-a"];
+
+        vm.DeleteRouteById("edge-a");
+
+        Assert.DoesNotContain("edge-a", actor.ControlledEdgeIds);
     }
 
     private static NetworkModel BuildNetwork()

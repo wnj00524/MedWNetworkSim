@@ -1450,9 +1450,9 @@ public sealed class ShellWindow : Window
             value is bool boolValue ? !boolValue : AvaloniaProperty.UnsetValue;
     }
 
-    public ShellWindow()
+    public ShellWindow(WorkspaceViewModel? workspaceViewModel = null)
     {
-        viewModel = new WorkspaceViewModel();
+        viewModel = workspaceViewModel ?? new WorkspaceViewModel();
         DataContext = viewModel;
         Width = 1760;
         Height = 1100;
@@ -1499,6 +1499,7 @@ public sealed class ShellWindow : Window
             }
         };
         viewModel.AboutRequested += HandleAboutRequested;
+        viewModel.ExportAgentLogsRequested += async (_, _) => await ExportAgentLogsAsync(viewModel);
 
         Closing += HandleWindowClosing;
         KeyDown += HandleShellWindowKeyDown;
@@ -4057,6 +4058,53 @@ public sealed class ShellWindow : Window
                 new DataGridTextColumn { Header = "Action", Binding = new Binding(nameof(SimulationActorActionOutcomeViewModel.ActionKind)) }
             }
         };
+
+        var agentLogList = new ListBox
+        {
+            MinHeight = 180,
+            [!ItemsControl.ItemsSourceProperty] = new Binding("AgentLog.Entries")
+        };
+        agentLogList.ItemTemplate = new FuncDataTemplate<AgentActionLogEntry>((entry, _) =>
+        {
+            var factors = string.Join(Environment.NewLine, entry?.DecisionFactors ?? []);
+            var alternatives = entry?.AlternativesConsidered is { Count: > 0 } values ? string.Join(Environment.NewLine, values) : "(none)";
+            var metrics = entry?.StateMetrics is { Count: > 0 } map
+                ? string.Join(Environment.NewLine, map.Select(pair => $"{pair.Key}: {pair.Value:0.###}"))
+                : "(none)";
+
+            return new Border
+            {
+                BorderThickness = new Thickness(1),
+                BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+                CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+                Padding = new Thickness(8),
+                Margin = new Thickness(0, 0, 0, 6),
+                Child = new StackPanel
+                {
+                    Spacing = 4,
+                    Children =
+                    {
+                        new TextBlock { Text = entry is null ? string.Empty : $"Tick {entry.SimulationTick} · Agent {entry.AgentId} · {entry.ActionType}", FontWeight = FontWeight.SemiBold },
+                        new TextBlock { Text = entry?.DecisionSummary ?? string.Empty, TextWrapping = TextWrapping.Wrap },
+                        new Expander
+                        {
+                            Header = "Details",
+                            Content = new StackPanel
+                            {
+                                Spacing = 4,
+                                Children =
+                                {
+                                    new TextBlock { Text = $"Factors:{Environment.NewLine}{factors}", TextWrapping = TextWrapping.Wrap },
+                                    new TextBlock { Text = $"State metrics:{Environment.NewLine}{metrics}", TextWrapping = TextWrapping.Wrap },
+                                    new TextBlock { Text = $"Alternatives:{Environment.NewLine}{alternatives}", TextWrapping = TextWrapping.Wrap }
+                                }
+                            }
+                        },
+                        new TextBlock { Text = entry is null ? string.Empty : $"Outcome: {entry.Outcome} | Utility: {(entry.UtilityScore.HasValue ? entry.UtilityScore.Value.ToString(\"0.###\", CultureInfo.InvariantCulture) : \"n/a\")}", FontSize = 11 }
+                    }
+                }
+            };
+        });
         var trafficTypeChecklist = new Border
         {
             Padding = new Thickness(8),
@@ -4137,11 +4185,22 @@ public sealed class ShellWindow : Window
                             BuildButton("Preview next actions", viewModel.PreviewActorActionsCommand),
                             BuildButton("Run one step", viewModel.RunActorStepCommand),
                             BuildButton("Run N ticks", viewModel.RunActorTicksCommand),
-                            BuildButton("Reset actor history", viewModel.ResetActorHistoryCommand)
+                            BuildButton("Reset actor history", viewModel.ResetActorHistoryCommand),
+                            BuildButton("Export action logs", viewModel.ExportAgentLogsCommand)
                         }
                     },
                     decisions,
-                    outcomes
+                    outcomes,
+                    BuildSectionTitle("Agent Decision Logs", "Explainable per-action log entries with state factors."),
+                    BuildLabeledRow("Agent filter",
+                        new ComboBox
+                        {
+                            [!ItemsControl.ItemsSourceProperty] = new Binding("AgentLog.AvailableAgentIds"),
+                            [!SelectingItemsControl.SelectedItemProperty] = new Binding("AgentLog.SelectedAgentId", BindingMode.TwoWay)
+                        }),
+                    BuildLabeledRow("Min tick", new NumericUpDown { Minimum = 0, Maximum = 100000, [!NumericUpDown.ValueProperty] = new Binding("AgentLog.MinTick", BindingMode.TwoWay) }),
+                    BuildLabeledRow("Max tick", new NumericUpDown { Minimum = 0, Maximum = 100000, [!NumericUpDown.ValueProperty] = new Binding("AgentLog.MaxTick", BindingMode.TwoWay) }),
+                    agentLogList
                 }
             }
         };
@@ -6887,5 +6946,25 @@ public sealed class ShellWindow : Window
         }
 
         viewModel.ExportTimelineReport(file.Path.LocalPath, 12, format);
+    }
+
+    private async Task ExportAgentLogsAsync(WorkspaceViewModel viewModel)
+    {
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export agent action logs",
+            DefaultExtension = "json",
+            SuggestedFileName = "agent-action-logs.json",
+            FileTypeChoices =
+            [
+                new FilePickerFileType("JSON") { Patterns = ["*.json"] }
+            ]
+        });
+        if (file is null)
+        {
+            return;
+        }
+
+        viewModel.ExportAgentLogsJson(file.Path.LocalPath);
     }
 }

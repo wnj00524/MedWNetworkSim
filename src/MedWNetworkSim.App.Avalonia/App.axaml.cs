@@ -7,14 +7,18 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.Presentation;
 using MedWNetworkSim.UI;
+using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics;
 
 namespace MedWNetworkSim.App.Avalonia;
 
 public partial class App : Application
 {
+    private ServiceProvider? serviceProvider;
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -22,6 +26,7 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        serviceProvider = BuildServices();
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             _ = ShowSplashThenMainWindowAsync(desktop);
@@ -51,6 +56,13 @@ public partial class App : Application
             {
                 WindowState = WindowState.FullScreen
             };
+            if (serviceProvider is not null)
+            {
+                shellWindow = new ShellWindow(serviceProvider.GetRequiredService<WorkspaceViewModel>())
+                {
+                    WindowState = WindowState.FullScreen
+                };
+            }
 
             desktop.MainWindow = shellWindow;
             shellWindow.Show();
@@ -78,6 +90,17 @@ public partial class App : Application
                 Trace.WriteLine($"[{nameof(App)}] Failed to close splash window: {closeEx}");
             }
         }
+    }
+
+    private static ServiceProvider BuildServices()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IAgentActionLogger, AgentActionLogger>();
+        services.AddSingleton(provider => new SimulationActorCoordinator(actionLogger: provider.GetRequiredService<IAgentActionLogger>()));
+        services.AddSingleton(provider => new WorkspaceViewModel(
+            provider.GetRequiredService<IAgentActionLogger>(),
+            provider.GetRequiredService<SimulationActorCoordinator>()));
+        return services.BuildServiceProvider();
     }
 
     private static Window BuildStartupErrorWindow(string message)

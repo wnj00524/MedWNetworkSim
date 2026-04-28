@@ -347,7 +347,8 @@ public sealed class MapGraphRenderer
 
         using var edgePaint = new SKPaint { Color = new SKColor(125, 188, 255, 180), StrokeWidth = 2f, IsAntialias = true, Style = SKPaintStyle.Stroke };
         using var nodePaint = new SKPaint { Color = new SKColor(93, 116, 160), IsAntialias = true, Style = SKPaintStyle.Fill };
-        using var labelPaint = new SKPaint { Color = new SKColor(222, 232, 245), TextSize = 12f, IsAntialias = true };
+        using var labelFont = new SKFont { Size = 12f };
+        using var labelPaint = new SKPaint { Color = new SKColor(222, 232, 245), IsAntialias = true };
 
         foreach (var edge in scene.Edges)
         {
@@ -369,7 +370,7 @@ public sealed class MapGraphRenderer
                 canvas.DrawCircle((float)p.X, (float)p.Y, r + 3f, f);
             }
 
-            canvas.DrawText(node.Name, (float)p.X + 10f, (float)p.Y - 6f, labelPaint);
+            canvas.DrawText(node.Name, (float)p.X + 10f, (float)p.Y - 6f, SKTextAlign.Left, labelFont, labelPaint);
         }
 
         if (geoNodes.Count == 0)
@@ -380,21 +381,33 @@ public sealed class MapGraphRenderer
             var panelRect = new SKRect(18, 16, (float)viewportSize.Width - 18, 54);
             canvas.DrawRoundRect(panelRect, 8f, 8f, panelPaint);
             canvas.DrawRoundRect(panelRect, 8f, 8f, panelBorder);
-            canvas.DrawText(instruction, 28f, 39f, labelPaint);
+            canvas.DrawText(instruction, 28f, 39f, SKTextAlign.Left, labelFont, labelPaint);
             fallbackMessage ??= instruction;
         }
 
         if (!string.IsNullOrWhiteSpace(tileProvider.StatusMessage))
         {
-            using var warningPaint = new SKPaint { Color = new SKColor(255, 206, 122), TextSize = 12f, IsAntialias = true };
-            canvas.DrawText(tileProvider.StatusMessage, 24f, (float)viewportSize.Height - 44f, warningPaint);
+            using var warningFont = new SKFont { Size = 12f };
+            using var warningPaint = new SKPaint
+            {
+                Color = new SKColor(255, 206, 122),
+                IsAntialias = true
+            };
+
+            canvas.DrawText(
+                tileProvider.StatusMessage,
+                24f,
+                (float)viewportSize.Height - 44f,
+                SKTextAlign.Left,
+                warningFont,
+                warningPaint);
         }
 
         using var scale = new SKPaint { Color = new SKColor(220, 225, 235), StrokeWidth = 3f };
         var y = (float)viewportSize.Height - 28f;
         canvas.DrawLine(24f, y, 164f, y, scale);
-        canvas.DrawText("Scale", 24f, y - 6f, labelPaint);
-        canvas.DrawText("N", (float)viewportSize.Width - 36f, 28f, labelPaint);
+        canvas.DrawText("Scale", 24f, y - 6f, SKTextAlign.Left, labelFont, labelPaint);
+        canvas.DrawText("N", (float)viewportSize.Width - 36f, 28f, SKTextAlign.Left, labelFont, labelPaint);
         canvas.DrawLine((float)viewportSize.Width - 28f, 34f, (float)viewportSize.Width - 28f, 62f, scale);
         DrawOverlay(canvas, mapViewport, overlay);
     }
@@ -481,7 +494,8 @@ public sealed class MapGraphRenderer
         using var fill = new SKPaint { Color = new SKColor(255, 214, 102, 48), Style = SKPaintStyle.Fill };
         using var stroke = new SKPaint { Color = new SKColor(255, 222, 125), Style = SKPaintStyle.Stroke, StrokeWidth = 3f, PathEffect = SKPathEffect.CreateDash([12f, 6f], 0f), IsAntialias = true };
         using var tileStroke = new SKPaint { Color = new SKColor(83, 245, 237, 210), Style = SKPaintStyle.Stroke, StrokeWidth = 1.6f, IsAntialias = true };
-        using var labelPaint = new SKPaint { Color = new SKColor(245, 247, 250), TextSize = 12f, IsAntialias = true };
+        using var labelFont = new SKFont { Size = 12f };
+        using var labelPaint = new SKPaint { Color = new SKColor(245, 247, 250), IsAntialias = true };
 
         foreach (var tile in overlay.Tiles)
         {
@@ -492,7 +506,7 @@ public sealed class MapGraphRenderer
         if (!string.IsNullOrWhiteSpace(overlay.Label))
         {
             var p = projectionService.Project(overlay.End.Value, viewport);
-            canvas.DrawText(overlay.Label, (float)p.X + 10f, (float)p.Y - 10f, labelPaint);
+            canvas.DrawText(overlay.Label, (float)p.X + 10f, (float)p.Y - 10f, SKTextAlign.Left, labelFont, labelPaint);
         }
     }
 

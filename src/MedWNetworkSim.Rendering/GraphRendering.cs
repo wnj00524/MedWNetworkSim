@@ -650,7 +650,7 @@ public sealed class GraphRenderer
 
         using var badgeTypeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold);
         using var badgeFont = new SKFont(badgeTypeface, 9f);
-        using var badgeText = new SKPaint { IsAntialias = true, Color = SKColor.Parse("#1F2933").WithAlpha(nodeAlpha), TextAlign = SKTextAlign.Center };
+        using var badgeText = new SKPaint { IsAntialias = true, Color = SKColor.Parse("#1F2933").WithAlpha(nodeAlpha) };
         canvas.DrawText(node.CoveringFacilities.Count.ToString(CultureInfo.InvariantCulture), badgeCenter.X, badgeCenter.Y + 3.1f, SKTextAlign.Center, badgeFont, badgeText);
     }
 

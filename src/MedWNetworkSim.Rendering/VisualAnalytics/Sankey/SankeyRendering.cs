@@ -87,22 +87,23 @@ public sealed class SankeyRenderer
     public SankeyLayoutResult Render(SKCanvas canvas, SankeyRenderDiagram model, GraphSize viewport, string? focusedNodeId = null, string? focusedLinkId = null)
     {
         var layout = layoutEngine.Layout(model, viewport); lastHitRegions.Clear();
-        if (!string.IsNullOrWhiteSpace(layout.EmptyStateMessage)) { using var p = new SKPaint { Color = new SKColor(216, 223, 235), TextSize = 20f, IsAntialias = true }; canvas.DrawText(layout.EmptyStateMessage, 32f, (float)viewport.Height / 2f, p); return layout; }
+        if (!string.IsNullOrWhiteSpace(layout.EmptyStateMessage)) { using var font = new SKFont { Size = 20f }; using var p = new SKPaint { Color = new SKColor(216, 223, 235), IsAntialias = true }; canvas.DrawText(layout.EmptyStateMessage, 32f, (float)viewport.Height / 2f, SKTextAlign.Left, font, p); return layout; }
         using var lp = new SKPaint { Style = SKPaintStyle.Stroke, IsAntialias = true, StrokeCap = SKStrokeCap.Round };
-        using var tp = new SKPaint { Color = new SKColor(230, 235, 245), TextSize = 14f, IsAntialias = true };
+        using var textFont = new SKFont { Size = 14f };
+        using var tp = new SKPaint { Color = new SKColor(230, 235, 245), IsAntialias = true };
         foreach (var link in layout.Links.OrderBy(l => l.Thickness))
         {
             lp.Color = link.Link.IsUnmetDemand ? new SKColor(230, 120, 120, 210) : new SKColor(125, 188, 255, 180); lp.StrokeWidth = link.Thickness; canvas.DrawPath(link.Path, lp);
             if (string.Equals(link.Link.Id, focusedLinkId, StringComparison.OrdinalIgnoreCase)) { using var f = new SKPaint { Style = SKPaintStyle.Stroke, Color = SKColors.White, StrokeWidth = link.Thickness + 3f, IsAntialias = true, PathEffect = SKPathEffect.CreateDash([8f, 6f], 0f) }; canvas.DrawPath(link.Path, f); }
-            var mx = (link.Start.X + link.End.X) / 2f; var my = (link.Start.Y + link.End.Y) / 2f; canvas.DrawText($"{link.Link.TrafficType} {link.Link.Value:0.#}", mx - 30f, my - 4f, tp);
+            var mx = (link.Start.X + link.End.X) / 2f; var my = (link.Start.Y + link.End.Y) / 2f; canvas.DrawText($"{link.Link.TrafficType} {link.Link.Value:0.#}", mx - 30f, my - 4f, SKTextAlign.Left, textFont, tp);
             lastHitRegions.Add(new SankeyHitRegion(null, link.Link.Id, new SKRect(Math.Min(link.Start.X, link.End.X), Math.Min(link.Start.Y, link.End.Y) - link.Thickness, Math.Max(link.Start.X, link.End.X), Math.Max(link.Start.Y, link.End.Y) + link.Thickness)));
         }
         foreach (var node in layout.Nodes)
         {
             using var np = new SKPaint { Color = string.Equals(node.Node.Kind, "UnmetDemandSink", StringComparison.OrdinalIgnoreCase) ? new SKColor(200, 92, 92) : new SKColor(82, 103, 141), Style = SKPaintStyle.Fill, IsAntialias = true };
             canvas.DrawRect(node.Bounds, np); using var bp = new SKPaint { Color = SKColors.White.WithAlpha(160), Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f }; canvas.DrawRect(node.Bounds, bp);
-            canvas.DrawText(string.Equals(node.Node.Kind, "UnmetDemandSink", StringComparison.OrdinalIgnoreCase) ? "!" : "■", node.Bounds.Left + 4f, node.Bounds.Top + 12f, tp);
-            canvas.DrawText(node.Node.Label, node.Bounds.Right + 8f, node.Bounds.MidY + 4f, tp);
+            canvas.DrawText(string.Equals(node.Node.Kind, "UnmetDemandSink", StringComparison.OrdinalIgnoreCase) ? "!" : "■", node.Bounds.Left + 4f, node.Bounds.Top + 12f, SKTextAlign.Left, textFont, tp);
+            canvas.DrawText(node.Node.Label, node.Bounds.Right + 8f, node.Bounds.MidY + 4f, SKTextAlign.Left, textFont, tp);
             if (string.Equals(node.Node.Id, focusedNodeId, StringComparison.OrdinalIgnoreCase)) { using var f = new SKPaint { Color = SKColors.Yellow, Style = SKPaintStyle.Stroke, StrokeWidth = 2f, PathEffect = SKPathEffect.CreateDash([5f, 4f], 0f) }; canvas.DrawRect(node.Bounds, f); }
             lastHitRegions.Add(new SankeyHitRegion(node.Node.Id, null, node.Bounds));
         }

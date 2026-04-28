@@ -4054,7 +4054,7 @@ public sealed class ShellWindow : Window
         {
             Padding = new Thickness(8),
             BorderThickness = new Thickness(1),
-            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.Border),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
             CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
             Child = new StackPanel
             {

@@ -1,11 +1,10 @@
-using System.Text.Json;
 using MedWNetworkSim.App.Models;
+using MedWNetworkSim.App.Services;
 
 namespace MedWNetworkSim.App.Agents;
 
 public sealed class SimulationActorActionApplier
 {
-    private static readonly JsonSerializerOptions CloneOptions = new() { PropertyNamingPolicy = null };
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
 
     public (NetworkModel Network, IReadOnlyList<SimulationActorActionOutcome> Outcomes) Apply(
@@ -14,13 +13,20 @@ public sealed class SimulationActorActionApplier
         IReadOnlyDictionary<string, SimulationActorState> actors,
         IReadOnlyDictionary<string, double> currentFlowByEdgeId)
     {
-        var clone = Clone(network);
+        var clone = NetworkModelCloneUtility.Clone(network);
         var outcomes = new List<SimulationActorActionOutcome>();
+        var spentByActorId = new Dictionary<string, double>(Comparer);
 
         foreach (var action in actions)
         {
-            var (applied, reason) = ApplySingle(clone, action, actors, currentFlowByEdgeId);
+            var (applied, reason) = ApplySingle(clone, action, actors, currentFlowByEdgeId, spentByActorId);
             outcomes.Add(new SimulationActorActionOutcome { Action = action, Applied = applied, Reason = reason });
+
+            if (applied && action.Cost > 0d)
+            {
+                spentByActorId.TryGetValue(action.ActorId, out var spent);
+                spentByActorId[action.ActorId] = spent + action.Cost;
+            }
         }
 
         return (clone, outcomes);
@@ -30,7 +36,8 @@ public sealed class SimulationActorActionApplier
         NetworkModel network,
         SimulationActorAction action,
         IReadOnlyDictionary<string, SimulationActorState> actors,
-        IReadOnlyDictionary<string, double> currentFlowByEdgeId)
+        IReadOnlyDictionary<string, double> currentFlowByEdgeId,
+        IReadOnlyDictionary<string, double> spentByActorId)
     {
         if (!actors.TryGetValue(action.ActorId, out var actor))
         {
@@ -42,7 +49,9 @@ public sealed class SimulationActorActionApplier
             return (false, "Actor is disabled.");
         }
 
-        if (action.Cost > 0d && actor.Cash < action.Cost)
+        spentByActorId.TryGetValue(actor.Id, out var spentThisTick);
+        var availableCash = Math.Max(0d, actor.Cash - spentThisTick);
+        if (action.Cost > 0d && availableCash < action.Cost)
         {
             return (false, "Insufficient actor cash for action cost.");
         }
@@ -208,16 +217,11 @@ public sealed class SimulationActorActionApplier
             permission.IsActive = true;
             if (permission.Mode == EdgeTrafficPermissionMode.Blocked)
             {
-                permission.Mode = EdgeTrafficPermissionMode.Allowed;
+                permission.Mode = EdgeTrafficPermissionMode.Permitted;
             }
         }
 
         return (true, "Route permissions relaxed.");
     }
 
-    private static NetworkModel Clone(NetworkModel network)
-    {
-        var json = JsonSerializer.Serialize(network, CloneOptions);
-        return JsonSerializer.Deserialize<NetworkModel>(json, CloneOptions) ?? new NetworkModel();
-    }
 }

@@ -73,7 +73,7 @@ public static class SimulationActorCapabilityCatalog
 {
     public static SimulationActorCapability ForKind(string actorId, SimulationActorKind kind)
     {
-        var allowed = kind switch
+        IReadOnlyCollection<SimulationActorActionKind> allowed = kind switch
         {
             SimulationActorKind.Firm =>
             [

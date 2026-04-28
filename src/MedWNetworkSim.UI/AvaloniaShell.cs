@@ -3247,34 +3247,48 @@ public sealed class ShellWindow : Window
     {
         var panel = new StackPanel
         {
-            Spacing = 10,
-            Children =
+            Spacing = 10
+        };
+        void RebuildCharts()
+        {
+            panel.Children.Clear();
+            panel.Children.Add(BuildPieChartCard(
+                "Agent Status Distribution",
+                "Live breakdown of moving, idle, and processing agents.",
+                viewModel.AgentStatusDistributionData,
+                [AvaloniaDashboardTheme.Accent, AvaloniaDashboardTheme.Success, AvaloniaDashboardTheme.Warning]));
+            panel.Children.Add(BuildPieChartCard(
+                "Node Utilization Mix",
+                "Share of under-utilized, balanced, and high-load nodes.",
+                viewModel.NodeUtilizationMixData,
+                [AvaloniaDashboardTheme.Accent, AvaloniaDashboardTheme.Success, AvaloniaDashboardTheme.Danger]));
+        }
+
+        RebuildCharts();
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(WorkspaceViewModel.AgentStatusDistributionData) or nameof(WorkspaceViewModel.NodeUtilizationMixData))
             {
-                BuildPieChartCard(
-                    "Agent Status Distribution",
-                    "Live breakdown of moving, idle, and processing agents.",
-                    [
-                        ("Moving", 0.68, Color.Parse("#28A7FF")),
-                        ("Idle", 0.12, Color.Parse("#42D392")),
-                        ("Processing", 0.20, Color.Parse("#FFB347"))
-                    ]),
-                BuildPieChartCard(
-                    "Node Utilization Mix",
-                    "Share of under-utilized, balanced, and high-load nodes.",
-                    [
-                        ("Balanced", 0.55, Color.Parse("#28A7FF")),
-                        ("Low", 0.25, Color.Parse("#42D392")),
-                        ("High", 0.20, Color.Parse("#FF6B57"))
-                    ])
+                RebuildCharts();
             }
         };
         panel.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsGraphMode)));
         return panel;
     }
 
-    private static Control BuildPieChartCard(string title, string subtitle, IReadOnlyList<(string Label, double Value, Color Color)> segments)
+    private static Control BuildPieChartCard(
+        string title,
+        string subtitle,
+        IReadOnlyList<PieChartSegmentViewModel> segments,
+        IReadOnlyList<Color> palette)
     {
-        var normalized = NormalizePieSegments(segments);
+        var decoratedSegments = segments
+            .Select((segment, index) => (
+                segment.Label,
+                segment.Value,
+                palette.Count == 0 ? AvaloniaDashboardTheme.Accent : palette[index % palette.Count]))
+            .ToArray();
+        var normalized = NormalizePieSegments(decoratedSegments);
         var chartCanvas = new Canvas
         {
             Width = 140,
@@ -3290,7 +3304,7 @@ public sealed class ShellWindow : Window
             {
                 Data = BuildPieSliceGeometry(center, center, radius, startAngle, sweepAngle),
                 Fill = new SolidColorBrush(segment.Color),
-                Stroke = new SolidColorBrush(Color.Parse("#0C1019")),
+                Stroke = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
                 StrokeThickness = 1
             };
             chartCanvas.Children.Add(slice);
@@ -3371,8 +3385,9 @@ public sealed class ShellWindow : Window
 
     private static Geometry BuildPieSliceGeometry(double centerX, double centerY, double radius, double startAngleDegrees, double sweepAngleDegrees)
     {
-        var startRadians = startAngleDegrees * Math.PI / 180d;
-        var endRadians = (startAngleDegrees + sweepAngleDegrees) * Math.PI / 180d;
+        const double DegreesToRadians = Math.PI / 180d;
+        var startRadians = startAngleDegrees * DegreesToRadians;
+        var endRadians = (startAngleDegrees + sweepAngleDegrees) * DegreesToRadians;
         var startPoint = new Point(centerX + (Math.Cos(startRadians) * radius), centerY + (Math.Sin(startRadians) * radius));
         var endPoint = new Point(centerX + (Math.Cos(endRadians) * radius), centerY + (Math.Sin(endRadians) * radius));
         var isLargeArc = sweepAngleDegrees > 180d;

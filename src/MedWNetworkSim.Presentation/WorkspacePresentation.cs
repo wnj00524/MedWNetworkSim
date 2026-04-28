@@ -1845,6 +1845,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private int actorRunTicks = 1;
     private bool hasActorPreview;
     private string actorStatusMessage = string.Empty;
+    private string agentSearchText = string.Empty;
     private string actorNameText = string.Empty;
     private string actorBudgetText = "0";
     private string actorCashText = "0";
@@ -1922,6 +1923,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         VisualisationState = new VisualisationState();
         NetworkInsights = [];
         SimulationActors = [];
+        FilteredSimulationActors = [];
         ActorTrafficTypeRows = [];
         ActorDecisions = [];
         ActorActionOutcomes = [];
@@ -2091,6 +2093,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public VisualisationState VisualisationState { get; }
     public ObservableCollection<NetworkInsight> NetworkInsights { get; }
     public ObservableCollection<SimulationActorState> SimulationActors { get; }
+    public ObservableCollection<SimulationActorState> FilteredSimulationActors { get; }
     public ObservableCollection<ActorTrafficTypeSelectionRow> ActorTrafficTypeRows { get; }
     public ObservableCollection<SimulationActorDecisionViewModel> ActorDecisions { get; }
     public ObservableCollection<SimulationActorActionOutcomeViewModel> ActorActionOutcomes { get; }
@@ -2515,6 +2518,17 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public int ActorRunTicks { get => actorRunTicks; set => SetProperty(ref actorRunTicks, Math.Max(1, value)); }
     public bool HasActorPreview { get => hasActorPreview; private set => SetProperty(ref hasActorPreview, value); }
     public string ActorStatusMessage { get => actorStatusMessage; private set => SetProperty(ref actorStatusMessage, value); }
+    public string AgentSearchText
+    {
+        get => agentSearchText;
+        set
+        {
+            if (SetProperty(ref agentSearchText, value))
+            {
+                RefreshFilteredSimulationActors();
+            }
+        }
+    }
     public string ActorNameText { get => actorNameText; set => SetProperty(ref actorNameText, value); }
     public string ActorBudgetText { get => actorBudgetText; set => SetProperty(ref actorBudgetText, value); }
     public string ActorCashText { get => actorCashText; set => SetProperty(ref actorCashText, value); }
@@ -4511,6 +4525,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         AgentLog.SetEntries(agentActionLogger.GetAll());
         ActorTick = network.ActorTick;
         SelectedSimulationActor = SimulationActors.FirstOrDefault();
+        RefreshFilteredSimulationActors();
         RefreshNetworkAnalyticsPieChartData();
         RefreshInspector();
         StatusText = status;
@@ -5415,6 +5430,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         SimulationActors.Add(actor);
         network.Actors = SimulationActors.ToList();
         SelectedSimulationActor = actor;
+        RefreshFilteredSimulationActors();
         MarkDirty();
         ActorStatusMessage = $"Added actor '{actor.Name}'.";
     }
@@ -5481,6 +5497,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         SimulationActors.Remove(SelectedSimulationActor);
         network.Actors = SimulationActors.ToList();
         SelectedSimulationActor = SimulationActors.FirstOrDefault();
+        RefreshFilteredSimulationActors();
         MarkDirty();
     }
 
@@ -5508,6 +5525,24 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             CustomActorTypeName = SelectedSimulationActor.Capability.CustomActorTypeName
         };
         AddActor(copy);
+    }
+
+    private void RefreshFilteredSimulationActors()
+    {
+        var query = AgentSearchText?.Trim() ?? string.Empty;
+        var results = string.IsNullOrWhiteSpace(query)
+            ? SimulationActors
+            : new ObservableCollection<SimulationActorState>(
+                SimulationActors.Where(actor =>
+                    actor.Id.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                    actor.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                    actor.Kind.ToString().Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                    actor.Objective.ToString().Contains(query, StringComparison.OrdinalIgnoreCase)));
+        FilteredSimulationActors.Clear();
+        foreach (var actor in results)
+        {
+            FilteredSimulationActors.Add(actor);
+        }
     }
 
     private bool ValidateActorRun()

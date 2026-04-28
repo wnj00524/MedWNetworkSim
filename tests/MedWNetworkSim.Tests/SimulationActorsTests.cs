@@ -359,6 +359,21 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
+    public void AgentSearch_FiltersActorListByNameOrKind()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+        vm.AddFirmActorCommand.Execute(null);
+        vm.AddGovernmentActorCommand.Execute(null);
+
+        vm.AgentSearchText = "government";
+        Assert.Single(vm.FilteredSimulationActors);
+        Assert.Equal(SimulationActorKind.Government, vm.FilteredSimulationActors[0].Kind);
+
+        vm.AgentSearchText = string.Empty;
+        Assert.True(vm.FilteredSimulationActors.Count >= 2);
+    }
+
+    [Fact]
     public void DeletingNode_RemovesActorControlledNodeReference()
     {
         var vm = BuildWorkspaceViewModelWithNetwork();

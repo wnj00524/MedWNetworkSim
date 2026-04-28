@@ -1404,6 +1404,7 @@ public sealed class ShellWindow : Window
     private Border? scenarioEditorWorkspaceHost;
     private Control? scenarioEditorWorkspaceFocusTarget;
     private Border? osmImportWorkspaceHost;
+    private Border? agentsWorkspaceHost;
     private Border? toolRailHost;
     private Border? canvasHost;
     private Border? inspectorHost;
@@ -1429,6 +1430,7 @@ public sealed class ShellWindow : Window
     {
         Standard,
         TrafficTypes,
+        Agents,
         ScenarioEditor,
         OsmImport
     }
@@ -1524,24 +1526,26 @@ public sealed class ShellWindow : Window
         workspaceGrid = new Grid
         {
             Margin = new Thickness(0, 12, 0, 0),
-            ColumnDefinitions = new ColumnDefinitions("240,*,460"),
+            ColumnDefinitions = new ColumnDefinitions("76,340,*,340"),
             RowDefinitions =
             {
                 new RowDefinition(GridLength.Star),
-                new RowDefinition(new GridLength(BottomStripHeight))
+                new RowDefinition(new GridLength(230))
                 {
-                    MinHeight = BottomStripMinHeight,
-                    MaxHeight = BottomStripMaxHeight
+                    MinHeight = 170,
+                    MaxHeight = 320
                 }
             }
         };
 
         toolRailHost = (Border)BuildToolRail(viewModel);
         canvasHost = (Border)BuildCanvasArea(viewModel);
-        inspectorHost = BuildCompactInspector(viewModel);
-        dashboardStripHost = BuildDashboardStrip(viewModel);
+        inspectorHost = BuildRightAnalyticsColumn(viewModel);
+        dashboardStripHost = BuildSimulationLogCard(viewModel);
+        var leftDashboardHost = BuildLeftDashboardColumn(viewModel);
 
         workspaceGrid.Children.Add(toolRailHost);
+        workspaceGrid.Children.Add(leftDashboardHost);
         workspaceGrid.Children.Add(canvasHost);
         workspaceGrid.Children.Add(inspectorHost);
         workspaceGrid.Children.Add(dashboardStripHost);
@@ -1561,6 +1565,8 @@ public sealed class ShellWindow : Window
         scenarioEditorWorkspaceHost.IsVisible = false;
         osmImportWorkspaceHost = BuildOsmImportWorkspace(viewModel);
         osmImportWorkspaceHost.IsVisible = false;
+        agentsWorkspaceHost = BuildAgentsWorkspace(viewModel);
+        agentsWorkspaceHost.IsVisible = false;
 
         var contentRoot = new Grid
         {
@@ -1570,7 +1576,8 @@ public sealed class ShellWindow : Window
                 trafficTypeWorkspaceHost,
                 edgeEditorWorkspaceHost,
                 scenarioEditorWorkspaceHost,
-                osmImportWorkspaceHost
+                osmImportWorkspaceHost,
+                agentsWorkspaceHost
             }
         };
 
@@ -1661,8 +1668,8 @@ public sealed class ShellWindow : Window
                 BuildBrandBadge(),
                 new TextBlock
                 {
-                    Text = "MedW Command Workstation",
-                    FontSize = 24,
+                    Text = "NETWORK TRAFFIC & PRODUCTION SIMULATOR",
+                    FontSize = 20,
                     FontWeight = FontWeight.Bold,
                     Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
                 },
@@ -1718,7 +1725,6 @@ public sealed class ShellWindow : Window
                 BuildButton("Open", new RelayCommand(() => _ = OpenNetworkFileAsync(viewModel)), toolTip: "Open a network JSON file."),
                 BuildButton("Save", new RelayCommand(() => _ = SaveNetworkAsync(viewModel)), toolTip: "Save the current network JSON."),
                 BuildButton("Import", new RelayCommand(() => _ = ImportGraphMlAsync(viewModel)), toolTip: "Import GraphML into the current workspace."),
-                BuildButton("Import from OpenStreetMap", viewModel.StartOsmAreaSelectionCommand, toolTip: "Open a full-screen map workspace and drag-select an OSM area."),
                 BuildButton("Export", new RelayCommand(() => _ = ExportGraphMlAsync(viewModel)), toolTip: "Export the active network as GraphML."),
                 BuildButton("Run", viewModel.SimulateCommand, isPrimary: true, toolTip: "Run the simulation timeline."),
                 BuildButton("Step", viewModel.StepCommand, isPrimary: true, toolTip: "Advance the simulation by one period."),
@@ -1735,123 +1741,71 @@ public sealed class ShellWindow : Window
 
     private Control BuildToolRail(WorkspaceViewModel viewModel)
     {
-        var networkWorkspaceButton = BuildToolButton("🖧 Network", "Switch to network graph workspace.", viewModel.ShowGraphModeCommand);
-        var mapWorkspaceButton = BuildToolButton("🗺 Map", "Switch to map workspace.", viewModel.ShowMapModeCommand);
-        var flowWorkspaceButton = BuildToolButton("↔ Flow", "Switch to Sankey flow workspace.", viewModel.ShowSankeyModeCommand);
-        var scenarioWorkspaceButton = BuildToolButton("🧪 Scenario", "Open scenario workspace.", viewModel.OpenScenarioEditorCommand);
-        var osmWorkspaceButton = BuildToolButton("🌍 OSM Import", "Open OpenStreetMap area import workspace.", viewModel.StartOsmAreaSelectionCommand);
-
-        var selectButton = BuildToolButton("Select", "Click to select items, drag selected nodes, and marquee select.", viewModel.SelectToolCommand);
-        var addNodeButton = BuildToolButton("Add Node", "Click the canvas to place a new node.", viewModel.AddNodeToolCommand);
-        var connectButton = BuildToolButton("Connect", "Choose a source node, then a target node to create a route.", viewModel.ConnectToolCommand);
-        var agentButton = BuildToolButton("Agent", "Agent mode focuses assignment and actor overlays.", viewModel.AgentToolCommand);
-        agentButton.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.ShowAgentTools)));
-        var trafficTypesButton = BuildToolButton("Traffic Types", "Edit traffic types used by nodes and routes", new RelayCommand(EnterTrafficTypeWorkspace));
-        var scenariosButton = BuildToolButton("Scenarios", "Open the full scenario workspace.", viewModel.OpenScenarioEditorCommand);
-        var isochroneButton = BuildToolButton("Isochrone Mode", "Click a node and enter a minute threshold to highlight reachable nodes.", viewModel.ToggleIsochroneModeCommand);
-        var facilityButton = BuildToolButton("Facility Planning", "Select multiple facilities and run a shared budget analysis.", viewModel.ToggleFacilityPlanningModeCommand);
-        var deleteButton = BuildToolButton("Delete", "Delete the current selection.", viewModel.DeleteSelectionCommand);
+        var homeButton = BuildIconRailButton("⌂", "Home", new RelayCommand(() =>
+        {
+            shellWorkspaceMode = ShellWorkspaceMode.Standard;
+            UpdateShellWorkspaceMode();
+        }));
+        var networkWorkspaceButton = BuildIconRailButton("N", "Network", viewModel.ShowGraphModeCommand);
+        var mapWorkspaceButton = BuildIconRailButton("M", "Map", viewModel.ShowMapModeCommand);
+        var agentsWorkspaceButton = BuildIconRailButton("A", "Agents", new RelayCommand(EnterAgentsWorkspace));
+        var flowWorkspaceButton = BuildIconRailButton("F", "Flow/Sankey", viewModel.ShowSankeyModeCommand);
+        var scenarioWorkspaceButton = BuildIconRailButton("S", "Scenarios", viewModel.OpenScenarioEditorCommand);
+        var osmWorkspaceButton = BuildIconRailButton("O", "OSM Import", viewModel.StartOsmAreaSelectionCommand);
+        var trafficTypesButton = BuildIconRailButton("T", "Traffic Types/Data", new RelayCommand(EnterTrafficTypeWorkspace));
+        var reportsButton = BuildIconRailButton("R", "Reports/Analytics", new RelayCommand(() => { shellWorkspaceMode = ShellWorkspaceMode.Standard; UpdateShellWorkspaceMode(); }));
+        var settingsButton = BuildIconRailButton("⚙", "Settings/About", viewModel.OpenAboutCommand);
 
         void RefreshToolState()
         {
+            ApplyToolButtonState(homeButton, shellWorkspaceMode == ShellWorkspaceMode.Standard);
             ApplyToolButtonState(networkWorkspaceButton, viewModel.IsGraphMode && shellWorkspaceMode == ShellWorkspaceMode.Standard);
             ApplyToolButtonState(mapWorkspaceButton, viewModel.IsMapMode && shellWorkspaceMode == ShellWorkspaceMode.Standard);
+            ApplyToolButtonState(agentsWorkspaceButton, shellWorkspaceMode == ShellWorkspaceMode.Agents);
             ApplyToolButtonState(flowWorkspaceButton, viewModel.IsSankeyMode && shellWorkspaceMode == ShellWorkspaceMode.Standard);
             ApplyToolButtonState(scenarioWorkspaceButton, shellWorkspaceMode == ShellWorkspaceMode.ScenarioEditor || viewModel.IsScenarioEditorWorkspaceMode);
             ApplyToolButtonState(osmWorkspaceButton, shellWorkspaceMode == ShellWorkspaceMode.OsmImport || viewModel.IsOsmImportWorkspaceMode);
-            ApplyToolButtonState(selectButton, viewModel.IsSelectToolActive);
-            ApplyToolButtonState(addNodeButton, viewModel.IsAddNodeToolActive);
-            ApplyToolButtonState(connectButton, viewModel.IsConnectToolActive);
-            ApplyToolButtonState(agentButton, viewModel.IsAgentToolActive);
             ApplyToolButtonState(trafficTypesButton, shellWorkspaceMode == ShellWorkspaceMode.TrafficTypes);
-            ApplyToolButtonState(scenariosButton, shellWorkspaceMode == ShellWorkspaceMode.ScenarioEditor || viewModel.IsScenarioEditorWorkspaceMode);
-            ApplyToolButtonState(isochroneButton, viewModel.IsIsochroneModeEnabled);
-            ApplyToolButtonState(facilityButton, viewModel.IsFacilityPlanningMode);
+            ApplyToolButtonState(reportsButton, shellWorkspaceMode == ShellWorkspaceMode.Standard);
         }
         refreshToolRailState = RefreshToolState;
 
         viewModel.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(WorkspaceViewModel.IsSelectToolActive) or nameof(WorkspaceViewModel.IsAddNodeToolActive) or nameof(WorkspaceViewModel.IsConnectToolActive) or nameof(WorkspaceViewModel.IsAgentToolActive) or nameof(WorkspaceViewModel.IsIsochroneModeEnabled) or nameof(WorkspaceViewModel.IsFacilityPlanningMode))
+            if (e.PropertyName is nameof(WorkspaceViewModel.IsGraphMode) or nameof(WorkspaceViewModel.IsMapMode) or nameof(WorkspaceViewModel.IsSankeyMode))
             {
                 RefreshToolState();
             }
         };
         RefreshToolState();
 
-        var content = new Grid
+        var content = new StackPanel
         {
-            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*"),
-            RowSpacing = AvaloniaDashboardTheme.SectionSpacing,
-            MinHeight = 0
-        };
-
-        content.Children.Add(new StackPanel
-        {
-            Spacing = AvaloniaDashboardTheme.SectionSpacing,
+            Spacing = 8,
             Children =
             {
-                BuildSectionTitle("Workspace Views", "Jump between network, map, and planning workspaces."),
+                homeButton,
                 networkWorkspaceButton,
                 mapWorkspaceButton,
+                agentsWorkspaceButton,
                 flowWorkspaceButton,
                 scenarioWorkspaceButton,
-                osmWorkspaceButton
-            }
-        });
-
-        var toolsSection = new StackPanel
-        {
-            Spacing = AvaloniaDashboardTheme.SectionSpacing,
-            Children =
-            {
-                BuildSectionTitle("Tools", "Activate one operation mode for the workspace."),
-                selectButton,
-                addNodeButton,
-                connectButton,
-                BuildLabeledCheckBox("Show Agent Tools", nameof(WorkspaceViewModel.ShowAgentTools)),
-                agentButton,
+                osmWorkspaceButton,
                 trafficTypesButton,
-                scenariosButton,
-                isochroneButton,
-                facilityButton,
-                deleteButton
+                reportsButton,
+                settingsButton
             }
         };
-        Grid.SetRow(toolsSection, 1);
-        content.Children.Add(toolsSection);
-
-        var quickAccess = new StackPanel
-        {
-            Spacing = AvaloniaDashboardTheme.SectionSpacing,
-            Children =
-            {
-                BuildSectionTitle("Quick Access", "Current network at a glance."),
-                BuildQuickStat("Status", nameof(WorkspaceViewModel.StatusText)),
-                BuildQuickStat("Selection", nameof(WorkspaceViewModel.SelectionSummary)),
-                BuildQuickStat("Simulation", nameof(WorkspaceViewModel.SimulationSummary)),
-                BuildQuickStat("Isochrone", nameof(WorkspaceViewModel.IsochroneLegendTitle)),
-                BuildQuickStat("Band A", nameof(WorkspaceViewModel.IsochroneLegendStrongLabel)),
-                BuildQuickStat("Band B", nameof(WorkspaceViewModel.IsochroneLegendMediumLabel)),
-                BuildQuickStat("Band C", nameof(WorkspaceViewModel.IsochroneLegendLightLabel)),
-                BuildQuickStat("Facilities", nameof(WorkspaceViewModel.FacilitySelectionSummary))
-            }
-        };
-        Grid.SetRow(quickAccess, 2);
-        content.Children.Add(quickAccess);
-
-        var facilityPlanningPanel = BuildFacilityPlanningPanel(viewModel);
-        Grid.SetRow(facilityPlanningPanel, 3);
-        content.Children.Add(facilityPlanningPanel);
 
         var border = BuildDashboardPanel(
-            content,
-            header: "Workspace Navigator",
-            padding: new Thickness(10),
+            new ScrollViewer { Content = content },
+            header: " ",
+            padding: new Thickness(6),
             radius: new CornerRadius(14));
         border.Margin = new Thickness(0, 0, 12, 0);
         Grid.SetColumn(border, 0);
         Grid.SetRow(border, 0);
+        Grid.SetRowSpan(border, 2);
         return border;
     }
 
@@ -2519,6 +2473,153 @@ public sealed class ShellWindow : Window
         return border;
     }
 
+    private Border BuildLeftDashboardColumn(WorkspaceViewModel viewModel)
+    {
+        var stack = new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                BuildAgentMonitorCard(viewModel),
+                BuildNodeOverviewCard()
+            }
+        };
+
+        var panel = BuildDashboardPanel(new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = stack
+        }, header: "Operations", padding: new Thickness(10));
+        Grid.SetColumn(panel, 1);
+        Grid.SetRow(panel, 0);
+        return panel;
+    }
+
+    private static Control BuildAgentMonitorCard(WorkspaceViewModel viewModel)
+    {
+        var table = new DataGrid
+        {
+            MinHeight = 220,
+            MaxHeight = 360,
+            AutoGenerateColumns = false,
+            CanUserResizeColumns = true,
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.FilteredSimulationActors)),
+            Columns =
+            {
+                new DataGridTextColumn { Header = "Agent ID", Binding = new Binding(nameof(SimulationActorState.Id)) },
+                new DataGridTextColumn { Header = "Type", Binding = new Binding(nameof(SimulationActorState.Kind)) },
+                new DataGridTextColumn { Header = "Current Node", Binding = new Binding(nameof(SimulationActorState.ControlledNodeIds.Count)) },
+                new DataGridTextColumn { Header = "Destination", Binding = new Binding(nameof(SimulationActorState.Objective)) },
+                new DataGridTextColumn { Header = "Status", Binding = new Binding(nameof(SimulationActorState.IsEnabled)) },
+                new DataGridTextColumn { Header = "Payload", Binding = new Binding(nameof(SimulationActorState.Cash)) }
+            }
+        };
+
+        var empty = new TextBlock
+        {
+            Text = "No agents are active. Run the simulation to populate this monitor.",
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+            TextWrapping = TextWrapping.Wrap
+        };
+        empty.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.SimulationActors.Count))
+        {
+            Converter = new FuncValueConverter<int, bool>(count => count == 0)
+        });
+
+        return new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+            Padding = new Thickness(10),
+            Child = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    BuildSectionTitle("Agent Monitor", "Live actor status and assignment summary."),
+                    BuildLabeledTextBox("Search", nameof(WorkspaceViewModel.AgentSearchText)),
+                    table,
+                    empty
+                }
+            }
+        };
+    }
+
+    private static Control BuildNodeOverviewCard()
+    {
+        return new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+            Padding = new Thickness(10),
+            Child = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    BuildSectionTitle("Node Overview", "Selected node details."),
+                    BuildReadOnlyRow("Node", nameof(WorkspaceViewModel.SelectedNodeIdText)),
+                    BuildReadOnlyRow("Role", nameof(WorkspaceViewModel.SelectedNodeRoleSummaryText)),
+                    BuildReadOnlyRow("Status", nameof(WorkspaceViewModel.SelectionSummary)),
+                    new TextBlock
+                    {
+                        Text = "Select a node to inspect its production, storage, demand, and utilisation.",
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                        TextWrapping = TextWrapping.Wrap
+                    }
+                }
+            }
+        };
+    }
+
+    private Border BuildSimulationLogCard(WorkspaceViewModel viewModel)
+    {
+        var list = new ListBox
+        {
+            [!ItemsControl.ItemsSourceProperty] = new Binding("AgentLog.Entries"),
+            ItemTemplate = new FuncDataTemplate<AgentActionLogEntry>((entry, _) => new TextBlock
+            {
+                Text = entry is null ? string.Empty : $"T{entry.SimulationTick} · {entry.ActionType} · {entry.TargetId} · {entry.Outcome}",
+                TextWrapping = TextWrapping.Wrap
+            })
+        };
+        var panel = BuildDashboardPanel(new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = list
+        }, header: "Simulation Log", padding: new Thickness(10));
+        Grid.SetColumn(panel, 2);
+        Grid.SetRow(panel, 1);
+        return panel;
+    }
+
+    private Border BuildRightAnalyticsColumn(WorkspaceViewModel viewModel)
+    {
+        var content = new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                BuildPieChartCard("Traffic Load", "Flow pressure snapshot.", viewModel.NodeUtilizationMixData, [AvaloniaDashboardTheme.Accent, AvaloniaDashboardTheme.Warning, AvaloniaDashboardTheme.Danger]),
+                BuildPieChartCard("Production Yield", "Delivered vs unmet proxy.", viewModel.AgentStatusDistributionData, [AvaloniaDashboardTheme.Success, AvaloniaDashboardTheme.Accent, AvaloniaDashboardTheme.Warning]),
+                BuildPieChartCard("Agent Status Distribution", "Running actor state split.", viewModel.AgentStatusDistributionData, [AvaloniaDashboardTheme.Accent, AvaloniaDashboardTheme.Success, AvaloniaDashboardTheme.Warning]),
+                BuildPieChartCard("Node Utilisation", "Node load distribution.", viewModel.NodeUtilizationMixData, [AvaloniaDashboardTheme.Accent, AvaloniaDashboardTheme.Success, AvaloniaDashboardTheme.Danger])
+            }
+        };
+        var panel = BuildDashboardPanel(new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = content
+        }, header: "Network Analytics", padding: new Thickness(10));
+        Grid.SetColumn(panel, 3);
+        Grid.SetRow(panel, 0);
+        return panel;
+    }
+
     private static Control BuildInsightsPanel(WorkspaceViewModel viewModel)
     {
         var list = new ListBox
@@ -2669,6 +2770,84 @@ public sealed class ShellWindow : Window
         {
             Child = workspace
         };
+    }
+
+    private Border BuildAgentsWorkspace(WorkspaceViewModel viewModel)
+    {
+        var header = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "Agents Workspace",
+                    FontSize = 19,
+                    FontWeight = FontWeight.Bold,
+                    Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                }
+            }
+        };
+        var backButton = BuildButton("Back", new RelayCommand(ExitAgentsWorkspace));
+        Grid.SetColumn(backButton, 1);
+        header.Children.Add(backButton);
+
+        var table = new DataGrid
+        {
+            AutoGenerateColumns = false,
+            CanUserSortColumns = true,
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.FilteredSimulationActors)),
+            [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(WorkspaceViewModel.SelectedSimulationActor), BindingMode.TwoWay),
+            Columns =
+            {
+                new DataGridTextColumn { Header = "ID", Binding = new Binding(nameof(SimulationActorState.Id)) },
+                new DataGridTextColumn { Header = "Name", Binding = new Binding(nameof(SimulationActorState.Name)) },
+                new DataGridTextColumn { Header = "Kind", Binding = new Binding(nameof(SimulationActorState.Kind)) },
+                new DataGridTextColumn { Header = "Objective", Binding = new Binding(nameof(SimulationActorState.Objective)) },
+                new DataGridTextColumn { Header = "Enabled", Binding = new Binding(nameof(SimulationActorState.IsEnabled)) }
+            }
+        };
+
+        var body = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("2*,*"),
+            ColumnSpacing = 10,
+            Children =
+            {
+                new StackPanel
+                {
+                    Spacing = 8,
+                    Children =
+                    {
+                        BuildLabeledTextBox("Search", nameof(WorkspaceViewModel.AgentSearchText)),
+                        table,
+                        new WrapPanel
+                        {
+                            Children =
+                            {
+                                BuildButton("Add Firm", viewModel.AddFirmActorCommand),
+                                BuildButton("Add Government", viewModel.AddGovernmentActorCommand),
+                                BuildButton("Add Logistics", viewModel.AddLogisticsPlannerActorCommand),
+                                BuildButton("Duplicate", viewModel.DuplicateSelectedActorCommand),
+                                BuildButton("Delete", viewModel.RemoveSelectedActorCommand),
+                                BuildButton("Reset", viewModel.ResetActorHistoryCommand)
+                            }
+                        }
+                    }
+                },
+                BuildActorsPanel(viewModel)
+            }
+        };
+        Grid.SetColumn(body.Children[1], 1);
+
+        var root = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            RowSpacing = 10,
+            Children = { header, body }
+        };
+        Grid.SetRow(body, 1);
+        return BuildDashboardPanel(root, header: "Agents", padding: new Thickness(12));
     }
 
     private Border BuildTrafficTypeWorkspace(WorkspaceViewModel viewModel)
@@ -4811,6 +4990,18 @@ public sealed class ShellWindow : Window
         FocusTrafficTypeWorkspaceEditor();
     }
 
+    private void EnterAgentsWorkspace()
+    {
+        shellWorkspaceMode = ShellWorkspaceMode.Agents;
+        UpdateShellWorkspaceMode();
+    }
+
+    private void ExitAgentsWorkspace()
+    {
+        shellWorkspaceMode = ShellWorkspaceMode.Standard;
+        UpdateShellWorkspaceMode();
+    }
+
     private void ExitTrafficTypeWorkspace()
     {
         shellWorkspaceMode = ShellWorkspaceMode.Standard;
@@ -4820,20 +5011,22 @@ public sealed class ShellWindow : Window
 
     private void UpdateShellWorkspaceMode()
     {
-        if (standardWorkspaceHost is null || trafficTypeWorkspaceHost is null || edgeEditorWorkspaceHost is null || scenarioEditorWorkspaceHost is null || osmImportWorkspaceHost is null)
+        if (standardWorkspaceHost is null || trafficTypeWorkspaceHost is null || edgeEditorWorkspaceHost is null || scenarioEditorWorkspaceHost is null || osmImportWorkspaceHost is null || agentsWorkspaceHost is null)
         {
             return;
         }
 
         var isTrafficTypeWorkspace = shellWorkspaceMode == ShellWorkspaceMode.TrafficTypes;
+        var isAgentsWorkspace = shellWorkspaceMode == ShellWorkspaceMode.Agents;
         var isScenarioEditorWorkspace = shellWorkspaceMode == ShellWorkspaceMode.ScenarioEditor || viewModel.IsScenarioEditorWorkspaceMode;
         var isOsmImportWorkspace = shellWorkspaceMode == ShellWorkspaceMode.OsmImport || viewModel.IsOsmImportWorkspaceMode;
-        var isEdgeEditorWorkspace = !isTrafficTypeWorkspace && !isScenarioEditorWorkspace && !isOsmImportWorkspace && viewModel.IsEdgeEditorWorkspaceMode;
-        standardWorkspaceHost.IsVisible = !isTrafficTypeWorkspace && !isEdgeEditorWorkspace && !isScenarioEditorWorkspace && !isOsmImportWorkspace;
+        var isEdgeEditorWorkspace = !isTrafficTypeWorkspace && !isScenarioEditorWorkspace && !isOsmImportWorkspace && !isAgentsWorkspace && viewModel.IsEdgeEditorWorkspaceMode;
+        standardWorkspaceHost.IsVisible = !isTrafficTypeWorkspace && !isEdgeEditorWorkspace && !isScenarioEditorWorkspace && !isOsmImportWorkspace && !isAgentsWorkspace;
         trafficTypeWorkspaceHost.IsVisible = isTrafficTypeWorkspace;
         edgeEditorWorkspaceHost.IsVisible = isEdgeEditorWorkspace;
         scenarioEditorWorkspaceHost.IsVisible = isScenarioEditorWorkspace;
         osmImportWorkspaceHost.IsVisible = isOsmImportWorkspace;
+        agentsWorkspaceHost.IsVisible = isAgentsWorkspace;
         refreshToolRailState?.Invoke();
     }
 
@@ -5973,6 +6166,25 @@ public sealed class ShellWindow : Window
         };
         button.Classes.Add("toolbar-button");
         button.Classes.Add("tool-button");
+        ToolTip.SetTip(button, toolTip);
+        return button;
+    }
+
+    private static Button BuildIconRailButton(string glyph, string toolTip, ICommand command)
+    {
+        var button = new Button
+        {
+            Content = glyph,
+            Command = command,
+            Width = 46,
+            Height = 42,
+            FontWeight = FontWeight.Bold,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ToolbarButtonBackground),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.ToolbarButtonBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8)
+        };
         ToolTip.SetTip(button, toolTip);
         return button;
     }

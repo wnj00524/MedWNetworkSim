@@ -2066,6 +2066,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public bool IsGraphMode => VisualisationState.ActiveMode == VisualisationMode.Graph;
     public bool IsSankeyMode => VisualisationState.ActiveMode == VisualisationMode.Sankey;
     public bool IsMapMode => VisualisationState.ActiveMode == VisualisationMode.Map;
+    public bool HasAnyNodes => network.Nodes.Count > 0;
     public bool HasGeoAnchoredNodes => network.Nodes.Any(node => node.Latitude.HasValue && node.Longitude.HasValue);
     public bool IsLockLayoutToMapEnabled => HasGeoAnchoredNodes;
     public string LockLayoutToMapDisabledReason => HasGeoAnchoredNodes
@@ -2867,7 +2868,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             SelectionChanged = (_, _) => RefreshInspector(),
             StatusChanged = text => StatusText = text,
             CanDragNode = CanDragNodeInGraph,
-            GetNodeDragBlockedMessage = _ => "Unlock map layout to move this node."
+            GetNodeDragBlockedMessage = _ => "Map-locked nodes cannot be moved. Turn off Lock layout to map to edit positions."
         };
     }
 
@@ -3532,6 +3533,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(SessionSubtitle));
         Raise(nameof(SelectionSummary));
         Raise(nameof(SimulationSummary));
+        Raise(nameof(HasAnyNodes));
         RaiseAutoCompleteOptionsChanged();
     }
 
@@ -4103,6 +4105,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(LockLayoutToMapDisabledReason));
         Raise(nameof(LockLayoutToMap));
         Raise(nameof(IsMapLayoutLockedForGraph));
+        Raise(nameof(HasAnyNodes));
         RefreshInspector();
         StatusText = status;
         NotifyVisualChanged();
@@ -5789,6 +5792,90 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         StatusText = "Applied bulk node changes.";
     }
 
+    public bool WouldBulkApplyTrafficRoleOverwrite(bool applyToAllNodes, string trafficType)
+    {
+        var normalizedTrafficType = string.IsNullOrWhiteSpace(trafficType) ? string.Empty : trafficType.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedTrafficType))
+        {
+            return false;
+        }
+
+        foreach (var node in ResolveTrafficRoleTargets(applyToAllNodes))
+        {
+            if (node.TrafficProfiles.Any(profile => Comparer.Equals(profile.TrafficType, normalizedTrafficType)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public bool TryBulkApplyTrafficRole(string roleName, string trafficType, bool applyToAllNodes, out string statusMessage)
+    {
+        statusMessage = string.Empty;
+        var normalizedTrafficType = string.IsNullOrWhiteSpace(trafficType) ? string.Empty : trafficType.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedTrafficType))
+        {
+            statusMessage = "Select a traffic type before applying a role.";
+            return false;
+        }
+
+        if (!network.TrafficTypes.Any(definition => Comparer.Equals(definition.Name, normalizedTrafficType)))
+        {
+            statusMessage = "Traffic type no longer exists. Choose a valid type.";
+            return false;
+        }
+
+        if (!NodeTrafficRoleCatalog.TryParseFlags(roleName, out _))
+        {
+            statusMessage = "Choose a valid traffic role.";
+            return false;
+        }
+
+        var targets = ResolveTrafficRoleTargets(applyToAllNodes);
+        if (targets.Count == 0)
+        {
+            statusMessage = "No nodes available for bulk traffic role apply.";
+            return false;
+        }
+
+        foreach (var node in targets)
+        {
+            var profile = node.TrafficProfiles.FirstOrDefault(item => Comparer.Equals(item.TrafficType, normalizedTrafficType));
+            if (profile is null)
+            {
+                profile = new NodeTrafficProfile { TrafficType = normalizedTrafficType };
+                node.TrafficProfiles.Add(profile);
+            }
+
+            profile.TrafficType = normalizedTrafficType;
+            NodeTrafficRoleCatalog.ApplyRoleSelection(new NodeTrafficRoleAdapter(profile), roleName);
+        }
+
+        BuildSceneFromNetwork();
+        RefreshInspector();
+        MarkDirty();
+        NotifyVisualChanged();
+
+        statusMessage = applyToAllNodes
+            ? $"Applied traffic role '{roleName}' to all {targets.Count} nodes."
+            : $"Applied traffic role '{roleName}' to {targets.Count} selected nodes.";
+        StatusText = statusMessage;
+        return true;
+    }
+
+    private List<NodeModel> ResolveTrafficRoleTargets(bool applyToAllNodes)
+    {
+        if (applyToAllNodes)
+        {
+            return network.Nodes.ToList();
+        }
+
+        var selectedNodeIds = Scene.Selection.SelectedNodeIds.ToHashSet(Comparer);
+        return network.Nodes.Where(node => selectedNodeIds.Contains(node.Id)).ToList();
+    }
+
     private void AddNodeTrafficProfile()
     {
         var nodeId = NodeDraft.TargetNodeId;
@@ -6302,6 +6389,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         {
             var model = network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, sceneNode.Id));
             if (model is null)
+            {
+                continue;
+            }
+
+            if (IsMapLayoutLockedForGraph && model.Latitude.HasValue && model.Longitude.HasValue)
             {
                 continue;
             }

@@ -223,6 +223,17 @@ public sealed class SimulationActorCoordinator
         var actors = new List<ISimulationActor>(states.Count);
         foreach (var state in states)
         {
+            state.Capability ??= SimulationActorCapabilityCatalog.ForKind(state.Id, state.Kind);
+            if (!state.Capability.AllowedActionKinds.Any())
+            {
+                state.Capability = SimulationActorCapabilityCatalog.ForKind(state.Id, state.Kind);
+            }
+
+            if (!state.GenerateAutomaticDecisions)
+            {
+                continue;
+            }
+
             actors.Add(state.Kind switch
             {
                 SimulationActorKind.Firm => new FirmSimulationActor(state),

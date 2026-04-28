@@ -210,6 +210,59 @@ public sealed class SimulationActorsTests
         Assert.Equal(0.75d, loaded.Actors[0].CooperationWeight);
     }
 
+    [Fact]
+    public void Firm_Cannot_SetPolicyActions()
+    {
+        var applier = new SimulationActorActionApplier();
+        var source = BuildNetwork();
+        var action = new SimulationActorAction
+        {
+            Id = "policy",
+            ActorId = "firm",
+            Kind = SimulationActorActionKind.SetEdgePolicy,
+            TargetEdgeId = "edge-a"
+        };
+
+        var (_, outcomes) = applier.Apply(source, [action], new Dictionary<string, SimulationActorState>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["firm"] = new SimulationActorState { Id = "firm", Kind = SimulationActorKind.Firm, IsEnabled = true, Capability = SimulationActorCapabilityCatalog.ForKind("firm", SimulationActorKind.Firm) }
+        }, new Dictionary<string, double>());
+
+        Assert.False(outcomes.Single().Applied);
+        Assert.Contains("capability", outcomes.Single().Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Government_Cannot_BuyTraffic()
+    {
+        var applier = new SimulationActorActionApplier();
+        var source = BuildNetwork();
+        var action = new SimulationActorAction { Id = "buy", ActorId = "gov", Kind = SimulationActorActionKind.BuyTraffic, TrafficType = "Food" };
+        var (_, outcomes) = applier.Apply(source, [action], new Dictionary<string, SimulationActorState>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["gov"] = new SimulationActorState { Id = "gov", Kind = SimulationActorKind.Government, IsEnabled = true, Capability = SimulationActorCapabilityCatalog.ForKind("gov", SimulationActorKind.Government) }
+        }, new Dictionary<string, double>());
+        Assert.False(outcomes.Single().Applied);
+    }
+
+    [Fact]
+    public void TrafficTypeCapabilityRestriction_IsEnforced()
+    {
+        var applier = new SimulationActorActionApplier();
+        var source = BuildNetwork();
+        source.TrafficTypes.Add(new TrafficTypeDefinition { Name = "Wool" });
+        var capability = SimulationActorCapabilityCatalog.ForKind("firm", SimulationActorKind.Firm);
+        capability.AllowAllTrafficTypes = false;
+        capability.AllowedTrafficTypes = ["Food"];
+        var action = new SimulationActorAction { Id = "a", ActorId = "firm", Kind = SimulationActorActionKind.AdjustProduction, TargetNodeId = "producer", TrafficType = "Wool" };
+        var (_, outcomes) = applier.Apply(source, [action], new Dictionary<string, SimulationActorState>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["firm"] = new SimulationActorState { Id = "firm", Kind = SimulationActorKind.Firm, IsEnabled = true, Capability = capability }
+        }, new Dictionary<string, double>());
+        Assert.False(outcomes.Single().Applied);
+        Assert.Contains("traffic type", outcomes.Single().Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static NetworkModel BuildNetwork()
     {
         var layerId = Guid.NewGuid();

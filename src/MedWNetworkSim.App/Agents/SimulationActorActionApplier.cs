@@ -49,6 +49,27 @@ public sealed class SimulationActorActionApplier
             return (false, "Actor is disabled.");
         }
 
+        var capability = actor.Capability ?? SimulationActorCapabilityCatalog.ForKind(actor.Id, actor.Kind);
+        if (!capability.AllowedActionKinds.Contains(action.Kind))
+        {
+            return (false, $"Actor capability does not allow action '{action.Kind}'.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(action.TrafficType) &&
+            !capability.AllowAllTrafficTypes &&
+            !capability.AllowedTrafficTypes.Contains(action.TrafficType, Comparer))
+        {
+            return (false, $"Actor capability does not allow traffic type '{action.TrafficType}'.");
+        }
+
+        if (action.Kind == SimulationActorActionKind.AdjustEdgeCapacity &&
+            actor.Kind == SimulationActorKind.Firm &&
+            !string.IsNullOrWhiteSpace(action.TargetEdgeId) &&
+            !actor.ControlledEdgeIds.Contains(action.TargetEdgeId, Comparer))
+        {
+            return (false, "Firms can only adjust capacity on assigned edges.");
+        }
+
         spentByActorId.TryGetValue(actor.Id, out var spentThisTick);
         var availableCash = Math.Max(0d, actor.Cash - spentThisTick);
         if (action.Cost > 0d && availableCash < action.Cost)
@@ -81,8 +102,14 @@ public sealed class SimulationActorActionApplier
             case SimulationActorActionKind.AdjustRoutePermission:
                 return ApplyRoutePermission(network, action);
 
+            case SimulationActorActionKind.BuyTraffic:
+            case SimulationActorActionKind.SellTraffic:
+            case SimulationActorActionKind.SetNodePolicy:
+            case SimulationActorActionKind.SetEdgePolicy:
+                return (false, "Action type is not yet supported by the network model.");
+
             default:
-                return (false, $"Action kind '{action.Kind}' is not supported.");
+                return (false, "Action type is not yet supported by the network model.");
         }
     }
 

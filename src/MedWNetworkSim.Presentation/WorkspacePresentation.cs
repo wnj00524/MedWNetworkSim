@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Import;
 using MedWNetworkSim.App.Services;
@@ -1512,6 +1513,40 @@ public sealed class TopIssueViewModel
     public required string Breadcrumb { get; init; }
 }
 
+public sealed class SimulationActorDecisionViewModel
+{
+    public int Tick { get; init; }
+    public string Actor { get; init; } = string.Empty;
+    public string Action { get; init; } = string.Empty;
+    public string Target { get; init; } = string.Empty;
+    public string Traffic { get; init; } = string.Empty;
+    public string Delta { get; init; } = string.Empty;
+    public string Cost { get; init; } = string.Empty;
+    public string Reason { get; init; } = string.Empty;
+    public string ExpectedEffect { get; init; } = string.Empty;
+}
+
+public sealed class SimulationActorActionOutcomeViewModel
+{
+    public string AppliedState { get; init; } = string.Empty;
+    public string Reason { get; init; } = string.Empty;
+    public string Target { get; init; } = string.Empty;
+    public string ActionKind { get; init; } = string.Empty;
+    public string Actor { get; init; } = string.Empty;
+}
+
+public sealed class SimulationActorMetricsViewModel
+{
+    public int Tick { get; init; }
+    public string TotalDelivered { get; init; } = string.Empty;
+    public string TotalUnmetDemand { get; init; } = string.Empty;
+    public string TotalMovementCost { get; init; } = string.Empty;
+    public string AverageEdgeUtilisation { get; init; } = string.Empty;
+    public string BottleneckEdgeCount { get; init; } = string.Empty;
+    public string PolicyRestrictionCount { get; init; } = string.Empty;
+    public string CooperationIndex { get; init; } = string.Empty;
+}
+
 public enum SelectionSource
 {
     User,
@@ -1562,6 +1597,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private readonly ISankeyProjectionService sankeyProjectionService = new SankeyProjectionService();
     private readonly INetworkInsightService networkInsightService = new NetworkInsightService();
     private readonly OsmBoundingBoxImporter osmBoundingBoxImporter = new(new OsmApiClient());
+    private readonly SimulationActorCoordinator simulationActorCoordinator = new();
 
     private NetworkModel network = new();
     private TemporalNetworkSimulationEngine.TemporalSimulationState? temporalState;
@@ -1677,6 +1713,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private OsmImportOptions osmImportOptions = new(true, 10, OsmRetentionStrategy.Balanced, true, true);
     private readonly HashSet<string> highlightedNodeIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> highlightedEdgeIds = new(StringComparer.OrdinalIgnoreCase);
+    private SimulationActorState? selectedSimulationActor;
+    private int actorTick;
+    private int actorRunTicks = 1;
+    private bool hasActorPreview;
+    private string actorStatusMessage = string.Empty;
 
     public WorkspaceViewModel()
     {
@@ -1729,6 +1770,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ScenarioWarnings = [];
         VisualisationState = new VisualisationState();
         NetworkInsights = [];
+        SimulationActors = [];
+        ActorDecisions = [];
+        ActorActionOutcomes = [];
+        ActorMetrics = [];
         TopIssues.CollectionChanged += (_, _) => Raise(nameof(TopIssueEmptyStateText));
         TopIssueAdvisories.CollectionChanged += (_, _) => Raise(nameof(HasTopIssueAdvisories));
         ScenarioEditor = new ScenarioEditorViewModel(network, MarkDirty);
@@ -1838,6 +1883,19 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         DeleteScenarioEventCommand = new RelayCommand(DeleteScenarioEvent, () => SelectedScenarioEvent is not null && SelectedScenarioDefinition is not null);
         RunScenarioCommand = new RelayCommand(RunScenario, () => SelectedScenarioDefinition is not null);
         SelectTopIssueCommand = new RelayCommand<TopIssueViewModel>(SelectTopIssue);
+        AddFirmActorCommand = new RelayCommand(AddFirmActor);
+        AddGovernmentActorCommand = new RelayCommand(AddGovernmentActor);
+        AddLogisticsPlannerActorCommand = new RelayCommand(AddLogisticsPlannerActor);
+        RemoveSelectedActorCommand = new RelayCommand(RemoveSelectedActor, () => SelectedSimulationActor is not null);
+        DuplicateSelectedActorCommand = new RelayCommand(DuplicateSelectedActor, () => SelectedSimulationActor is not null);
+        PreviewActorActionsCommand = new RelayCommand(PreviewActorActions);
+        RunActorStepCommand = new RelayCommand(RunActorStep);
+        RunActorTicksCommand = new RelayCommand(RunActorTicks);
+        ApplyPreviewedActorActionsCommand = new RelayCommand(RunActorStep);
+        ResetActorHistoryCommand = new RelayCommand(ResetActorHistory);
+        AssignSelectedNodeToActorCommand = new RelayCommand(AssignSelectedNodeToActor, () => SelectedSimulationActor is not null);
+        AssignSelectedEdgeToActorCommand = new RelayCommand(AssignSelectedEdgeToActor, () => SelectedSimulationActor is not null);
+        ClearActorAssignmentsCommand = new RelayCommand(ClearActorAssignments, () => SelectedSimulationActor is not null);
         VisualisationState.PropertyChanged += HandleVisualisationStatePropertyChanged;
         UpdateActiveModeState();
 
@@ -1875,6 +1933,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public ScenarioEditorViewModel ScenarioEditor { get; }
     public VisualisationState VisualisationState { get; }
     public ObservableCollection<NetworkInsight> NetworkInsights { get; }
+    public ObservableCollection<SimulationActorState> SimulationActors { get; }
+    public ObservableCollection<SimulationActorDecisionViewModel> ActorDecisions { get; }
+    public ObservableCollection<SimulationActorActionOutcomeViewModel> ActorActionOutcomes { get; }
+    public ObservableCollection<SimulationActorMetricsViewModel> ActorMetrics { get; }
 
     public Array NodeShapeOptions { get; } = Enum.GetValues(typeof(NodeVisualShape));
     public Array NodeKindOptions { get; } = Enum.GetValues(typeof(NodeKind));
@@ -2010,6 +2072,19 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public RelayCommand UnlockAllLayersCommand { get; }
     public RelayCommand AssignSelectedNodesToLayerCommand { get; }
     public RelayCommand AssignSelectedEdgesToLayerCommand { get; }
+    public RelayCommand AddFirmActorCommand { get; }
+    public RelayCommand AddGovernmentActorCommand { get; }
+    public RelayCommand AddLogisticsPlannerActorCommand { get; }
+    public RelayCommand RemoveSelectedActorCommand { get; }
+    public RelayCommand DuplicateSelectedActorCommand { get; }
+    public RelayCommand PreviewActorActionsCommand { get; }
+    public RelayCommand RunActorStepCommand { get; }
+    public RelayCommand RunActorTicksCommand { get; }
+    public RelayCommand ApplyPreviewedActorActionsCommand { get; }
+    public RelayCommand ResetActorHistoryCommand { get; }
+    public RelayCommand AssignSelectedNodeToActorCommand { get; }
+    public RelayCommand AssignSelectedEdgeToActorCommand { get; }
+    public RelayCommand ClearActorAssignmentsCommand { get; }
     public RelayCommand OpenScenarioEditorCommand { get; }
     public RelayCommand CloseScenarioEditorCommand { get; }
     public RelayCommand CreateScenarioCommand { get; }
@@ -2235,6 +2310,25 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public string TrafficDeliveredColumnLabel => lastTimelineStepResult is null ? "Delivered" : "Started this period";
     public string SelectionSummary => BuildSelectionSummary();
     public bool CanDeleteSelection => Scene.Selection.SelectedNodeIds.Count > 0 || Scene.Selection.SelectedEdgeIds.Count > 0;
+    public SimulationActorState? SelectedSimulationActor
+    {
+        get => selectedSimulationActor;
+        set
+        {
+            if (SetProperty(ref selectedSimulationActor, value))
+            {
+                RemoveSelectedActorCommand.NotifyCanExecuteChanged();
+                DuplicateSelectedActorCommand.NotifyCanExecuteChanged();
+                AssignSelectedNodeToActorCommand.NotifyCanExecuteChanged();
+                AssignSelectedEdgeToActorCommand.NotifyCanExecuteChanged();
+                ClearActorAssignmentsCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+    public int ActorTick { get => actorTick; private set => SetProperty(ref actorTick, value); }
+    public int ActorRunTicks { get => actorRunTicks; set => SetProperty(ref actorRunTicks, Math.Max(1, value)); }
+    public bool HasActorPreview { get => hasActorPreview; private set => SetProperty(ref hasActorPreview, value); }
+    public string ActorStatusMessage { get => actorStatusMessage; private set => SetProperty(ref actorStatusMessage, value); }
     public LayerListItemViewModel? SelectedLayerItem
     {
         get => selectedLayerItem;
@@ -4106,6 +4200,49 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(LockLayoutToMap));
         Raise(nameof(IsMapLayoutLockedForGraph));
         Raise(nameof(HasAnyNodes));
+        SimulationActors.Clear();
+        foreach (var actor in network.Actors)
+        {
+            actor.Capability ??= SimulationActorCapabilityCatalog.ForKind(actor.Id, actor.Kind);
+            SimulationActors.Add(actor);
+        }
+        ActorDecisions.Clear();
+        foreach (var decision in network.ActorDecisions)
+        {
+            foreach (var action in decision.Actions)
+            {
+                ActorDecisions.Add(ToDecisionVm(decision, action));
+            }
+        }
+        ActorActionOutcomes.Clear();
+        foreach (var outcome in network.ActorActionOutcomes)
+        {
+            ActorActionOutcomes.Add(new SimulationActorActionOutcomeViewModel
+            {
+                AppliedState = outcome.Applied ? "Applied" : "Rejected",
+                Reason = outcome.Reason,
+                Target = outcome.Action.TargetEdgeId ?? outcome.Action.TargetNodeId ?? "(none)",
+                ActionKind = outcome.Action.Kind.ToString(),
+                Actor = outcome.Action.ActorId
+            });
+        }
+        ActorMetrics.Clear();
+        foreach (var metric in network.ActorMetrics)
+        {
+            ActorMetrics.Add(new SimulationActorMetricsViewModel
+            {
+                Tick = metric.Tick,
+                TotalDelivered = metric.TotalDelivered.ToString("0.##", CultureInfo.InvariantCulture),
+                TotalUnmetDemand = metric.TotalUnmetDemand.ToString("0.##", CultureInfo.InvariantCulture),
+                TotalMovementCost = metric.TotalMovementCost.ToString("0.##", CultureInfo.InvariantCulture),
+                AverageEdgeUtilisation = metric.AverageEdgeUtilisation.ToString("0.##", CultureInfo.InvariantCulture),
+                BottleneckEdgeCount = metric.BottleneckEdgeCount.ToString(CultureInfo.InvariantCulture),
+                PolicyRestrictionCount = metric.PolicyRestrictionCount.ToString(CultureInfo.InvariantCulture),
+                CooperationIndex = metric.CooperationIndex.ToString("0.##", CultureInfo.InvariantCulture)
+            });
+        }
+        ActorTick = network.ActorTick;
+        SelectedSimulationActor = SimulationActors.FirstOrDefault();
         RefreshInspector();
         StatusText = status;
         NotifyVisualChanged();
@@ -4742,6 +4879,259 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ApplySimulationOutcomes(outcomes.SelectMany(outcome => outcome.Allocations), null);
         PopulateTopIssues(new BottleneckDetectionService().DetectIssues(network, new SimulationResult { Outcomes = outcomes }));
         StatusText = "Simulation finished.";
+    }
+
+    private void AddFirmActor() => AddActor(CreateDefaultActor(SimulationActorKind.Firm));
+    private void AddGovernmentActor() => AddActor(CreateDefaultActor(SimulationActorKind.Government));
+    private void AddLogisticsPlannerActor() => AddActor(CreateDefaultActor(SimulationActorKind.LogisticsPlanner));
+
+    private void AddActor(SimulationActorState actor)
+    {
+        SimulationActors.Add(actor);
+        network.Actors = SimulationActors.ToList();
+        SelectedSimulationActor = actor;
+        MarkDirty();
+        ActorStatusMessage = $"Added actor '{actor.Name}'.";
+    }
+
+    private SimulationActorState CreateDefaultActor(SimulationActorKind kind)
+    {
+        var prefix = kind switch
+        {
+            SimulationActorKind.Firm => "actor-firm",
+            SimulationActorKind.Government => "actor-government",
+            _ => "actor-logistics"
+        };
+        var next = Enumerable.Range(1, 999)
+            .Select(i => $"{prefix}-{i:000}")
+            .First(id => SimulationActors.All(actor => !Comparer.Equals(actor.Id, id)));
+
+        return kind switch
+        {
+            SimulationActorKind.Firm => new SimulationActorState
+            {
+                Id = next,
+                Name = $"Firm {next[^3..]}",
+                Kind = kind,
+                Objective = SimulationActorObjective.MaximiseProfit,
+                Cash = 100,
+                Budget = 100,
+                RiskTolerance = 0.5d,
+                CooperationWeight = 0.3d,
+                IsEnabled = true,
+                Capability = SimulationActorCapabilityCatalog.ForKind(next, kind)
+            },
+            SimulationActorKind.Government => new SimulationActorState
+            {
+                Id = next,
+                Name = $"Government {next[^3..]}",
+                Kind = kind,
+                Objective = SimulationActorObjective.StabiliseNetwork,
+                Cash = 1000,
+                Budget = 1000,
+                RiskTolerance = 0.2d,
+                CooperationWeight = 0.8d,
+                IsEnabled = true,
+                Capability = SimulationActorCapabilityCatalog.ForKind(next, kind)
+            },
+            _ => new SimulationActorState
+            {
+                Id = next,
+                Name = $"Logistics {next[^3..]}",
+                Kind = kind,
+                Objective = SimulationActorObjective.MinimiseUnmetDemand,
+                Cash = 500,
+                Budget = 500,
+                RiskTolerance = 0.4d,
+                CooperationWeight = 0.7d,
+                IsEnabled = true,
+                Capability = SimulationActorCapabilityCatalog.ForKind(next, kind)
+            }
+        };
+    }
+
+    private void RemoveSelectedActor()
+    {
+        if (SelectedSimulationActor is null) return;
+        SimulationActors.Remove(SelectedSimulationActor);
+        network.Actors = SimulationActors.ToList();
+        SelectedSimulationActor = SimulationActors.FirstOrDefault();
+        MarkDirty();
+    }
+
+    private void DuplicateSelectedActor()
+    {
+        if (SelectedSimulationActor is null) return;
+        var copy = CreateDefaultActor(SelectedSimulationActor.Kind);
+        copy.Name = $"{SelectedSimulationActor.Name} Copy";
+        copy.Objective = SelectedSimulationActor.Objective;
+        copy.Budget = SelectedSimulationActor.Budget;
+        copy.Cash = SelectedSimulationActor.Cash;
+        copy.RiskTolerance = SelectedSimulationActor.RiskTolerance;
+        copy.CooperationWeight = SelectedSimulationActor.CooperationWeight;
+        copy.ControlledNodeIds = [.. SelectedSimulationActor.ControlledNodeIds];
+        copy.ControlledEdgeIds = [.. SelectedSimulationActor.ControlledEdgeIds];
+        copy.Capability = SelectedSimulationActor.Capability;
+        AddActor(copy);
+    }
+
+    private bool ValidateActorRun()
+    {
+        if (SimulationActors.Count == 0) { ActorStatusMessage = "Add an actor first."; return false; }
+        if (SimulationActors.All(actor => !actor.IsEnabled)) { ActorStatusMessage = "Enable at least one actor."; return false; }
+        if (network.Nodes.Count == 0 || network.Edges.Count == 0) { ActorStatusMessage = "Create or import a network before running actors."; return false; }
+        return true;
+    }
+
+    private void PreviewActorActions()
+    {
+        if (!ValidateActorRun()) return;
+        ActorDecisions.Clear();
+        foreach (var decision in simulationActorCoordinator.PreviewActorActions(network, SimulationActors.ToList(), ActorTick, network.ActorDecisions))
+        {
+            foreach (var action in decision.Actions)
+            {
+                ActorDecisions.Add(ToDecisionVm(decision, action));
+            }
+        }
+        HasActorPreview = true;
+        ActorStatusMessage = "Previewed actor actions. No network changes applied.";
+    }
+
+    private void RunActorStep()
+    {
+        if (!ValidateActorRun()) return;
+        var step = simulationActorCoordinator.StepActorsOnce(network, SimulationActors.ToList(), ActorTick, network.ActorDecisions);
+        ApplyActorStep(step, "Actor step applied.");
+    }
+
+    private void RunActorTicks()
+    {
+        if (!ValidateActorRun()) return;
+        for (var i = 0; i < ActorRunTicks; i++)
+        {
+            var step = simulationActorCoordinator.StepActorsOnce(network, SimulationActors.ToList(), ActorTick, network.ActorDecisions);
+            ApplyActorStep(step, i == ActorRunTicks - 1 ? "Actor run complete." : string.Empty);
+        }
+    }
+
+    private void ApplyActorStep(SimulationActorStepResult step, string message)
+    {
+        network = step.NetworkAfterStep;
+        network.Actors = SimulationActors.ToList();
+        network.ActorDecisions.AddRange(step.Decisions);
+        network.ActorActionOutcomes.AddRange(step.ActionOutcomes);
+        network.ActorMetrics.Add(step.Metrics);
+        ActorTick += 1;
+        network.ActorTick = ActorTick;
+        foreach (var decision in step.Decisions.SelectMany(d => d.Actions, (d, a) => (d, a)))
+        {
+            ActorDecisions.Add(ToDecisionVm(decision.d, decision.a));
+        }
+        foreach (var outcome in step.ActionOutcomes)
+        {
+            ActorActionOutcomes.Add(new SimulationActorActionOutcomeViewModel
+            {
+                AppliedState = outcome.Applied ? "Applied" : "Rejected",
+                Reason = outcome.Reason,
+                Target = outcome.Action.TargetEdgeId ?? outcome.Action.TargetNodeId ?? "(none)",
+                ActionKind = outcome.Action.Kind.ToString(),
+                Actor = outcome.Action.ActorId
+            });
+        }
+        ActorMetrics.Add(new SimulationActorMetricsViewModel
+        {
+            Tick = step.Metrics.Tick,
+            TotalDelivered = step.Metrics.TotalDelivered.ToString("0.##", CultureInfo.InvariantCulture),
+            TotalUnmetDemand = step.Metrics.TotalUnmetDemand.ToString("0.##", CultureInfo.InvariantCulture),
+            TotalMovementCost = step.Metrics.TotalMovementCost.ToString("0.##", CultureInfo.InvariantCulture),
+            AverageEdgeUtilisation = step.Metrics.AverageEdgeUtilisation.ToString("0.##", CultureInfo.InvariantCulture),
+            BottleneckEdgeCount = step.Metrics.BottleneckEdgeCount.ToString(CultureInfo.InvariantCulture),
+            PolicyRestrictionCount = step.Metrics.PolicyRestrictionCount.ToString(CultureInfo.InvariantCulture),
+            CooperationIndex = step.Metrics.CooperationIndex.ToString("0.##", CultureInfo.InvariantCulture)
+        });
+        highlightedNodeIds.Clear();
+        highlightedEdgeIds.Clear();
+        foreach (var outcome in step.ActionOutcomes)
+        {
+            if (!string.IsNullOrWhiteSpace(outcome.Action.TargetNodeId)) highlightedNodeIds.Add(outcome.Action.TargetNodeId);
+            if (!string.IsNullOrWhiteSpace(outcome.Action.TargetEdgeId)) highlightedEdgeIds.Add(outcome.Action.TargetEdgeId);
+        }
+        BuildSceneFromNetwork();
+        RunSimulation();
+        MarkDirty();
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            ActorStatusMessage = message;
+        }
+        HasActorPreview = false;
+    }
+
+    private static SimulationActorDecisionViewModel ToDecisionVm(SimulationActorDecision decision, SimulationActorAction action) => new()
+    {
+        Tick = decision.Tick,
+        Actor = decision.ActorId,
+        Action = action.Kind.ToString(),
+        Target = action.TargetEdgeId ?? action.TargetNodeId ?? "(none)",
+        Traffic = action.TrafficType ?? "(all)",
+        Delta = action.DeltaValue.ToString("0.##", CultureInfo.InvariantCulture),
+        Cost = action.Cost.ToString("0.##", CultureInfo.InvariantCulture),
+        Reason = action.Reason,
+        ExpectedEffect = action.ExpectedEffect
+    };
+
+    private void ResetActorHistory()
+    {
+        ActorDecisions.Clear();
+        ActorActionOutcomes.Clear();
+        ActorMetrics.Clear();
+        network.ActorDecisions.Clear();
+        network.ActorActionOutcomes.Clear();
+        network.ActorMetrics.Clear();
+        ActorTick = 0;
+        network.ActorTick = 0;
+        HasActorPreview = false;
+        ActorStatusMessage = "Actor history reset.";
+    }
+
+    private void AssignSelectedNodeToActor()
+    {
+        if (SelectedSimulationActor is null) return;
+        var selectedNodeId = Scene.Selection.SelectedNodeIds.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(selectedNodeId))
+        {
+            ActorStatusMessage = "Select a node or edge first, then assign it to an actor.";
+            return;
+        }
+        if (!SelectedSimulationActor.ControlledNodeIds.Contains(selectedNodeId, Comparer))
+        {
+            SelectedSimulationActor.ControlledNodeIds.Add(selectedNodeId);
+            MarkDirty();
+        }
+    }
+
+    private void AssignSelectedEdgeToActor()
+    {
+        if (SelectedSimulationActor is null) return;
+        var selectedEdgeId = Scene.Selection.SelectedEdgeIds.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(selectedEdgeId))
+        {
+            ActorStatusMessage = "Select a node or edge first, then assign it to an actor.";
+            return;
+        }
+        if (!SelectedSimulationActor.ControlledEdgeIds.Contains(selectedEdgeId, Comparer))
+        {
+            SelectedSimulationActor.ControlledEdgeIds.Add(selectedEdgeId);
+            MarkDirty();
+        }
+    }
+
+    private void ClearActorAssignments()
+    {
+        if (SelectedSimulationActor is null) return;
+        SelectedSimulationActor.ControlledNodeIds.Clear();
+        SelectedSimulationActor.ControlledEdgeIds.Clear();
+        MarkDirty();
     }
 
     private void AdvanceTimeline()

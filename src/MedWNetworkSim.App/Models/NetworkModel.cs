@@ -113,4 +113,14 @@ public sealed class NetworkModel
     /// Gets or sets optional persisted actor metrics by tick.
     /// </summary>
     public List<SimulationActorMetrics> ActorMetrics { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets optional persisted actor action outcomes.
+    /// </summary>
+    public List<SimulationActorActionOutcome> ActorActionOutcomes { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets the persisted actor simulation tick.
+    /// </summary>
+    public int ActorTick { get; set; }
 }

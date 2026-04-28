@@ -36,10 +36,14 @@ public sealed class SimulationActorState
     public double CooperationWeight { get; set; } = 0.5d;
     public bool IsEnabled { get; set; } = true;
     public string Notes { get; set; } = string.Empty;
+    public bool GenerateAutomaticDecisions { get; set; } = true;
+    public SimulationActorCapability Capability { get; set; } = SimulationActorCapabilityCatalog.ForKind(string.Empty, SimulationActorKind.Firm);
 }
 
 public enum SimulationActorActionKind
 {
+    BuyTraffic,
+    SellTraffic,
     AdjustProduction,
     AdjustConsumption,
     AdjustEdgeCapacity,
@@ -49,8 +53,65 @@ public enum SimulationActorActionKind
     SubsidiseCapacity,
     TaxRoute,
     BanTrafficOnEdge,
+    SetNodePolicy,
+    SetEdgePolicy,
     PreferRoute,
     NoOp
+}
+
+public sealed class SimulationActorCapability
+{
+    public string ActorId { get; set; } = string.Empty;
+    public IReadOnlyCollection<SimulationActorActionKind> AllowedActionKinds { get; set; } = [];
+    public IReadOnlyCollection<string> AllowedTrafficTypes { get; set; } = [];
+    public bool AllowAllTrafficTypes { get; set; } = true;
+    public bool IsCustomActorType { get; set; }
+    public string? CustomActorTypeName { get; set; }
+}
+
+public static class SimulationActorCapabilityCatalog
+{
+    public static SimulationActorCapability ForKind(string actorId, SimulationActorKind kind)
+    {
+        var allowed = kind switch
+        {
+            SimulationActorKind.Firm =>
+            [
+                SimulationActorActionKind.BuyTraffic,
+                SimulationActorActionKind.SellTraffic,
+                SimulationActorActionKind.AdjustProduction,
+                SimulationActorActionKind.AdjustConsumption,
+                SimulationActorActionKind.AdjustTrafficPrice,
+                SimulationActorActionKind.PreferRoute,
+                SimulationActorActionKind.AdjustEdgeCapacity
+            ],
+            SimulationActorKind.Government =>
+            [
+                SimulationActorActionKind.AdjustRoutePermission,
+                SimulationActorActionKind.BanTrafficOnEdge,
+                SimulationActorActionKind.TaxRoute,
+                SimulationActorActionKind.SubsidiseCapacity,
+                SimulationActorActionKind.SetNodePolicy,
+                SimulationActorActionKind.SetEdgePolicy,
+                SimulationActorActionKind.AdjustEdgeCapacity
+            ],
+            SimulationActorKind.LogisticsPlanner =>
+            [
+                SimulationActorActionKind.PreferRoute,
+                SimulationActorActionKind.AdjustEdgeCapacity,
+                SimulationActorActionKind.AdjustEdgeCost
+            ],
+            _ => [SimulationActorActionKind.NoOp]
+        };
+
+        return new SimulationActorCapability
+        {
+            ActorId = actorId,
+            AllowedActionKinds = allowed,
+            AllowedTrafficTypes = [],
+            AllowAllTrafficTypes = true
+        };
+    }
 }
 
 public sealed class SimulationActorAction

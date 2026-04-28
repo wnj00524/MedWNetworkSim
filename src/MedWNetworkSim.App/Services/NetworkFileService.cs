@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
@@ -251,6 +252,20 @@ public sealed class NetworkFileService
         var timelineEvents = NormalizeTimelineEvents(model.TimelineEvents, normalizedNodes, edgeIds);
         ApplyAutomaticLayout(normalizedNodes, normalizedEdges, forceLayoutAllNodes);
 
+        var normalizedActors = (model.Actors ?? [])
+            .Where(actor => actor is not null)
+            .Select(actor =>
+            {
+                actor.Capability ??= SimulationActorCapabilityCatalog.ForKind(actor.Id, actor.Kind);
+                if (string.IsNullOrWhiteSpace(actor.Capability.ActorId))
+                {
+                    actor.Capability.ActorId = actor.Id;
+                }
+
+                return actor;
+            })
+            .ToList();
+
         return new NetworkModel
         {
             Name = string.IsNullOrWhiteSpace(model.Name) ? "Untitled Network" : model.Name.Trim(),
@@ -265,9 +280,11 @@ public sealed class NetworkFileService
             EdgeTrafficPermissionDefaults = edgeTrafficPermissionDefaults,
             TimelineEvents = timelineEvents,
             ScenarioDefinitions = (model.ScenarioDefinitions ?? []).Where(s => s is not null).ToList(),
-            Actors = (model.Actors ?? []).Where(actor => actor is not null).ToList(),
+            Actors = normalizedActors,
             ActorDecisions = (model.ActorDecisions ?? []).Where(decision => decision is not null).ToList(),
             ActorMetrics = (model.ActorMetrics ?? []).Where(metric => metric is not null).ToList(),
+            ActorActionOutcomes = (model.ActorActionOutcomes ?? []).Where(outcome => outcome is not null).ToList(),
+            ActorTick = Math.Max(0, model.ActorTick),
             Subnetworks = NormalizeSubnetworks(model.Subnetworks, normalizedNodes, normalizedEdges, forceLayoutAllNodes, depth, ancestry)
         };
     }

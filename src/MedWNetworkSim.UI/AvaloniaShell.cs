@@ -17,6 +17,7 @@ using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.Interaction;
 using MedWNetworkSim.Presentation;
@@ -3985,6 +3986,11 @@ public sealed class ShellWindow : Window
         });
         tabControl.Items.Add(new TabItem
         {
+            Header = "Actors",
+            Content = BuildActorsPanel(viewModel)
+        });
+        tabControl.Items.Add(new TabItem
+        {
             Header = "Top Issues",
             Content = BuildTopIssuesPanel(viewModel)
         });
@@ -3995,6 +4001,97 @@ public sealed class ShellWindow : Window
         });
 
         return tabControl;
+    }
+
+    private static Control BuildActorsPanel(WorkspaceViewModel viewModel)
+    {
+        var actorList = new ListBox { MinHeight = 120 };
+        actorList.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(WorkspaceViewModel.SimulationActors)));
+        actorList.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.SelectedSimulationActor), BindingMode.TwoWay));
+        actorList.ItemTemplate = new FuncDataTemplate<SimulationActorState>((actor, _) => new StackPanel
+        {
+            Spacing = 2,
+            Children =
+            {
+                new TextBlock { Text = actor is null ? string.Empty : $"{actor.Name} · {actor.Kind} · {(actor.IsEnabled ? "Enabled" : "Disabled")}" },
+                new TextBlock { Text = actor is null ? string.Empty : $"Objective {actor.Objective} | Cash {actor.Cash:0.##} | Nodes {actor.ControlledNodeIds.Count} | Edges {actor.ControlledEdgeIds.Count}", FontSize = 11 }
+            }
+        });
+
+        var decisions = new DataGrid
+        {
+            MinHeight = 120,
+            AutoGenerateColumns = false,
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ActorDecisions)),
+            Columns =
+            {
+                new DataGridTextColumn { Header = "Tick", Binding = new Binding(nameof(SimulationActorDecisionViewModel.Tick)) },
+                new DataGridTextColumn { Header = "Actor", Binding = new Binding(nameof(SimulationActorDecisionViewModel.Actor)) },
+                new DataGridTextColumn { Header = "Action", Binding = new Binding(nameof(SimulationActorDecisionViewModel.Action)) },
+                new DataGridTextColumn { Header = "Target", Binding = new Binding(nameof(SimulationActorDecisionViewModel.Target)) },
+                new DataGridTextColumn { Header = "Traffic", Binding = new Binding(nameof(SimulationActorDecisionViewModel.Traffic)) },
+                new DataGridTextColumn { Header = "Delta", Binding = new Binding(nameof(SimulationActorDecisionViewModel.Delta)) },
+                new DataGridTextColumn { Header = "Cost", Binding = new Binding(nameof(SimulationActorDecisionViewModel.Cost)) },
+                new DataGridTextColumn { Header = "Reason", Binding = new Binding(nameof(SimulationActorDecisionViewModel.Reason)) },
+                new DataGridTextColumn { Header = "Expected effect", Binding = new Binding(nameof(SimulationActorDecisionViewModel.ExpectedEffect)) }
+            }
+        };
+
+        var outcomes = new DataGrid
+        {
+            MinHeight = 96,
+            AutoGenerateColumns = false,
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ActorActionOutcomes)),
+            Columns =
+            {
+                new DataGridTextColumn { Header = "State", Binding = new Binding(nameof(SimulationActorActionOutcomeViewModel.AppliedState)) },
+                new DataGridTextColumn { Header = "Reason", Binding = new Binding(nameof(SimulationActorActionOutcomeViewModel.Reason)) },
+                new DataGridTextColumn { Header = "Target", Binding = new Binding(nameof(SimulationActorActionOutcomeViewModel.Target)) },
+                new DataGridTextColumn { Header = "Action", Binding = new Binding(nameof(SimulationActorActionOutcomeViewModel.ActionKind)) }
+            }
+        };
+
+        return new ScrollViewer
+        {
+            Content = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    BuildSectionTitle("Actors", "Create, configure, preview, run, and inspect actor simulation."),
+                    actorList,
+                    new WrapPanel
+                    {
+                        ItemHeight = double.NaN,
+                        ItemWidth = double.NaN,
+                        Children =
+                        {
+                            BuildButton("Add Firm", viewModel.AddFirmActorCommand),
+                            BuildButton("Add Government", viewModel.AddGovernmentActorCommand),
+                            BuildButton("Add Logistics Planner", viewModel.AddLogisticsPlannerActorCommand),
+                            BuildButton("Remove actor", viewModel.RemoveSelectedActorCommand),
+                            BuildButton("Assign selected node", viewModel.AssignSelectedNodeToActorCommand),
+                            BuildButton("Assign selected edge", viewModel.AssignSelectedEdgeToActorCommand),
+                            BuildButton("Clear assignments", viewModel.ClearActorAssignmentsCommand)
+                        }
+                    },
+                    BuildReadOnlyRow("Actor status", nameof(WorkspaceViewModel.ActorStatusMessage)),
+                    BuildLabeledRow("Ticks", new NumericUpDown { [!NumericUpDown.ValueProperty] = new Binding(nameof(WorkspaceViewModel.ActorRunTicks), BindingMode.TwoWay), Minimum = 1, Maximum = 1000 }),
+                    new WrapPanel
+                    {
+                        Children =
+                        {
+                            BuildButton("Preview next actions", viewModel.PreviewActorActionsCommand),
+                            BuildButton("Run one step", viewModel.RunActorStepCommand),
+                            BuildButton("Run N ticks", viewModel.RunActorTicksCommand),
+                            BuildButton("Reset actor history", viewModel.ResetActorHistoryCommand)
+                        }
+                    },
+                    decisions,
+                    outcomes
+                }
+            }
+        };
     }
 
     private static Control BuildLayersPanel(WorkspaceViewModel viewModel)

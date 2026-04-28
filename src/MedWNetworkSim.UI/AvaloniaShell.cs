@@ -1736,6 +1736,8 @@ public sealed class ShellWindow : Window
         var selectButton = BuildToolButton("Select", "Click to select items, drag selected nodes, and marquee select.", viewModel.SelectToolCommand);
         var addNodeButton = BuildToolButton("Add Node", "Click the canvas to place a new node.", viewModel.AddNodeToolCommand);
         var connectButton = BuildToolButton("Connect", "Choose a source node, then a target node to create a route.", viewModel.ConnectToolCommand);
+        var agentButton = BuildToolButton("Agent", "Agent mode focuses assignment and actor overlays.", viewModel.AgentToolCommand);
+        agentButton.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.ShowAgentTools)));
         var trafficTypesButton = BuildToolButton("Traffic Types", "Edit traffic types used by nodes and routes", new RelayCommand(EnterTrafficTypeWorkspace));
         var scenariosButton = BuildToolButton("Scenarios", "Open the full scenario workspace.", viewModel.OpenScenarioEditorCommand);
         var isochroneButton = BuildToolButton("Isochrone Mode", "Click a node and enter a minute threshold to highlight reachable nodes.", viewModel.ToggleIsochroneModeCommand);
@@ -1747,6 +1749,7 @@ public sealed class ShellWindow : Window
             ApplyToolButtonState(selectButton, viewModel.IsSelectToolActive);
             ApplyToolButtonState(addNodeButton, viewModel.IsAddNodeToolActive);
             ApplyToolButtonState(connectButton, viewModel.IsConnectToolActive);
+            ApplyToolButtonState(agentButton, viewModel.IsAgentToolActive);
             ApplyToolButtonState(trafficTypesButton, shellWorkspaceMode == ShellWorkspaceMode.TrafficTypes);
             ApplyToolButtonState(scenariosButton, shellWorkspaceMode == ShellWorkspaceMode.ScenarioEditor || viewModel.IsScenarioEditorWorkspaceMode);
             ApplyToolButtonState(isochroneButton, viewModel.IsIsochroneModeEnabled);
@@ -1756,7 +1759,7 @@ public sealed class ShellWindow : Window
 
         viewModel.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(WorkspaceViewModel.IsSelectToolActive) or nameof(WorkspaceViewModel.IsAddNodeToolActive) or nameof(WorkspaceViewModel.IsConnectToolActive) or nameof(WorkspaceViewModel.IsIsochroneModeEnabled) or nameof(WorkspaceViewModel.IsFacilityPlanningMode))
+            if (e.PropertyName is nameof(WorkspaceViewModel.IsSelectToolActive) or nameof(WorkspaceViewModel.IsAddNodeToolActive) or nameof(WorkspaceViewModel.IsConnectToolActive) or nameof(WorkspaceViewModel.IsAgentToolActive) or nameof(WorkspaceViewModel.IsIsochroneModeEnabled) or nameof(WorkspaceViewModel.IsFacilityPlanningMode))
             {
                 RefreshToolState();
             }
@@ -1779,6 +1782,8 @@ public sealed class ShellWindow : Window
                 selectButton,
                 addNodeButton,
                 connectButton,
+                BuildLabeledCheckBox("Show Agent Tools", nameof(WorkspaceViewModel.ShowAgentTools)),
+                agentButton,
                 trafficTypesButton,
                 scenariosButton,
                 isochroneButton,
@@ -3984,11 +3989,13 @@ public sealed class ShellWindow : Window
             Header = "Scenarios",
             Content = BuildScenarioPanel(viewModel)
         });
-        tabControl.Items.Add(new TabItem
+        var actorsTab = new TabItem
         {
             Header = "Actors",
             Content = BuildActorsPanel(viewModel)
-        });
+        };
+        actorsTab.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.ShowAgentTools)));
+        tabControl.Items.Add(actorsTab);
         tabControl.Items.Add(new TabItem
         {
             Header = "Top Issues",

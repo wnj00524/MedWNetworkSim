@@ -13,7 +13,8 @@ public enum GraphToolMode
 {
     Select,
     AddNode,
-    Connect
+    Connect,
+    Agent
 }
 
 public sealed class GraphInteractionContext
@@ -51,7 +52,7 @@ public sealed class GraphInteractionController
     public void OnPointerPressed(GraphInteractionContext context, GraphPointerButton button, GraphPoint screenPoint, bool shiftPressed, bool altPressed, bool controlPressed)
     {
         var worldPoint = context.Viewport.ScreenToWorld(screenPoint, context.ViewportSize);
-        var hit = hitTester.HitTest(context.Scene, worldPoint);
+        var hit = hitTester.HitTest(context.Scene, worldPoint, context.Viewport.Zoom);
 
         if (button == GraphPointerButton.Middle)
         {
@@ -103,11 +104,11 @@ public sealed class GraphInteractionController
             return;
         }
 
-        if ((controlPressed || shiftPressed) && hit.NodeId is not null && context.ToolMode == GraphToolMode.Select)
+        if (controlPressed && hit.NodeId is not null && context.ToolMode == GraphToolMode.Select)
         {
             SelectNode(context, hit.NodeId, additive: false);
             isConnectionGesture = true;
-            connectionGestureCreatesBidirectionalEdge = controlPressed;
+            connectionGestureCreatesBidirectionalEdge = true;
             dragNodeId = null;
             context.Scene.Transient.ConnectionSourceNodeId = hit.NodeId;
             context.Scene.Transient.ConnectionWorld = worldPoint;
@@ -196,7 +197,7 @@ public sealed class GraphInteractionController
             return;
         }
 
-        var hit = hitTester.HitTest(context.Scene, worldPoint);
+        var hit = hitTester.HitTest(context.Scene, worldPoint, context.Viewport.Zoom);
         context.Scene.Selection.HoverNodeId = hit.NodeId;
         context.Scene.Selection.HoverEdgeId = hit.EdgeId;
     }
@@ -226,18 +227,22 @@ public sealed class GraphInteractionController
             {
                 context.Scene.Selection.SelectedNodeIds.Add(node.Id);
             }
+            foreach (var edge in context.Scene.Edges.Where(edge => selectionRect.Contains(GraphHitTester.GetEdgeMidpoint(context.Scene, edge))))
+            {
+                context.Scene.Selection.SelectedEdgeIds.Add(edge.Id);
+            }
 
             context.Scene.Transient.DragStartWorld = null;
             context.Scene.Transient.DragCurrentWorld = null;
             context.SelectionChanged(GetPrimaryNode(context.Scene), GetPrimaryEdge(context.Scene));
-            context.StatusChanged($"{context.Scene.Selection.SelectedNodeIds.Count} nodes selected.");
+            context.StatusChanged($"{context.Scene.Selection.SelectedNodeIds.Count} nodes and {context.Scene.Selection.SelectedEdgeIds.Count} edges selected.");
             return;
         }
 
         if (isConnectionGesture && button == GraphPointerButton.Right)
         {
             var sourceId = context.Scene.Transient.ConnectionSourceNodeId;
-            var target = hitTester.HitTest(context.Scene, worldPoint);
+            var target = hitTester.HitTest(context.Scene, worldPoint, context.Viewport.Zoom);
             context.Scene.Transient.ConnectionSourceNodeId = null;
             context.Scene.Transient.ConnectionWorld = null;
             isConnectionGesture = false;
@@ -260,7 +265,7 @@ public sealed class GraphInteractionController
         if (isConnectionGesture && button == GraphPointerButton.Left && context.ToolMode == GraphToolMode.Connect)
         {
             var sourceId = context.Scene.Transient.ConnectionSourceNodeId;
-            var target = hitTester.HitTest(context.Scene, worldPoint);
+            var target = hitTester.HitTest(context.Scene, worldPoint, context.Viewport.Zoom);
             if (sourceId is not null &&
                 target.NodeId is not null &&
                 !string.Equals(sourceId, target.NodeId, StringComparison.OrdinalIgnoreCase) &&
@@ -283,7 +288,7 @@ public sealed class GraphInteractionController
         if (isConnectionGesture && button == GraphPointerButton.Left && context.ToolMode == GraphToolMode.Select)
         {
             var sourceId = context.Scene.Transient.ConnectionSourceNodeId;
-            var target = hitTester.HitTest(context.Scene, worldPoint);
+            var target = hitTester.HitTest(context.Scene, worldPoint, context.Viewport.Zoom);
             context.Scene.Transient.ConnectionSourceNodeId = null;
             context.Scene.Transient.ConnectionWorld = null;
             isConnectionGesture = false;
@@ -363,6 +368,15 @@ public sealed class GraphInteractionController
                 context.Scene.Transient.ConnectionWorld = null;
                 context.ToolModeChanged(GraphToolMode.Connect);
                 context.StatusChanged("Connect mode: choose a source node.");
+                return true;
+
+            case "G":
+                keyboardConnectMode = false;
+                keyboardConnectSource = null;
+                context.Scene.Transient.ConnectionSourceNodeId = null;
+                context.Scene.Transient.ConnectionWorld = null;
+                context.ToolModeChanged(GraphToolMode.Agent);
+                context.StatusChanged("Agent mode: select graph elements and assign them to the selected actor.");
                 return true;
 
             case "N":

@@ -1650,7 +1650,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private IReadOnlyList<ConsumerCostSummary> lastConsumerCosts = [];
     private string statusText = "Select a tool and start editing.";
     private string toolStatusText = "Select mode: select, drag, or marquee.";
-    private string toolInstructionText = "Shortcuts: S Select, A Add node, C Connect, Ctrl-drag creates a bidirectional route, Shift-drag creates a one-way route.";
+    private string toolInstructionText = "Shortcuts: S Select, A Add node, C Connect.";
     private GraphToolMode activeToolMode = GraphToolMode.Select;
     private bool reducedMotion;
     private int currentPeriod;
@@ -1771,6 +1771,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private bool actorIsEnabled = true;
     private bool actorAllowAllTrafficTypes = true;
     private string actorValidationText = string.Empty;
+    private bool showAgentTools;
 
     public WorkspaceViewModel()
     {
@@ -1847,6 +1848,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         SelectToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.Select));
         AddNodeToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.AddNode));
         ConnectToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.Connect));
+        AgentToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.Agent), () => ShowAgentTools);
+        ToggleAgentToolsCommand = new RelayCommand(() => ShowAgentTools = !ShowAgentTools);
         SetGraphVisualisationCommand = new RelayCommand(() => VisualisationState.ActiveMode = VisualisationMode.Graph);
         SetSankeyVisualisationCommand = new RelayCommand(() => VisualisationState.ActiveMode = VisualisationMode.Sankey);
         SetMapVisualisationCommand = new RelayCommand(() => VisualisationState.ActiveMode = VisualisationMode.Map);
@@ -2016,6 +2019,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public RelayCommand SelectToolCommand { get; }
     public RelayCommand AddNodeToolCommand { get; }
     public RelayCommand ConnectToolCommand { get; }
+    public RelayCommand AgentToolCommand { get; }
+    public RelayCommand ToggleAgentToolsCommand { get; }
     public RelayCommand SetGraphVisualisationCommand { get; }
     public RelayCommand SetSankeyVisualisationCommand { get; }
     public RelayCommand SetMapVisualisationCommand { get; }
@@ -2254,6 +2259,25 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public bool IsSelectToolActive => ActiveToolMode == GraphToolMode.Select;
     public bool IsAddNodeToolActive => ActiveToolMode == GraphToolMode.AddNode;
     public bool IsConnectToolActive => ActiveToolMode == GraphToolMode.Connect;
+    public bool IsAgentToolActive => ActiveToolMode == GraphToolMode.Agent;
+    public bool ShowAgentTools
+    {
+        get => showAgentTools;
+        set
+        {
+            if (SetProperty(ref showAgentTools, value))
+            {
+                if (!showAgentTools && ActiveToolMode == GraphToolMode.Agent)
+                {
+                    SetActiveTool(GraphToolMode.Select);
+                }
+
+                AgentToolCommand.NotifyCanExecuteChanged();
+                BuildSceneFromNetwork();
+                NotifyVisualChanged();
+            }
+        }
+    }
     public bool IsIsochroneModeEnabled => isIsochroneModeEnabled;
     public bool IsFacilityPlanningMode => isFacilityPlanningMode;
     public double IsochroneBudget
@@ -3819,17 +3843,20 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         {
             GraphToolMode.AddNode => "Add node mode: click the canvas to place a node.",
             GraphToolMode.Connect => "Connect mode: choose a source node, then a target node.",
+            GraphToolMode.Agent => "Agent mode: select graph elements for assignment and actor inspection.",
             _ => "Select mode: select, drag, or marquee."
         };
         ToolInstructionText = toolMode switch
         {
             GraphToolMode.AddNode => "Keyboard: A keeps Add node active. Esc returns to Select.",
             GraphToolMode.Connect => "Keyboard: C keeps Connect active. Esc returns to Select.",
-            _ => "Keyboard: S Select, A Add node, C Connect. Ctrl-drag makes a bidirectional route, Shift-drag makes a one-way route."
+            GraphToolMode.Agent => "Keyboard: G enters Agent mode. Use Assign commands to map selection to the active actor.",
+            _ => "Keyboard: S Select, A Add node, C Connect."
         };
         Raise(nameof(IsSelectToolActive));
         Raise(nameof(IsAddNodeToolActive));
         Raise(nameof(IsConnectToolActive));
+        Raise(nameof(IsAgentToolActive));
         Raise(nameof(IsIsochroneModeEnabled));
         Raise(nameof(IsFacilityPlanningMode));
         RunMultiOriginIsochroneCommand.NotifyCanExecuteChanged();
@@ -4370,6 +4397,13 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         }
         Scene.Nodes.Clear();
         Scene.Edges.Clear();
+        Scene.Simulation.ShowAgentOverlays = ShowAgentTools;
+        var controlledNodes = ShowAgentTools && SelectedSimulationActor is not null
+            ? SelectedSimulationActor.ControlledNodeIds.ToHashSet(Comparer)
+            : new HashSet<string>(Comparer);
+        var controlledEdges = ShowAgentTools && SelectedSimulationActor is not null
+            ? SelectedSimulationActor.ControlledEdgeIds.ToHashSet(Comparer)
+            : new HashSet<string>(Comparer);
         var zoomTier = graphRenderer.GetZoomTier(Viewport.Zoom);
         var projectionViewport = IsMapLayoutLockedForGraph ? BuildGraphProjectionViewport(LastViewportSize) : (MapProjectionViewport?)null;
 
@@ -4396,14 +4430,19 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 FillColor = SKColor.Parse("#163149"),
                 StrokeColor = SKColor.Parse("#6AAED6"),
                 Badges = BuildNodeBadges(node),
-                ToolTipText = BuildNodeToolTipText(node, detailLines, null),
+                ToolTipText = AppendNodeActorControlText(node.Id, BuildNodeToolTipText(node, detailLines, null)),
                 HasWarning = false,
                 CoveringFacilities = [],
                 IsFacilityCovered = false,
                 IsMultiFacilityCovered = false,
                 PrimaryFacilityId = null,
-                PrimaryFacilityTravelTime = null
+                PrimaryFacilityTravelTime = null,
+                IsActorControlled = controlledNodes.Contains(node.Id)
             };
+            if (ShowAgentTools)
+            {
+                sceneNode.VisualOpacity = SelectedSimulationActor is null || sceneNode.IsActorControlled ? 1d : 0.42d;
+            }
             var layout = GraphRenderer.GetOrBuildNodeLayout(sceneNode, zoomTier);
             GraphRenderer.ApplyLayoutBoundsKeepingCenter(sceneNode, layout);
             Scene.Nodes.Add(sceneNode);
@@ -4425,9 +4464,14 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 Time = edge.Time,
                 LoadRatio = 0d,
                 FlowRate = 0d,
-                ToolTipText = BuildEdgeToolTipText(edge, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty, 0d, null),
-                HasWarning = isLocked
+                ToolTipText = AppendEdgeActorControlText(edge.Id, BuildEdgeToolTipText(edge, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty, 0d, null)),
+                HasWarning = isLocked,
+                IsActorControlled = controlledEdges.Contains(edge.Id)
             });
+            if (ShowAgentTools && SelectedSimulationActor is not null && !controlledEdges.Contains(edge.Id))
+            {
+                Scene.Edges[^1].VisualOpacity = 0.42d;
+            }
         }
 
         ApplyIsochroneVisuals();
@@ -4882,6 +4926,13 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             selectedEdges.Contains(edge.Id) ||
             selectedNodes.Contains(edge.FromNodeId) ||
             selectedNodes.Contains(edge.ToNodeId));
+        foreach (var actor in SimulationActors)
+        {
+            actor.ControlledNodeIds = actor.ControlledNodeIds.Where(id => !selectedNodes.Contains(id)).Distinct(Comparer).ToList();
+            actor.ControlledEdgeIds = actor.ControlledEdgeIds.Where(id => !selectedEdges.Contains(id)).Distinct(Comparer).ToList();
+            actor.ControlledEdgeIds = actor.ControlledEdgeIds.Where(id => network.Edges.Any(edge => Comparer.Equals(edge.Id, id))).ToList();
+        }
+        network.Actors = SimulationActors.ToList();
 
         Scene.Selection.SelectedNodeIds.Clear();
         Scene.Selection.SelectedEdgeIds.Clear();
@@ -5469,16 +5520,14 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var current = SelectedSimulationActor.ControlledNodeIds.ToHashSet(Comparer);
         foreach (var nodeId in selectedNodeIds)
         {
-            if (!current.Add(nodeId))
-            {
-                current.Remove(nodeId);
-            }
+            current.Add(nodeId);
         }
 
         SelectedSimulationActor.ControlledNodeIds = current.OrderBy(id => id, Comparer).ToList();
         network.Actors = SimulationActors.ToList();
         MarkDirty();
         RefreshSelectedActorDisplayState();
+        BuildSceneFromNetwork();
         Raise(nameof(SimulationActors));
         ActorStatusMessage = "Updated actor node assignments.";
     }
@@ -5504,16 +5553,14 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var current = SelectedSimulationActor.ControlledEdgeIds.ToHashSet(Comparer);
         foreach (var edgeId in selectedEdgeIds)
         {
-            if (!current.Add(edgeId))
-            {
-                current.Remove(edgeId);
-            }
+            current.Add(edgeId);
         }
 
         SelectedSimulationActor.ControlledEdgeIds = current.OrderBy(id => id, Comparer).ToList();
         network.Actors = SimulationActors.ToList();
         MarkDirty();
         RefreshSelectedActorDisplayState();
+        BuildSceneFromNetwork();
         Raise(nameof(SimulationActors));
         ActorStatusMessage = "Updated actor route assignments.";
     }
@@ -5531,6 +5578,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         network.Actors = SimulationActors.ToList();
         MarkDirty();
         RefreshSelectedActorDisplayState();
+        BuildSceneFromNetwork();
         Raise(nameof(SimulationActors));
     }
 
@@ -8656,6 +8704,28 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         var node = network.Nodes.FirstOrDefault(model => Comparer.Equals(model.Id, nodeId));
         return node is null || string.IsNullOrWhiteSpace(node.Name) ? nodeId : node.Name;
+    }
+
+    private string AppendNodeActorControlText(string nodeId, string baseText)
+    {
+        var controllers = SimulationActors
+            .Where(actor => actor.ControlledNodeIds.Contains(nodeId, Comparer))
+            .Select(actor => string.IsNullOrWhiteSpace(actor.Name) ? actor.Id : actor.Name)
+            .ToList();
+        return controllers.Count == 0
+            ? $"{baseText}{Environment.NewLine}Controlled by: none"
+            : $"{baseText}{Environment.NewLine}Controlled by: {string.Join(", ", controllers)}";
+    }
+
+    private string AppendEdgeActorControlText(string edgeId, string baseText)
+    {
+        var controllers = SimulationActors
+            .Where(actor => actor.ControlledEdgeIds.Contains(edgeId, Comparer))
+            .Select(actor => string.IsNullOrWhiteSpace(actor.Name) ? actor.Id : actor.Name)
+            .ToList();
+        return controllers.Count == 0
+            ? $"{baseText}{Environment.NewLine}Controlled by: none"
+            : $"{baseText}{Environment.NewLine}Controlled by: {string.Join(", ", controllers)}";
     }
 
     private string ResolveEdgeLabel(string edgeId)

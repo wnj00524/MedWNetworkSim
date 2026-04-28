@@ -75,7 +75,7 @@ public partial class App : Application
                     "App startup",
                     "Try restarting the app. If this continues, verify app files and logo assets are intact."),
                 nameof(App));
-            var errorWindow = BuildStartupErrorWindow(ex.Message);
+            var errorWindow = BuildStartupErrorWindow(ex.ToString());
             desktop.MainWindow = errorWindow;
             errorWindow.Show();
         }

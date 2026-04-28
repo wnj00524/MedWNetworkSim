@@ -1726,7 +1726,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private readonly IAgentActionLogger agentActionLogger;
     private readonly SimulationActorCoordinator simulationActorCoordinator;
 
-    private NetworkModel network = new();
+    private NetworkModel network = CreateInitializedNetworkModel();
     private TemporalNetworkSimulationEngine.TemporalSimulationState? temporalState;
     private TemporalNetworkSimulationEngine.TemporalSimulationStepResult? lastTimelineStepResult;
     private IReadOnlyList<TrafficSimulationOutcome> lastOutcomes = [];
@@ -1873,6 +1873,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         this.agentActionLogger = agentActionLogger ?? new AgentActionLogger();
         this.simulationActorCoordinator = simulationActorCoordinator ?? new SimulationActorCoordinator(actionLogger: this.agentActionLogger);
+        network = CreateInitializedNetworkModel();
         UiExceptionBoundary.Sink = this;
         Scene = new GraphScene();
         Viewport = new GraphViewport();
@@ -2503,6 +2504,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         get => selectedSimulationActor;
         set
         {
+            if (value is not null)
+            {
+                EnsureActorReferences(value);
+            }
+
             if (SetProperty(ref selectedSimulationActor, value))
             {
                 LoadSelectedActorDraft();
@@ -2568,8 +2574,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         private set => SetProperty(ref nodeUtilizationMixData, value);
     }
 
-    public string SelectedActorNodeCountText => SelectedSimulationActor is null ? "Nodes: 0" : $"Nodes: {SelectedSimulationActor.ControlledNodeIds.Count}";
-    public string SelectedActorEdgeCountText => SelectedSimulationActor is null ? "Routes: 0" : $"Routes: {SelectedSimulationActor.ControlledEdgeIds.Count}";
+    public string SelectedActorNodeCountText => SelectedSimulationActor is null ? "Nodes: 0" : $"Nodes: {SelectedSimulationActor.ControlledNodeIds?.Count ?? 0}";
+    public string SelectedActorEdgeCountText => SelectedSimulationActor is null ? "Routes: 0" : $"Routes: {SelectedSimulationActor.ControlledEdgeIds?.Count ?? 0}";
     public string SelectedActorTrafficScopeText
     {
         get
@@ -2588,10 +2594,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return allowed.Count == 0 ? "Traffic scope: no traffic types selected" : $"Traffic scope: {string.Join(", ", allowed)}";
         }
     }
-    public string SelectedActorControlledNodesDisplay => SelectedSimulationActor is null || SelectedSimulationActor.ControlledNodeIds.Count == 0
+    public string SelectedActorControlledNodesDisplay => SelectedSimulationActor?.ControlledNodeIds is not { Count: > 0 }
         ? "None"
         : string.Join(", ", SelectedSimulationActor.ControlledNodeIds);
-    public string SelectedActorControlledEdgesDisplay => SelectedSimulationActor is null || SelectedSimulationActor.ControlledEdgeIds.Count == 0
+    public string SelectedActorControlledEdgesDisplay => SelectedSimulationActor?.ControlledEdgeIds is not { Count: > 0 }
         ? "None"
         : string.Join(", ", SelectedSimulationActor.ControlledEdgeIds);
     public bool ShowActorTrafficTypeChecklist => !ActorAllowAllTrafficTypes;
@@ -4433,6 +4439,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private void LoadNetwork(NetworkModel source, string status, string? currentFilePath = null)
     {
         network = fileService.NormalizeAndValidate(source);
+        EnsureNetworkReferences(network);
         temporalState = null;
         lastTimelineStepResult = null;
         Raise(nameof(TrafficDeliveredColumnLabel));
@@ -5396,10 +5403,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private void EnsureActorCapability(SimulationActorState actor, bool preserveTrafficScope = true)
     {
+        EnsureActorReferences(actor);
         var previousCapability = actor.Capability;
         var preservedAllowAll = preserveTrafficScope && previousCapability is not null && previousCapability.AllowAllTrafficTypes;
         var preservedAllowedTraffic = preserveTrafficScope && previousCapability is not null
-            ? previousCapability.AllowedTrafficTypes.ToArray()
+            ? (previousCapability.AllowedTrafficTypes ?? []).ToArray()
             : Array.Empty<string>();
 
         actor.Capability = SimulationActorCapabilityCatalog.ForKind(actor.Id, actor.Kind);
@@ -5747,6 +5755,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return;
         }
 
+        EnsureActorReferences(SelectedSimulationActor);
         SelectedSimulationActor.ControlledNodeIds.Clear();
         SelectedSimulationActor.ControlledEdgeIds.Clear();
         network.Actors = SimulationActors.ToList();
@@ -9068,6 +9077,63 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 .Distinct(Comparer)
                 .OrderBy(item => item, Comparer)
                 .ToList();
+
+    private static NetworkModel CreateInitializedNetworkModel() => new()
+    {
+        Name = "Untitled Network",
+        Description = string.Empty,
+        Layers = [],
+        ScenarioDefinitions = [],
+        PolicyRules = [],
+        TrafficTypes = [],
+        TimelineEvents = [],
+        EdgeTrafficPermissionDefaults = [],
+        Subnetworks = [],
+        Nodes = [],
+        Edges = [],
+        Actors = [],
+        ActorDecisions = [],
+        ActorMetrics = [],
+        ActorActionOutcomes = [],
+        AgentActionLogs = []
+    };
+
+    private static void EnsureNetworkReferences(NetworkModel model)
+    {
+        model.Name ??= "Untitled Network";
+        model.Description ??= string.Empty;
+        model.Layers ??= [];
+        model.ScenarioDefinitions ??= [];
+        model.PolicyRules ??= [];
+        model.TrafficTypes ??= [];
+        model.TimelineEvents ??= [];
+        model.EdgeTrafficPermissionDefaults ??= [];
+        model.Subnetworks ??= [];
+        model.Nodes ??= [];
+        model.Edges ??= [];
+        model.Actors ??= [];
+        model.ActorDecisions ??= [];
+        model.ActorMetrics ??= [];
+        model.ActorActionOutcomes ??= [];
+        model.AgentActionLogs ??= [];
+        foreach (var actor in model.Actors)
+        {
+            EnsureActorReferences(actor);
+        }
+    }
+
+    private static void EnsureActorReferences(SimulationActorState actor)
+    {
+        actor.Id ??= string.Empty;
+        actor.Name ??= actor.Id;
+        actor.Notes ??= string.Empty;
+        actor.ControlledNodeIds ??= [];
+        actor.ControlledEdgeIds ??= [];
+        actor.Capability ??= SimulationActorCapabilityCatalog.ForKind(actor.Id, actor.Kind);
+        actor.Capability.ActorId = string.IsNullOrWhiteSpace(actor.Capability.ActorId) ? actor.Id : actor.Capability.ActorId;
+        actor.Capability.AllowedActionKinds ??= [];
+        actor.Capability.AllowedTrafficTypes ??= [];
+    }
 
     private static List<PeriodWindow> BuildPeriodWindows(IEnumerable<PeriodWindowEditorRow> rows, string label)
     {

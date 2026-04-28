@@ -256,11 +256,30 @@ public sealed class NetworkFileService
             .Where(actor => actor is not null)
             .Select(actor =>
             {
+                actor.Id = actor.Id?.Trim() ?? string.Empty;
+                actor.Name = string.IsNullOrWhiteSpace(actor.Name) ? actor.Id : actor.Name.Trim();
+                actor.Notes ??= string.Empty;
+                actor.ControlledNodeIds = (actor.ControlledNodeIds ?? [])
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .Select(id => id.Trim())
+                    .Distinct(Comparer)
+                    .ToList();
+                actor.ControlledEdgeIds = (actor.ControlledEdgeIds ?? [])
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .Select(id => id.Trim())
+                    .Distinct(Comparer)
+                    .ToList();
                 actor.Capability ??= SimulationActorCapabilityCatalog.ForKind(actor.Id, actor.Kind);
                 if (string.IsNullOrWhiteSpace(actor.Capability.ActorId))
                 {
                     actor.Capability.ActorId = actor.Id;
                 }
+
+                actor.Capability.AllowedActionKinds ??= [];
+                actor.Capability.AllowedTrafficTypes ??= [];
+                actor.Capability.CustomActorTypeName = string.IsNullOrWhiteSpace(actor.Capability.CustomActorTypeName)
+                    ? null
+                    : actor.Capability.CustomActorTypeName.Trim();
 
                 return actor;
             })
@@ -284,6 +303,7 @@ public sealed class NetworkFileService
             ActorDecisions = (model.ActorDecisions ?? []).Where(decision => decision is not null).ToList(),
             ActorMetrics = (model.ActorMetrics ?? []).Where(metric => metric is not null).ToList(),
             ActorActionOutcomes = (model.ActorActionOutcomes ?? []).Where(outcome => outcome is not null).ToList(),
+            AgentActionLogs = (model.AgentActionLogs ?? []).Where(entry => entry is not null).ToList(),
             ActorTick = Math.Max(0, model.ActorTick),
             Subnetworks = NormalizeSubnetworks(model.Subnetworks, normalizedNodes, normalizedEdges, forceLayoutAllNodes, depth, ancestry)
         };

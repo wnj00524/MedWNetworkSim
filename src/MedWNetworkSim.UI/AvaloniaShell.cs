@@ -1536,7 +1536,7 @@ public sealed class ShellWindow : Window
         toolRailHost = (Border)BuildToolRail(viewModel);
         canvasHost = (Border)BuildCanvasArea(viewModel);
         inspectorHost = BuildRightAnalyticsColumn(viewModel);
-        dashboardStripHost = BuildSimulationLogCard(viewModel);
+        dashboardStripHost = BuildDashboardStrip(viewModel);
         var leftDashboardHost = BuildLeftDashboardColumn(viewModel);
 
         workspaceGrid.Children.Add(toolRailHost);
@@ -4898,7 +4898,13 @@ public sealed class ShellWindow : Window
 
     private void UpdateDashboardLayout()
     {
-        if (workspaceGrid is null || toolRailHost is null || canvasHost is null || inspectorHost is null || dashboardStripHost is null)
+        if (workspaceGrid is null ||
+            toolRailHost is null ||
+            canvasHost is null ||
+            inspectorHost is null ||
+            dashboardStripHost is null ||
+            dashboardStripContentGrid is null ||
+            dashboardStripBody is null)
         {
             return;
         }
@@ -4922,7 +4928,7 @@ public sealed class ShellWindow : Window
         workspaceGrid.RowDefinitions[1].MinHeight = isCollapsed ? BottomStripCollapsedHeight : BottomStripMinHeight;
         workspaceGrid.RowDefinitions[1].MaxHeight = isExpanded ? double.PositiveInfinity : isCollapsed ? BottomStripCollapsedHeight : BottomStripMaxHeight;
 
-        dashboardStripBody!.IsVisible = !isCollapsed;
+        dashboardStripBody.IsVisible = !isCollapsed;
 
         Grid.SetRow(canvasHost, 0);
         Grid.SetColumn(canvasHost, 1);

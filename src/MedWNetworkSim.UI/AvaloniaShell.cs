@@ -1757,25 +1757,46 @@ public sealed class ShellWindow : Window
         return grid;
     }
 
+    private static class IconPaths
+    {
+        public const string New = "M12,2 L20,10 L12,18 L4,10 Z";
+        public const string Open = "M3,6 H21 V18 H3 Z M8,3 H16 V8 H8 Z";
+        public const string Save = "M4,3 H18 L21,6 V21 H4 Z M7,3 V9 H16 V3 M8,14 H17 V20 H8 Z";
+        public const string ImportGraphMl = "M12,3 V16 M7,11 L12,16 L17,11 M4,20 H20";
+        public const string ExportGraphMl = "M12,16 V3 M7,8 L12,3 L17,8 M4,20 H20";
+        public const string Select = "M4,3 L15,12 H9 L11,21 Z";
+        public const string FitView = "M4,9 V4 H9 M15,4 H20 V9 M20,15 V20 H15 M9,20 H4 V15";
+        public const string ClearSelection = "M5,5 L19,19 M19,5 L5,19";
+        public const string AddNode = "M12,4 A8,8 0 1 1 12,20 A8,8 0 1 1 12,4 M12,8 V16 M8,12 H16";
+        public const string ConnectRoute = "M6,7 A2,2 0 1 1 6,11 A2,2 0 1 1 6,7 M18,13 A2,2 0 1 1 18,17 A2,2 0 1 1 18,13 M8,10 L16,14";
+        public const string DeleteSelection = "M7,7 H17 M9,7 V5 H15 V7 M8,7 V19 H16 V7";
+        public const string TrafficTypes = "M4,5 H20 V10 H4 Z M4,12 H20 V17 H4 Z M4,19 H20 V22 H4 Z";
+        public const string Run = "M8,6 L18,12 L8,18 Z";
+        public const string Step = "M7,6 L14,12 L7,18 Z M16,6 H18 V18 H16 Z";
+        public const string ResetTimeline = "M12,5 A7,7 0 1 1 5,12 M5,6 V12 H11";
+        public const string Map = "M4,6 L9,4 L15,6 L20,4 V18 L15,20 L9,18 L4,20 Z";
+        public const string Sankey = "M5,7 H12 V11 H5 Z M12,13 H19 V17 H12 Z M12,9 H15 V15 H12 Z";
+    }
+
     private Control BuildToolRail(WorkspaceViewModel viewModel)
     {
-        var newButton = BuildIconRailButton("M12,2 L20,10 L12,18 L4,10 Z", "New", new RelayCommand(() => _ = CreateBlankNetworkAsync(viewModel)));
-        var openButton = BuildIconRailButton("M3,6 H21 V18 H3 Z M8,3 H16 V8 H8 Z", "Open", new RelayCommand(() => _ = OpenNetworkFileAsync(viewModel)));
-        var saveButton = BuildIconRailButton("M4,3 H18 L21,6 V21 H4 Z M7,3 V9 H16 V3 M8,14 H17 V20 H8 Z", "Save", new RelayCommand(() => _ = SaveNetworkAsync(viewModel)));
-        var importButton = BuildIconRailButton("M12,3 V16 M7,11 L12,16 L17,11 M4,20 H20", "Import GraphML", new RelayCommand(() => _ = ImportGraphMlAsync(viewModel)));
-        var exportButton = BuildIconRailButton("M12,16 V3 M7,8 L12,3 L17,8 M4,20 H20", "Export GraphML", new RelayCommand(() => _ = ExportGraphMlAsync(viewModel)));
-        var selectButton = BuildIconRailButton("M4,3 L15,12 H9 L11,21 Z", "Select", viewModel.SelectToolCommand, isToolButton: true);
-        var fitButton = BuildIconRailButton("M4,9 V4 H9 M15,4 H20 V9 M20,15 V20 H15 M9,20 H4 V15", "Fit View", viewModel.FitCommand);
-        var clearSelectionButton = BuildIconRailButton("M5,5 L19,19 M19,5 L5,19", "Clear Selection", new RelayCommand(viewModel.ClearSelection));
-        var addNodeButton = BuildIconRailButton("M12,4 A8,8 0 1 1 12,20 A8,8 0 1 1 12,4 M12,8 V16 M8,12 H16", "Add Node", viewModel.AddNodeToolCommand, isToolButton: true);
-        var connectButton = BuildIconRailButton("M6,7 A2,2 0 1 1 6,11 A2,2 0 1 1 6,7 M18,13 A2,2 0 1 1 18,17 A2,2 0 1 1 18,13 M8,10 L16,14", "Connect Route", viewModel.ConnectToolCommand, isToolButton: true);
-        var deleteButton = BuildIconRailButton("M7,7 H17 M9,7 V5 H15 V7 M8,7 V19 H16 V7", "Delete Selection", viewModel.DeleteSelectionCommand, isDanger: true);
-        var trafficTypesButton = BuildIconRailButton("M4,5 H20 V10 H4 Z M4,12 H20 V17 H4 Z M4,19 H20 V22 H4 Z", "Traffic Types", new RelayCommand(EnterTrafficTypeWorkspace));
-        var runButton = BuildIconRailButton("M8,6 L18,12 L8,18 Z", "Run", viewModel.SimulateCommand);
-        var stepButton = BuildIconRailButton("M7,6 L14,12 L7,18 Z M16,6 H18 V18 H16 Z", "Step", viewModel.StepCommand);
-        var resetButton = BuildIconRailButton("M12,5 A7,7 0 1 1 5,12 M5,6 V12 H11", "Reset Timeline", viewModel.ResetTimelineCommand);
-        var mapButton = BuildIconRailButton("M4,6 L9,4 L15,6 L20,4 V18 L15,20 L9,18 L4,20 Z", "Map", viewModel.ShowMapModeCommand);
-        var sankeyButton = BuildIconRailButton("M5,7 H12 V11 H5 Z M12,13 H19 V17 H12 Z M12,9 H15 V15 H12 Z", "Sankey", viewModel.ShowSankeyModeCommand);
+        var newButton = BuildIconRailButton(IconPaths.New, "New", new RelayCommand(() => _ = CreateBlankNetworkAsync(viewModel)));
+        var openButton = BuildIconRailButton(IconPaths.Open, "Open", new RelayCommand(() => _ = OpenNetworkFileAsync(viewModel)));
+        var saveButton = BuildIconRailButton(IconPaths.Save, "Save", new RelayCommand(() => _ = SaveNetworkAsync(viewModel)));
+        var importButton = BuildIconRailButton(IconPaths.ImportGraphMl, "Import GraphML", new RelayCommand(() => _ = ImportGraphMlAsync(viewModel)));
+        var exportButton = BuildIconRailButton(IconPaths.ExportGraphMl, "Export GraphML", new RelayCommand(() => _ = ExportGraphMlAsync(viewModel)));
+        var selectButton = BuildIconRailButton(IconPaths.Select, "Select", viewModel.SelectToolCommand, isToolButton: true);
+        var fitButton = BuildIconRailButton(IconPaths.FitView, "Fit View", viewModel.FitCommand);
+        var clearSelectionButton = BuildIconRailButton(IconPaths.ClearSelection, "Clear Selection", new RelayCommand(viewModel.ClearSelection));
+        var addNodeButton = BuildIconRailButton(IconPaths.AddNode, "Add Node", viewModel.AddNodeToolCommand, isToolButton: true);
+        var connectButton = BuildIconRailButton(IconPaths.ConnectRoute, "Connect Route", viewModel.ConnectToolCommand, isToolButton: true);
+        var deleteButton = BuildIconRailButton(IconPaths.DeleteSelection, "Delete Selection", viewModel.DeleteSelectionCommand, isDanger: true);
+        var trafficTypesButton = BuildIconRailButton(IconPaths.TrafficTypes, "Traffic Types", new RelayCommand(EnterTrafficTypeWorkspace));
+        var runButton = BuildIconRailButton(IconPaths.Run, "Run", viewModel.SimulateCommand);
+        var stepButton = BuildIconRailButton(IconPaths.Step, "Step", viewModel.StepCommand);
+        var resetButton = BuildIconRailButton(IconPaths.ResetTimeline, "Reset Timeline", viewModel.ResetTimelineCommand);
+        var mapButton = BuildIconRailButton(IconPaths.Map, "Map", viewModel.ShowMapModeCommand);
+        var sankeyButton = BuildIconRailButton(IconPaths.Sankey, "Sankey", viewModel.ShowSankeyModeCommand);
 
         void RefreshToolState()
         {
@@ -6173,8 +6194,6 @@ public sealed class ShellWindow : Window
         {
             Content = icon,
             Command = command,
-            Width = 48,
-            Height = 44,
             CornerRadius = new CornerRadius(8)
         };
         button.Classes.Add("toolbar-button");
@@ -6193,7 +6212,11 @@ public sealed class ShellWindow : Window
     }
 
     private static Control BuildIconRailGroupLabel(string text)
-        => new TextBlock { Text = text, Margin = new Thickness(4, 10, 4, 2), FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.MutedText) };
+    {
+        var label = new TextBlock { Text = text };
+        label.Classes.Add("icon-rail-group-label");
+        return label;
+    }
 
     private static void ApplyToolButtonState(Button button, bool isActive)
     {

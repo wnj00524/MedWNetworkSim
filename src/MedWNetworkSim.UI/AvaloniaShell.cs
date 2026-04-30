@@ -2508,7 +2508,14 @@ public sealed class ShellWindow : Window
             {
                 new DataGridTextColumn { Header = "Agent ID", Binding = new Binding(nameof(SimulationActorState.Id)) },
                 new DataGridTextColumn { Header = "Type", Binding = new Binding(nameof(SimulationActorState.Kind)) },
-                new DataGridTextColumn { Header = "Current Node", Binding = new Binding(nameof(SimulationActorState.ControlledNodeIds.Count)) },
+                new DataGridTextColumn
+                {
+                    Header = "Current Node",
+                    Binding = new Binding(nameof(SimulationActorState.ControlledNodeIds))
+                    {
+                        Converter = new FuncValueConverter<List<string>, string?>(ids => ids?.FirstOrDefault() ?? "None")
+                    }
+                },
                 new DataGridTextColumn { Header = "Destination", Binding = new Binding(nameof(SimulationActorState.Objective)) },
                 new DataGridTextColumn { Header = "Status", Binding = new Binding(nameof(SimulationActorState.IsEnabled)) },
                 new DataGridTextColumn { Header = "Payload", Binding = new Binding(nameof(SimulationActorState.Cash)) }
@@ -2604,8 +2611,6 @@ public sealed class ShellWindow : Window
             Spacing = 10,
             Children =
             {
-                BuildPieChartCard("Traffic Load", "Flow pressure snapshot.", viewModel.NodeUtilizationMixData, [AvaloniaDashboardTheme.Accent, AvaloniaDashboardTheme.Warning, AvaloniaDashboardTheme.Danger]),
-                BuildPieChartCard("Production Yield", "Delivered vs unmet proxy.", viewModel.AgentStatusDistributionData, [AvaloniaDashboardTheme.Success, AvaloniaDashboardTheme.Accent, AvaloniaDashboardTheme.Warning]),
                 BuildPieChartCard("Agent Status Distribution", "Running actor state split.", viewModel.AgentStatusDistributionData, [AvaloniaDashboardTheme.Accent, AvaloniaDashboardTheme.Success, AvaloniaDashboardTheme.Warning]),
                 BuildPieChartCard("Node Utilisation", "Node load distribution.", viewModel.NodeUtilizationMixData, [AvaloniaDashboardTheme.Accent, AvaloniaDashboardTheme.Success, AvaloniaDashboardTheme.Danger])
             }

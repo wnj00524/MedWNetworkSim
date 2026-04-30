@@ -5532,12 +5532,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var query = AgentSearchText?.Trim() ?? string.Empty;
         var results = string.IsNullOrWhiteSpace(query)
             ? SimulationActors
-            : new ObservableCollection<SimulationActorState>(
-                SimulationActors.Where(actor =>
-                    actor.Id.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                    actor.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                    actor.Kind.ToString().Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                    actor.Objective.ToString().Contains(query, StringComparison.OrdinalIgnoreCase)));
+            : SimulationActors.Where(actor =>
+                actor.Id.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                actor.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                actor.Kind.ToString().Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                actor.Objective.ToString().Contains(query, StringComparison.OrdinalIgnoreCase));
         FilteredSimulationActors.Clear();
         foreach (var actor in results)
         {

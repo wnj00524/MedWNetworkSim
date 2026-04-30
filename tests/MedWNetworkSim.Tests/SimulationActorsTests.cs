@@ -370,7 +370,7 @@ public sealed class SimulationActorsTests
         Assert.Equal(SimulationActorKind.Government, vm.FilteredSimulationActors[0].Kind);
 
         vm.AgentSearchText = string.Empty;
-        Assert.True(vm.FilteredSimulationActors.Count >= 2);
+        Assert.Equal(vm.SimulationActors.Count, vm.FilteredSimulationActors.Count);
     }
 
     [Fact]

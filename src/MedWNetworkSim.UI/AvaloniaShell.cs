@@ -14,6 +14,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Automation;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -1747,15 +1748,6 @@ public sealed class ShellWindow : Window
         grid.Children.Add(centerStatus);
 
         var buttons = BuildWrapPanel(
-            BuildButton("New", new RelayCommand(() => _ = CreateBlankNetworkAsync(viewModel)), toolTip: "Create a blank network."),
-            BuildButton("Open", new RelayCommand(() => _ = OpenNetworkFileAsync(viewModel)), toolTip: "Open a network JSON file."),
-            BuildButton("Save", new RelayCommand(() => _ = SaveNetworkAsync(viewModel)), toolTip: "Save the current network JSON."),
-            BuildButton("Import", new RelayCommand(() => _ = ImportGraphMlAsync(viewModel)), toolTip: "Import GraphML into the current workspace."),
-            BuildButton("Export", new RelayCommand(() => _ = ExportGraphMlAsync(viewModel)), toolTip: "Export the active network as GraphML."),
-            BuildButton("Run", viewModel.SimulateCommand, isPrimary: true, toolTip: "Run the simulation timeline."),
-            BuildButton("Step", viewModel.StepCommand, isPrimary: true, toolTip: "Advance the simulation by one period."),
-            BuildButton("Reset", viewModel.ResetTimelineCommand, toolTip: "Reset timeline to period 0."),
-            BuildButton("Fit", viewModel.FitCommand, toolTip: "Fit the graph to the viewport."),
             BuildButton("About", viewModel.OpenAboutCommand, toolTip: "Show version and product details."),
             BuildButton("Exit", new RelayCommand(() => _ = CloseWithConfirmationAsync()), toolTip: "Close the workstation."));
         buttons.HorizontalAlignment = HorizontalAlignment.Right;
@@ -1767,38 +1759,38 @@ public sealed class ShellWindow : Window
 
     private Control BuildToolRail(WorkspaceViewModel viewModel)
     {
-        var homeButton = BuildIconRailButton("⌂", "Home", new RelayCommand(() =>
-        {
-            shellWorkspaceMode = ShellWorkspaceMode.Standard;
-            UpdateShellWorkspaceMode();
-        }));
-        var networkWorkspaceButton = BuildIconRailButton("N", "Network", viewModel.ShowGraphModeCommand);
-        var mapWorkspaceButton = BuildIconRailButton("M", "Map", viewModel.ShowMapModeCommand);
-        var agentsWorkspaceButton = BuildIconRailButton("A", "Agents", new RelayCommand(EnterAgentsWorkspace));
-        var flowWorkspaceButton = BuildIconRailButton("F", "Flow/Sankey", viewModel.ShowSankeyModeCommand);
-        var scenarioWorkspaceButton = BuildIconRailButton("S", "Scenarios", viewModel.OpenScenarioEditorCommand);
-        var osmWorkspaceButton = BuildIconRailButton("O", "OSM Import", viewModel.StartOsmAreaSelectionCommand);
-        var trafficTypesButton = BuildIconRailButton("T", "Traffic Types/Data", new RelayCommand(EnterTrafficTypeWorkspace));
-        var reportsButton = BuildIconRailButton("R", "Reports/Analytics", new RelayCommand(() => { shellWorkspaceMode = ShellWorkspaceMode.Standard; UpdateShellWorkspaceMode(); }));
-        var settingsButton = BuildIconRailButton("⚙", "Settings/About", viewModel.OpenAboutCommand);
+        var newButton = BuildIconRailButton("M12,2 L20,10 L12,18 L4,10 Z", "New", new RelayCommand(() => _ = CreateBlankNetworkAsync(viewModel)));
+        var openButton = BuildIconRailButton("M3,6 H21 V18 H3 Z M8,3 H16 V8 H8 Z", "Open", new RelayCommand(() => _ = OpenNetworkFileAsync(viewModel)));
+        var saveButton = BuildIconRailButton("M4,3 H18 L21,6 V21 H4 Z M7,3 V9 H16 V3 M8,14 H17 V20 H8 Z", "Save", new RelayCommand(() => _ = SaveNetworkAsync(viewModel)));
+        var importButton = BuildIconRailButton("M12,3 V16 M7,11 L12,16 L17,11 M4,20 H20", "Import GraphML", new RelayCommand(() => _ = ImportGraphMlAsync(viewModel)));
+        var exportButton = BuildIconRailButton("M12,16 V3 M7,8 L12,3 L17,8 M4,20 H20", "Export GraphML", new RelayCommand(() => _ = ExportGraphMlAsync(viewModel)));
+        var selectButton = BuildIconRailButton("M4,3 L15,12 H9 L11,21 Z", "Select", viewModel.SelectToolCommand, isToolButton: true);
+        var fitButton = BuildIconRailButton("M4,9 V4 H9 M15,4 H20 V9 M20,15 V20 H15 M9,20 H4 V15", "Fit View", viewModel.FitCommand);
+        var clearSelectionButton = BuildIconRailButton("M5,5 L19,19 M19,5 L5,19", "Clear Selection", new RelayCommand(viewModel.ClearSelection));
+        var addNodeButton = BuildIconRailButton("M12,4 A8,8 0 1 1 12,20 A8,8 0 1 1 12,4 M12,8 V16 M8,12 H16", "Add Node", viewModel.AddNodeToolCommand, isToolButton: true);
+        var connectButton = BuildIconRailButton("M6,7 A2,2 0 1 1 6,11 A2,2 0 1 1 6,7 M18,13 A2,2 0 1 1 18,17 A2,2 0 1 1 18,13 M8,10 L16,14", "Connect Route", viewModel.ConnectToolCommand, isToolButton: true);
+        var deleteButton = BuildIconRailButton("M7,7 H17 M9,7 V5 H15 V7 M8,7 V19 H16 V7", "Delete Selection", viewModel.DeleteSelectionCommand, isDanger: true);
+        var trafficTypesButton = BuildIconRailButton("M4,5 H20 V10 H4 Z M4,12 H20 V17 H4 Z M4,19 H20 V22 H4 Z", "Traffic Types", new RelayCommand(EnterTrafficTypeWorkspace));
+        var runButton = BuildIconRailButton("M8,6 L18,12 L8,18 Z", "Run", viewModel.SimulateCommand);
+        var stepButton = BuildIconRailButton("M7,6 L14,12 L7,18 Z M16,6 H18 V18 H16 Z", "Step", viewModel.StepCommand);
+        var resetButton = BuildIconRailButton("M12,5 A7,7 0 1 1 5,12 M5,6 V12 H11", "Reset Timeline", viewModel.ResetTimelineCommand);
+        var mapButton = BuildIconRailButton("M4,6 L9,4 L15,6 L20,4 V18 L15,20 L9,18 L4,20 Z", "Map", viewModel.ShowMapModeCommand);
+        var sankeyButton = BuildIconRailButton("M5,7 H12 V11 H5 Z M12,13 H19 V17 H12 Z M12,9 H15 V15 H12 Z", "Sankey", viewModel.ShowSankeyModeCommand);
 
         void RefreshToolState()
         {
-            ApplyToolButtonState(homeButton, shellWorkspaceMode == ShellWorkspaceMode.Standard);
-            ApplyToolButtonState(networkWorkspaceButton, viewModel.IsGraphMode && shellWorkspaceMode == ShellWorkspaceMode.Standard);
-            ApplyToolButtonState(mapWorkspaceButton, viewModel.IsMapMode && shellWorkspaceMode == ShellWorkspaceMode.Standard);
-            ApplyToolButtonState(agentsWorkspaceButton, shellWorkspaceMode == ShellWorkspaceMode.Agents);
-            ApplyToolButtonState(flowWorkspaceButton, viewModel.IsSankeyMode && shellWorkspaceMode == ShellWorkspaceMode.Standard);
-            ApplyToolButtonState(scenarioWorkspaceButton, shellWorkspaceMode == ShellWorkspaceMode.ScenarioEditor || viewModel.IsScenarioEditorWorkspaceMode);
-            ApplyToolButtonState(osmWorkspaceButton, shellWorkspaceMode == ShellWorkspaceMode.OsmImport || viewModel.IsOsmImportWorkspaceMode);
+            ApplyToolButtonState(selectButton, viewModel.IsSelectToolActive);
+            ApplyToolButtonState(addNodeButton, viewModel.IsAddNodeToolActive);
+            ApplyToolButtonState(connectButton, viewModel.IsConnectToolActive);
+            ApplyToolButtonState(mapButton, viewModel.IsMapMode && shellWorkspaceMode == ShellWorkspaceMode.Standard);
+            ApplyToolButtonState(sankeyButton, viewModel.IsSankeyMode && shellWorkspaceMode == ShellWorkspaceMode.Standard);
             ApplyToolButtonState(trafficTypesButton, shellWorkspaceMode == ShellWorkspaceMode.TrafficTypes);
-            ApplyToolButtonState(reportsButton, shellWorkspaceMode == ShellWorkspaceMode.Standard);
         }
         refreshToolRailState = RefreshToolState;
 
         viewModel.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(WorkspaceViewModel.IsGraphMode) or nameof(WorkspaceViewModel.IsMapMode) or nameof(WorkspaceViewModel.IsSankeyMode))
+            if (e.PropertyName is nameof(WorkspaceViewModel.IsGraphMode) or nameof(WorkspaceViewModel.IsMapMode) or nameof(WorkspaceViewModel.IsSankeyMode) or nameof(WorkspaceViewModel.IsSelectToolActive) or nameof(WorkspaceViewModel.IsAddNodeToolActive) or nameof(WorkspaceViewModel.IsConnectToolActive))
             {
                 RefreshToolState();
             }
@@ -1810,22 +1802,22 @@ public sealed class ShellWindow : Window
             Spacing = 8,
             Children =
             {
-                homeButton,
-                networkWorkspaceButton,
-                mapWorkspaceButton,
-                agentsWorkspaceButton,
-                flowWorkspaceButton,
-                scenarioWorkspaceButton,
-                osmWorkspaceButton,
-                trafficTypesButton,
-                reportsButton,
-                settingsButton
+                BuildIconRailGroupLabel("Workspace"),
+                newButton, openButton, saveButton, importButton, exportButton,
+                BuildIconRailGroupLabel("Navigate"),
+                selectButton, fitButton, clearSelectionButton,
+                BuildIconRailGroupLabel("Edit Network"),
+                addNodeButton, connectButton, deleteButton, trafficTypesButton,
+                BuildIconRailGroupLabel("Simulation"),
+                runButton, stepButton, resetButton,
+                BuildIconRailGroupLabel("Analysis/Views"),
+                mapButton, sankeyButton
             }
         };
 
         var border = BuildDashboardPanel(
             new ScrollViewer { Content = content },
-            header: "Navigation",
+            header: "Command Rail",
             padding: new Thickness(6),
             radius: new CornerRadius(14));
         return border;
@@ -6169,30 +6161,42 @@ public sealed class ShellWindow : Window
         return button;
     }
 
-    private static Button BuildIconRailButton(string glyph, string toolTip, ICommand command)
+    private static Button BuildIconRailButton(string pathData, string toolTip, ICommand command, bool isToolButton = false, bool isDanger = false)
     {
+        var icon = new PathIcon
+        {
+            Data = Geometry.Parse(pathData),
+            Width = 20,
+            Height = 20
+        };
         var button = new Button
         {
-            Content = glyph,
+            Content = icon,
             Command = command,
-            Width = 46,
+            Width = 48,
             Height = 44,
-            FontWeight = FontWeight.Bold,
-            Background = new SolidColorBrush(AvaloniaDashboardTheme.ToolbarButtonBackground),
-            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
-            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.ToolbarButtonBorder),
-            BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8)
         };
+        button.Classes.Add("toolbar-button");
+        button.Classes.Add("icon-rail-button");
+        if (isToolButton)
+        {
+            button.Classes.Add("tool-button");
+        }
+        if (isDanger)
+        {
+            button.Classes.Add("danger");
+        }
+        AutomationProperties.SetName(button, toolTip);
         ToolTip.SetTip(button, toolTip);
         return button;
     }
 
+    private static Control BuildIconRailGroupLabel(string text)
+        => new TextBlock { Text = text, Margin = new Thickness(4, 10, 4, 2), FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.MutedText) };
+
     private static void ApplyToolButtonState(Button button, bool isActive)
     {
-        var label = button.Tag as string ?? button.Content?.ToString() ?? string.Empty;
-        button.Content = isActive ? $"● {label}" : label;
-        button.FontWeight = isActive ? FontWeight.ExtraBold : FontWeight.Bold;
         button.Classes.Set("active", isActive);
     }
 

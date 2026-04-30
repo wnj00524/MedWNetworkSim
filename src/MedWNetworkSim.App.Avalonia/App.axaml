@@ -70,5 +70,22 @@
       <Setter Property="Foreground" Value="#EAF1FB" />
       <Setter Property="BorderBrush" Value="#66B4FF" />
     </Style>
+    <Style Selector="Button.icon-rail-button">
+      <Setter Property="MinWidth" Value="44" />
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="Padding" Value="8" />
+    </Style>
+    <Style Selector="Button.icon-rail-button.active">
+      <Setter Property="Background" Value="#1F3A5E" />
+      <Setter Property="BorderBrush" Value="#66B4FF" />
+    </Style>
+    <Style Selector="Button.icon-rail-button.danger:pointerover">
+      <Setter Property="Background" Value="#4A1E28" />
+      <Setter Property="BorderBrush" Value="#EF5B5B" />
+    </Style>
+    <Style Selector="Button.icon-rail-button.danger:pressed">
+      <Setter Property="Background" Value="#5A202C" />
+      <Setter Property="BorderBrush" Value="#FF7F7F" />
+    </Style>
   </Application.Styles>
 </Application>

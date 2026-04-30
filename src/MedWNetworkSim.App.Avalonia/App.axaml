@@ -79,6 +79,9 @@
       <Setter Property="Background" Value="#1F3A5E" />
       <Setter Property="BorderBrush" Value="#66B4FF" />
     </Style>
+    <Style Selector="Button.icon-rail-button.danger">
+      <Setter Property="Foreground" Value="#EF5B5B" />
+    </Style>
     <Style Selector="Button.icon-rail-button.danger:pointerover">
       <Setter Property="Background" Value="#4A1E28" />
       <Setter Property="BorderBrush" Value="#EF5B5B" />
@@ -86,6 +89,11 @@
     <Style Selector="Button.icon-rail-button.danger:pressed">
       <Setter Property="Background" Value="#5A202C" />
       <Setter Property="BorderBrush" Value="#FF7F7F" />
+    </Style>
+    <Style Selector="TextBlock.icon-rail-group-label">
+      <Setter Property="Margin" Value="4,10,4,2" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="#7E93B3" />
     </Style>
   </Application.Styles>
 </Application>

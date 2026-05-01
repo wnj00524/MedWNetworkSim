@@ -64,6 +64,7 @@ public sealed class SimulationActorCapability
     public string ActorId { get; set; } = string.Empty;
     public IReadOnlyCollection<SimulationActorActionKind> AllowedActionKinds { get; set; } = [];
     public IReadOnlyCollection<string> AllowedTrafficTypes { get; set; } = [];
+    public List<SimulationActorPermission> Permissions { get; set; } = [];
     public bool AllowAllTrafficTypes { get; set; } = true;
     public bool IsCustomActorType { get; set; }
     public string? CustomActorTypeName { get; set; }

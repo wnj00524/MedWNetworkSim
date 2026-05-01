@@ -260,7 +260,22 @@ public sealed class SimulationActorsTests
             Objective = SimulationActorObjective.EnforcePolicy,
             Budget = 100,
             Cash = 45,
-            CooperationWeight = 0.75d
+            CooperationWeight = 0.75d,
+            Capability = new SimulationActorCapability
+            {
+                ActorId = "gov",
+                AllowedActionKinds = [SimulationActorActionKind.AdjustRoutePermission],
+                Permissions =
+                [
+                    new SimulationActorPermission
+                    {
+                        ActionKind = SimulationActorActionKind.BanTrafficOnEdge,
+                        TrafficType = "Food",
+                        EdgeId = "edge-a",
+                        IsAllowed = false
+                    }
+                ]
+            }
         });
 
         var json = System.Text.Json.JsonSerializer.Serialize(network, new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
@@ -270,6 +285,11 @@ public sealed class SimulationActorsTests
         Assert.Equal("gov", loaded.Actors[0].Id);
         Assert.Equal(SimulationActorKind.Government, loaded.Actors[0].Kind);
         Assert.Equal(0.75d, loaded.Actors[0].CooperationWeight);
+        var permission = Assert.Single(loaded.Actors[0].Capability.Permissions);
+        Assert.Equal(SimulationActorActionKind.BanTrafficOnEdge, permission.ActionKind);
+        Assert.Equal("Food", permission.TrafficType);
+        Assert.Equal("edge-a", permission.EdgeId);
+        Assert.False(permission.IsAllowed);
     }
 
     [Fact]
@@ -321,6 +341,144 @@ public sealed class SimulationActorsTests
         {
             ["firm"] = new SimulationActorState { Id = "firm", Kind = SimulationActorKind.Firm, IsEnabled = true, Capability = capability }
         }, new Dictionary<string, double>());
+        Assert.False(outcomes.Single().Applied);
+        Assert.Contains("traffic type", outcomes.Single().Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Permission_NodeSpecificRestriction_DeniesMatchingAction()
+    {
+        var source = BuildNetwork();
+        var actor = new SimulationActorState
+        {
+            Id = "firm",
+            Kind = SimulationActorKind.Firm,
+            IsEnabled = true,
+            Cash = 100,
+            Capability = SimulationActorCapabilityCatalog.ForKind("firm", SimulationActorKind.Firm)
+        };
+        actor.Capability.Permissions.Add(new SimulationActorPermission
+        {
+            ActionKind = SimulationActorActionKind.AdjustProduction,
+            NodeId = "producer",
+            IsAllowed = false
+        });
+
+        var (_, outcomes) = new SimulationActorActionApplier().Apply(source, [
+            new SimulationActorAction { Id = "deny-node", ActorId = "firm", Kind = SimulationActorActionKind.AdjustProduction, TargetNodeId = "producer", TrafficType = "Food", DeltaValue = 10 }
+        ], BuildActorMap(actor), new Dictionary<string, double>());
+
+        Assert.False(outcomes.Single().Applied);
+        Assert.Equal("Permission explicitly denied.", outcomes.Single().Reason);
+    }
+
+    [Fact]
+    public void Permission_EdgeSpecificRestriction_DeniesMatchingAction()
+    {
+        var source = BuildNetwork();
+        var actor = new SimulationActorState
+        {
+            Id = "firm",
+            Kind = SimulationActorKind.Firm,
+            IsEnabled = true,
+            Cash = 100,
+            ControlledEdgeIds = ["edge-a"],
+            Capability = SimulationActorCapabilityCatalog.ForKind("firm", SimulationActorKind.Firm)
+        };
+        actor.Capability.Permissions.Add(new SimulationActorPermission
+        {
+            ActionKind = SimulationActorActionKind.AdjustEdgeCapacity,
+            EdgeId = "edge-a",
+            IsAllowed = false
+        });
+
+        var (_, outcomes) = new SimulationActorActionApplier().Apply(source, [
+            new SimulationActorAction { Id = "deny-edge", ActorId = "firm", Kind = SimulationActorActionKind.AdjustEdgeCapacity, TargetEdgeId = "edge-a", DeltaValue = 10 }
+        ], BuildActorMap(actor), new Dictionary<string, double>());
+
+        Assert.False(outcomes.Single().Applied);
+        Assert.Equal("Permission explicitly denied.", outcomes.Single().Reason);
+    }
+
+    [Fact]
+    public void Permission_TrafficTypeAndNodeRestriction_OnlyDeniesCombinedMatch()
+    {
+        var source = BuildNetwork();
+        source.TrafficTypes.Add(new TrafficTypeDefinition { Name = "Wool" });
+        source.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Add(new NodeTrafficProfile { TrafficType = "Wool", Production = 20 });
+        var actor = new SimulationActorState
+        {
+            Id = "firm",
+            Kind = SimulationActorKind.Firm,
+            IsEnabled = true,
+            Cash = 100,
+            Capability = SimulationActorCapabilityCatalog.ForKind("firm", SimulationActorKind.Firm)
+        };
+        actor.Capability.Permissions.Add(new SimulationActorPermission
+        {
+            ActionKind = SimulationActorActionKind.AdjustProduction,
+            TrafficType = "Wool",
+            NodeId = "producer",
+            IsAllowed = false
+        });
+
+        var (_, outcomes) = new SimulationActorActionApplier().Apply(source, [
+            new SimulationActorAction { Id = "deny-wool", ActorId = "firm", Kind = SimulationActorActionKind.AdjustProduction, TargetNodeId = "producer", TrafficType = "Wool", DeltaValue = 10 },
+            new SimulationActorAction { Id = "allow-food", ActorId = "firm", Kind = SimulationActorActionKind.AdjustProduction, TargetNodeId = "producer", TrafficType = "Food", DeltaValue = 10 }
+        ], BuildActorMap(actor), new Dictionary<string, double>());
+
+        Assert.False(outcomes[0].Applied);
+        Assert.True(outcomes[1].Applied);
+    }
+
+    [Fact]
+    public void Permission_ExplicitAllow_TakesPrecedenceOverLegacyCapabilityRestrictions()
+    {
+        var source = BuildNetwork();
+        var actor = new SimulationActorState
+        {
+            Id = "gov",
+            Kind = SimulationActorKind.Government,
+            IsEnabled = true,
+            Cash = 100,
+            Capability = SimulationActorCapabilityCatalog.ForKind("gov", SimulationActorKind.Government)
+        };
+        actor.Capability.Permissions.Add(new SimulationActorPermission
+        {
+            ActionKind = SimulationActorActionKind.AdjustProduction,
+            TrafficType = "Food",
+            NodeId = "producer",
+            IsAllowed = true
+        });
+
+        var (result, outcomes) = new SimulationActorActionApplier().Apply(source, [
+            new SimulationActorAction { Id = "allow-override", ActorId = "gov", Kind = SimulationActorActionKind.AdjustProduction, TargetNodeId = "producer", TrafficType = "Food", DeltaValue = 10 }
+        ], BuildActorMap(actor), new Dictionary<string, double>());
+
+        Assert.True(outcomes.Single().Applied);
+        Assert.Equal(130d, result.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single(profile => profile.TrafficType == "Food").Production);
+    }
+
+    [Fact]
+    public void Permission_NoRules_FallsBackToLegacyCapabilityBehavior()
+    {
+        var source = BuildNetwork();
+        var capability = SimulationActorCapabilityCatalog.ForKind("firm", SimulationActorKind.Firm);
+        capability.AllowAllTrafficTypes = false;
+        capability.AllowedTrafficTypes = ["Food"];
+        var actor = new SimulationActorState
+        {
+            Id = "firm",
+            Kind = SimulationActorKind.Firm,
+            IsEnabled = true,
+            Cash = 100,
+            Capability = capability
+        };
+
+        var (_, outcomes) = new SimulationActorActionApplier().Apply(source, [
+            new SimulationActorAction { Id = "legacy-deny", ActorId = "firm", Kind = SimulationActorActionKind.AdjustProduction, TargetNodeId = "producer", TrafficType = "Wool", DeltaValue = 10 }
+        ], BuildActorMap(actor), new Dictionary<string, double>());
+
         Assert.False(outcomes.Single().Applied);
         Assert.Contains("traffic type", outcomes.Single().Reason, StringComparison.OrdinalIgnoreCase);
     }
@@ -660,7 +818,7 @@ public sealed class SimulationActorsTests
         {
             Name = "Actors Test",
             Layers = [new NetworkLayerModel { Id = layerId, Name = "Physical", Type = NetworkLayerType.Physical, Order = 0 }],
-            TrafficTypes = [new TrafficTypeDefinition { Name = "Food", RoutingPreference = RoutingPreference.LowestCost, AllocationMode = AllocationMode.GreedyBestRoute }],
+            TrafficTypes = [new TrafficTypeDefinition { Name = "Food", RoutingPreference = RoutingPreference.Cost, AllocationMode = AllocationMode.GreedyBestRoute }],
             Nodes =
             [
                 new NodeModel
@@ -702,7 +860,7 @@ public sealed class SimulationActorsTests
         {
             Name = "Draft Actors Test",
             Layers = [new NetworkLayerModel { Id = layerId, Name = "Physical", Type = NetworkLayerType.Physical, Order = 0 }],
-            TrafficTypes = [new TrafficTypeDefinition { Name = "Food", RoutingPreference = RoutingPreference.LowestCost, AllocationMode = AllocationMode.GreedyBestRoute }],
+            TrafficTypes = [new TrafficTypeDefinition { Name = "Food", RoutingPreference = RoutingPreference.Cost, AllocationMode = AllocationMode.GreedyBestRoute }],
             Nodes =
             [
                 new NodeModel
@@ -735,6 +893,9 @@ public sealed class SimulationActorsTests
             ]
         };
     }
+
+    private static Dictionary<string, SimulationActorState> BuildActorMap(params SimulationActorState[] actors) =>
+        actors.ToDictionary(actor => actor.Id, StringComparer.OrdinalIgnoreCase);
 
     private static WorkspaceViewModel BuildWorkspaceViewModelWithNetwork()
     {

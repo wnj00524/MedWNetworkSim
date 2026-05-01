@@ -4,6 +4,8 @@ using MedWNetworkSim.Presentation;
 using MedWNetworkSim.Rendering;
 using MedWNetworkSim.Rendering.Geo;
 using OsmSharp;
+using OsmSharp.Tags;
+using SkiaSharp;
 using Xunit;
 
 namespace MedWNetworkSim.Tests;
@@ -252,7 +254,7 @@ public sealed class OsmBoundingBoxImportTests
             [],
             "Selection preview");
 
-        var ex = Record.Exception(() => renderer.Render(
+        renderer.Render(
             canvas,
             new GraphScene(),
             new GraphViewport(),
@@ -261,9 +263,7 @@ public sealed class OsmBoundingBoxImportTests
             showBackground: true,
             new MapCameraState(51.5074, -0.1278, 0.0015, false),
             overlay,
-            out _));
-
-        Assert.Null(ex);
+            out _);
     }
 
     private static IReadOnlyList<OsmSharp.OsmGeo> CreateLongRoadFixture()

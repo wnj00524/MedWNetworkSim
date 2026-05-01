@@ -475,7 +475,7 @@ public sealed class SimulationActorsTests
         vm.SimulateCommand.Execute(null);
 
         var food = Assert.Single(vm.TrafficReports, row => row.TrafficType == "Food");
-        Assert.Equal("1:2", food.PriceSummary);
+        Assert.Equal("0:1", food.PriceSummary);
     }
 
     [Fact]

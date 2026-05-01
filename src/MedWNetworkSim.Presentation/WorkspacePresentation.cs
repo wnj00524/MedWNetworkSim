@@ -6363,7 +6363,21 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private string BuildTrafficPriceSummary(string trafficType)
     {
-        var productionPrices = network.Nodes
+        var allocations = GetCurrentAllocations()
+            .Where(allocation => Comparer.Equals(allocation.TrafficType, trafficType))
+            .ToList();
+        var productionPrices = allocations.Count > 0
+            ? allocations
+                .Where(allocation => allocation.Quantity > 0d)
+                .GroupBy(allocation => allocation.ProducerNodeId, Comparer)
+                .Select(group => WeightedAverage(group, allocation => allocation.SourceUnitCostPerUnit))
+                .Where(value => value.HasValue)
+                .Select(value => value!.Value)
+                .Distinct()
+                .OrderBy(value => value)
+                .Select(value => ReportExportService.FormatNumber(value))
+                .ToList()
+            : network.Nodes
             .SelectMany(node => node.TrafficProfiles)
             .Where(profile => profile.Production > 0d && Comparer.Equals(profile.TrafficType, trafficType))
             .Select(profile => Math.Max(0d, profile.UnitPrice))
@@ -6371,7 +6385,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             .OrderBy(value => value)
             .Select(value => ReportExportService.FormatNumber(value))
             .ToList();
-        var consumptionPrices = network.Nodes
+        var consumptionPrices = allocations.Count > 0
+            ? allocations
+                .Where(allocation => allocation.Quantity > 0d)
+                .GroupBy(allocation => allocation.ConsumerNodeId, Comparer)
+                .Select(group => WeightedAverage(group, allocation => allocation.DeliveredCostPerUnit))
+                .Where(value => value.HasValue)
+                .Select(value => value!.Value)
+                .Distinct()
+                .OrderBy(value => value)
+                .Select(value => ReportExportService.FormatNumber(value))
+                .ToList()
+            : network.Nodes
             .SelectMany(node => node.TrafficProfiles)
             .Where(profile => profile.Consumption > 0d && Comparer.Equals(profile.TrafficType, trafficType))
             .Select(profile => Math.Max(0d, profile.UnitPrice))
@@ -6381,6 +6406,28 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             .ToList();
 
         return $"{FormatPriceList(productionPrices)}:{FormatPriceList(consumptionPrices)}";
+    }
+
+    private IReadOnlyList<RouteAllocation> GetCurrentAllocations()
+    {
+        if (lastTimelineStepResult is not null)
+        {
+            return lastTimelineStepResult.Allocations;
+        }
+
+        return lastOutcomes.SelectMany(outcome => outcome.Allocations).ToList();
+    }
+
+    private static double? WeightedAverage(IEnumerable<RouteAllocation> allocations, Func<RouteAllocation, double> valueSelector)
+    {
+        var materialized = allocations.Where(allocation => allocation.Quantity > 0d).ToList();
+        var quantity = materialized.Sum(allocation => allocation.Quantity);
+        if (quantity <= 0d)
+        {
+            return null;
+        }
+
+        return materialized.Sum(allocation => valueSelector(allocation) * allocation.Quantity) / quantity;
     }
 
     private static string FormatPriceList(IReadOnlyList<string> prices) => prices.Count switch
@@ -6462,12 +6509,30 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             .OrderBy(profile => profile.TrafficType, Comparer)
             .Select(profile =>
             {
-                var productionPrice = profile.Production > 0d ? ReportExportService.FormatNumber(Math.Max(0d, profile.UnitPrice)) : "-";
-                var consumptionPrice = profile.Consumption > 0d ? ReportExportService.FormatNumber(Math.Max(0d, profile.UnitPrice)) : "-";
+                var productionPrice = profile.Production > 0d ? FormatProductionPointPrice(node.Id, profile) : "-";
+                var consumptionPrice = profile.Consumption > 0d ? FormatConsumptionPointPrice(node.Id, profile) : "-";
                 return $"{profile.TrafficType} {productionPrice}:{consumptionPrice}";
             })
             .ToList();
         return prices.Count == 0 ? "None" : string.Join(", ", prices);
+    }
+
+    private string FormatProductionPointPrice(string nodeId, NodeTrafficProfile profile)
+    {
+        var allocations = GetCurrentAllocations()
+            .Where(allocation => Comparer.Equals(allocation.ProducerNodeId, nodeId) && Comparer.Equals(allocation.TrafficType, profile.TrafficType))
+            .ToList();
+        var computed = WeightedAverage(allocations, allocation => allocation.SourceUnitCostPerUnit);
+        return ReportExportService.FormatNumber(computed ?? Math.Max(0d, profile.UnitPrice));
+    }
+
+    private string FormatConsumptionPointPrice(string nodeId, NodeTrafficProfile profile)
+    {
+        var allocations = GetCurrentAllocations()
+            .Where(allocation => Comparer.Equals(allocation.ConsumerNodeId, nodeId) && Comparer.Equals(allocation.TrafficType, profile.TrafficType))
+            .ToList();
+        var computed = WeightedAverage(allocations, allocation => allocation.DeliveredCostPerUnit);
+        return ReportExportService.FormatNumber(computed ?? Math.Max(0d, profile.UnitPrice));
     }
 
     private void PopulateQuickMetrics(
@@ -8804,12 +8869,12 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
             if (profile.Production > 0d)
             {
-                lines.Add((0, trafficType, new GraphNodeTextLine($"Produces {profile.Production:0.##} {trafficType} @ {ReportExportService.FormatNumber(Math.Max(0d, profile.UnitPrice))}", true, false)));
+                lines.Add((0, trafficType, new GraphNodeTextLine($"Produces {profile.Production:0.##} {trafficType} @ {FormatProductionPointPrice(node.Id, profile)}", true, false)));
             }
 
             if (profile.Consumption > 0d)
             {
-                lines.Add((1, trafficType, new GraphNodeTextLine($"Consumes {profile.Consumption:0.##} {trafficType} @ {ReportExportService.FormatNumber(Math.Max(0d, profile.UnitPrice))}", true, false)));
+                lines.Add((1, trafficType, new GraphNodeTextLine($"Consumes {profile.Consumption:0.##} {trafficType} @ {FormatConsumptionPointPrice(node.Id, profile)}", true, false)));
             }
 
             if (profile.CanTransship)

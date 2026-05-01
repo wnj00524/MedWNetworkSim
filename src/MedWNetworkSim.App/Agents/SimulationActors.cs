@@ -57,6 +57,24 @@ public sealed class FirmSimulationActor : SimulationActorBase
 
             foreach (var profile in node.TrafficProfiles)
             {
+                if (profile.Production <= 0d && profile.Consumption <= 0d && !string.IsNullOrWhiteSpace(profile.TrafficType) && State.Cash > 0d)
+                {
+                    actions.Add(new SimulationActorAction
+                    {
+                        Id = $"{State.Id}:seed-prod:{context.Tick}:{node.Id}:{profile.TrafficType}",
+                        ActorId = State.Id,
+                        Kind = SimulationActorActionKind.AdjustProduction,
+                        TargetNodeId = node.Id,
+                        TrafficType = profile.TrafficType,
+                        DeltaValue = 10d,
+                        Cost = 2.5d,
+                        Reason = "Assigned node has no active production or demand; seed a visible production plan.",
+                        ExpectedEffect = "Start producing traffic at the controlled node.",
+                        IsPolicyAction = false
+                    });
+                    continue;
+                }
+
                 var outcome = outcomes.FirstOrDefault(o => Comparer.Equals(o.TrafficType, profile.TrafficType));
                 if (outcome is null)
                 {
@@ -132,6 +150,23 @@ public sealed class FirmSimulationActor : SimulationActorBase
             var isBottleneck = InsightsForEdge(context.CurrentInsights, edge.Id).Any(i => i.Category == InsightCategory.Capacity);
             if (!isBottleneck || State.Cash <= 0d)
             {
+                if (State.Cash > 0d)
+                {
+                    var preventiveDelta = Math.Max(1d, (edge.Capacity ?? 10d) * 0.05d);
+                    actions.Add(new SimulationActorAction
+                    {
+                        Id = $"{State.Id}:edge-plan:{context.Tick}:{edge.Id}",
+                        ActorId = State.Id,
+                        Kind = SimulationActorActionKind.AdjustEdgeCapacity,
+                        TargetEdgeId = edge.Id,
+                        DeltaValue = preventiveDelta,
+                        Cost = preventiveDelta,
+                        Reason = "Assigned route is under firm control; make a small capacity investment.",
+                        ExpectedEffect = "Increase visible route capacity for future deliveries.",
+                        IsPolicyAction = false
+                    });
+                }
+
                 continue;
             }
 
@@ -257,6 +292,30 @@ public sealed class GovernmentSimulationActor : SimulationActorBase
             }
         }
 
+        if (actions.Count == 0 && State.Cash > 0d)
+        {
+            var targetEdge = context.CurrentNetwork.Edges
+                .Where(edge => State.ControlledEdgeIds.Contains(edge.Id, Comparer))
+                .OrderBy(edge => edge.Capacity ?? 0d)
+                .ThenBy(edge => edge.Id, Comparer)
+                .FirstOrDefault();
+            if (targetEdge is not null)
+            {
+                actions.Add(new SimulationActorAction
+                {
+                    Id = $"{State.Id}:resilience:{context.Tick}:{targetEdge.Id}",
+                    ActorId = State.Id,
+                    Kind = SimulationActorActionKind.SubsidiseCapacity,
+                    TargetEdgeId = targetEdge.Id,
+                    DeltaValue = 2d,
+                    Cost = 2d,
+                    Reason = "Assigned public route has no urgent incident; fund a small resilience improvement.",
+                    ExpectedEffect = "Increase route capacity under government oversight.",
+                    IsPolicyAction = true
+                });
+            }
+        }
+
         if (actions.Count == 0)
         {
             actions.Add(new SimulationActorAction
@@ -299,8 +358,11 @@ public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
         var actions = new List<SimulationActorAction>();
         var outcomes = context.CurrentSnapshot.TrafficOutcomes;
         var utilityBefore = EstimateUtility(State.Objective, outcomes);
+        var candidateEdges = State.ControlledEdgeIds.Count > 0
+            ? context.CurrentNetwork.Edges.Where(edge => State.ControlledEdgeIds.Contains(edge.Id, Comparer))
+            : context.CurrentNetwork.Edges;
 
-        foreach (var edge in context.CurrentNetwork.Edges.OrderBy(e => e.Cost).ThenBy(e => e.Id, Comparer))
+        foreach (var edge in candidateEdges.OrderBy(e => e.Cost).ThenBy(e => e.Id, Comparer))
         {
             var edgeOutcomes = outcomes
                 .SelectMany(o => o.Allocations)
@@ -341,9 +403,31 @@ public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
             }
         }
 
-        if (outcomes.Sum(o => o.UnmetDemand) <= 0d)
+        if (actions.Count == 0 && State.ControlledEdgeIds.Count > 0)
         {
-            actions.Clear();
+            var targetEdge = context.CurrentNetwork.Edges
+                .Where(edge => State.ControlledEdgeIds.Contains(edge.Id, Comparer) && edge.Cost > 0d)
+                .OrderByDescending(edge => edge.Cost)
+                .ThenBy(edge => edge.Id, Comparer)
+                .FirstOrDefault();
+            if (targetEdge is not null)
+            {
+                actions.Add(new SimulationActorAction
+                {
+                    Id = $"{State.Id}:route-tune:{context.Tick}:{targetEdge.Id}",
+                    ActorId = State.Id,
+                    Kind = SimulationActorActionKind.PreferRoute,
+                    TargetEdgeId = targetEdge.Id,
+                    DeltaValue = -Math.Min(0.5d, Math.Max(0.1d, targetEdge.Cost * 0.1d)),
+                    Reason = "Assigned route has no active congestion; tune route preference cost for future flow.",
+                    ExpectedEffect = "Make the controlled route visibly cheaper for allocation.",
+                    IsPolicyAction = false
+                });
+            }
+        }
+
+        if (actions.Count == 0 && outcomes.Sum(o => o.UnmetDemand) <= 0d)
+        {
             actions.Add(new SimulationActorAction
             {
                 Id = $"{State.Id}:noop",

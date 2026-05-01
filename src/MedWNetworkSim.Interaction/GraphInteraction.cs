@@ -104,11 +104,21 @@ public sealed class GraphInteractionController
             return;
         }
 
-        if (controlPressed && hit.NodeId is not null && context.ToolMode == GraphToolMode.Select)
+        if (context.ToolMode == GraphToolMode.Agent && hit.NodeId is not null)
+        {
+            context.Scene.Selection.SelectedNodeIds.Add(hit.NodeId);
+            context.Scene.Selection.KeyboardNodeId = hit.NodeId;
+            context.Scene.Selection.KeyboardEdgeId = null;
+            context.SelectionChanged(hit.NodeId, null);
+            context.StatusChanged("Node selected for agent assignment.");
+            return;
+        }
+
+        if ((controlPressed || shiftPressed) && hit.NodeId is not null && context.ToolMode == GraphToolMode.Select)
         {
             SelectNode(context, hit.NodeId, additive: false);
             isConnectionGesture = true;
-            connectionGestureCreatesBidirectionalEdge = true;
+            connectionGestureCreatesBidirectionalEdge = controlPressed;
             dragNodeId = null;
             context.Scene.Transient.ConnectionSourceNodeId = hit.NodeId;
             context.Scene.Transient.ConnectionWorld = worldPoint;

@@ -623,6 +623,15 @@ public sealed class GraphRenderer
             }
             if (scene.Simulation.ShowAgentOverlays && node.IsActorControlled)
             {
+                using var actorBorder = new SKPaint
+                {
+                    Color = SKColor.Parse("#C084FC").WithAlpha(nodeAlpha),
+                    IsAntialias = true,
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 3.4f
+                };
+                canvas.DrawRoundRect(new SKRect(screenRect.Left - 5f, screenRect.Top - 5f, screenRect.Right + 5f, screenRect.Bottom + 5f), NodeCornerRadius + 4f, NodeCornerRadius + 4f, actorBorder);
+
                 using var badge = new SKPaint { Color = SKColor.Parse("#C084FC"), IsAntialias = true, Style = SKPaintStyle.Fill };
                 canvas.DrawCircle(screenRect.Right - 8f, screenRect.Top + 8f, 5f, badge);
             }

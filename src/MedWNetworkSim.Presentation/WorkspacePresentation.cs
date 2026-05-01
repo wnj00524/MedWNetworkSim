@@ -2129,6 +2129,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public ObservableCollection<SimulationActorActionOutcomeViewModel> ActorActionOutcomes { get; }
     public ObservableCollection<SimulationActorMetricsViewModel> ActorMetrics { get; }
     public AgentLogViewModel AgentLog { get; }
+    public PieChartModel TrafficByTypeChart { get; } = new();
+    public PieChartModel NodeRoleChart { get; } = new();
 
     public Array NodeShapeOptions { get; } = Enum.GetValues(typeof(NodeVisualShape));
     public Array NodeKindOptions { get; } = Enum.GetValues(typeof(NodeKind));
@@ -2343,6 +2345,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     }
     public bool IsGraphMode => VisualisationState.ActiveMode == VisualisationMode.Graph;
     public bool IsSankeyMode => VisualisationState.ActiveMode == VisualisationMode.Sankey;
+    public bool IsAnalyticsMode => VisualisationState.ActiveMode == VisualisationMode.Analytics;
     public bool IsMapMode => VisualisationState.ActiveMode == VisualisationMode.Map;
     public bool HasAnyNodes => network.Nodes.Count > 0;
     public bool HasGeoAnchoredNodes => network.Nodes.Any(node => node.Latitude.HasValue && node.Longitude.HasValue);
@@ -2742,7 +2745,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             VisualisationState.ActiveMode = value switch
             {
                 AppView.Map or AppView.OSMImport => VisualisationMode.Map,
-                AppView.Sankey or AppView.Analytics => VisualisationMode.Sankey,
+                AppView.Sankey => VisualisationMode.Sankey,
+                AppView.Analytics => VisualisationMode.Analytics,
                 _ => VisualisationMode.Graph
             };
             if (CurrentWorkspaceMode == WorkspaceMode.OsmImport && value != AppView.OSMImport)
@@ -3973,11 +3977,13 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ActiveModeLabel = VisualisationState.ActiveMode switch
         {
             VisualisationMode.Sankey => "Sankey view",
+            VisualisationMode.Analytics => "Analytics view",
             VisualisationMode.Map => "Map view",
             _ => "Graph view"
         };
         Raise(nameof(IsGraphMode));
         Raise(nameof(IsSankeyMode));
+        Raise(nameof(IsAnalyticsMode));
         Raise(nameof(IsMapMode));
         Raise(nameof(ToolStatusText));
         if (VisualisationState.ActiveMode == VisualisationMode.Graph && IsMapLayoutLockedForGraph)
@@ -4072,6 +4078,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     public void NotifyVisualChanged()
     {
+        RebuildAnalytics();
         if (SyncNetworkNodePositionsFromScene())
         {
             MarkDirty();
@@ -4098,6 +4105,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(SimulationSummary));
         Raise(nameof(HasAnyNodes));
         Raise(nameof(CurrentSankey));
+        Raise(nameof(TrafficByTypeChart));
+        Raise(nameof(NodeRoleChart));
         Raise(nameof(FlowSeries));
         Raise(nameof(NodePressureSeries));
         RaiseAutoCompleteOptionsChanged();
@@ -4126,6 +4135,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public void OpenNetwork(string path)
     {
         LoadNetwork(fileService.Load(path), $"Opened '{Path.GetFileName(path)}'.", path);
+        RebuildAnalytics();
     }
 
     public void SaveNetwork(string path)
@@ -5395,6 +5405,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(TrafficDeliveredColumnLabel));
         ApplySimulationOutcomes(outcomes.SelectMany(outcome => outcome.Allocations), null);
         PopulateTopIssues(new BottleneckDetectionService().DetectIssues(network, new SimulationResult { Outcomes = outcomes }));
+        RebuildAnalytics();
         StatusText = "Simulation finished.";
     }
 
@@ -5782,6 +5793,13 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         if (SimulationActors.Count == 0) { ActorStatusMessage = "Add an actor first."; return false; }
         if (SimulationActors.All(actor => !actor.IsEnabled)) { ActorStatusMessage = "Enable at least one actor."; return false; }
+        var actorWithoutNodes = SimulationActors.FirstOrDefault(actor => actor.IsEnabled && !actor.ControlledNodeIds.Any());
+        if (actorWithoutNodes is not null)
+        {
+            ActorStatusMessage = "Actor has no assigned nodes.";
+            StatusText = "Actor has no assigned nodes.";
+            return false;
+        }
         if (network.Nodes.Count == 0 || network.Edges.Count == 0) { ActorStatusMessage = "Create or import a network before running actors."; return false; }
         return true;
     }
@@ -6430,6 +6448,63 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         AgentStatusDistributionData = BuildAgentStatusDistributionData();
         NodeUtilizationMixData = BuildNodeUtilizationMixData();
+        RebuildAnalytics();
+    }
+
+    private void RebuildAnalytics()
+    {
+        TrafficByTypeChart.Slices.Clear();
+        NodeRoleChart.Slices.Clear();
+
+        var currentNetwork = network;
+        if (currentNetwork is null)
+        {
+            return;
+        }
+
+        var trafficTotals = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var node in currentNetwork.Nodes)
+        {
+            foreach (var profile in node.TrafficProfiles)
+            {
+                var trafficType = string.IsNullOrWhiteSpace(profile.TrafficType) ? "Unspecified" : profile.TrafficType;
+                var total = profile.Production + profile.Consumption;
+                if (!trafficTotals.ContainsKey(trafficType))
+                {
+                    trafficTotals[trafficType] = 0d;
+                }
+
+                trafficTotals[trafficType] += total;
+            }
+        }
+
+        foreach (var kv in trafficTotals)
+        {
+            TrafficByTypeChart.Slices.Add(new PieChartSlice
+            {
+                Label = kv.Key,
+                Value = kv.Value
+            });
+        }
+
+        NodeRoleChart.Slices.Add(new PieChartSlice
+        {
+            Label = "Producers",
+            Value = currentNetwork.Nodes.Count(node => node.TrafficProfiles.Any(profile => profile.Production > 0d))
+        });
+
+        NodeRoleChart.Slices.Add(new PieChartSlice
+        {
+            Label = "Consumers",
+            Value = currentNetwork.Nodes.Count(node => node.TrafficProfiles.Any(profile => profile.Consumption > 0d))
+        });
+
+        NodeRoleChart.Slices.Add(new PieChartSlice
+        {
+            Label = "Transit",
+            Value = currentNetwork.Nodes.Count(node => node.TrafficProfiles.All(profile => profile.Production == 0d && profile.Consumption == 0d))
+        });
     }
 
     private IReadOnlyList<PieChartSegmentViewModel> BuildAgentStatusDistributionData()

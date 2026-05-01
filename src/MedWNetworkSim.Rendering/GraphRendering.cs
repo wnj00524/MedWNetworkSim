@@ -324,20 +324,32 @@ public sealed class GraphRenderer
     private static readonly SKColor PulseColor = SKColor.Parse("#FFF1B8");
     private static readonly SKColor MinimapBackground = new(6, 13, 22, 220);
 
-    public void Render(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize)
+    public void Render(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize, bool showNodeLabels = true)
     {
         canvas.Clear(BackgroundColor);
         DrawBackgroundGrid(canvas, viewport, viewportSize);
-        PrepareNodeLayouts(scene, viewport);
-        DrawDepthLayer(canvas, scene, viewport, viewportSize);
-        DrawEdges(canvas, scene, viewport, viewportSize);
-        DrawEdgeOverlays(canvas, scene, viewport, viewportSize);
-        DrawNodes(canvas, scene, viewport, viewportSize);
-        DrawLabels(canvas, scene, viewport, viewportSize);
+        if (showNodeLabels)
+        {
+            PrepareNodeLayouts(scene, viewport);
+        }
+
+        DrawDepthLayer(canvas, scene, viewport, viewportSize, showNodeLabels);
+        DrawEdges(canvas, scene, viewport, viewportSize, showNodeLabels);
+        DrawEdgeOverlays(canvas, scene, viewport, viewportSize, showNodeLabels);
+        if (showNodeLabels)
+        {
+            DrawNodes(canvas, scene, viewport, viewportSize);
+            DrawLabels(canvas, scene, viewport, viewportSize);
+        }
+        else
+        {
+            DrawCompactNodes(canvas, scene, viewport, viewportSize);
+        }
+
         DrawSelection(canvas, scene, viewport, viewportSize);
-        DrawFlowAnimation(canvas, scene, viewport, viewportSize);
+        DrawFlowAnimation(canvas, scene, viewport, viewportSize, showNodeLabels);
         DrawTransientInteraction(canvas, scene, viewport, viewportSize);
-        DrawMinimap(canvas, scene, viewport, viewportSize);
+        DrawMinimap(canvas, scene, viewport, viewportSize, showNodeLabels);
     }
 
     public ZoomTier GetZoomTier(double zoom) =>
@@ -482,9 +494,9 @@ public sealed class GraphRenderer
         DrawLines(majorStep, major);
     }
 
-    private static void DrawDepthLayer(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize)
+    private static void DrawDepthLayer(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize, bool showNodeLabels)
     {
-        if (!scene.Simulation.ShowDepthLayer)
+        if (!scene.Simulation.ShowDepthLayer || !showNodeLabels)
         {
             return;
         }
@@ -508,15 +520,15 @@ public sealed class GraphRenderer
         }
     }
 
-    private void DrawEdges(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize)
+    private void DrawEdges(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize, bool showNodeLabels)
     {
         using var edgePaint = new SKPaint { Color = EdgeColor, IsAntialias = true, StrokeWidth = 2.8f, Style = SKPaintStyle.Stroke, StrokeCap = SKStrokeCap.Round };
         using var arrowPaint = new SKPaint { Color = EdgeColor, IsAntialias = true, Style = SKPaintStyle.Fill };
 
         foreach (var edge in scene.Edges)
         {
-            var start = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId), viewportSize);
-            var end = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId), viewportSize);
+            var start = viewport.WorldToScreen(GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels), viewportSize);
+            var end = viewport.WorldToScreen(GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels), viewportSize);
             var edgeAlpha = (byte)Math.Clamp(Math.Round((edge.HasWarning ? 190d : 180d) * edge.VisualOpacity), 15d, 255d);
             edgePaint.Color = edge.HasWarning ? WarningColor.WithAlpha(edgeAlpha) : EdgeColor.WithAlpha(edgeAlpha);
             edgePaint.StrokeWidth = (float)(2.4d + (edge.LoadRatio * 1.6d));
@@ -529,7 +541,7 @@ public sealed class GraphRenderer
         }
     }
 
-    private void DrawEdgeOverlays(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize)
+    private void DrawEdgeOverlays(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize, bool showNodeLabels)
     {
         using var overlayPaint = new SKPaint { IsAntialias = true, StrokeWidth = 6f, Style = SKPaintStyle.Stroke, StrokeCap = SKStrokeCap.Round };
         using var arrowPaint = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill };
@@ -540,8 +552,8 @@ public sealed class GraphRenderer
             string.Equals(scene.Selection.KeyboardEdgeId, edge.Id, StringComparison.OrdinalIgnoreCase));
         foreach (var edge in overlayEdges)
         {
-            var start = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId), viewportSize);
-            var end = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId), viewportSize);
+            var start = viewport.WorldToScreen(GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels), viewportSize);
+            var end = viewport.WorldToScreen(GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels), viewportSize);
             var isSelected = scene.Selection.SelectedEdgeIds.Contains(edge.Id);
             var isHovered = string.Equals(scene.Selection.HoverEdgeId, edge.Id, StringComparison.OrdinalIgnoreCase);
             var isKeyboard = string.Equals(scene.Selection.KeyboardEdgeId, edge.Id, StringComparison.OrdinalIgnoreCase);
@@ -560,7 +572,8 @@ public sealed class GraphRenderer
 
             if (isSelected)
             {
-                var midpoint = viewport.WorldToScreen(GraphHitTester.GetEdgeMidpoint(scene, edge), viewportSize);
+                var midpointWorld = GetEdgeMidpoint(scene, edge, showNodeLabels);
+                var midpoint = viewport.WorldToScreen(midpointWorld, viewportSize);
                 using var handleFill = new SKPaint { IsAntialias = true, Color = SKColor.Parse("#08111D") };
                 using var handleStroke = new SKPaint { IsAntialias = true, Color = FocusColor, Style = SKPaintStyle.Stroke, StrokeWidth = 2.4f };
                 canvas.DrawCircle((float)midpoint.X, (float)midpoint.Y, 6.5f, handleFill);
@@ -636,6 +649,54 @@ public sealed class GraphRenderer
                 canvas.DrawCircle(screenRect.Right - 8f, screenRect.Top + 8f, 5f, badge);
             }
             DrawFacilityCoverageOverlay(canvas, node, screenRect, nodeAlpha);
+        }
+    }
+
+    private void DrawCompactNodes(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize)
+    {
+        using var nodePaint = new SKPaint { Color = new SKColor(93, 116, 160), IsAntialias = true, Style = SKPaintStyle.Fill };
+        using var labelFont = new SKFont { Size = 12f };
+        using var labelPaint = new SKPaint { Color = TextColor, IsAntialias = true };
+
+        foreach (var node in scene.Nodes)
+        {
+            var center = viewport.WorldToScreen(GetNodeCenter(node), viewportSize);
+            var isSelected = scene.Selection.SelectedNodeIds.Contains(node.Id);
+            var isHighlighted = scene.Selection.HighlightedNodeIds.Contains(node.Id);
+            var isHovered = string.Equals(scene.Selection.HoverNodeId, node.Id, StringComparison.OrdinalIgnoreCase);
+            var isKeyboard = string.Equals(scene.Selection.KeyboardNodeId, node.Id, StringComparison.OrdinalIgnoreCase);
+            var pulse = GetPulseState(
+                scene,
+                isSelected && string.Equals(scene.Selection.PulseNodeId, node.Id, StringComparison.OrdinalIgnoreCase),
+                scene.Selection.PulseProgress);
+            var nodeAlpha = (byte)Math.Clamp(Math.Round(255d * node.VisualOpacity), 32d, 255d);
+            var radius = isSelected ? 8f : isHovered || isHighlighted ? 7f : 6f;
+
+            nodePaint.Color = node.FillColor.WithAlpha(nodeAlpha);
+            canvas.DrawCircle((float)center.X, (float)center.Y, radius, nodePaint);
+
+            using var stroke = new SKPaint
+            {
+                Color = (isSelected ? pulse.IsActive ? PulseColor : FocusColor : node.StrokeColor).WithAlpha(nodeAlpha),
+                IsAntialias = true,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = isSelected ? (float)(2.6f + pulse.StrokeBoost) : 1.8f
+            };
+            canvas.DrawCircle((float)center.X, (float)center.Y, radius + 1.5f, stroke);
+
+            if (isKeyboard)
+            {
+                using var keyboardPaint = new SKPaint { Color = FocusColor.WithAlpha(220), Style = SKPaintStyle.Stroke, StrokeWidth = 2f, PathEffect = SKPathEffect.CreateDash([5f, 4f], 0f), IsAntialias = true };
+                canvas.DrawCircle((float)center.X, (float)center.Y, radius + 5f, keyboardPaint);
+            }
+
+            if (node.HasWarning)
+            {
+                using var warningPaint = new SKPaint { Color = WarningColor.WithAlpha(nodeAlpha), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2.2f };
+                canvas.DrawCircle((float)center.X, (float)center.Y, radius + 4f, warningPaint);
+            }
+
+            canvas.DrawText(node.Name, (float)center.X + 10f, (float)center.Y - 6f, SKTextAlign.Left, labelFont, labelPaint);
         }
     }
 
@@ -819,7 +880,7 @@ public sealed class GraphRenderer
         canvas.DrawRect(rect, stroke);
     }
 
-    private static void DrawFlowAnimation(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize)
+    private static void DrawFlowAnimation(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize, bool showNodeLabels)
     {
         if (!scene.Simulation.ShowAnimatedFlows)
         {
@@ -829,8 +890,8 @@ public sealed class GraphRenderer
         using var pulsePaint = new SKPaint { Color = OverlayColor.WithAlpha(210), IsAntialias = true, Style = SKPaintStyle.Fill };
         foreach (var edge in scene.Edges.Where(edge => edge.FlowRate > 0.01d))
         {
-            var start = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId), viewportSize);
-            var end = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId), viewportSize);
+            var start = viewport.WorldToScreen(GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels), viewportSize);
+            var end = viewport.WorldToScreen(GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels), viewportSize);
             var t = scene.Simulation.ReducedMotion ? 0.55d : (scene.Simulation.AnimationTime * (0.12d + edge.FlowRate)) % 1d;
             var x = start.X + ((end.X - start.X) * t);
             var y = start.Y + ((end.Y - start.Y) * t);
@@ -863,7 +924,7 @@ public sealed class GraphRenderer
         canvas.DrawLine((float)start.X, (float)start.Y, (float)end.X, (float)end.Y, paint);
     }
 
-    private static void DrawMinimap(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize)
+    private static void DrawMinimap(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize, bool showNodeLabels)
     {
         var bounds = scene.GetContentBounds();
         var minimapWidth = 196f;
@@ -886,8 +947,8 @@ public sealed class GraphRenderer
 
         foreach (var edge in scene.Edges)
         {
-            var start = GraphHitTester.GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId);
-            var end = GraphHitTester.GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId);
+            var start = GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels);
+            var end = GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels);
             canvas.DrawLine(
                 originX + (float)((start.X - bounds.Left) * scale),
                 originY + (float)((start.Y - bounds.Top) * scale),
@@ -898,8 +959,9 @@ public sealed class GraphRenderer
 
         foreach (var node in scene.Nodes)
         {
-            var x = originX + (float)((node.Bounds.CenterX - bounds.Left) * scale);
-            var y = originY + (float)((node.Bounds.CenterY - bounds.Top) * scale);
+            var center = GetNodeCenter(node);
+            var x = originX + (float)((center.X - bounds.Left) * scale);
+            var y = originY + (float)((center.Y - bounds.Top) * scale);
             canvas.DrawCircle(x, y, 3.2f, nodePaint);
         }
 
@@ -911,5 +973,43 @@ public sealed class GraphRenderer
             originX + (float)((worldBottomRight.X - bounds.Left) * scale),
             originY + (float)((worldBottomRight.Y - bounds.Top) * scale));
         canvas.DrawRect(viewRect, viewPaint);
+    }
+
+    private static GraphPoint GetNodeCenter(GraphNodeSceneItem node) => new(node.Bounds.CenterX, node.Bounds.CenterY);
+
+    private static GraphPoint GetEdgeMidpoint(GraphScene scene, GraphEdgeSceneItem edge, bool showNodeLabels)
+    {
+        var start = GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels);
+        var end = GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels);
+        return new GraphPoint((start.X + end.X) / 2d, (start.Y + end.Y) / 2d);
+    }
+
+    private static GraphPoint GetEdgeAnchor(GraphScene scene, string sourceId, string targetId, bool showNodeLabels)
+    {
+        if (showNodeLabels)
+        {
+            return GraphHitTester.GetEdgeAnchor(scene, sourceId, targetId);
+        }
+
+        var source = scene.FindNode(sourceId);
+        var target = scene.FindNode(targetId);
+        if (source is null || target is null)
+        {
+            return new GraphPoint(0d, 0d);
+        }
+
+        var sourceCenter = GetNodeCenter(source);
+        var targetCenter = GetNodeCenter(target);
+        var delta = targetCenter - sourceCenter;
+        var length = delta.Length;
+        if (length < 0.001d)
+        {
+            return sourceCenter;
+        }
+
+        const double compactRadius = 7d;
+        return new GraphPoint(
+            sourceCenter.X + ((delta.X / length) * compactRadius),
+            sourceCenter.Y + ((delta.Y / length) * compactRadius));
     }
 }

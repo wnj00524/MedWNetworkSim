@@ -27,6 +27,7 @@ public sealed class VisualisationState : ObservableObject
     private string? activeTrafficTypeFilter;
     private bool showInsights = true;
     private bool showMapBackground = true;
+    private bool showGraphLabels = true;
     private bool showUnmetDemand = true;
     private bool showCapacityUtilisation = true;
     private bool collapseMinorFlows = true;
@@ -53,6 +54,12 @@ public sealed class VisualisationState : ObservableObject
     {
         get => showMapBackground;
         set => SetProperty(ref showMapBackground, value);
+    }
+
+    public bool ShowGraphLabels
+    {
+        get => showGraphLabels;
+        set => SetProperty(ref showGraphLabels, value);
     }
 
     public bool ShowUnmetDemand

@@ -1986,6 +1986,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         SetGraphVisualisationCommand = new RelayCommand(() => ActiveView = AppView.Network);
         SetSankeyVisualisationCommand = new RelayCommand(() => ActiveView = AppView.Sankey);
         SetMapVisualisationCommand = new RelayCommand(() => ActiveView = AppView.Map);
+        ToggleGraphLabelsCommand = new RelayCommand(() => VisualisationState.ShowGraphLabels = !VisualisationState.ShowGraphLabels);
         ShowGraphModeCommand = SetGraphVisualisationCommand;
         ShowSankeyModeCommand = SetSankeyVisualisationCommand;
         ShowMapModeCommand = SetMapVisualisationCommand;
@@ -2169,6 +2170,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public RelayCommand SetGraphVisualisationCommand { get; }
     public RelayCommand SetSankeyVisualisationCommand { get; }
     public RelayCommand SetMapVisualisationCommand { get; }
+    public RelayCommand ToggleGraphLabelsCommand { get; }
     public RelayCommand ShowGraphModeCommand { get; }
     public RelayCommand ShowSankeyModeCommand { get; }
     public RelayCommand ShowMapModeCommand { get; }
@@ -2543,6 +2545,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public string SelectionSummary => BuildSelectionSummary();
     public string SelectedNodeIdText => BuildSelectedNodeIdText();
     public string SelectedNodeRoleSummaryText => BuildSelectedNodeRoleSummaryText();
+    public string GraphLabelsToggleText => VisualisationState.ShowGraphLabels ? "Labels On" : "Labels Off";
     public bool CanDeleteSelection => Scene.Selection.SelectedNodeIds.Count > 0 || Scene.Selection.SelectedEdgeIds.Count > 0;
     public SimulationActorState? SelectedSimulationActor
     {
@@ -3978,6 +3981,13 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             or nameof(VisualisationState.CollapseMinorFlows))
         {
             InvalidateSankeyCache();
+        }
+
+        if (e.PropertyName == nameof(VisualisationState.ShowGraphLabels))
+        {
+            Raise(nameof(GraphLabelsToggleText));
+            RefreshInspector();
+            NotifyVisualChanged();
         }
     }
 
@@ -6978,13 +6988,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         {
             var node = network.Nodes.First(model => Comparer.Equals(model.Id, selectedNodeIds[0]));
             Inspector.Headline = node.Name;
-            Inspector.Summary = "Edit node details and traffic roles.";
-            Inspector.Details =
-            [
-                $"Place type: {(string.IsNullOrWhiteSpace(node.PlaceType) ? "Not set" : node.PlaceType)}",
-                $"Description: {(string.IsNullOrWhiteSpace(node.LoreDescription) ? "Not set" : node.LoreDescription)}",
-                $"Traffic roles: {node.TrafficProfiles.Count}"
-            ];
+            Inspector.Summary = VisualisationState.ShowGraphLabels
+                ? "Edit node details and traffic roles."
+                : "Graph labels are off. Box details are shown here.";
+            Inspector.Details = BuildSelectedNodeInspectorDetails(node);
             PopulateNodeEditor(node);
             SelectedEdgePermissionRows.Clear();
             RefreshEdgeEditorState();
@@ -8232,6 +8239,54 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         string.Join(", ", profiles
             .Select(profile => $"{ReportExportService.FormatNumber(valueSelector(profile))} {profile.TrafficType}")
             .Where(text => !string.IsNullOrWhiteSpace(text)));
+
+    private IReadOnlyList<string> BuildSelectedNodeInspectorDetails(NodeModel node)
+    {
+        var details = new List<string>
+        {
+            $"Place type: {(string.IsNullOrWhiteSpace(node.PlaceType) ? "Node" : node.PlaceType)}",
+            $"Description: {(string.IsNullOrWhiteSpace(node.LoreDescription) ? "Not set" : node.LoreDescription)}"
+        };
+
+        var boxLines = BuildNodeDetailLines(node, [], null)
+            .Select(line => line.Text)
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .ToList();
+        if (boxLines.Count > 0)
+        {
+            details.Add("Graph box details:");
+            details.AddRange(boxLines);
+        }
+        else
+        {
+            details.Add("Graph box details: no configured traffic roles");
+        }
+
+        if (node.TrafficProfiles.Count > boxLines.Count(line => line.StartsWith("Produces ", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("Consumes ", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("Tranships ", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("Stores ", StringComparison.OrdinalIgnoreCase)))
+        {
+            details.Add($"Traffic roles: {node.TrafficProfiles.Count}");
+        }
+
+        if (node.TranshipmentCapacity.HasValue)
+        {
+            details.Add($"Transhipment capacity: {ReportExportService.FormatNumber(node.TranshipmentCapacity.Value)}");
+        }
+
+        if (node.Latitude.HasValue || node.Longitude.HasValue)
+        {
+            details.Add($"Map coordinates: {node.Latitude?.ToString("0.######", CultureInfo.InvariantCulture) ?? "not set"}, {node.Longitude?.ToString("0.######", CultureInfo.InvariantCulture) ?? "not set"}");
+        }
+
+        if (node.Tags.Count > 0)
+        {
+            details.Add($"Tags: {string.Join(", ", node.Tags)}");
+        }
+
+        return details;
+    }
 
     private static InspectorEditMode ResolveInspectorEditMode(int selectedNodeCount, int selectedEdgeCount)
     {

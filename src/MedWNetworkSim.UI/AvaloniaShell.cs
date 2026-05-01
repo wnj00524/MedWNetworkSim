@@ -4749,6 +4749,7 @@ public sealed class ShellWindow : Window
                         new[]
                         {
                             ("Node", 1.3),
+                            ("Prices P:C", 1.2),
                             ("Pressure", 0.8),
                             ("Top cause", 1.2),
                             ("Unmet need", 1.0)
@@ -4757,6 +4758,7 @@ public sealed class ShellWindow : Window
                         static row => new[]
                         {
                             row.Node,
+                            row.CommodityPrices,
                             row.PressureScore,
                             row.TopCause,
                             row.UnmetNeed
@@ -5844,6 +5846,7 @@ public sealed class ShellWindow : Window
                         new[]
                         {
                             ("Node", 1.3),
+                            ("Prices P:C", 1.2),
                             ("Pressure", 0.8),
                             ("Top cause", 1.2),
                             ("Unmet need", 1.0)
@@ -5852,6 +5855,7 @@ public sealed class ShellWindow : Window
                         static row => new[]
                         {
                             row.Node,
+                            row.CommodityPrices,
                             row.PressureScore,
                             row.TopCause,
                             row.UnmetNeed
@@ -7330,6 +7334,7 @@ public sealed class ShellWindow : Window
         var columns = new (string Header, double Width)[]
         {
             ("Traffic", 1.2),
+            ("Prices P:C", 1.0),
             ("Planned / moved", 1.1),
             (string.Empty, 1.0),
             ("Unmet demand", 1.0),
@@ -7342,6 +7347,7 @@ public sealed class ShellWindow : Window
             static row => new[]
             {
                 row.TrafficType,
+                row.PriceSummary,
                 row.PlannedQuantity,
                 row.DeliveredQuantity,
                 row.UnmetDemand,
@@ -7350,7 +7356,7 @@ public sealed class ShellWindow : Window
 
         var content = (StackPanel)section.Child!;
         var headerGrid = (Grid)content.Children[1];
-        if (headerGrid.Children[2] is TextBlock startedHeader)
+        if (headerGrid.Children[3] is TextBlock startedHeader)
         {
             startedHeader.Bind(TextBlock.TextProperty, new Binding(nameof(WorkspaceViewModel.TrafficDeliveredColumnLabel)));
         }

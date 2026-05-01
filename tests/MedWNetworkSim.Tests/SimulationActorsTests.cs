@@ -403,6 +403,82 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
+    public void MainTimelineStep_RunsAgentsBeforeAdvancingPeriod()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+        vm.AddFirmActorCommand.Execute(null);
+        vm.Scene.Selection.SelectedNodeIds.Add("producer");
+        vm.AssignSelectedNodeToActorCommand.Execute(null);
+
+        vm.StepCommand.Execute(null);
+
+        Assert.Equal(1, vm.ActorTick);
+        Assert.NotEmpty(vm.ActorDecisions);
+        Assert.Contains(vm.ActorActionOutcomes, outcome => outcome.AppliedState == "Applied");
+        Assert.NotEmpty(vm.AgentLog.Entries);
+
+        var path = Path.GetTempFileName();
+        try
+        {
+            vm.SaveNetwork(path);
+            var loaded = new MedWNetworkSim.App.Services.NetworkFileService().Load(path);
+            var producerProfile = loaded.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single(profile => profile.TrafficType == "Food");
+            Assert.True(producerProfile.UnitPrice > 1d);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void ResetTimeline_RevertsAgentMutationsToPreAgentNetwork()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+        vm.AddFirmActorCommand.Execute(null);
+        vm.Scene.Selection.SelectedNodeIds.Add("producer");
+        vm.AssignSelectedNodeToActorCommand.Execute(null);
+
+        vm.StepCommand.Execute(null);
+        Assert.Equal(1, vm.ActorTick);
+
+        vm.ResetTimelineCommand.Execute(null);
+
+        Assert.Equal(0, vm.ActorTick);
+        Assert.Empty(vm.ActorDecisions);
+        Assert.Empty(vm.ActorActionOutcomes);
+        Assert.Empty(vm.AgentLog.Entries);
+
+        var path = Path.GetTempFileName();
+        try
+        {
+            vm.SaveNetwork(path);
+            var loaded = new MedWNetworkSim.App.Services.NetworkFileService().Load(path);
+            var actor = Assert.Single(loaded.Actors);
+            Assert.Contains("producer", actor.ControlledNodeIds);
+            var producerProfile = loaded.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single(profile => profile.TrafficType == "Food");
+            Assert.Equal(120d, producerProfile.Production);
+            Assert.Equal(1d, producerProfile.UnitPrice);
+            Assert.Empty(loaded.AgentActionLogs);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void TrafficReports_ShowProductionAndConsumptionPrices()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+
+        vm.SimulateCommand.Execute(null);
+
+        var food = Assert.Single(vm.TrafficReports, row => row.TrafficType == "Food");
+        Assert.Equal("0:1", food.PriceSummary);
+    }
+
+    [Fact]
     public void Actors_MakeVisibleChanges_OnDraftAssignedAssets()
     {
         var coordinator = new SimulationActorCoordinator();

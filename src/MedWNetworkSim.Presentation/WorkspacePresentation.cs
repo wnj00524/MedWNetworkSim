@@ -223,6 +223,7 @@ public sealed class ReportMetricViewModel
 public sealed class TrafficReportRowViewModel
 {
     public required string TrafficType { get; init; }
+    public required string PriceSummary { get; init; }
     public required string PlannedQuantity { get; init; }
     public required string DeliveredQuantity { get; init; }
     public required string UnmetDemand { get; init; }
@@ -242,6 +243,7 @@ public sealed class RouteReportRowViewModel
 public sealed class NodePressureReportRowViewModel
 {
     public required string Node { get; init; }
+    public required string CommodityPrices { get; init; }
     public required string PressureScore { get; init; }
     public required string TopCause { get; init; }
     public required string UnmetNeed { get; init; }
@@ -1746,6 +1748,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private readonly SimulationActorCoordinator simulationActorCoordinator;
 
     private NetworkModel network = CreateInitializedNetworkModel();
+    private NetworkModel? preAgentMutationNetwork;
     private TemporalNetworkSimulationEngine.TemporalSimulationState? temporalState;
     private TemporalNetworkSimulationEngine.TemporalSimulationStepResult? lastTimelineStepResult;
     private IReadOnlyList<TrafficSimulationOutcome> lastOutcomes = [];
@@ -4653,6 +4656,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         network = fileService.NormalizeAndValidate(source);
         EnsureNetworkReferences(network);
+        preAgentMutationNetwork = null;
         temporalState = null;
         lastTimelineStepResult = null;
         Raise(nameof(TrafficDeliveredColumnLabel));
@@ -5826,6 +5830,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private void RunActorStep()
     {
         if (!ValidateActorRun()) return;
+        CapturePreAgentMutationNetwork();
         var step = simulationActorCoordinator.StepActorsOnce(network, SimulationActors.ToList(), ActorTick, network.ActorDecisions);
         ApplyActorStep(step, "Actor step applied.");
     }
@@ -5833,6 +5838,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private void RunActorTicks()
     {
         if (!ValidateActorRun()) return;
+        CapturePreAgentMutationNetwork();
         for (var i = 0; i < ActorRunTicks; i++)
         {
             var step = simulationActorCoordinator.StepActorsOnce(network, SimulationActors.ToList(), ActorTick, network.ActorDecisions);
@@ -5840,7 +5846,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         }
     }
 
-    private void ApplyActorStep(SimulationActorStepResult step, string message)
+    private void ApplyActorStep(SimulationActorStepResult step, string message, bool refreshSimulation = true)
     {
         network = step.NetworkAfterStep;
         network.Actors = SimulationActors.ToList();
@@ -5886,7 +5892,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         }
         BuildSceneFromNetwork();
         RefreshInspector();
-        RunSimulation();
+        if (refreshSimulation)
+        {
+            RunSimulation();
+        }
+
         MarkDirty();
         if (!string.IsNullOrWhiteSpace(message))
         {
@@ -6028,6 +6038,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private void AdvanceTimeline()
     {
         CommitTransientEditorsToModel();
+        var agentsRan = RunActorsBeforeTimelineAdvance();
         var validatedNetwork = fileService.NormalizeAndValidate(network);
         temporalState ??= temporalEngine.Initialize(validatedNetwork);
         var result = temporalEngine.Advance(validatedNetwork, temporalState);
@@ -6039,11 +6050,41 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         CurrentPeriod = result.Period;
         TimelinePosition = result.EffectivePeriod;
         ApplySimulationOutcomes(result.Allocations, result);
-        StatusText = $"Advanced to period {result.Period}.";
+        StatusText = agentsRan
+            ? $"Advanced to period {result.Period} after applying agent actions."
+            : $"Advanced to period {result.Period}.";
+    }
+
+    private bool RunActorsBeforeTimelineAdvance()
+    {
+        if (SimulationActors.Count == 0 || SimulationActors.All(actor => !actor.IsEnabled))
+        {
+            return false;
+        }
+
+        if (network.Nodes.Count == 0 || network.Edges.Count == 0)
+        {
+            ActorStatusMessage = "Create or import a network before running actors.";
+            return false;
+        }
+
+        CapturePreAgentMutationNetwork();
+        var step = simulationActorCoordinator.StepActorsOnce(network, SimulationActors.ToList(), ActorTick, network.ActorDecisions);
+        ApplyActorStep(step, $"Agent actions applied for period {CurrentPeriod + 1}.", refreshSimulation: false);
+        return step.Decisions.Count > 0;
     }
 
     private void ResetTimeline()
     {
+        if (preAgentMutationNetwork is not null)
+        {
+            network = NetworkModelCloneUtility.Clone(preAgentMutationNetwork);
+            EnsureNetworkReferences(network);
+            preAgentMutationNetwork = null;
+            RebuildActorStateFromNetwork();
+            BuildSceneFromNetwork();
+        }
+
         temporalState = null;
         lastTimelineStepResult = null;
         Raise(nameof(TrafficDeliveredColumnLabel));
@@ -6074,6 +6115,36 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshInspector();
         NotifyVisualChanged();
         StatusText = "Reset the timeline to period 0.";
+    }
+
+    private void CapturePreAgentMutationNetwork()
+    {
+        preAgentMutationNetwork ??= NetworkModelCloneUtility.Clone(network);
+    }
+
+    private void RebuildActorStateFromNetwork()
+    {
+        SimulationActors.Clear();
+        foreach (var actor in network.Actors)
+        {
+            EnsureActorCapability(actor);
+            SimulationActors.Add(actor);
+        }
+
+        ActorDecisions.Clear();
+        ActorActionOutcomes.Clear();
+        ActorMetrics.Clear();
+        agentActionLogger.Clear();
+        foreach (var entry in network.AgentActionLogs)
+        {
+            agentActionLogger.Log(entry);
+        }
+
+        AgentLog.SetEntries(agentActionLogger.GetAll());
+        ActorTick = network.ActorTick;
+        SelectedSimulationActor = SimulationActors.FirstOrDefault();
+        RefreshFilteredSimulationActors();
+        RefreshSelectedActorDisplayState();
     }
 
     private void ApplySimulationOutcomes(IEnumerable<RouteAllocation> allocations, TemporalNetworkSimulationEngine.TemporalSimulationStepResult? timeline)
@@ -6299,6 +6370,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             TrafficReports.Add(new TrafficReportRowViewModel
             {
                 TrafficType = trafficType,
+                PriceSummary = BuildTrafficPriceSummary(trafficType),
                 PlannedQuantity = ReportExportService.FormatNumber(planned),
                 DeliveredQuantity = ReportExportService.FormatNumber(delivered),
                 UnmetDemand = ReportExportService.FormatNumber(unmetDemand),
@@ -6306,6 +6378,82 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             });
         }
     }
+
+    private string BuildTrafficPriceSummary(string trafficType)
+    {
+        var allocations = GetCurrentAllocations()
+            .Where(allocation => Comparer.Equals(allocation.TrafficType, trafficType))
+            .ToList();
+        var productionPrices = allocations.Count > 0
+            ? allocations
+                .Where(allocation => allocation.Quantity > 0d)
+                .GroupBy(allocation => allocation.ProducerNodeId, Comparer)
+                .Select(group => WeightedAverage(group, allocation => allocation.SourceUnitCostPerUnit))
+                .Where(value => value.HasValue)
+                .Select(value => value!.Value)
+                .Distinct()
+                .OrderBy(value => value)
+                .Select(value => ReportExportService.FormatNumber(value))
+                .ToList()
+            : network.Nodes
+            .SelectMany(node => node.TrafficProfiles)
+            .Where(profile => profile.Production > 0d && Comparer.Equals(profile.TrafficType, trafficType))
+            .Select(profile => Math.Max(0d, profile.UnitPrice))
+            .Distinct()
+            .OrderBy(value => value)
+            .Select(value => ReportExportService.FormatNumber(value))
+            .ToList();
+        var consumptionPrices = allocations.Count > 0
+            ? allocations
+                .Where(allocation => allocation.Quantity > 0d)
+                .GroupBy(allocation => allocation.ConsumerNodeId, Comparer)
+                .Select(group => WeightedAverage(group, allocation => allocation.DeliveredCostPerUnit))
+                .Where(value => value.HasValue)
+                .Select(value => value!.Value)
+                .Distinct()
+                .OrderBy(value => value)
+                .Select(value => ReportExportService.FormatNumber(value))
+                .ToList()
+            : network.Nodes
+            .SelectMany(node => node.TrafficProfiles)
+            .Where(profile => profile.Consumption > 0d && Comparer.Equals(profile.TrafficType, trafficType))
+            .Select(profile => Math.Max(0d, profile.UnitPrice))
+            .Distinct()
+            .OrderBy(value => value)
+            .Select(value => ReportExportService.FormatNumber(value))
+            .ToList();
+
+        return $"{FormatPriceList(productionPrices)}:{FormatPriceList(consumptionPrices)}";
+    }
+
+    private IReadOnlyList<RouteAllocation> GetCurrentAllocations()
+    {
+        if (lastTimelineStepResult is not null)
+        {
+            return lastTimelineStepResult.Allocations;
+        }
+
+        return lastOutcomes.SelectMany(outcome => outcome.Allocations).ToList();
+    }
+
+    private static double? WeightedAverage(IEnumerable<RouteAllocation> allocations, Func<RouteAllocation, double> valueSelector)
+    {
+        var materialized = allocations.Where(allocation => allocation.Quantity > 0d).ToList();
+        var quantity = materialized.Sum(allocation => allocation.Quantity);
+        if (quantity <= 0d)
+        {
+            return null;
+        }
+
+        return materialized.Sum(allocation => valueSelector(allocation) * allocation.Quantity) / quantity;
+    }
+
+    private static string FormatPriceList(IReadOnlyList<string> prices) => prices.Count switch
+    {
+        0 => "-",
+        1 => prices[0],
+        _ => string.Join("/", prices)
+    };
 
     private void PopulateRouteReports(
         TemporalNetworkSimulationEngine.TemporalSimulationStepResult? timeline,
@@ -6364,11 +6512,45 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             NodePressureReports.Add(new NodePressureReportRowViewModel
             {
                 Node = ResolveNodeName(node.Id),
+                CommodityPrices = BuildNodeCommodityPriceSummary(node),
                 PressureScore = pressure.Score > 0d ? ReportExportService.FormatNumber(pressure.Score) : "None",
                 TopCause = pressure.Score > 0d ? BuildTopCauseText(pressure.TopCause) : "None",
                 UnmetNeed = unmetNeed
             });
         }
+    }
+
+    private string BuildNodeCommodityPriceSummary(NodeModel node)
+    {
+        var prices = node.TrafficProfiles
+            .Where(profile => !string.IsNullOrWhiteSpace(profile.TrafficType) && (profile.Production > 0d || profile.Consumption > 0d))
+            .OrderBy(profile => profile.TrafficType, Comparer)
+            .Select(profile =>
+            {
+                var productionPrice = profile.Production > 0d ? FormatProductionPointPrice(node.Id, profile) : "-";
+                var consumptionPrice = profile.Consumption > 0d ? FormatConsumptionPointPrice(node.Id, profile) : "-";
+                return $"{profile.TrafficType} {productionPrice}:{consumptionPrice}";
+            })
+            .ToList();
+        return prices.Count == 0 ? "None" : string.Join(", ", prices);
+    }
+
+    private string FormatProductionPointPrice(string nodeId, NodeTrafficProfile profile)
+    {
+        var allocations = GetCurrentAllocations()
+            .Where(allocation => Comparer.Equals(allocation.ProducerNodeId, nodeId) && Comparer.Equals(allocation.TrafficType, profile.TrafficType))
+            .ToList();
+        var computed = WeightedAverage(allocations, allocation => allocation.SourceUnitCostPerUnit);
+        return ReportExportService.FormatNumber(computed ?? Math.Max(0d, profile.UnitPrice));
+    }
+
+    private string FormatConsumptionPointPrice(string nodeId, NodeTrafficProfile profile)
+    {
+        var allocations = GetCurrentAllocations()
+            .Where(allocation => Comparer.Equals(allocation.ConsumerNodeId, nodeId) && Comparer.Equals(allocation.TrafficType, profile.TrafficType))
+            .ToList();
+        var computed = WeightedAverage(allocations, allocation => allocation.DeliveredCostPerUnit);
+        return ReportExportService.FormatNumber(computed ?? Math.Max(0d, profile.UnitPrice));
     }
 
     private void PopulateQuickMetrics(
@@ -8762,12 +8944,12 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
             if (profile.Production > 0d)
             {
-                lines.Add((0, trafficType, new GraphNodeTextLine($"Produces {profile.Production:0.##} {trafficType}", true, false)));
+                lines.Add((0, trafficType, new GraphNodeTextLine($"Produces {profile.Production:0.##} {trafficType} @ {FormatProductionPointPrice(node.Id, profile)}", true, false)));
             }
 
             if (profile.Consumption > 0d)
             {
-                lines.Add((1, trafficType, new GraphNodeTextLine($"Consumes {profile.Consumption:0.##} {trafficType}", true, false)));
+                lines.Add((1, trafficType, new GraphNodeTextLine($"Consumes {profile.Consumption:0.##} {trafficType} @ {FormatConsumptionPointPrice(node.Id, profile)}", true, false)));
             }
 
             if (profile.CanTransship)

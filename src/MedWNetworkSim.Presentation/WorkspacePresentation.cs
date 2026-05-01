@@ -3348,6 +3348,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.None);
         }
 
+        if (ActiveToolMode == GraphToolMode.Agent && SelectedSimulationActor is not null)
+        {
+            AssignCurrentSelectionToActor();
+        }
+
         RefreshInspector();
     }
 
@@ -5909,29 +5914,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return;
         }
 
-        var selectedNodeIds = Scene.Selection.SelectedNodeIds
-            .Where(id => network.Nodes.Any(node => Comparer.Equals(node.Id, id)))
-            .Distinct(Comparer)
-            .ToList();
-        if (selectedNodeIds.Count == 0)
+        var (nodeCount, _) = AssignCurrentSelectionToActor(assignNodes: true, assignEdges: false);
+        if (nodeCount == 0)
         {
-            ActorStatusMessage = "Select one or more nodes/routes first.";
-            return;
+            ActorStatusMessage = "Select one or more nodes first.";
         }
-
-        var current = SelectedSimulationActor.ControlledNodeIds.ToHashSet(Comparer);
-        foreach (var nodeId in selectedNodeIds)
-        {
-            current.Add(nodeId);
-        }
-
-        SelectedSimulationActor.ControlledNodeIds = current.OrderBy(id => id, Comparer).ToList();
-        network.Actors = SimulationActors.ToList();
-        MarkDirty();
-        RefreshSelectedActorDisplayState();
-        BuildSceneFromNetwork();
-        Raise(nameof(SimulationActors));
-        ActorStatusMessage = "Updated actor node assignments.";
     }
 
     private void AssignSelectedEdgeToActor()
@@ -5942,16 +5929,45 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return;
         }
 
-        var selectedEdgeIds = Scene.Selection.SelectedEdgeIds
-            .Where(id => network.Edges.Any(edge => Comparer.Equals(edge.Id, id)))
-            .Distinct(Comparer)
-            .ToList();
-        if (selectedEdgeIds.Count == 0)
+        var (_, edgeCount) = AssignCurrentSelectionToActor(assignNodes: false, assignEdges: true);
+        if (edgeCount == 0)
         {
-            ActorStatusMessage = "Select one or more nodes/routes first.";
-            return;
+            ActorStatusMessage = "Select one or more routes first.";
+        }
+    }
+
+    private (int NodeCount, int EdgeCount) AssignCurrentSelectionToActor(bool assignNodes = true, bool assignEdges = true)
+    {
+        if (SelectedSimulationActor is null)
+        {
+            return (0, 0);
         }
 
+        var selectedNodeIds = assignNodes
+            ? Scene.Selection.SelectedNodeIds
+                .Where(id => network.Nodes.Any(node => Comparer.Equals(node.Id, id)))
+                .Distinct(Comparer)
+                .ToList()
+            : [];
+        var selectedEdgeIds = assignEdges
+            ? Scene.Selection.SelectedEdgeIds
+                .Where(id => network.Edges.Any(edge => Comparer.Equals(edge.Id, id)))
+                .Distinct(Comparer)
+                .ToList()
+            : [];
+
+        if (selectedNodeIds.Count == 0 && selectedEdgeIds.Count == 0)
+        {
+            return (0, 0);
+        }
+
+        var currentNodes = SelectedSimulationActor.ControlledNodeIds.ToHashSet(Comparer);
+        foreach (var nodeId in selectedNodeIds)
+        {
+            currentNodes.Add(nodeId);
+        }
+
+        SelectedSimulationActor.ControlledNodeIds = currentNodes.OrderBy(id => id, Comparer).ToList();
         var current = SelectedSimulationActor.ControlledEdgeIds.ToHashSet(Comparer);
         foreach (var edgeId in selectedEdgeIds)
         {
@@ -5964,7 +5980,12 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshSelectedActorDisplayState();
         BuildSceneFromNetwork();
         Raise(nameof(SimulationActors));
-        ActorStatusMessage = "Updated actor route assignments.";
+        ActorStatusMessage = selectedNodeIds.Count > 0 && selectedEdgeIds.Count > 0
+            ? "Updated actor node and route assignments."
+            : selectedNodeIds.Count > 0
+                ? "Updated actor node assignments."
+                : "Updated actor route assignments.";
+        return (selectedNodeIds.Count, selectedEdgeIds.Count);
     }
 
     private void ClearActorAssignments()

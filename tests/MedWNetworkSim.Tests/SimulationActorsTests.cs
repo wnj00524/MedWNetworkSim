@@ -374,6 +374,35 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
+    public void RunningActorStep_AppliesActionsAndRecordsOutcomes()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+        vm.AddFirmActorCommand.Execute(null);
+        vm.Scene.Selection.SelectedNodeIds.Add("producer");
+        vm.AssignSelectedNodeToActorCommand.Execute(null);
+
+        vm.RunActorStepCommand.Execute(null);
+
+        Assert.NotEmpty(vm.ActorDecisions);
+        Assert.Contains(vm.ActorActionOutcomes, outcome => outcome.AppliedState == "Applied");
+        Assert.NotEmpty(vm.AgentLog.Entries);
+
+        var path = Path.GetTempFileName();
+        try
+        {
+            vm.SaveNetwork(path);
+            var loaded = new MedWNetworkSim.App.Services.NetworkFileService().Load(path);
+            var producer = loaded.Nodes.Single(node => node.Id == "producer");
+            Assert.True(producer.TrafficProfiles.Single(profile => profile.TrafficType == "Food").Production > 120d);
+            Assert.NotEmpty(loaded.AgentActionLogs);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void DeletingNode_RemovesActorControlledNodeReference()
     {
         var vm = BuildWorkspaceViewModelWithNetwork();

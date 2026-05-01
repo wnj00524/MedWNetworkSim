@@ -1,5 +1,6 @@
 using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
+using MedWNetworkSim.App.Services;
 using MedWNetworkSim.Presentation;
 using Xunit;
 
@@ -82,6 +83,66 @@ public sealed class SimulationActorsTests
         var after = new MedWNetworkSim.App.Services.NetworkSimulationEngine().Simulate(step.NetworkAfterStep).Sum(outcome => outcome.UnmetDemand);
 
         Assert.True(after <= before);
+    }
+
+    [Fact]
+    public void TimelineCsv_IncludesAgentActions_WithReadableAgentNames()
+    {
+        var network = BuildNetwork();
+        network.Actors =
+        [
+            new SimulationActorState { Id = "long-unique-firm-id", Name = "Local Mill", Kind = SimulationActorKind.Firm },
+            new SimulationActorState { Id = "duplicate-id-a", Name = "Planner", Kind = SimulationActorKind.LogisticsPlanner },
+            new SimulationActorState { Id = "duplicate-id-b", Name = "Planner", Kind = SimulationActorKind.LogisticsPlanner }
+        ];
+        network.AgentActionLogs =
+        [
+            new AgentActionLogEntry
+            {
+                AgentId = Guid.NewGuid(),
+                ActorId = "long-unique-firm-id",
+                AgentName = "Local Mill",
+                SimulationTick = 0,
+                ActionType = "AdjustProduction",
+                TargetId = "producer",
+                DecisionSummary = "Increase output",
+                Outcome = "More Food",
+                UtilityScore = 1.25d
+            },
+            new AgentActionLogEntry
+            {
+                AgentId = Guid.NewGuid(),
+                ActorId = "duplicate-id-a",
+                AgentName = "Planner",
+                SimulationTick = 1,
+                ActionType = "PreferRoute",
+                TargetId = "edge-a",
+                DecisionSummary = "Use route",
+                Outcome = "Lower delay"
+            }
+        ];
+        var engine = new TemporalNetworkSimulationEngine();
+        var state = engine.Initialize(network);
+        var results = new[] { engine.Advance(network, state) };
+        var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.csv");
+
+        try
+        {
+            new ReportExportService().SaveTimelineReport(network, results, path, ReportExportFormat.Csv);
+            var csv = File.ReadAllText(path);
+
+            Assert.Contains("Agent Actions", csv);
+            Assert.Contains("Local Mill", csv);
+            Assert.DoesNotContain("long-unique-firm-id,AdjustProduction", csv);
+            Assert.Contains("duplicate-id-a", csv);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
     }
 
     [Fact]
@@ -464,6 +525,46 @@ public sealed class SimulationActorsTests
         finally
         {
             File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void ResetTimeline_AfterReload_RevertsPersistedAgentMutationsToPreAgentNetwork()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+        vm.AddFirmActorCommand.Execute(null);
+        vm.Scene.Selection.SelectedNodeIds.Add("producer");
+        vm.AssignSelectedNodeToActorCommand.Execute(null);
+        vm.StepCommand.Execute(null);
+
+        var path = Path.GetTempFileName();
+        var resetPath = Path.GetTempFileName();
+        try
+        {
+            vm.SaveNetwork(path);
+            var saved = new MedWNetworkSim.App.Services.NetworkFileService().Load(path);
+            Assert.NotNull(saved.PreAgentMutationNetwork);
+            var mutatedProducerProfile = saved.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single(profile => profile.TrafficType == "Food");
+            Assert.True(mutatedProducerProfile.UnitPrice > 1d);
+            var baselineProducerProfile = saved.PreAgentMutationNetwork!.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single(profile => profile.TrafficType == "Food");
+            Assert.Equal(1d, baselineProducerProfile.UnitPrice);
+
+            var reloadedVm = new WorkspaceViewModel();
+            reloadedVm.OpenNetwork(path);
+            reloadedVm.ResetTimelineCommand.Execute(null);
+            reloadedVm.SaveNetwork(resetPath);
+            var reset = new MedWNetworkSim.App.Services.NetworkFileService().Load(resetPath);
+            var resetProducerProfile = reset.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single(profile => profile.TrafficType == "Food");
+
+            Assert.Equal(1d, resetProducerProfile.UnitPrice);
+            Assert.Null(reset.PreAgentMutationNetwork);
+            Assert.Empty(reset.AgentActionLogs);
+            Assert.Equal(0, reset.ActorTick);
+        }
+        finally
+        {
+            File.Delete(path);
+            File.Delete(resetPath);
         }
     }
 

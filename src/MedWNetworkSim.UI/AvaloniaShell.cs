@@ -1852,6 +1852,7 @@ public sealed class ShellWindow : Window
         var newButton = BuildIconRailButton(IconPaths.New, "New", new RelayCommand(() => _ = CreateBlankNetworkAsync(viewModel)));
         var openButton = BuildIconRailButton(IconPaths.Open, "Open", new RelayCommand(() => _ = OpenNetworkFileAsync(viewModel)));
         var saveButton = BuildIconRailButton(IconPaths.Save, "Save", new RelayCommand(() => _ = SaveNetworkAsync(viewModel)));
+        var networkDetailsButton = BuildIconRailButton(IconPaths.Network, "Network Details", new RelayCommand(() => _ = ShowNetworkDetailsDialogAsync(viewModel)));
         var importButton = BuildIconRailButton(IconPaths.ImportGraphMl, "Import GraphML", new RelayCommand(() => _ = ImportGraphMlAsync(viewModel)));
         var exportButton = BuildIconRailButton(IconPaths.ExportGraphMl, "Export GraphML", new RelayCommand(() => _ = ExportGraphMlAsync(viewModel)));
         var selectButton = BuildIconRailButton(IconPaths.Select, "Select", viewModel.SelectToolCommand, isToolButton: true);
@@ -1901,7 +1902,7 @@ public sealed class ShellWindow : Window
             Children =
             {
                 BuildIconRailGroupLabel("Workspace"),
-                newButton, openButton, saveButton, importButton, exportButton,
+                newButton, openButton, saveButton, networkDetailsButton, importButton, exportButton,
                 BuildIconRailGroupLabel("Navigate"),
                 selectButton, fitButton, clearSelectionButton,
                 BuildIconRailGroupLabel("Edit Network"),
@@ -4896,7 +4897,7 @@ public sealed class ShellWindow : Window
                     Spacing = 4,
                     Children =
                     {
-                        new TextBlock { Text = entry is null ? string.Empty : $"Tick {entry.SimulationTick} · Agent {entry.AgentId} · {entry.ActionType}", FontWeight = FontWeight.SemiBold },
+                        new TextBlock { Text = entry is null ? string.Empty : $"Tick {entry.SimulationTick} · Agent {viewModel.ResolveAgentLogAgentName(entry)} · {entry.ActionType}", FontWeight = FontWeight.SemiBold },
                         new TextBlock { Text = entry?.DecisionSummary ?? string.Empty, TextWrapping = TextWrapping.Wrap },
                         new Expander
                         {
@@ -7671,6 +7672,129 @@ public sealed class ShellWindow : Window
         await dialog.ShowDialog(this);
     }
 
+    private async Task ShowNetworkDetailsDialogAsync(WorkspaceViewModel viewModel)
+    {
+        var currentLoopText = viewModel.NetworkTimelineLoopLengthText?.Trim() ?? string.Empty;
+        var loops = int.TryParse(currentLoopText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedLoop) && parsedLoop > 0;
+        var loopLength = loops ? parsedLoop : Math.Max(1, viewModel.TimelineMaximum);
+
+        var dialog = new Window
+        {
+            Width = 500,
+            CanResize = false,
+            SystemDecorations = SystemDecorations.None,
+            ExtendClientAreaToDecorationsHint = true,
+            ExtendClientAreaChromeHints = ExtendClientAreaChromeHints.NoChrome,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Title = "Network details"
+        };
+
+        var nameInput = BuildTextBox("Network name");
+        nameInput.Text = viewModel.NetworkNameText;
+        var notesInput = BuildTextBox("Notes");
+        notesInput.Text = viewModel.NetworkDescriptionText;
+        notesInput.AcceptsReturn = true;
+        notesInput.MinHeight = 92;
+        var loopToggle = new CheckBox
+        {
+            Content = "Timeline loops",
+            IsChecked = loops,
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+        };
+        var loopInput = BuildTextBox("Loop length");
+        loopInput.Text = loopLength.ToString(CultureInfo.InvariantCulture);
+        loopInput.IsEnabled = loops;
+        var validation = new TextBlock
+        {
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.Danger),
+            TextWrapping = TextWrapping.Wrap
+        };
+
+        loopToggle.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == ToggleButton.IsCheckedProperty)
+            {
+                loopInput.IsEnabled = loopToggle.IsChecked == true;
+            }
+        };
+
+        void Apply()
+        {
+            var shouldLoop = loopToggle.IsChecked == true;
+            if (shouldLoop &&
+                (!int.TryParse(loopInput.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out loopLength) || loopLength < 1))
+            {
+                validation.Text = "Enter a loop length of 1 or more.";
+                return;
+            }
+
+            viewModel.ApplyNetworkDetails(nameInput.Text ?? string.Empty, notesInput.Text ?? string.Empty, shouldLoop, loopLength);
+            dialog.Close();
+        }
+
+        nameInput.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter)
+            {
+                Apply();
+                e.Handled = true;
+            }
+        };
+        loopInput.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter)
+            {
+                Apply();
+                e.Handled = true;
+            }
+        };
+
+        var saveButton = BuildButton("Save details", new RelayCommand(Apply), isPrimary: true);
+        var cancelButton = BuildButton("Cancel", new RelayCommand(dialog.Close));
+        dialog.Content = new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(16),
+            Padding = new Thickness(18),
+            Child = new StackPanel
+            {
+                Spacing = 12,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "Network Details",
+                        FontSize = 20,
+                        FontWeight = FontWeight.Bold,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                    },
+                    BuildLabeledRow("Name", nameInput),
+                    BuildLabeledRow("Notes", notesInput),
+                    loopToggle,
+                    BuildLabeledRow("Loop length", loopInput),
+                    validation,
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Spacing = 8,
+                        Children = { saveButton, cancelButton }
+                    }
+                }
+            }
+        };
+
+        dialog.Opened += (_, _) =>
+        {
+            nameInput.Focus();
+            nameInput.SelectAll();
+        };
+        await dialog.ShowDialog(this);
+    }
+
     private async Task OpenNetworkFileAsync(WorkspaceViewModel viewModel)
     {
         if (!await ConfirmDiscardOrSaveChangesAsync("Save changes before opening another network?"))
@@ -7812,6 +7936,12 @@ public sealed class ShellWindow : Window
 
     private async Task ExportTimelineReportAsync(WorkspaceViewModel viewModel, ReportExportFormat format)
     {
+        var periods = await PromptTimelineExportPeriodsAsync(viewModel.TimelineMaximum);
+        if (!periods.HasValue)
+        {
+            return;
+        }
+
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = "Export timeline report",
@@ -7822,7 +7952,124 @@ public sealed class ShellWindow : Window
             return;
         }
 
-        viewModel.ExportTimelineReport(file.Path.LocalPath, 12, format);
+        viewModel.ExportTimelineReport(file.Path.LocalPath, periods.Value, format);
+    }
+
+    private async Task<int?> PromptTimelineExportPeriodsAsync(int currentPeriodCount)
+    {
+        var result = (int?)null;
+        var defaultPeriodCount = Math.Max(1, currentPeriodCount);
+        var dialog = new Window
+        {
+            Width = 420,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            SystemDecorations = SystemDecorations.None,
+            ExtendClientAreaToDecorationsHint = true,
+            ExtendClientAreaChromeHints = ExtendClientAreaChromeHints.NoChrome,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            Title = "Timeline periods"
+        };
+
+        var input = new TextBox
+        {
+            Watermark = "Periods",
+            Text = defaultPeriodCount.ToString(CultureInfo.InvariantCulture),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.InputBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.InputBorder),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            Padding = new Thickness(10, 6)
+        };
+        var validation = new TextBlock
+        {
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.Danger),
+            TextWrapping = TextWrapping.Wrap
+        };
+
+        void Apply()
+        {
+            if (int.TryParse(input.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) &&
+                parsed >= 1)
+            {
+                result = parsed;
+                dialog.Close();
+                return;
+            }
+
+            validation.Text = "Enter a whole number of 1 or more.";
+        }
+
+        input.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter)
+            {
+                Apply();
+                e.Handled = true;
+            }
+        };
+
+        var exportButton = new Button
+        {
+            Content = "Export",
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.Accent),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            Padding = new Thickness(14, 8)
+        };
+        exportButton.Click += (_, _) => Apply();
+        var cancelButton = new Button
+        {
+            Content = "Cancel",
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ToolbarButtonBackground),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            Padding = new Thickness(14, 8)
+        };
+        cancelButton.Click += (_, _) => dialog.Close();
+
+        dialog.Content = new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(16),
+            Padding = new Thickness(18),
+            Child = new StackPanel
+            {
+                Spacing = 12,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "Timeline Periods",
+                        FontSize = 20,
+                        FontWeight = FontWeight.Bold,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                    },
+                    new TextBlock
+                    {
+                        Text = "How many time periods should the exported timeline include?",
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                        TextWrapping = TextWrapping.Wrap
+                    },
+                    input,
+                    validation,
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Spacing = 8,
+                        Children = { exportButton, cancelButton }
+                    }
+                }
+            }
+        };
+
+        dialog.Opened += (_, _) =>
+        {
+            input.Focus();
+            input.SelectAll();
+        };
+        await dialog.ShowDialog(this);
+        return result;
     }
 
     private async Task ExportAgentLogsAsync(WorkspaceViewModel viewModel)

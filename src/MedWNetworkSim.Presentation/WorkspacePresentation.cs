@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json;
 using System.Windows.Input;
 using MedWNetworkSim.App.Agents;
@@ -4149,6 +4150,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public void SaveNetwork(string path)
     {
         CommitTransientEditorsToModel();
+        PersistPreAgentMutationSnapshot();
         fileService.Save(network, path);
         CurrentFilePath = path;
         HasUnsavedChanges = false;
@@ -4195,8 +4197,78 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         var options = new JsonSerializerOptions { WriteIndented = true };
         var entries = agentActionLogger.GetAll();
-        File.WriteAllText(path, JsonSerializer.Serialize(entries, options));
+        var readableEntries = entries.Select(entry => new
+        {
+            entry.Id,
+            Agent = ResolveAgentLogAgentName(entry),
+            UniqueAgentId = ResolveAgentUniqueId(entry),
+            entry.Timestamp,
+            entry.SimulationTick,
+            entry.ActionType,
+            entry.TargetId,
+            entry.DecisionSummary,
+            entry.DecisionFactors,
+            entry.AlternativesConsidered,
+            entry.Outcome,
+            entry.UtilityScore,
+            entry.StateMetrics
+        });
+        File.WriteAllText(path, JsonSerializer.Serialize(readableEntries, options));
         StatusText = $"Exported {entries.Count} agent action logs to '{Path.GetFileName(path)}'.";
+    }
+
+    public string ResolveAgentLogAgentName(AgentActionLogEntry? entry)
+    {
+        if (entry is null)
+        {
+            return string.Empty;
+        }
+
+        var actor = ResolveAgentLogActor(entry);
+        if (actor is not null)
+        {
+            var duplicateName = !string.IsNullOrWhiteSpace(actor.Name) &&
+                SimulationActors.Count(candidate => Comparer.Equals(candidate.Name?.Trim(), actor.Name.Trim())) > 1;
+            return duplicateName ? actor.Id : string.IsNullOrWhiteSpace(actor.Name) ? actor.Id : actor.Name.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.AgentName))
+        {
+            return entry.AgentName.Trim();
+        }
+
+        return !string.IsNullOrWhiteSpace(entry.ActorId) ? entry.ActorId.Trim() : entry.AgentId.ToString();
+    }
+
+    private string ResolveAgentUniqueId(AgentActionLogEntry entry)
+    {
+        var actor = ResolveAgentLogActor(entry);
+        return actor?.Id ?? (!string.IsNullOrWhiteSpace(entry.ActorId) ? entry.ActorId.Trim() : entry.AgentId.ToString());
+    }
+
+    private SimulationActorState? ResolveAgentLogActor(AgentActionLogEntry entry)
+    {
+        if (!string.IsNullOrWhiteSpace(entry.ActorId))
+        {
+            var actor = SimulationActors.FirstOrDefault(candidate => Comparer.Equals(candidate.Id, entry.ActorId.Trim()));
+            if (actor is not null)
+            {
+                return actor;
+            }
+        }
+
+        return SimulationActors.FirstOrDefault(actor =>
+            Guid.TryParse(actor.Id, out var parsed) && parsed == entry.AgentId ||
+            CreateStableAgentGuid(actor.Id) == entry.AgentId);
+    }
+
+    private static Guid CreateStableAgentGuid(string value)
+    {
+        var source = string.IsNullOrWhiteSpace(value) ? "unknown-agent" : value.Trim();
+        var bytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(source));
+        var guidBytes = new byte[16];
+        Array.Copy(bytes, guidBytes, guidBytes.Length);
+        return new Guid(guidBytes);
     }
 
     public void SetActiveTool(GraphToolMode toolMode)
@@ -4656,7 +4728,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         network = fileService.NormalizeAndValidate(source);
         EnsureNetworkReferences(network);
-        preAgentMutationNetwork = null;
+        preAgentMutationNetwork = network.PreAgentMutationNetwork is null
+            ? null
+            : NetworkModelCloneUtility.Clone(network.PreAgentMutationNetwork);
         temporalState = null;
         lastTimelineStepResult = null;
         Raise(nameof(TrafficDeliveredColumnLabel));
@@ -4727,7 +4801,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 Reason = outcome.Reason,
                 Target = outcome.Action.TargetEdgeId ?? outcome.Action.TargetNodeId ?? "(none)",
                 ActionKind = outcome.Action.Kind.ToString(),
-                Actor = outcome.Action.ActorId
+                Actor = ResolveActorDisplayName(outcome.Action.ActorId)
             });
         }
         ActorMetrics.Clear();
@@ -5849,6 +5923,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private void ApplyActorStep(SimulationActorStepResult step, string message, bool refreshSimulation = true)
     {
         network = step.NetworkAfterStep;
+        PersistPreAgentMutationSnapshot();
         network.Actors = SimulationActors.ToList();
         network.ActorDecisions.AddRange(step.Decisions);
         network.ActorActionOutcomes.AddRange(step.ActionOutcomes);
@@ -5905,10 +5980,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         HasActorPreview = false;
     }
 
-    private static SimulationActorDecisionViewModel ToDecisionVm(SimulationActorDecision decision, SimulationActorAction action) => new()
+    private SimulationActorDecisionViewModel ToDecisionVm(SimulationActorDecision decision, SimulationActorAction action) => new()
     {
         Tick = decision.Tick,
-        Actor = decision.ActorId,
+        Actor = ResolveActorDisplayName(decision.ActorId),
         Action = action.Kind.ToString(),
         Target = action.TargetEdgeId ?? action.TargetNodeId ?? "(none)",
         Traffic = action.TrafficType ?? "(all)",
@@ -5917,6 +5992,19 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Reason = action.Reason,
         ExpectedEffect = action.ExpectedEffect
     };
+
+    private string ResolveActorDisplayName(string actorId)
+    {
+        var actor = SimulationActors.FirstOrDefault(candidate => Comparer.Equals(candidate.Id, actorId));
+        if (actor is null)
+        {
+            return actorId;
+        }
+
+        var duplicateName = !string.IsNullOrWhiteSpace(actor.Name) &&
+            SimulationActors.Count(candidate => Comparer.Equals(candidate.Name?.Trim(), actor.Name.Trim())) > 1;
+        return duplicateName ? actor.Id : string.IsNullOrWhiteSpace(actor.Name) ? actor.Id : actor.Name.Trim();
+    }
 
     private void ResetActorHistory()
     {
@@ -6081,6 +6169,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             network = NetworkModelCloneUtility.Clone(preAgentMutationNetwork);
             EnsureNetworkReferences(network);
             preAgentMutationNetwork = null;
+            network.PreAgentMutationNetwork = null;
             RebuildActorStateFromNetwork();
             BuildSceneFromNetwork();
         }
@@ -6119,7 +6208,31 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private void CapturePreAgentMutationNetwork()
     {
-        preAgentMutationNetwork ??= NetworkModelCloneUtility.Clone(network);
+        if (preAgentMutationNetwork is not null)
+        {
+            return;
+        }
+
+        preAgentMutationNetwork = NetworkModelCloneUtility.Clone(network);
+        ClearPersistedAgentHistory(preAgentMutationNetwork);
+        network.PreAgentMutationNetwork = NetworkModelCloneUtility.Clone(preAgentMutationNetwork);
+    }
+
+    private void PersistPreAgentMutationSnapshot()
+    {
+        network.PreAgentMutationNetwork = preAgentMutationNetwork is null
+            ? null
+            : NetworkModelCloneUtility.Clone(preAgentMutationNetwork);
+    }
+
+    private static void ClearPersistedAgentHistory(NetworkModel snapshot)
+    {
+        snapshot.PreAgentMutationNetwork = null;
+        snapshot.ActorDecisions.Clear();
+        snapshot.ActorActionOutcomes.Clear();
+        snapshot.ActorMetrics.Clear();
+        snapshot.AgentActionLogs.Clear();
+        snapshot.ActorTick = 0;
     }
 
     private void RebuildActorStateFromNetwork()
@@ -7227,6 +7340,20 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         network.TimelineLoopLength = ParseOptionalPositiveInt(NetworkTimelineLoopLengthText, "Enter a loop length of 1 or more, or leave it blank.");
         CommitDefaultPermissionRows();
         StatusText = "Updated network settings.";
+    }
+
+    public void ApplyNetworkDetails(string name, string notes, bool loops, int loopLength)
+    {
+        NetworkNameText = string.IsNullOrWhiteSpace(name) ? "Untitled Network" : name.Trim();
+        NetworkDescriptionText = notes?.Trim() ?? string.Empty;
+        NetworkTimelineLoopLengthText = loops
+            ? Math.Max(1, loopLength).ToString(CultureInfo.InvariantCulture)
+            : string.Empty;
+        ApplyNetworkEdits();
+        BuildSceneFromNetwork();
+        RefreshInspector();
+        MarkDirty();
+        NotifyVisualChanged();
     }
 
     private void ApplyNodeEdits()

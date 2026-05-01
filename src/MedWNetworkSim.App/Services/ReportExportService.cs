@@ -3,6 +3,7 @@ using System.IO;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
@@ -198,6 +199,24 @@ public sealed class ReportExportService
                 ["Periods With Movement", periodResults.Count(result => result.Allocations.Count > 0).ToString(CultureInfo.InvariantCulture)],
                 ["Final In-Flight Movements", finalPeriodResult.InFlightMovementCount.ToString(CultureInfo.InvariantCulture)]
             ]);
+
+        builder.AppendLine("<h2>Agent Actions</h2>");
+        AppendHtmlTable(
+            builder,
+            ["Simulation Tick", "Agent", "Action", "Target", "Decision Summary", "Outcome", "Utility"],
+            network.AgentActionLogs
+                .OrderBy(entry => entry.SimulationTick)
+                .ThenBy(entry => entry.Timestamp)
+                .Select(entry => new[]
+                {
+                    entry.SimulationTick.ToString(CultureInfo.InvariantCulture),
+                    FormatAgentReference(network, entry),
+                    entry.ActionType,
+                    string.IsNullOrWhiteSpace(entry.TargetId) ? "(none)" : entry.TargetId,
+                    entry.DecisionSummary,
+                    entry.Outcome,
+                    entry.UtilityScore.HasValue ? FormatNumber(entry.UtilityScore.Value) : "n/a"
+                }));
 
         builder.AppendLine("<h2>Timeline Outcomes By Traffic</h2>");
         AppendHtmlTable(
@@ -527,6 +546,12 @@ public sealed class ReportExportService
             ]);
         AppendCsvTable(
             builder,
+            "Agent Actions",
+            ["Simulation Tick", "Agent", "Action", "Target", "Decision Summary", "Outcome", "Utility", "Factors", "Alternatives", "State Metrics"],
+            BuildAgentActionRows(network, network.AgentActionLogs));
+
+        AppendCsvTable(
+            builder,
             "Timeline Outcomes By Traffic",
             ["Traffic Type", "Planned Quantity", "Movements", "Avg Planned Delivered Cost / Unit"],
             allAllocations
@@ -730,6 +755,22 @@ public sealed class ReportExportService
         {
             reportType = "timeline",
             periods = results.Count,
+            agentActions = network.AgentActionLogs
+                .OrderBy(entry => entry.SimulationTick)
+                .ThenBy(entry => entry.Timestamp)
+                .Select(entry => new
+                {
+                    simulationTick = entry.SimulationTick,
+                    agent = FormatAgentReference(network, entry),
+                    action = entry.ActionType,
+                    target = string.IsNullOrWhiteSpace(entry.TargetId) ? "(none)" : entry.TargetId,
+                    decisionSummary = entry.DecisionSummary,
+                    outcome = entry.Outcome,
+                    utility = entry.UtilityScore,
+                    factors = entry.DecisionFactors,
+                    alternatives = entry.AlternativesConsidered ?? [],
+                    stateMetrics = entry.StateMetrics
+                }),
             edges = network.Edges.Select(edge => new
             {
                 edge_id = edge.Id,
@@ -1309,6 +1350,77 @@ public sealed class ReportExportService
         }
 
         builder.AppendLine();
+    }
+
+    private static IEnumerable<string[]> BuildAgentActionRows(NetworkModel network, IEnumerable<AgentActionLogEntry> entries)
+    {
+        return entries
+            .OrderBy(entry => entry.SimulationTick)
+            .ThenBy(entry => entry.Timestamp)
+            .Select(entry => new[]
+            {
+                entry.SimulationTick.ToString(CultureInfo.InvariantCulture),
+                FormatAgentReference(network, entry),
+                entry.ActionType,
+                string.IsNullOrWhiteSpace(entry.TargetId) ? "(none)" : entry.TargetId,
+                entry.DecisionSummary,
+                entry.Outcome,
+                entry.UtilityScore.HasValue ? FormatNumber(entry.UtilityScore.Value) : "n/a",
+                entry.DecisionFactors.Count == 0 ? "None" : string.Join("; ", entry.DecisionFactors),
+                entry.AlternativesConsidered is { Count: > 0 } alternatives ? string.Join("; ", alternatives) : "None",
+                entry.StateMetrics.Count == 0
+                    ? "None"
+                    : string.Join("; ", entry.StateMetrics.OrderBy(pair => pair.Key, Comparer).Select(pair => $"{pair.Key}: {FormatNumber(pair.Value)}"))
+            });
+    }
+
+    private static string FormatAgentReference(NetworkModel network, AgentActionLogEntry entry)
+    {
+        var actor = ResolveActorForLogEntry(network, entry);
+        if (actor is not null)
+        {
+            var displayName = string.IsNullOrWhiteSpace(actor.Name) ? actor.Id : actor.Name.Trim();
+            var duplicateName = !string.IsNullOrWhiteSpace(actor.Name) &&
+                network.Actors.Count(other => string.Equals(other.Name?.Trim(), actor.Name.Trim(), StringComparison.OrdinalIgnoreCase)) > 1;
+            return duplicateName ? actor.Id : displayName;
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.AgentName))
+        {
+            return entry.AgentName.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.ActorId))
+        {
+            return entry.ActorId.Trim();
+        }
+
+        return entry.AgentId.ToString();
+    }
+
+    private static SimulationActorState? ResolveActorForLogEntry(NetworkModel network, AgentActionLogEntry entry)
+    {
+        if (!string.IsNullOrWhiteSpace(entry.ActorId))
+        {
+            var actor = network.Actors.FirstOrDefault(candidate => Comparer.Equals(candidate.Id, entry.ActorId.Trim()));
+            if (actor is not null)
+            {
+                return actor;
+            }
+        }
+
+        return network.Actors.FirstOrDefault(actor =>
+            Guid.TryParse(actor.Id, out var parsed) && parsed == entry.AgentId ||
+            CreateStableGuid(actor.Id) == entry.AgentId);
+    }
+
+    private static Guid CreateStableGuid(string value)
+    {
+        var source = string.IsNullOrWhiteSpace(value) ? "unknown-agent" : value.Trim();
+        var bytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(source));
+        var guidBytes = new byte[16];
+        Array.Copy(bytes, guidBytes, guidBytes.Length);
+        return new Guid(guidBytes);
     }
 
     private static void AppendCsvBranding(StringBuilder builder)

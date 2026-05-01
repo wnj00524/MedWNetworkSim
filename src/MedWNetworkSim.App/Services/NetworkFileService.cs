@@ -285,6 +285,15 @@ public sealed class NetworkFileService
             })
             .ToList();
 
+        var preAgentMutationNetwork = model.PreAgentMutationNetwork is null
+            ? null
+            : NormalizePreAgentMutationNetwork(
+                model.PreAgentMutationNetwork,
+                forceLayoutAllNodes,
+                trafficTypesWithExplicitFlowSplitPolicy,
+                depth,
+                ancestry);
+
         return new NetworkModel
         {
             Name = string.IsNullOrWhiteSpace(model.Name) ? "Untitled Network" : model.Name.Trim(),
@@ -304,9 +313,27 @@ public sealed class NetworkFileService
             ActorMetrics = (model.ActorMetrics ?? []).Where(metric => metric is not null).ToList(),
             ActorActionOutcomes = (model.ActorActionOutcomes ?? []).Where(outcome => outcome is not null).ToList(),
             AgentActionLogs = (model.AgentActionLogs ?? []).Where(entry => entry is not null).ToList(),
+            PreAgentMutationNetwork = preAgentMutationNetwork,
             ActorTick = Math.Max(0, model.ActorTick),
             Subnetworks = NormalizeSubnetworks(model.Subnetworks, normalizedNodes, normalizedEdges, forceLayoutAllNodes, depth, ancestry)
         };
+    }
+
+    private NetworkModel NormalizePreAgentMutationNetwork(
+        NetworkModel baseline,
+        bool forceLayoutAllNodes,
+        ISet<string>? trafficTypesWithExplicitFlowSplitPolicy,
+        int depth,
+        IReadOnlySet<string> ancestry)
+    {
+        var clone = NetworkModelCloneUtility.Clone(baseline);
+        clone.PreAgentMutationNetwork = null;
+        clone.AgentActionLogs = [];
+        clone.ActorDecisions = [];
+        clone.ActorMetrics = [];
+        clone.ActorActionOutcomes = [];
+        clone.ActorTick = 0;
+        return NormalizeAndValidate(clone, forceLayoutAllNodes, trafficTypesWithExplicitFlowSplitPolicy, depth, ancestry);
     }
 
     private List<EdgeTrafficPermissionRule> NormalizeEdgeTrafficPermissionRules(

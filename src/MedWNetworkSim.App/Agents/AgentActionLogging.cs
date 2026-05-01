@@ -4,6 +4,8 @@ public sealed record AgentActionLogEntry
 {
     public Guid Id { get; init; } = Guid.NewGuid();
     public Guid AgentId { get; init; }
+    public string ActorId { get; init; } = string.Empty;
+    public string AgentName { get; init; } = string.Empty;
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;
     public int SimulationTick { get; init; }
     public string ActionType { get; init; } = string.Empty;

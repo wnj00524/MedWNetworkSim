@@ -74,9 +74,9 @@ public sealed class SimulationActorCoordinator
             PolicySettings = policySettings
         };
 
-        var decisions = orderedActors.Select(actor => actor.Decide(context)).ToList();
-        LogDecisions(decisions, outcomes: baseSnapshot.TrafficOutcomes, tick);
         var actorMap = BuildActorMap(actorStates);
+        var decisions = orderedActors.Select(actor => actor.Decide(context)).ToList();
+        LogDecisions(decisions, outcomes: baseSnapshot.TrafficOutcomes, tick, actorMap);
         var actorKindsById = actorMap.ToDictionary(pair => pair.Key, pair => pair.Value.Kind, StringComparer.OrdinalIgnoreCase);
         var resolvedActions = ResolveConflicts(decisions.SelectMany(d => d.Actions).ToList(), actorKindsById);
         var flowByEdge = BuildFlowByEdge(baseSnapshot.TrafficOutcomes);
@@ -304,7 +304,11 @@ public sealed class SimulationActorCoordinator
         return NetworkModelCloneUtility.Clone(network);
     }
 
-    private void LogDecisions(IReadOnlyList<SimulationActorDecision> decisions, IReadOnlyList<TrafficSimulationOutcome> outcomes, int tick)
+    private void LogDecisions(
+        IReadOnlyList<SimulationActorDecision> decisions,
+        IReadOnlyList<TrafficSimulationOutcome> outcomes,
+        int tick,
+        IReadOnlyDictionary<string, SimulationActorState> actorsById)
     {
         var delivered = outcomes.Sum(o => o.TotalDelivered);
         var unmet = outcomes.Sum(o => o.UnmetDemand);
@@ -314,12 +318,15 @@ public sealed class SimulationActorCoordinator
         foreach (var decision in decisions)
         {
             var agentId = Guid.TryParse(decision.ActorId, out var parsedAgentId) ? parsedAgentId : CreateStableGuid(decision.ActorId);
+            actorsById.TryGetValue(decision.ActorId, out var actor);
             foreach (var action in decision.Actions)
             {
                 actionLogger.Log(new AgentActionLogEntry
                 {
                     Id = Guid.NewGuid(),
                     AgentId = agentId,
+                    ActorId = decision.ActorId,
+                    AgentName = actor?.Name ?? string.Empty,
                     Timestamp = DateTime.UtcNow,
                     SimulationTick = tick,
                     ActionType = action.Kind.ToString(),

@@ -6369,7 +6369,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             .Select(profile => Math.Max(0d, profile.UnitPrice))
             .Distinct()
             .OrderBy(value => value)
-            .Select(ReportExportService.FormatNumber)
+            .Select(value => ReportExportService.FormatNumber(value))
             .ToList();
         var consumptionPrices = network.Nodes
             .SelectMany(node => node.TrafficProfiles)
@@ -6377,7 +6377,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             .Select(profile => Math.Max(0d, profile.UnitPrice))
             .Distinct()
             .OrderBy(value => value)
-            .Select(ReportExportService.FormatNumber)
+            .Select(value => ReportExportService.FormatNumber(value))
             .ToList();
 
         return $"{FormatPriceList(productionPrices)}:{FormatPriceList(consumptionPrices)}";

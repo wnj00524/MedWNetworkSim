@@ -3824,6 +3824,11 @@ public sealed class ShellWindow : Window
 
     private static Geometry BuildPieSliceGeometry(double centerX, double centerY, double radius, double startAngleDegrees, double sweepAngleDegrees)
     {
+        if (sweepAngleDegrees >= 359.999d)
+        {
+            return new EllipseGeometry(new Rect(centerX - radius, centerY - radius, radius * 2d, radius * 2d));
+        }
+
         const double DegreesToRadians = Math.PI / 180d;
         var startRadians = startAngleDegrees * DegreesToRadians;
         var endRadians = (startAngleDegrees + sweepAngleDegrees) * DegreesToRadians;

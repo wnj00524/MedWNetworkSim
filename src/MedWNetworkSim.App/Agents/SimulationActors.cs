@@ -34,6 +34,33 @@ public abstract class SimulationActorBase : ISimulationActor
 
     protected static IEnumerable<NetworkInsight> InsightsForEdge(IReadOnlyList<NetworkInsight> insights, string edgeId) =>
         insights.Where(i => string.Equals(i.TargetEdgeId, edgeId, StringComparison.OrdinalIgnoreCase));
+
+    protected bool IsPermittedByPermissions(
+        SimulationActorActionKind actionKind,
+        string? trafficType = null,
+        string? nodeId = null,
+        string? edgeId = null)
+    {
+        var permissions = State.Capability?.Permissions ?? [];
+        var actionRules = permissions
+            .Where(permission => permission.ActionKind == actionKind)
+            .ToList();
+        if (actionRules.Count == 0)
+        {
+            return true;
+        }
+
+        var matching = actionRules
+            .Where(permission =>
+                (permission.TrafficType == null || Comparer.Equals(permission.TrafficType, trafficType)) &&
+                (permission.NodeId == null || Comparer.Equals(permission.NodeId, nodeId)) &&
+                (permission.EdgeId == null || Comparer.Equals(permission.EdgeId, edgeId)))
+            .ToList();
+
+        return matching.Count == 0
+            ? !actionRules.Any(permission => permission.IsAllowed)
+            : matching.Any(permission => permission.IsAllowed) && !matching.Any(permission => !permission.IsAllowed);
+    }
 }
 
 public sealed class FirmSimulationActor : SimulationActorBase
@@ -46,18 +73,15 @@ public sealed class FirmSimulationActor : SimulationActorBase
         var outcomes = context.CurrentSnapshot.TrafficOutcomes;
         var utilityBefore = EstimateUtility(State.Objective, outcomes);
 
-        foreach (var nodeId in State.ControlledNodeIds)
+        foreach (var node in context.CurrentNetwork.Nodes.OrderBy(node => node.Id, Comparer))
         {
-            var node = context.CurrentNetwork.Nodes.FirstOrDefault(n => Comparer.Equals(n.Id, nodeId));
-            if (node is null)
-            {
-                actions.Add(BuildNoOp($"Controlled node '{nodeId}' not found."));
-                continue;
-            }
-
             foreach (var profile in node.TrafficProfiles)
             {
-                if (profile.Production <= 0d && profile.Consumption <= 0d && !string.IsNullOrWhiteSpace(profile.TrafficType) && State.Cash > 0d)
+                if (profile.Production <= 0d &&
+                    profile.Consumption <= 0d &&
+                    !string.IsNullOrWhiteSpace(profile.TrafficType) &&
+                    State.Cash > 0d &&
+                    IsPermittedByPermissions(SimulationActorActionKind.AdjustProduction, profile.TrafficType, node.Id))
                 {
                     actions.Add(new SimulationActorAction
                     {
@@ -68,7 +92,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
                         TrafficType = profile.TrafficType,
                         DeltaValue = 10d,
                         Cost = 2.5d,
-                        Reason = "Assigned node has no active production or demand; seed a visible production plan.",
+                        Reason = "Permitted node has no active production or demand; seed a visible production plan.",
                         ExpectedEffect = "Start producing traffic at the controlled node.",
                         IsPolicyAction = false
                     });
@@ -84,7 +108,10 @@ public sealed class FirmSimulationActor : SimulationActorBase
                 var unmetRatio = outcome.TotalConsumption <= 0d ? 0d : outcome.UnmetDemand / outcome.TotalConsumption;
                 var deliveredRatio = outcome.TotalConsumption <= 0d ? 0d : outcome.TotalDelivered / outcome.TotalConsumption;
 
-                if (profile.Production > 0d && deliveredRatio >= 0.85d && State.Cash > 0d)
+                if (profile.Production > 0d &&
+                    deliveredRatio >= 0.85d &&
+                    State.Cash > 0d &&
+                    IsPermittedByPermissions(SimulationActorActionKind.AdjustProduction, profile.TrafficType, node.Id))
                 {
                     var delta = Math.Max(1d, profile.Production * 0.1d);
                     var cost = delta * 0.25d;
@@ -103,7 +130,8 @@ public sealed class FirmSimulationActor : SimulationActorBase
                     });
                 }
 
-                if (unmetRatio > 0.2d)
+                if (unmetRatio > 0.2d &&
+                    IsPermittedByPermissions(SimulationActorActionKind.AdjustTrafficPrice, profile.TrafficType, node.Id))
                 {
                     actions.Add(new SimulationActorAction
                     {
@@ -119,7 +147,9 @@ public sealed class FirmSimulationActor : SimulationActorBase
                         IsPolicyAction = false
                     });
                 }
-                else if (deliveredRatio < 0.4d && profile.Production > 0d)
+                else if (deliveredRatio < 0.4d &&
+                    profile.Production > 0d &&
+                    IsPermittedByPermissions(SimulationActorActionKind.AdjustProduction, profile.TrafficType, node.Id))
                 {
                     actions.Add(new SimulationActorAction
                     {
@@ -138,12 +168,10 @@ public sealed class FirmSimulationActor : SimulationActorBase
             }
         }
 
-        foreach (var edgeId in State.ControlledEdgeIds)
+        foreach (var edge in context.CurrentNetwork.Edges.OrderBy(edge => edge.Id, Comparer))
         {
-            var edge = context.CurrentNetwork.Edges.FirstOrDefault(e => Comparer.Equals(e.Id, edgeId));
-            if (edge is null)
+            if (!IsPermittedByPermissions(SimulationActorActionKind.AdjustEdgeCapacity, edgeId: edge.Id))
             {
-                actions.Add(BuildNoOp($"Controlled edge '{edgeId}' not found."));
                 continue;
             }
 
@@ -161,7 +189,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
                         TargetEdgeId = edge.Id,
                         DeltaValue = preventiveDelta,
                         Cost = preventiveDelta,
-                        Reason = "Assigned route is under firm control; make a small capacity investment.",
+                        Reason = "Permitted route has room for a small capacity investment.",
                         ExpectedEffect = "Increase visible route capacity for future deliveries.",
                         IsPolicyAction = false
                     });
@@ -198,7 +226,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
             Actions = actions,
             ActionType = actions.FirstOrDefault()?.Kind.ToString() ?? SimulationActorActionKind.NoOp.ToString(),
             TargetId = actions.FirstOrDefault()?.TargetEdgeId ?? actions.FirstOrDefault()?.TargetNodeId ?? "(none)",
-            ReasonSummary = "Firm actor evaluated demand and profitability levers for controlled assets.",
+            ReasonSummary = "Firm actor evaluated demand and profitability levers for permitted assets.",
             Factors = actions.Select(action => action.Reason).Distinct(Comparer).ToList(),
             Alternatives = ["No operation", "Hold price and capacity steady"],
             ExpectedOutcome = "Increase delivered volume and maintain positive margin.",
@@ -255,7 +283,8 @@ public sealed class GovernmentSimulationActor : SimulationActorBase
 
             if (context.PolicySettings.ConstrainedTrafficTypes.Contains(outcome.TrafficType))
             {
-                foreach (var edge in context.CurrentNetwork.Edges.Where(e => State.ControlledEdgeIds.Count == 0 || State.ControlledEdgeIds.Contains(e.Id, Comparer)))
+                foreach (var edge in context.CurrentNetwork.Edges
+                             .Where(edge => IsPermittedByPermissions(SimulationActorActionKind.BanTrafficOnEdge, outcome.TrafficType, edgeId: edge.Id)))
                 {
                     actions.Add(new SimulationActorAction
                     {
@@ -295,7 +324,7 @@ public sealed class GovernmentSimulationActor : SimulationActorBase
         if (actions.Count == 0 && State.Cash > 0d)
         {
             var targetEdge = context.CurrentNetwork.Edges
-                .Where(edge => State.ControlledEdgeIds.Contains(edge.Id, Comparer))
+                .Where(edge => IsPermittedByPermissions(SimulationActorActionKind.SubsidiseCapacity, edgeId: edge.Id))
                 .OrderBy(edge => edge.Capacity ?? 0d)
                 .ThenBy(edge => edge.Id, Comparer)
                 .FirstOrDefault();
@@ -309,7 +338,7 @@ public sealed class GovernmentSimulationActor : SimulationActorBase
                     TargetEdgeId = targetEdge.Id,
                     DeltaValue = 2d,
                     Cost = 2d,
-                    Reason = "Assigned public route has no urgent incident; fund a small resilience improvement.",
+                    Reason = "Permitted public route has no urgent incident; fund a small resilience improvement.",
                     ExpectedEffect = "Increase route capacity under government oversight.",
                     IsPolicyAction = true
                 });
@@ -358,11 +387,7 @@ public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
         var actions = new List<SimulationActorAction>();
         var outcomes = context.CurrentSnapshot.TrafficOutcomes;
         var utilityBefore = EstimateUtility(State.Objective, outcomes);
-        var candidateEdges = State.ControlledEdgeIds.Count > 0
-            ? context.CurrentNetwork.Edges.Where(edge => State.ControlledEdgeIds.Contains(edge.Id, Comparer))
-            : context.CurrentNetwork.Edges;
-
-        foreach (var edge in candidateEdges.OrderBy(e => e.Cost).ThenBy(e => e.Id, Comparer))
+        foreach (var edge in context.CurrentNetwork.Edges.OrderBy(e => e.Cost).ThenBy(e => e.Id, Comparer))
         {
             var edgeOutcomes = outcomes
                 .SelectMany(o => o.Allocations)
@@ -372,7 +397,8 @@ public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
             var capacity = edge.Capacity;
             var utilisation = capacity.HasValue && capacity.Value > 0d ? routed / capacity.Value : 0d;
 
-            if (utilisation >= context.PolicySettings.OverloadThreshold)
+            if (utilisation >= context.PolicySettings.OverloadThreshold &&
+                IsPermittedByPermissions(SimulationActorActionKind.AdjustEdgeCapacity, edgeId: edge.Id))
             {
                 actions.Add(new SimulationActorAction
                 {
@@ -387,7 +413,8 @@ public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
                     IsPolicyAction = false
                 });
             }
-            else if (edge.Cost > context.CurrentNetwork.Edges.Average(e => e.Cost) * 1.5d)
+            else if (edge.Cost > context.CurrentNetwork.Edges.Average(e => e.Cost) * 1.5d &&
+                IsPermittedByPermissions(SimulationActorActionKind.PreferRoute, edgeId: edge.Id))
             {
                 actions.Add(new SimulationActorAction
                 {
@@ -403,10 +430,10 @@ public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
             }
         }
 
-        if (actions.Count == 0 && State.ControlledEdgeIds.Count > 0)
+        if (actions.Count == 0)
         {
             var targetEdge = context.CurrentNetwork.Edges
-                .Where(edge => State.ControlledEdgeIds.Contains(edge.Id, Comparer) && edge.Cost > 0d)
+                .Where(edge => edge.Cost > 0d && IsPermittedByPermissions(SimulationActorActionKind.PreferRoute, edgeId: edge.Id))
                 .OrderByDescending(edge => edge.Cost)
                 .ThenBy(edge => edge.Id, Comparer)
                 .FirstOrDefault();
@@ -419,8 +446,8 @@ public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
                     Kind = SimulationActorActionKind.PreferRoute,
                     TargetEdgeId = targetEdge.Id,
                     DeltaValue = -Math.Min(0.5d, Math.Max(0.1d, targetEdge.Cost * 0.1d)),
-                    Reason = "Assigned route has no active congestion; tune route preference cost for future flow.",
-                    ExpectedEffect = "Make the controlled route visibly cheaper for allocation.",
+                    Reason = "Permitted route has no active congestion; tune route preference cost for future flow.",
+                    ExpectedEffect = "Make the permitted route visibly cheaper for allocation.",
                     IsPolicyAction = false
                 });
             }

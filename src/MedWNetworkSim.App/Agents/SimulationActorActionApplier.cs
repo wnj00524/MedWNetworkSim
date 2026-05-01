@@ -78,14 +78,6 @@ public sealed class SimulationActorActionApplier
             return (false, $"Actor capability does not allow traffic type '{action.TrafficType}'.");
         }
 
-        if (action.Kind == SimulationActorActionKind.AdjustEdgeCapacity &&
-            actor.Kind == SimulationActorKind.Firm &&
-            !string.IsNullOrWhiteSpace(action.TargetEdgeId) &&
-            !actor.ControlledEdgeIds.Contains(action.TargetEdgeId, Comparer))
-        {
-            return (false, "Firms can only adjust capacity on assigned edges.");
-        }
-
         spentByActorId.TryGetValue(actor.Id, out var spentThisTick);
         var availableCash = Math.Max(0d, actor.Cash - spentThisTick);
         if (action.Cost > 0d && availableCash < action.Cost)

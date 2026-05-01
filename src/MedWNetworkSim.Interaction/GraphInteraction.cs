@@ -104,11 +104,11 @@ public sealed class GraphInteractionController
             return;
         }
 
-        if (controlPressed && hit.NodeId is not null && context.ToolMode == GraphToolMode.Select)
+        if ((controlPressed || shiftPressed) && hit.NodeId is not null && context.ToolMode == GraphToolMode.Select)
         {
             SelectNode(context, hit.NodeId, additive: false);
             isConnectionGesture = true;
-            connectionGestureCreatesBidirectionalEdge = true;
+            connectionGestureCreatesBidirectionalEdge = controlPressed;
             dragNodeId = null;
             context.Scene.Transient.ConnectionSourceNodeId = hit.NodeId;
             context.Scene.Transient.ConnectionWorld = worldPoint;

@@ -15,6 +15,10 @@ ScenarioCoordinateTransformPreservesLogicalInput();
 ScenarioCoordinateTransformClampsPointerOutsideCanvas();
 ScenarioAddNodePlacementMatchesClickedWorldPosition();
 ScenarioWorkspaceDoubleClickCreatesNodeAndRequestsFullEditor();
+ScenarioWorkspaceDoubleClickExistingNodeOpensNodeEditor();
+ScenarioWorkspaceDoubleClickExistingEdgeOpensRouteEditor();
+ScenarioSingleClickExistingNodeLoadsNodeDraft();
+ScenarioSingleClickExistingEdgeLoadsEdgeDraft();
 ScenarioDragAndConnectUseRenderedCoordinates();
 ScenarioModifierDragCreatesExpectedRouteDirection();
 ScenarioMultipleTrafficProfilesCanBeSwitched();
@@ -126,6 +130,103 @@ static void ScenarioWorkspaceDoubleClickCreatesNodeAndRequestsFullEditor()
     var created = saved.Nodes.Single(node => node.Id == requestedNodeId);
     AssertNumberNear(expectedWorld.X, created.X!.Value, 0.001d, "workspace double click saved x");
     AssertNumberNear(expectedWorld.Y, created.Y!.Value, 0.001d, "workspace double click saved y");
+}
+
+static void ScenarioWorkspaceDoubleClickExistingNodeOpensNodeEditor()
+{
+    var path = WriteTempNetwork(CreateInteractionEditingNetwork());
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        var canvas = new GraphCanvasControl { ViewModel = workspace };
+        var viewportSize = new GraphSize(960d, 640d);
+        var context = workspace.CreateInteractionContext(viewportSize);
+        var nodePoint = ScreenPointForNode(workspace, viewportSize, "alpha");
+        var requestedNodeId = string.Empty;
+        canvas.FullNodeEditorRequested += (_, args) => requestedNodeId = args.NodeId;
+
+        var handled = canvas.TryHandleWorkspaceDoubleClick(context, nodePoint);
+
+        AssertTrue(handled, "workspace double click existing node handled");
+        AssertTrue(workspace.IsEditingNode, "workspace double click existing node enters node edit mode");
+        AssertTextEqual("alpha", workspace.NodeDraft.TargetNodeId ?? string.Empty, "workspace double click existing node targets node draft");
+        AssertTextEqual("alpha", requestedNodeId, "workspace double click existing node requests full editor");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioWorkspaceDoubleClickExistingEdgeOpensRouteEditor()
+{
+    var path = WriteTempNetwork(CreateInteractionEditingNetwork());
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        var canvas = new GraphCanvasControl { ViewModel = workspace };
+        var viewportSize = new GraphSize(960d, 640d);
+        var context = workspace.CreateInteractionContext(viewportSize);
+        var edgePoint = ScreenPointForEdge(workspace, viewportSize, "alpha->beta");
+
+        var handled = canvas.TryHandleWorkspaceDoubleClick(context, edgePoint);
+
+        AssertTrue(handled, "workspace double click existing edge handled");
+        AssertTrue(workspace.IsEdgeEditorWorkspaceMode, "workspace double click existing edge opens route editor workspace");
+        AssertTextEqual("alpha->beta", workspace.EdgeDraft.TargetEdgeId ?? string.Empty, "workspace double click existing edge targets edge draft");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioSingleClickExistingNodeLoadsNodeDraft()
+{
+    var path = WriteTempNetwork(CreateInteractionEditingNetwork());
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        workspace.SelectToolCommand.Execute(null);
+        var viewportSize = new GraphSize(960d, 640d);
+        var context = workspace.CreateInteractionContext(viewportSize);
+
+        workspace.InteractionController.OnPointerPressed(context, GraphPointerButton.Left, ScreenPointForNode(workspace, viewportSize, "beta"), false, false, false);
+
+        AssertTrue(workspace.IsEditingNode, "single click existing node enters node edit mode");
+        AssertTextEqual("beta", workspace.NodeDraft.TargetNodeId ?? string.Empty, "single click existing node loads node draft");
+        AssertTextEqual("Clinic", workspace.NodeDraft.PlaceTypeText, "single click existing node loads selected node values");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
+}
+
+static void ScenarioSingleClickExistingEdgeLoadsEdgeDraft()
+{
+    var path = WriteTempNetwork(CreateInteractionEditingNetwork());
+    try
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.OpenNetwork(path);
+        workspace.SelectToolCommand.Execute(null);
+        var viewportSize = new GraphSize(960d, 640d);
+        var context = workspace.CreateInteractionContext(viewportSize);
+
+        workspace.InteractionController.OnPointerPressed(context, GraphPointerButton.Left, ScreenPointForEdge(workspace, viewportSize, "alpha->beta"), false, false, false);
+
+        AssertTrue(workspace.IsEditingEdge, "single click existing edge enters route edit mode");
+        AssertTextEqual("alpha->beta", workspace.EdgeDraft.TargetEdgeId ?? string.Empty, "single click existing edge loads edge draft");
+        AssertTextEqual("Road", workspace.EdgeDraft.RouteTypeText, "single click existing edge loads selected edge values");
+    }
+    finally
+    {
+        TryDelete(path);
+    }
 }
 
 static void ScenarioDragAndConnectUseRenderedCoordinates()
@@ -1609,6 +1710,37 @@ static NetworkModel SaveAndReload(WorkspaceViewModel workspace)
     {
         TryDelete(path);
     }
+}
+
+static NetworkModel CreateInteractionEditingNetwork()
+{
+    return new NetworkModel
+    {
+        Name = "Interaction Editing",
+        TrafficTypes = [new TrafficTypeDefinition { Name = "grain" }],
+        Nodes =
+        [
+            new NodeModel { Id = "alpha", Name = "Alpha", PlaceType = "Depot", X = -160d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] },
+            new NodeModel { Id = "beta", Name = "Beta", PlaceType = "Clinic", X = 160d, Y = 0d, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "grain" }] }
+        ],
+        Edges =
+        [
+            new EdgeModel { Id = "alpha->beta", FromNodeId = "alpha", ToNodeId = "beta", Time = 3d, Cost = 4d, Capacity = 12d, IsBidirectional = true, RouteType = "Road" }
+        ]
+    };
+}
+
+static GraphPoint ScreenPointForNode(WorkspaceViewModel workspace, GraphSize viewportSize, string nodeId)
+{
+    var node = workspace.Scene.Nodes.Single(item => item.Id == nodeId);
+    return workspace.Viewport.WorldToScreen(new GraphPoint(node.Bounds.CenterX, node.Bounds.CenterY), viewportSize);
+}
+
+static GraphPoint ScreenPointForEdge(WorkspaceViewModel workspace, GraphSize viewportSize, string edgeId)
+{
+    var edge = workspace.Scene.Edges.Single(item => item.Id == edgeId);
+    var midpoint = GraphHitTester.GetEdgeMidpoint(workspace.Scene, edge);
+    return workspace.Viewport.WorldToScreen(midpoint, viewportSize);
 }
 
 static void SelectFirstNode(WorkspaceViewModel workspace, GraphSize viewportSize)

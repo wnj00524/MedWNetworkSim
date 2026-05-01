@@ -370,7 +370,36 @@ public sealed class SimulationActorsTests
         Assert.Equal(SimulationActorKind.Government, vm.FilteredSimulationActors[0].Kind);
 
         vm.AgentSearchText = string.Empty;
-        Assert.True(vm.FilteredSimulationActors.Count >= 2);
+        Assert.Equal(vm.SimulationActors.Count, vm.FilteredSimulationActors.Count);
+    }
+
+    [Fact]
+    public void RunningActorStep_AppliesActionsAndRecordsOutcomes()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+        vm.AddFirmActorCommand.Execute(null);
+        vm.Scene.Selection.SelectedNodeIds.Add("producer");
+        vm.AssignSelectedNodeToActorCommand.Execute(null);
+
+        vm.RunActorStepCommand.Execute(null);
+
+        Assert.NotEmpty(vm.ActorDecisions);
+        Assert.Contains(vm.ActorActionOutcomes, outcome => outcome.AppliedState == "Applied");
+        Assert.NotEmpty(vm.AgentLog.Entries);
+
+        var path = Path.GetTempFileName();
+        try
+        {
+            vm.SaveNetwork(path);
+            var loaded = new MedWNetworkSim.App.Services.NetworkFileService().Load(path);
+            var producer = loaded.Nodes.Single(node => node.Id == "producer");
+            Assert.True(producer.TrafficProfiles.Single(profile => profile.TrafficType == "Food").Production > 120d);
+            Assert.NotEmpty(loaded.AgentActionLogs);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [Fact]

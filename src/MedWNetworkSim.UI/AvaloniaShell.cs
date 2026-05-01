@@ -2027,81 +2027,7 @@ public sealed class ShellWindow : Window
 
     private Control BuildAgentsView(WorkspaceViewModel viewModel)
     {
-        var list = new ListBox
-        {
-            MinWidth = 260,
-            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.SimulationActors)),
-            [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(WorkspaceViewModel.SelectedSimulationActor), BindingMode.TwoWay),
-            ItemTemplate = new FuncDataTemplate<SimulationActorState>((actor, _) => new StackPanel
-            {
-                Spacing = 2,
-                Children =
-                {
-                    new TextBlock { Text = actor?.Name ?? string.Empty, FontWeight = FontWeight.SemiBold },
-                    new TextBlock { Text = actor?.Kind.ToString() ?? string.Empty, FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) }
-                }
-            })
-        };
-
-        var trafficTypeChecklist = new ItemsControl
-        {
-            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ActorTrafficTypeRows)),
-            ItemTemplate = new FuncDataTemplate<ActorTrafficTypeSelectionRow>((row, _) => new CheckBox
-            {
-                Content = row?.TrafficType ?? string.Empty,
-                [!ToggleButton.IsCheckedProperty] = new Binding(nameof(ActorTrafficTypeSelectionRow.IsAllowed), BindingMode.TwoWay)
-            })
-        };
-
-        var form = new ScrollViewer
-        {
-            Content = new StackPanel
-            {
-                Spacing = 10,
-                Children =
-                {
-                    BuildSectionTitle("Agent Details", "Configure the selected agent."),
-                    BuildLabeledTextBox("Name", nameof(WorkspaceViewModel.ActorNameText)),
-                    BuildReadOnlyRow("Type", "SelectedSimulationActor.Kind"),
-                    BuildLabeledTextBox("Budget", nameof(WorkspaceViewModel.ActorBudgetText)),
-                    BuildLabeledCheckBox("Allowed traffic types: all", nameof(WorkspaceViewModel.ActorAllowAllTrafficTypes)),
-                    trafficTypeChecklist,
-                    BuildReadOnlyRow("Allowed actions", nameof(WorkspaceViewModel.SelectedActorAllowedActionsText)),
-                    BuildButton("Apply changes", viewModel.ApplySelectedActorCommand, isPrimary: true),
-                    BuildReadOnlyRow("Validation", nameof(WorkspaceViewModel.ActorValidationText))
-                }
-            }
-        };
-
-        var left = new StackPanel
-        {
-            Spacing = 8,
-            Children =
-            {
-                BuildSectionTitle("Agents", "Network actors and planners."),
-                list,
-                new WrapPanel
-                {
-                    Children =
-                    {
-                        BuildButton("Add Agent", viewModel.AddFirmActorCommand),
-                        BuildButton("Remove Agent", viewModel.RemoveSelectedActorCommand)
-                    }
-                }
-            }
-        };
-
-        Grid.SetColumn(form, 1);
-        return new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitions("320,*"),
-            ColumnSpacing = 12,
-            Children =
-            {
-                left,
-                form
-            }
-        };
+        return BuildActorsPanel(viewModel);
     }
 
     private Control BuildAnalyticsView(WorkspaceViewModel viewModel)
@@ -3007,7 +2933,14 @@ public sealed class ShellWindow : Window
             {
                 new DataGridTextColumn { Header = "Agent ID", Binding = new Binding(nameof(SimulationActorState.Id)) },
                 new DataGridTextColumn { Header = "Type", Binding = new Binding(nameof(SimulationActorState.Kind)) },
-                new DataGridTextColumn { Header = "Current Node", Binding = new Binding(nameof(SimulationActorState.ControlledNodeIds.Count)) },
+                new DataGridTextColumn
+                {
+                    Header = "Current Node",
+                    Binding = new Binding(nameof(SimulationActorState.ControlledNodeIds))
+                    {
+                        Converter = new FuncValueConverter<List<string>, string?>(ids => ids?.FirstOrDefault() ?? "None")
+                    }
+                },
                 new DataGridTextColumn { Header = "Destination", Binding = new Binding(nameof(SimulationActorState.Objective)) },
                 new DataGridTextColumn { Header = "Status", Binding = new Binding(nameof(SimulationActorState.IsEnabled)) },
                 new DataGridTextColumn { Header = "Payload", Binding = new Binding(nameof(SimulationActorState.Cash)) }

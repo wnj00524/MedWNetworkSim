@@ -529,6 +529,46 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
+    public void ResetTimeline_AfterReload_RevertsPersistedAgentMutationsToPreAgentNetwork()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+        vm.AddFirmActorCommand.Execute(null);
+        vm.Scene.Selection.SelectedNodeIds.Add("producer");
+        vm.AssignSelectedNodeToActorCommand.Execute(null);
+        vm.StepCommand.Execute(null);
+
+        var path = Path.GetTempFileName();
+        var resetPath = Path.GetTempFileName();
+        try
+        {
+            vm.SaveNetwork(path);
+            var saved = new MedWNetworkSim.App.Services.NetworkFileService().Load(path);
+            Assert.NotNull(saved.PreAgentMutationNetwork);
+            var mutatedProducerProfile = saved.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single(profile => profile.TrafficType == "Food");
+            Assert.True(mutatedProducerProfile.UnitPrice > 1d);
+            var baselineProducerProfile = saved.PreAgentMutationNetwork!.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single(profile => profile.TrafficType == "Food");
+            Assert.Equal(1d, baselineProducerProfile.UnitPrice);
+
+            var reloadedVm = new WorkspaceViewModel();
+            reloadedVm.OpenNetwork(path);
+            reloadedVm.ResetTimelineCommand.Execute(null);
+            reloadedVm.SaveNetwork(resetPath);
+            var reset = new MedWNetworkSim.App.Services.NetworkFileService().Load(resetPath);
+            var resetProducerProfile = reset.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single(profile => profile.TrafficType == "Food");
+
+            Assert.Equal(1d, resetProducerProfile.UnitPrice);
+            Assert.Null(reset.PreAgentMutationNetwork);
+            Assert.Empty(reset.AgentActionLogs);
+            Assert.Equal(0, reset.ActorTick);
+        }
+        finally
+        {
+            File.Delete(path);
+            File.Delete(resetPath);
+        }
+    }
+
+    [Fact]
     public void TrafficReports_ShowProductionAndConsumptionPrices()
     {
         var vm = BuildWorkspaceViewModelWithNetwork();

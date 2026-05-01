@@ -125,6 +125,12 @@ public sealed class NetworkModel
     public List<AgentActionLogEntry> AgentActionLogs { get; set; } = [];
 
     /// <summary>
+    /// Gets or sets the network snapshot captured before agent actions first mutated the network.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public NetworkModel? PreAgentMutationNetwork { get; set; }
+
+    /// <summary>
     /// Gets or sets the persisted actor simulation tick.
     /// </summary>
     public int ActorTick { get; set; }

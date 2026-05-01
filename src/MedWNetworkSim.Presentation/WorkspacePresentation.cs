@@ -4150,6 +4150,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public void SaveNetwork(string path)
     {
         CommitTransientEditorsToModel();
+        PersistPreAgentMutationSnapshot();
         fileService.Save(network, path);
         CurrentFilePath = path;
         HasUnsavedChanges = false;
@@ -4727,7 +4728,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         network = fileService.NormalizeAndValidate(source);
         EnsureNetworkReferences(network);
-        preAgentMutationNetwork = null;
+        preAgentMutationNetwork = network.PreAgentMutationNetwork is null
+            ? null
+            : NetworkModelCloneUtility.Clone(network.PreAgentMutationNetwork);
         temporalState = null;
         lastTimelineStepResult = null;
         Raise(nameof(TrafficDeliveredColumnLabel));
@@ -5920,6 +5923,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private void ApplyActorStep(SimulationActorStepResult step, string message, bool refreshSimulation = true)
     {
         network = step.NetworkAfterStep;
+        PersistPreAgentMutationSnapshot();
         network.Actors = SimulationActors.ToList();
         network.ActorDecisions.AddRange(step.Decisions);
         network.ActorActionOutcomes.AddRange(step.ActionOutcomes);
@@ -6165,6 +6169,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             network = NetworkModelCloneUtility.Clone(preAgentMutationNetwork);
             EnsureNetworkReferences(network);
             preAgentMutationNetwork = null;
+            network.PreAgentMutationNetwork = null;
             RebuildActorStateFromNetwork();
             BuildSceneFromNetwork();
         }
@@ -6203,7 +6208,31 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private void CapturePreAgentMutationNetwork()
     {
-        preAgentMutationNetwork ??= NetworkModelCloneUtility.Clone(network);
+        if (preAgentMutationNetwork is not null)
+        {
+            return;
+        }
+
+        preAgentMutationNetwork = NetworkModelCloneUtility.Clone(network);
+        ClearPersistedAgentHistory(preAgentMutationNetwork);
+        network.PreAgentMutationNetwork = NetworkModelCloneUtility.Clone(preAgentMutationNetwork);
+    }
+
+    private void PersistPreAgentMutationSnapshot()
+    {
+        network.PreAgentMutationNetwork = preAgentMutationNetwork is null
+            ? null
+            : NetworkModelCloneUtility.Clone(preAgentMutationNetwork);
+    }
+
+    private static void ClearPersistedAgentHistory(NetworkModel snapshot)
+    {
+        snapshot.PreAgentMutationNetwork = null;
+        snapshot.ActorDecisions.Clear();
+        snapshot.ActorActionOutcomes.Clear();
+        snapshot.ActorMetrics.Clear();
+        snapshot.AgentActionLogs.Clear();
+        snapshot.ActorTick = 0;
     }
 
     private void RebuildActorStateFromNetwork()

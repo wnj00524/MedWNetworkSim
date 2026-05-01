@@ -410,7 +410,7 @@ public sealed class GraphCanvasControl : Control, IDisposable
             }
             else
             {
-                renderer.Render(surface.Canvas, interactionContext.Scene, interactionContext.Viewport, transform.LogicalViewport);
+                renderer.Render(surface.Canvas, interactionContext.Scene, interactionContext.Viewport, transform.LogicalViewport, ViewModel.VisualisationState.ShowGraphLabels);
             }
             surface.Canvas.Flush();
 
@@ -2296,6 +2296,27 @@ public sealed class ShellWindow : Window
 
         var modeSelector = BuildWrapPanel(graphModeButton, sankeyModeButton, mapModeButton);
 
+        var labelsToggle = BuildButton(viewModel.GraphLabelsToggleText, viewModel.ToggleGraphLabelsCommand, toolTip: "Toggle boxed graph labels. When labels are off, node details stay in the inspector.");
+        labelsToggle.Classes.Add("toolbar-button");
+        labelsToggle.Focusable = true;
+        void RefreshGraphLabelToggle()
+        {
+            labelsToggle.Content = viewModel.GraphLabelsToggleText;
+            ApplyToolButtonState(labelsToggle, viewModel.VisualisationState.ShowGraphLabels);
+        }
+
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(WorkspaceViewModel.GraphLabelsToggleText))
+            {
+                RefreshGraphLabelToggle();
+            }
+        };
+        RefreshGraphLabelToggle();
+
+        var graphOptions = BuildWrapPanel(labelsToggle);
+        graphOptions.IsVisible = viewModel.IsGraphMode;
+
         var sankeyOptions = BuildWrapPanel(
             BuildLabeledComboBox("Traffic type", nameof(WorkspaceViewModel.TrafficTypeNameOptions), "VisualisationState.ActiveTrafficTypeFilter"),
             new CheckBox { Content = "Collapse minor flows", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.CollapseMinorFlows", BindingMode.TwoWay) },
@@ -2349,8 +2370,9 @@ public sealed class ShellWindow : Window
 
         viewModel.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(WorkspaceViewModel.IsSankeyMode) or nameof(WorkspaceViewModel.IsMapMode))
+            if (e.PropertyName is nameof(WorkspaceViewModel.IsGraphMode) or nameof(WorkspaceViewModel.IsSankeyMode) or nameof(WorkspaceViewModel.IsMapMode))
             {
+                graphOptions.IsVisible = viewModel.IsGraphMode;
                 sankeyOptions.IsVisible = viewModel.IsSankeyMode;
                 mapOptions.IsVisible = viewModel.IsMapMode;
             }
@@ -2466,6 +2488,7 @@ public sealed class ShellWindow : Window
                 lockLayoutToggle,
                 lockLayoutHint,
                 lockLayoutDisabledHint,
+                graphOptions,
                 sankeyOptions,
                 mapOptions
             }

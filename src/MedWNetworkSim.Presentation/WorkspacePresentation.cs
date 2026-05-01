@@ -5885,6 +5885,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             if (!string.IsNullOrWhiteSpace(outcome.Action.TargetEdgeId)) highlightedEdgeIds.Add(outcome.Action.TargetEdgeId);
         }
         BuildSceneFromNetwork();
+        RefreshInspector();
         RunSimulation();
         MarkDirty();
         if (!string.IsNullOrWhiteSpace(message))

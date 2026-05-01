@@ -403,6 +403,54 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
+    public void Actors_MakeVisibleChanges_OnDraftAssignedAssets()
+    {
+        var coordinator = new SimulationActorCoordinator();
+
+        var firmStep = coordinator.StepActorsOnce(BuildDraftNetwork(), [
+            new SimulationActorState
+            {
+                Id = "firm",
+                Name = "Firm",
+                Kind = SimulationActorKind.Firm,
+                Objective = SimulationActorObjective.MaximiseProfit,
+                ControlledNodeIds = ["draft-a"],
+                Cash = 100,
+                Budget = 100
+            }
+        ]);
+        Assert.True(firmStep.NetworkAfterStep.Nodes.Single(node => node.Id == "draft-a").TrafficProfiles.Single().Production > 0d);
+
+        var governmentStep = coordinator.StepActorsOnce(BuildDraftNetwork(), [
+            new SimulationActorState
+            {
+                Id = "gov",
+                Name = "Government",
+                Kind = SimulationActorKind.Government,
+                Objective = SimulationActorObjective.StabiliseNetwork,
+                ControlledEdgeIds = ["draft-edge"],
+                Cash = 100,
+                Budget = 100
+            }
+        ]);
+        Assert.True(governmentStep.NetworkAfterStep.Edges.Single(edge => edge.Id == "draft-edge").Capacity > 30d);
+
+        var logisticsStep = coordinator.StepActorsOnce(BuildDraftNetwork(), [
+            new SimulationActorState
+            {
+                Id = "logistics",
+                Name = "Logistics",
+                Kind = SimulationActorKind.LogisticsPlanner,
+                Objective = SimulationActorObjective.MinimiseMovementCost,
+                ControlledEdgeIds = ["draft-edge"],
+                Cash = 100,
+                Budget = 100
+            }
+        ]);
+        Assert.True(logisticsStep.NetworkAfterStep.Edges.Single(edge => edge.Id == "draft-edge").Cost < 1d);
+    }
+
+    [Fact]
     public void DeletingNode_RemovesActorControlledNodeReference()
     {
         var vm = BuildWorkspaceViewModelWithNetwork();
@@ -465,6 +513,47 @@ public sealed class SimulationActorsTests
                     Time = 1,
                     LayerId = layerId,
                     IsBidirectional = false
+                }
+            ]
+        };
+    }
+
+    private static NetworkModel BuildDraftNetwork()
+    {
+        var layerId = Guid.NewGuid();
+        return new NetworkModel
+        {
+            Name = "Draft Actors Test",
+            Layers = [new NetworkLayerModel { Id = layerId, Name = "Physical", Type = NetworkLayerType.Physical, Order = 0 }],
+            TrafficTypes = [new TrafficTypeDefinition { Name = "Food", RoutingPreference = RoutingPreference.LowestCost, AllocationMode = AllocationMode.GreedyBestRoute }],
+            Nodes =
+            [
+                new NodeModel
+                {
+                    Id = "draft-a",
+                    Name = "Draft A",
+                    LayerId = layerId,
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Food", CanTransship = true }]
+                },
+                new NodeModel
+                {
+                    Id = "draft-b",
+                    Name = "Draft B",
+                    LayerId = layerId,
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Food", CanTransship = true }]
+                }
+            ],
+            Edges =
+            [
+                new EdgeModel
+                {
+                    Id = "draft-edge",
+                    FromNodeId = "draft-a",
+                    ToNodeId = "draft-b",
+                    Capacity = 30,
+                    Cost = 1,
+                    Time = 1,
+                    LayerId = layerId
                 }
             ]
         };

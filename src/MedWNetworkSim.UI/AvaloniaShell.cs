@@ -203,6 +203,8 @@ public sealed class GraphCanvasControl : Control, IDisposable
 
     public static readonly StyledProperty<WorkspaceViewModel?> ViewModelProperty =
         AvaloniaProperty.Register<GraphCanvasControl, WorkspaceViewModel?>(nameof(ViewModel));
+    public static readonly StyledProperty<VisualisationMode?> RenderModeOverrideProperty =
+        AvaloniaProperty.Register<GraphCanvasControl, VisualisationMode?>(nameof(RenderModeOverride));
 
     private readonly GraphRenderer renderer = new();
     private readonly SankeyRenderer sankeyRenderer = new();
@@ -280,6 +282,23 @@ public sealed class GraphCanvasControl : Control, IDisposable
         set => SetValue(ViewModelProperty, value);
     }
 
+    public VisualisationMode? RenderModeOverride
+    {
+        get => GetValue(RenderModeOverrideProperty);
+        set => SetValue(RenderModeOverrideProperty, value);
+    }
+
+    private VisualisationMode GetEffectiveVisualisationMode(WorkspaceViewModel viewModel)
+    {
+        return RenderModeOverride ?? viewModel.ActiveView switch
+        {
+            AppView.Map or AppView.OSMImport => VisualisationMode.Map,
+            AppView.Sankey => VisualisationMode.Sankey,
+            AppView.Analytics => VisualisationMode.Analytics,
+            _ => VisualisationMode.Graph
+        };
+    }
+
     public void Dispose()
     {
         if (isDisposed)
@@ -336,13 +355,7 @@ public sealed class GraphCanvasControl : Control, IDisposable
 
             surface.Canvas.Clear(SKColor.Empty);
             surface.Canvas.Scale((float)transform.ScaleX, (float)transform.ScaleY);
-            var mode = ViewModel.ActiveView switch
-            {
-                AppView.Map or AppView.OSMImport => VisualisationMode.Map,
-                AppView.Sankey => VisualisationMode.Sankey,
-                AppView.Analytics => VisualisationMode.Analytics,
-                _ => VisualisationMode.Graph
-            };
+            var mode = GetEffectiveVisualisationMode(ViewModel);
             if (mode == VisualisationMode.Sankey)
             {
                 var model = ViewModel.BuildSankeyDiagram();
@@ -446,7 +459,8 @@ public sealed class GraphCanvasControl : Control, IDisposable
                 _ => GraphPointerButton.Left
             };
 
-            if (button == GraphPointerButton.Middle && ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map)
+            var mode = GetEffectiveVisualisationMode(ViewModel);
+            if (button == GraphPointerButton.Middle && mode == VisualisationMode.Map)
             {
                 isMapPanning = true;
                 isDraggingOsmSelection = false;
@@ -491,13 +505,13 @@ public sealed class GraphCanvasControl : Control, IDisposable
                 return;
             }
 
-            if (button == GraphPointerButton.Left && ViewModel.VisualisationState.ActiveMode == VisualisationMode.Sankey && TryHandleSankeySelection(ViewModel, point))
+            if (button == GraphPointerButton.Left && mode == VisualisationMode.Sankey && TryHandleSankeySelection(ViewModel, point))
             {
                 e.Handled = true;
                 return;
             }
 
-            if (button == GraphPointerButton.Left && ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map)
+            if (button == GraphPointerButton.Left && mode == VisualisationMode.Map)
             {
                 var localPoint = e.GetPosition(this);
                 mapPointerDownPoint = localPoint;
@@ -866,7 +880,15 @@ public sealed class GraphCanvasControl : Control, IDisposable
         try
         {
             var transform = GetCoordinateTransform();
-            if (ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map)
+            var mode = GetEffectiveVisualisationMode(ViewModel);
+            if (mode == VisualisationMode.Sankey)
+            {
+                UpdateHoveredNodeToolTip(ViewModel, transform, e);
+                e.Handled = true;
+                return;
+            }
+
+            if (mode == VisualisationMode.Map)
             {
                 var current = e.GetPosition(this);
 
@@ -924,7 +946,15 @@ public sealed class GraphCanvasControl : Control, IDisposable
         try
         {
             var transform = GetCoordinateTransform();
-            if (ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map)
+            var mode = GetEffectiveVisualisationMode(ViewModel);
+            if (mode == VisualisationMode.Sankey)
+            {
+                e.Pointer.Capture(null);
+                e.Handled = true;
+                return;
+            }
+
+            if (mode == VisualisationMode.Map)
             {
                 var current = e.GetPosition(this);
                 if (isDraggingOsmSelection && e.InitialPressMouseButton == MouseButton.Left)
@@ -983,7 +1013,14 @@ public sealed class GraphCanvasControl : Control, IDisposable
         try
         {
             var transform = GetCoordinateTransform();
-            if (ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map)
+            var mode = GetEffectiveVisualisationMode(ViewModel);
+            if (mode == VisualisationMode.Sankey)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (mode == VisualisationMode.Map)
             {
                 ViewModel.ZoomMapAt(PointerToGraph(e, transform), e.Delta.Y > 0d ? 1.25d : 0.8d);
                 InvalidateVisual();
@@ -1036,7 +1073,8 @@ public sealed class GraphCanvasControl : Control, IDisposable
         try
         {
             var transform = GetCoordinateTransform();
-            if (ViewModel.VisualisationState.ActiveMode == VisualisationMode.Map && TryHandleMapKeyDown(ViewModel, e))
+            var mode = GetEffectiveVisualisationMode(ViewModel);
+            if (mode == VisualisationMode.Map && TryHandleMapKeyDown(ViewModel, e))
             {
                 InvalidateVisual();
                 e.Handled = true;
@@ -1189,7 +1227,7 @@ public sealed class GraphCanvasControl : Control, IDisposable
 
     private void UpdateHoveredNodeToolTip(WorkspaceViewModel viewModel, GraphCanvasCoordinateTransform transform, PointerEventArgs e)
     {
-        if (viewModel.IsSankeyMode)
+        if (GetEffectiveVisualisationMode(viewModel) == VisualisationMode.Sankey)
         {
             var sankeyHit = sankeyRenderer.HitTest(PointerToGraph(e, transform));
             if (sankeyHit is null)
@@ -1806,7 +1844,7 @@ public sealed class ShellWindow : Window
         public const string Sankey = "M5,7 H12 V11 H5 Z M12,13 H19 V17 H12 Z M12,9 H15 V15 H12 Z";
         public const string OsmImport = "M12,3 V14 M8,10 L12,14 L16,10 M5,19 H19 M5,6 L9,4 L15,6 L19,4 V16 L15,18 L9,16 L5,18 Z";
         public const string Agents = "M8,11 A3,3 0 1 1 8,5 A3,3 0 1 1 8,11 M16,11 A3,3 0 1 1 16,5 A3,3 0 1 1 16,11 M3,20 C3,16 6,14 8,14 C10,14 13,16 13,20 M11,20 C11,16 14,14 16,14 C18,14 21,16 21,20";
-        public const string Analytics = "M5,19 V11 M12,19 V5 M19,19 V8 M3,19 H21";
+        public const string Analytics = "M4,13 H8 V20 H4 Z M10,5 H14 V20 H10 Z M16,9 H20 V20 H16 Z M3,20 H21 V22 H3 Z";
     }
 
     private Control BuildToolRail(WorkspaceViewModel viewModel)
@@ -2071,33 +2109,234 @@ public sealed class ShellWindow : Window
         var sankeyCanvas = new GraphCanvasControl
         {
             ViewModel = viewModel,
+            RenderModeOverride = VisualisationMode.Sankey,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch
         };
 
-        var flowGrid = new DataGrid
-        {
-            AutoGenerateColumns = true,
-            IsReadOnly = true,
-            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.FlowSeries))
-        };
-
-        var pressureGrid = new DataGrid
-        {
-            AutoGenerateColumns = true,
-            IsReadOnly = true,
-            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.NodePressureSeries))
-        };
+        var flowCharts = BuildFlowChartPanel(viewModel);
+        var pressureCharts = BuildNodePressureChartPanel(viewModel);
 
         return new TabControl
         {
             Items =
             {
                 new TabItem { Header = "Sankey", Content = sankeyCanvas },
-                new TabItem { Header = "Demand/Flow charts", Content = flowGrid },
-                new TabItem { Header = "Node pressure", Content = pressureGrid }
+                new TabItem { Header = "Demand/Flow charts", Content = flowCharts },
+                new TabItem { Header = "Node pressure", Content = pressureCharts }
             }
         };
+    }
+
+    private static Control BuildFlowChartPanel(WorkspaceViewModel viewModel)
+    {
+        var content = new StackPanel { Spacing = 12, Margin = new Thickness(10) };
+
+        void Rebuild()
+        {
+            content.Children.Clear();
+            var series = viewModel.FlowSeries.ToList();
+            if (series.Count == 0)
+            {
+                content.Children.Add(BuildEmptyAnalyticsMessage("Run a simulation to populate demand, delivered flow, and unmet demand charts."));
+                return;
+            }
+
+            var maxValue = Math.Max(1d, series.Max(point => Math.Max(Math.Max(point.Planned, point.Delivered), Math.Max(point.UnmetDemand, point.Backlog))));
+            foreach (var point in series)
+            {
+                content.Children.Add(BuildAnalyticsMetricCard(
+                    point.Label,
+                    [
+                        ("Planned", point.Planned, AvaloniaDashboardTheme.Accent),
+                        ("Delivered", point.Delivered, AvaloniaDashboardTheme.Success),
+                        ("Unmet", point.UnmetDemand, AvaloniaDashboardTheme.Danger),
+                        ("Backlog", point.Backlog, AvaloniaDashboardTheme.Warning)
+                    ],
+                    maxValue));
+            }
+        }
+
+        Rebuild();
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(WorkspaceViewModel.FlowSeries))
+            {
+                Rebuild();
+            }
+        };
+
+        return new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = content
+        };
+    }
+
+    private static Control BuildNodePressureChartPanel(WorkspaceViewModel viewModel)
+    {
+        var content = new StackPanel { Spacing = 12, Margin = new Thickness(10) };
+
+        void Rebuild()
+        {
+            content.Children.Clear();
+            var series = viewModel.NodePressureSeries.ToList();
+            if (series.Count == 0)
+            {
+                content.Children.Add(BuildEmptyAnalyticsMessage("Run a timeline step to populate node pressure charts."));
+                return;
+            }
+
+            var maxPressure = Math.Max(1d, series.Max(point => point.Pressure));
+            foreach (var point in series)
+            {
+                var card = BuildAnalyticsMetricCard(
+                    point.Node,
+                    [("Pressure", point.Pressure, AvaloniaDashboardTheme.Warning)],
+                    maxPressure,
+                    $"Top cause: {point.TopCause}    Unmet need: {point.UnmetNeed}");
+                content.Children.Add(card);
+            }
+        }
+
+        Rebuild();
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(WorkspaceViewModel.NodePressureSeries))
+            {
+                Rebuild();
+            }
+        };
+
+        return new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = content
+        };
+    }
+
+    private static Control BuildAnalyticsMetricCard(
+        string title,
+        IReadOnlyList<(string Label, double Value, Color Color)> metrics,
+        double maxValue,
+        string? detail = null)
+    {
+        var body = new StackPanel { Spacing = 8 };
+        body.Children.Add(new TextBlock
+        {
+            Text = title,
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            FontWeight = FontWeight.Bold,
+            FontSize = 14,
+            TextWrapping = TextWrapping.Wrap
+        });
+
+        if (!string.IsNullOrWhiteSpace(detail))
+        {
+            body.Children.Add(new TextBlock
+            {
+                Text = detail,
+                Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+
+        foreach (var metric in metrics)
+        {
+            body.Children.Add(BuildAnalyticsBar(metric.Label, metric.Value, maxValue, metric.Color));
+        }
+
+        return new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+            Padding = new Thickness(10),
+            Child = body
+        };
+    }
+
+    private static Control BuildAnalyticsBar(string label, double value, double maxValue, Color color)
+    {
+        var width = 260d * Math.Clamp(maxValue <= 0d ? 0d : value / maxValue, 0d, 1d);
+        var bar = new Grid
+        {
+            Width = 260,
+            Height = 12,
+            ClipToBounds = true,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.InputBackground),
+            Children =
+            {
+                new Border
+                {
+                    Width = width,
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Background = new SolidColorBrush(color),
+                    CornerRadius = new CornerRadius(6)
+                }
+            }
+        };
+
+        var labelText = new TextBlock
+        {
+            Text = label,
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var valueText = new TextBlock
+        {
+            Text = FormatAnalyticsNumber(value),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(bar, 1);
+        Grid.SetColumn(valueText, 2);
+
+        return new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("120,270,*"),
+            ColumnSpacing = 8,
+            Children =
+            {
+                labelText,
+                bar,
+                valueText
+            }
+        };
+    }
+
+    private static Control BuildEmptyAnalyticsMessage(string message)
+    {
+        return new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+            Padding = new Thickness(14),
+            Child = new TextBlock
+            {
+                Text = message,
+                Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                TextWrapping = TextWrapping.Wrap
+            }
+        };
+    }
+
+    private static string FormatAnalyticsNumber(double value)
+    {
+        if (Math.Abs(value) >= 1000d)
+        {
+            return value.ToString("0,.#K", CultureInfo.InvariantCulture);
+        }
+
+        return value.ToString("0.##", CultureInfo.InvariantCulture);
     }
 
     private Control BuildCanvasArea(WorkspaceViewModel viewModel)

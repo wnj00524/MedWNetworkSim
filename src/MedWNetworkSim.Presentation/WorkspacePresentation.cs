@@ -249,6 +249,25 @@ public sealed class NodePressureReportRowViewModel
 
 public sealed record PieChartSegmentViewModel(string Label, double Value);
 
+public sealed record FlowDataPoint(string Label, double Planned, double Delivered, double UnmetDemand, double Backlog);
+
+public sealed record NodePressurePoint(string Node, double Pressure, string TopCause, string UnmetNeed);
+
+public sealed class AgentViewModel : ObservableObject
+{
+    private string name = string.Empty;
+    private string type = string.Empty;
+    private double budget;
+    private string allowedTrafficTypes = string.Empty;
+    private string allowedActions = string.Empty;
+
+    public string Name { get => name; set => SetProperty(ref name, value); }
+    public string Type { get => type; set => SetProperty(ref type, value); }
+    public double Budget { get => budget; set => SetProperty(ref budget, value); }
+    public string AllowedTrafficTypes { get => allowedTrafficTypes; set => SetProperty(ref allowedTrafficTypes, value); }
+    public string AllowedActions { get => allowedActions; set => SetProperty(ref allowedActions, value); }
+}
+
 public sealed class UncoveredNodePlanningItem
 {
     public required string NodeName { get; init; }
@@ -1774,6 +1793,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private InspectorTabTarget selectedInspectorTab = InspectorTabTarget.Selection;
     private InspectorSectionTarget selectedInspectorSection = InspectorSectionTarget.None;
     private WorkspaceMode workspaceMode = WorkspaceMode.Normal;
+    private AppView activeView = AppView.Network;
     private EdgeEditorSession? edgeEditorSession;
     private string edgeTimeValidationText = string.Empty;
     private string edgeCostValidationText = string.Empty;
@@ -1924,12 +1944,14 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         VisualisationState = new VisualisationState();
         NetworkInsights = [];
         SimulationActors = [];
+        Agents = [];
         FilteredSimulationActors = [];
         ActorTrafficTypeRows = [];
         ActorDecisions = [];
         ActorActionOutcomes = [];
         ActorMetrics = [];
         AgentLog = new AgentLogViewModel();
+        SimulationActors.CollectionChanged += (_, _) => RefreshAgentViewModels();
         TopIssues.CollectionChanged += (_, _) => Raise(nameof(TopIssueEmptyStateText));
         TopIssueAdvisories.CollectionChanged += (_, _) => Raise(nameof(HasTopIssueAdvisories));
         ScenarioEditor = new ScenarioEditorViewModel(network, MarkDirty);
@@ -1951,9 +1973,15 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ConnectToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.Connect));
         AgentToolCommand = new RelayCommand(() => SetActiveTool(GraphToolMode.Agent), () => ShowAgentTools);
         ToggleAgentToolsCommand = new RelayCommand(() => ShowAgentTools = !ShowAgentTools);
-        SetGraphVisualisationCommand = new RelayCommand(() => VisualisationState.ActiveMode = VisualisationMode.Graph);
-        SetSankeyVisualisationCommand = new RelayCommand(() => VisualisationState.ActiveMode = VisualisationMode.Sankey);
-        SetMapVisualisationCommand = new RelayCommand(() => VisualisationState.ActiveMode = VisualisationMode.Map);
+        SetNetworkViewCommand = new RelayCommand(() => ActiveView = AppView.Network);
+        SetMapViewCommand = new RelayCommand(() => ActiveView = AppView.Map);
+        SetSankeyViewCommand = new RelayCommand(() => ActiveView = AppView.Sankey);
+        SetOsmImportViewCommand = new RelayCommand(EnterOsmImportView);
+        SetAgentsViewCommand = new RelayCommand(() => ActiveView = AppView.Agents);
+        SetAnalyticsViewCommand = new RelayCommand(() => ActiveView = AppView.Analytics);
+        SetGraphVisualisationCommand = new RelayCommand(() => ActiveView = AppView.Network);
+        SetSankeyVisualisationCommand = new RelayCommand(() => ActiveView = AppView.Sankey);
+        SetMapVisualisationCommand = new RelayCommand(() => ActiveView = AppView.Map);
         ShowGraphModeCommand = SetGraphVisualisationCommand;
         ShowSankeyModeCommand = SetSankeyVisualisationCommand;
         ShowMapModeCommand = SetMapVisualisationCommand;
@@ -2094,6 +2122,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public VisualisationState VisualisationState { get; }
     public ObservableCollection<NetworkInsight> NetworkInsights { get; }
     public ObservableCollection<SimulationActorState> SimulationActors { get; }
+    public ObservableCollection<AgentViewModel> Agents { get; }
     public ObservableCollection<SimulationActorState> FilteredSimulationActors { get; }
     public ObservableCollection<ActorTrafficTypeSelectionRow> ActorTrafficTypeRows { get; }
     public ObservableCollection<SimulationActorDecisionViewModel> ActorDecisions { get; }
@@ -2125,6 +2154,12 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public RelayCommand ConnectToolCommand { get; }
     public RelayCommand AgentToolCommand { get; }
     public RelayCommand ToggleAgentToolsCommand { get; }
+    public ICommand SetNetworkViewCommand { get; }
+    public ICommand SetMapViewCommand { get; }
+    public ICommand SetSankeyViewCommand { get; }
+    public ICommand SetOsmImportViewCommand { get; }
+    public ICommand SetAgentsViewCommand { get; }
+    public ICommand SetAnalyticsViewCommand { get; }
     public RelayCommand SetGraphVisualisationCommand { get; }
     public RelayCommand SetSankeyVisualisationCommand { get; }
     public RelayCommand SetMapVisualisationCommand { get; }
@@ -2353,6 +2388,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         get => sankeyVersion;
         private set => SetProperty(ref sankeyVersion, value);
     }
+    public SankeyDiagramModel CurrentSankey => BuildSankeyDiagram();
+    public IEnumerable<FlowDataPoint> FlowSeries => GetFlowSeries();
+    public IEnumerable<NodePressurePoint> NodePressureSeries => GetNodePressure();
     public void ReportUiException(string safeMessage, Exception exception)
     {
         _ = exception;
@@ -2691,6 +2729,45 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public bool IsEditingNode => CurrentInspectorEditMode == InspectorEditMode.Node;
     public bool IsEditingEdge => CurrentInspectorEditMode == InspectorEditMode.Edge;
     public bool IsEditingSelection => CurrentInspectorEditMode == InspectorEditMode.Selection;
+    public AppView ActiveView
+    {
+        get => activeView;
+        set
+        {
+            if (!SetProperty(ref activeView, value))
+            {
+                return;
+            }
+
+            VisualisationState.ActiveMode = value switch
+            {
+                AppView.Map or AppView.OSMImport => VisualisationMode.Map,
+                AppView.Sankey or AppView.Analytics => VisualisationMode.Sankey,
+                _ => VisualisationMode.Graph
+            };
+            if (CurrentWorkspaceMode == WorkspaceMode.OsmImport && value != AppView.OSMImport)
+            {
+                CurrentWorkspaceMode = WorkspaceMode.Normal;
+            }
+
+            Raise(nameof(IsNetworkView));
+            Raise(nameof(IsMapView));
+            Raise(nameof(IsSankeyView));
+            Raise(nameof(IsOsmImportView));
+            Raise(nameof(IsAgentsView));
+            Raise(nameof(IsAnalyticsView));
+            NotifyVisualChanged();
+        }
+    }
+    public string SelectedActorAllowedActionsText => SelectedSimulationActor?.Capability?.AllowedActionKinds is { Count: > 0 } actions
+        ? string.Join(", ", actions)
+        : "Allowed actions: none";
+    public bool IsNetworkView => ActiveView == AppView.Network;
+    public bool IsMapView => ActiveView == AppView.Map;
+    public bool IsSankeyView => ActiveView == AppView.Sankey;
+    public bool IsOsmImportView => ActiveView == AppView.OSMImport;
+    public bool IsAgentsView => ActiveView == AppView.Agents;
+    public bool IsAnalyticsView => ActiveView == AppView.Analytics;
     public WorkspaceMode CurrentWorkspaceMode
     {
         get => workspaceMode;
@@ -2772,6 +2849,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public string EdgeCapacityValidationText { get => edgeCapacityValidationText; private set => SetProperty(ref edgeCapacityValidationText, value); }
     public string EdgeEditorValidationText { get => edgeEditorValidationText; private set => SetProperty(ref edgeEditorValidationText, value); }
     public string SelectedEdgeIdText => GetEdgeSummaryContext()?.Id ?? "No route selected";
+    public string SelectedNodeLatitudeText => GetNodeSummaryContext()?.Latitude?.ToString("0.######", CultureInfo.InvariantCulture) ?? "Not set";
+    public string SelectedNodeLongitudeText => GetNodeSummaryContext()?.Longitude?.ToString("0.######", CultureInfo.InvariantCulture) ?? "Not set";
     public string SelectedEdgeSourceNodeText => GetEdgeSummaryContext()?.FromNodeId ?? "No route selected";
     public string SelectedEdgeTargetNodeText => GetEdgeSummaryContext()?.ToNodeId ?? "No route selected";
     public string SelectedEdgeDirectionSummaryText
@@ -3231,7 +3310,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             DeleteSelection = DeleteSelection,
             FocusNextConnectedEdge = FocusNextConnectedEdge,
             FocusNearbyNode = FocusNearbyNode,
-            SelectionChanged = (_, _) => RefreshInspector(),
+            SelectionChanged = HandleGraphSelectionChanged,
             StatusChanged = text => StatusText = text,
             CanDragNode = CanDragNodeInGraph,
             GetNodeDragBlockedMessage = _ => "Map-locked nodes cannot be moved. Turn off Lock layout to map to edit positions."
@@ -3245,6 +3324,32 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ConsumerCosts = lastConsumerCosts,
         Period = CurrentPeriod
     };
+
+    private void HandleGraphSelectionChanged(string? nodeId, string? edgeId)
+    {
+        if (!string.IsNullOrWhiteSpace(nodeId) &&
+            Scene.Selection.SelectedNodeIds.Count == 1 &&
+            Scene.Selection.SelectedEdgeIds.Count == 0)
+        {
+            FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.Node);
+        }
+        else if (!string.IsNullOrWhiteSpace(edgeId) &&
+                 Scene.Selection.SelectedNodeIds.Count == 0 &&
+                 Scene.Selection.SelectedEdgeIds.Count == 1)
+        {
+            FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.Route);
+        }
+        else if (Scene.Selection.SelectedNodeIds.Count + Scene.Selection.SelectedEdgeIds.Count > 1)
+        {
+            FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.Node);
+        }
+        else
+        {
+            FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.None);
+        }
+
+        RefreshInspector();
+    }
 
     public SankeyDiagramModel BuildSankeyDiagram()
     {
@@ -3274,6 +3379,70 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         cachedSankeyCollapseMinorFlows = collapseMinorFlows;
         SankeyVersion++;
         return cachedSankeyDiagram;
+    }
+
+    public IEnumerable<FlowDataPoint> GetFlowSeries()
+    {
+        if (lastOutcomes.Count == 0 && lastTimelineStepResult is null)
+        {
+            return [];
+        }
+
+        if (lastTimelineStepResult is not null)
+        {
+            return lastTimelineStepResult.NodeStates
+                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
+                .Select(group => new FlowDataPoint(
+                    group.Key,
+                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
+                    lastTimelineStepResult.Allocations
+                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
+                        .Sum(allocation => allocation.Quantity),
+                    group.Sum(pair => pair.Value.DemandBacklog),
+                    group.Sum(pair => pair.Value.AvailableSupply)))
+                .OrderBy(point => point.Label, Comparer)
+                .ToList();
+        }
+
+        return lastOutcomes
+            .OrderBy(outcome => outcome.TrafficType, Comparer)
+            .Select(outcome => new FlowDataPoint(
+                outcome.TrafficType,
+                outcome.TotalConsumption,
+                outcome.TotalDelivered,
+                outcome.UnmetDemand,
+                0d))
+            .ToList();
+    }
+
+    public IEnumerable<NodePressurePoint> GetNodePressure()
+    {
+        if (lastTimelineStepResult is null)
+        {
+            return [];
+        }
+
+        return network.Nodes
+            .Select(node =>
+            {
+                var pressure = lastTimelineStepResult.NodePressureById.GetValueOrDefault(node.Id);
+                var backlog = lastTimelineStepResult.NodeStates
+                    .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id) && pair.Value.DemandBacklog > 0d)
+                    .OrderByDescending(pair => pair.Value.DemandBacklog)
+                    .ThenBy(pair => pair.Key.TrafficType, Comparer)
+                    .FirstOrDefault();
+                var unmetNeed = backlog.Value.DemandBacklog > 0d
+                    ? $"{ReportExportService.FormatNumber(backlog.Value.DemandBacklog)} {backlog.Key.TrafficType}"
+                    : "None";
+                return new NodePressurePoint(
+                    ResolveNodeName(node.Id),
+                    pressure.Score,
+                    pressure.Score > 0d ? BuildTopCauseText(pressure.TopCause) : "None",
+                    unmetNeed);
+            })
+            .OrderByDescending(point => point.Pressure)
+            .ThenBy(point => point.Node, Comparer)
+            .ToList();
     }
 
     public IReadOnlyDictionary<string, (double Latitude, double Longitude)> BuildGeoNodeLookup()
@@ -3485,6 +3654,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
 
             VisualisationState.ActiveMode = VisualisationMode.Map;
+            ActiveView = AppView.Map;
             FitMapToNetwork();
             IsOsmAreaSelectionEnabled = false;
             CurrentWorkspaceMode = WorkspaceMode.Normal;
@@ -3500,6 +3670,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             ImportOsmSelectionCommand.NotifyCanExecuteChanged();
         }
     }
+
+    public void ImportSelectedOsmArea() => ImportOsmSelectionCommand.Execute(null);
 
     public void ClearOsmSelection()
     {
@@ -3518,6 +3690,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public void EnterOsmImportWorkspace()
     {
         CurrentWorkspaceMode = WorkspaceMode.OsmImport;
+        ActiveView = AppView.OSMImport;
         VisualisationState.ActiveMode = VisualisationMode.Map;
         IsOsmAreaSelectionEnabled = true;
         ToolStatusText = "Pan and zoom the map, then drag to select an area.";
@@ -3532,6 +3705,25 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         hasUserMovedMapCamera = false;
         NotifyVisualChanged();
         StatusText = "OSM import mode ready. Map centered on London by default.";
+    }
+
+    private void EnterOsmImportView()
+    {
+        CurrentWorkspaceMode = WorkspaceMode.Normal;
+        ActiveView = AppView.OSMImport;
+        IsOsmAreaSelectionEnabled = true;
+        ToolStatusText = "Pan and zoom the map, then drag to select an area.";
+        if (BuildGeoNodeLookup().Count > 0)
+        {
+            FitMapToNetwork();
+            StatusText = "OSM import view ready. Drag to select an area.";
+            return;
+        }
+
+        MapCamera = new MapCameraState(51.5074d, -0.1278d, 0.0015d, false);
+        hasUserMovedMapCamera = false;
+        NotifyVisualChanged();
+        StatusText = "OSM import view ready. Map centered on London by default.";
     }
 
     public void CancelOsmImport()
@@ -3806,6 +3998,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         cachedSankeyShowUnmetDemand = false;
         cachedSankeyCollapseMinorFlows = false;
         SankeyVersion++;
+        Raise(nameof(CurrentSankey));
+        Raise(nameof(FlowSeries));
+        Raise(nameof(NodePressureSeries));
         NotifyVisualChanged();
     }
 
@@ -3902,6 +4097,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(SelectedNodeRoleSummaryText));
         Raise(nameof(SimulationSummary));
         Raise(nameof(HasAnyNodes));
+        Raise(nameof(CurrentSankey));
+        Raise(nameof(FlowSeries));
+        Raise(nameof(NodePressureSeries));
         RaiseAutoCompleteOptionsChanged();
     }
 
@@ -5252,8 +5450,31 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(SelectedActorNodeCountText));
         Raise(nameof(SelectedActorEdgeCountText));
         Raise(nameof(SelectedActorTrafficScopeText));
+        Raise(nameof(SelectedActorAllowedActionsText));
         Raise(nameof(SelectedActorControlledNodesDisplay));
         Raise(nameof(SelectedActorControlledEdgesDisplay));
+        RefreshAgentViewModels();
+    }
+
+    private void RefreshAgentViewModels()
+    {
+        Agents.Clear();
+        foreach (var actor in SimulationActors)
+        {
+            var capability = actor.Capability;
+            Agents.Add(new AgentViewModel
+            {
+                Name = actor.Name,
+                Type = capability.IsCustomActorType && !string.IsNullOrWhiteSpace(capability.CustomActorTypeName)
+                    ? capability.CustomActorTypeName!
+                    : actor.Kind.ToString(),
+                Budget = actor.Budget,
+                AllowedTrafficTypes = capability.AllowAllTrafficTypes
+                    ? "All"
+                    : string.Join(", ", capability.AllowedTrafficTypes),
+                AllowedActions = string.Join(", ", capability.AllowedActionKinds)
+            });
+        }
     }
 
     private void RebuildActorTrafficTypeRows()
@@ -6287,6 +6508,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(SelectionSummary));
         Raise(nameof(SelectedNodeIdText));
         Raise(nameof(SelectedNodeRoleSummaryText));
+        Raise(nameof(SelectedNodeLatitudeText));
+        Raise(nameof(SelectedNodeLongitudeText));
         Raise(nameof(SessionSubtitle));
         Raise(nameof(CurrentInspectorEditMode));
         Raise(nameof(IsEditingNetwork));
@@ -8226,6 +8449,23 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         return edgeId is null
             ? null
             : network.Edges.FirstOrDefault(model => Comparer.Equals(model.Id, edgeId));
+    }
+
+    private NodeModel? GetNodeSummaryContext()
+    {
+        if (!string.IsNullOrWhiteSpace(NodeDraft.TargetNodeId))
+        {
+            var targeted = network.Nodes.FirstOrDefault(model => Comparer.Equals(model.Id, NodeDraft.TargetNodeId));
+            if (targeted is not null)
+            {
+                return targeted;
+            }
+        }
+
+        var nodeId = Scene.Selection.SelectedNodeIds.FirstOrDefault();
+        return nodeId is null
+            ? null
+            : network.Nodes.FirstOrDefault(model => Comparer.Equals(model.Id, nodeId));
     }
 
     private EdgeModel? GetEdgeSummaryContext()

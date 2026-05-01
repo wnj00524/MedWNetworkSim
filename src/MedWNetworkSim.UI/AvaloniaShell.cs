@@ -4972,6 +4972,80 @@ public sealed class ShellWindow : Window
         };
         trafficTypeChecklist.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.ShowActorTrafficTypeChecklist)));
 
+        var permissionRows = new ItemsControl
+        {
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ActorPermissionRows)),
+            ItemTemplate = new FuncDataTemplate<ActorPermissionRow>((row, _) =>
+            {
+                var targetSelector = new ComboBox
+                {
+                    MinWidth = 120,
+                    [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(ActorPermissionRow.TargetOptions)),
+                    [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(ActorPermissionRow.TargetId), BindingMode.TwoWay)
+                };
+                targetSelector.Bind(IsVisibleProperty, new Binding(nameof(ActorPermissionRow.HasTargetSelector)));
+
+                return new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 6,
+                    Margin = new Thickness(0, 0, 0, 6),
+                    Children =
+                    {
+                        new ComboBox
+                        {
+                            MinWidth = 150,
+                            ItemsSource = Enum.GetValues(typeof(SimulationActorActionKind)),
+                            [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(ActorPermissionRow.ActionKind), BindingMode.TwoWay)
+                        },
+                        new ComboBox
+                        {
+                            MinWidth = 110,
+                            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(ActorPermissionRow.TrafficTypeOptions)),
+                            [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(ActorPermissionRow.TrafficTypeSelection), BindingMode.TwoWay)
+                        },
+                        new ComboBox
+                        {
+                            MinWidth = 90,
+                            ItemsSource = Enum.GetValues(typeof(ActorPermissionScope)),
+                            [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(ActorPermissionRow.Scope), BindingMode.TwoWay)
+                        },
+                        targetSelector,
+                        new CheckBox
+                        {
+                            Content = "Allowed",
+                            VerticalAlignment = VerticalAlignment.Center,
+                            [!ToggleButton.IsCheckedProperty] = new Binding(nameof(ActorPermissionRow.IsAllowed), BindingMode.TwoWay)
+                        },
+                        new Button
+                        {
+                            Content = "Remove",
+                            Command = viewModel.RemovePermissionRuleCommand,
+                            CommandParameter = row
+                        }
+                    }
+                };
+            })
+        };
+
+        var permissionsPanel = new Border
+        {
+            Padding = new Thickness(8),
+            BorderThickness = new Thickness(1),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+            Child = new StackPanel
+            {
+                Spacing = 6,
+                Children =
+                {
+                    new TextBlock { Text = "Permissions", FontWeight = FontWeight.SemiBold },
+                    permissionRows,
+                    BuildButton("Add permission rule", viewModel.AddPermissionRuleCommand)
+                }
+            }
+        };
+
         return new ScrollViewer
         {
             Content = new StackPanel
@@ -5005,6 +5079,7 @@ public sealed class ShellWindow : Window
                     BuildLabeledCheckBox("Enabled", nameof(WorkspaceViewModel.ActorIsEnabled)),
                     BuildLabeledCheckBox("Allow all traffic", nameof(WorkspaceViewModel.ActorAllowAllTrafficTypes)),
                     trafficTypeChecklist,
+                    permissionsPanel,
                     BuildButton("Apply actor changes", viewModel.ApplySelectedActorCommand),
                     BuildReadOnlyRow("Actor validation", nameof(WorkspaceViewModel.ActorValidationText)),
                     BuildSectionTitle("Selected Actor", "Controlled nodes and routes assigned to the active actor."),

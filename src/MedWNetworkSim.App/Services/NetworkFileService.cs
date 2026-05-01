@@ -277,6 +277,16 @@ public sealed class NetworkFileService
 
                 actor.Capability.AllowedActionKinds ??= [];
                 actor.Capability.AllowedTrafficTypes ??= [];
+                actor.Capability.Permissions = (actor.Capability.Permissions ?? [])
+                    .Where(permission => permission is not null)
+                    .Select(permission =>
+                    {
+                        permission.TrafficType = string.IsNullOrWhiteSpace(permission.TrafficType) ? null : permission.TrafficType.Trim();
+                        permission.NodeId = string.IsNullOrWhiteSpace(permission.NodeId) ? null : permission.NodeId.Trim();
+                        permission.EdgeId = string.IsNullOrWhiteSpace(permission.EdgeId) ? null : permission.EdgeId.Trim();
+                        return permission;
+                    })
+                    .ToList();
                 actor.Capability.CustomActorTypeName = string.IsNullOrWhiteSpace(actor.Capability.CustomActorTypeName)
                     ? null
                     : actor.Capability.CustomActorTypeName.Trim();

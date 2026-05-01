@@ -1695,6 +1695,136 @@ public sealed class ActorTrafficTypeSelectionRow : ObservableObject
     }
 }
 
+public enum ActorPermissionScope
+{
+    Global,
+    Node,
+    Edge
+}
+
+public sealed class ActorPermissionRow : ObservableObject
+{
+    private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+    private readonly SimulationActorPermission permission;
+    private readonly Action<ActorPermissionRow>? onChanged;
+    private SimulationActorActionKind actionKind;
+    private string trafficTypeSelection;
+    private ActorPermissionScope scope;
+    private string targetId;
+    private bool isAllowed;
+
+    public ActorPermissionRow(
+        SimulationActorPermission permission,
+        IReadOnlyList<string> trafficTypes,
+        IReadOnlyList<string> nodeIds,
+        IReadOnlyList<string> edgeIds,
+        Action<ActorPermissionRow>? onChanged = null)
+    {
+        this.permission = permission;
+        this.onChanged = onChanged;
+        TrafficTypeOptions = ["All", .. trafficTypes.Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(Comparer).OrderBy(name => name, Comparer)];
+        NodeIdOptions = [.. nodeIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(Comparer).OrderBy(id => id, Comparer)];
+        EdgeIdOptions = [.. edgeIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(Comparer).OrderBy(id => id, Comparer)];
+        actionKind = permission.ActionKind;
+        trafficTypeSelection = string.IsNullOrWhiteSpace(permission.TrafficType) ? "All" : permission.TrafficType!;
+        scope = !string.IsNullOrWhiteSpace(permission.NodeId)
+            ? ActorPermissionScope.Node
+            : !string.IsNullOrWhiteSpace(permission.EdgeId)
+                ? ActorPermissionScope.Edge
+                : ActorPermissionScope.Global;
+        targetId = scope switch
+        {
+            ActorPermissionScope.Node => permission.NodeId ?? string.Empty,
+            ActorPermissionScope.Edge => permission.EdgeId ?? string.Empty,
+            _ => string.Empty
+        };
+        isAllowed = permission.IsAllowed;
+    }
+
+    public SimulationActorPermission Permission => permission;
+    public IReadOnlyList<string> TrafficTypeOptions { get; }
+    public IReadOnlyList<string> NodeIdOptions { get; }
+    public IReadOnlyList<string> EdgeIdOptions { get; }
+    public IReadOnlyList<string> TargetOptions => Scope == ActorPermissionScope.Node ? NodeIdOptions : Scope == ActorPermissionScope.Edge ? EdgeIdOptions : [];
+
+    public SimulationActorActionKind ActionKind
+    {
+        get => actionKind;
+        set
+        {
+            if (SetProperty(ref actionKind, value))
+            {
+                permission.ActionKind = value;
+                NotifyChanged();
+            }
+        }
+    }
+
+    public string TrafficTypeSelection
+    {
+        get => trafficTypeSelection;
+        set
+        {
+            var next = string.IsNullOrWhiteSpace(value) ? "All" : value;
+            if (SetProperty(ref trafficTypeSelection, next))
+            {
+                permission.TrafficType = Comparer.Equals(next, "All") ? null : next;
+                NotifyChanged();
+            }
+        }
+    }
+
+    public ActorPermissionScope Scope
+    {
+        get => scope;
+        set
+        {
+            if (SetProperty(ref scope, value))
+            {
+                TargetId = string.Empty;
+                Raise(nameof(TargetOptions));
+                NotifyChanged();
+            }
+        }
+    }
+
+    public string TargetId
+    {
+        get => targetId;
+        set
+        {
+            var next = value ?? string.Empty;
+            if (SetProperty(ref targetId, next))
+            {
+                permission.NodeId = Scope == ActorPermissionScope.Node && !string.IsNullOrWhiteSpace(next) ? next : null;
+                permission.EdgeId = Scope == ActorPermissionScope.Edge && !string.IsNullOrWhiteSpace(next) ? next : null;
+                NotifyChanged();
+            }
+        }
+    }
+
+    public bool IsAllowed
+    {
+        get => isAllowed;
+        set
+        {
+            if (SetProperty(ref isAllowed, value))
+            {
+                permission.IsAllowed = value;
+                NotifyChanged();
+            }
+        }
+    }
+
+    public bool HasTargetSelector => Scope != ActorPermissionScope.Global;
+
+    private void NotifyChanged()
+    {
+        Raise(nameof(HasTargetSelector));
+        onChanged?.Invoke(this);
+    }
+}
+
 public enum SelectionSource
 {
     User,
@@ -1951,6 +2081,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Agents = [];
         FilteredSimulationActors = [];
         ActorTrafficTypeRows = [];
+        ActorPermissionRows = [];
         ActorDecisions = [];
         ActorActionOutcomes = [];
         ActorMetrics = [];
@@ -2088,6 +2219,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         AssignSelectedNodeToActorCommand = new RelayCommand(AssignSelectedNodeToActor, () => SelectedSimulationActor is not null);
         AssignSelectedEdgeToActorCommand = new RelayCommand(AssignSelectedEdgeToActor, () => SelectedSimulationActor is not null);
         ClearActorAssignmentsCommand = new RelayCommand(ClearActorAssignments, () => SelectedSimulationActor is not null);
+        AddPermissionRuleCommand = new RelayCommand(AddPermissionRule, () => SelectedSimulationActor is not null);
+        RemovePermissionRuleCommand = new RelayCommand<ActorPermissionRow>(RemovePermissionRule, row => SelectedSimulationActor is not null && row is not null);
         ApplySelectedActorCommand = new RelayCommand(ApplySelectedActorCommandExecute, () => SelectedSimulationActor is not null);
         VisualisationState.PropertyChanged += HandleVisualisationStatePropertyChanged;
         UpdateActiveModeState();
@@ -2130,6 +2263,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public ObservableCollection<AgentViewModel> Agents { get; }
     public ObservableCollection<SimulationActorState> FilteredSimulationActors { get; }
     public ObservableCollection<ActorTrafficTypeSelectionRow> ActorTrafficTypeRows { get; }
+    public ObservableCollection<ActorPermissionRow> ActorPermissionRows { get; }
     public ObservableCollection<SimulationActorDecisionViewModel> ActorDecisions { get; }
     public ObservableCollection<SimulationActorActionOutcomeViewModel> ActorActionOutcomes { get; }
     public ObservableCollection<SimulationActorMetricsViewModel> ActorMetrics { get; }
@@ -2148,6 +2282,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public Array PermissionLimitKindOptions { get; } = Enum.GetValues(typeof(EdgeTrafficLimitKind));
     public Array ScenarioEventKindOptions { get; } = Enum.GetValues(typeof(ScenarioEventKind));
     public Array ScenarioTargetKindOptions { get; } = Enum.GetValues(typeof(ScenarioTargetKind));
+    public Array ActorActionKindOptions { get; } = Enum.GetValues(typeof(SimulationActorActionKind));
+    public Array ActorPermissionScopeOptions { get; } = Enum.GetValues(typeof(ActorPermissionScope));
 
     public RelayCommand NewCommand { get; }
     public RelayCommand SimulateCommand { get; }
@@ -2294,6 +2430,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public RelayCommand AssignSelectedNodeToActorCommand { get; }
     public RelayCommand AssignSelectedEdgeToActorCommand { get; }
     public RelayCommand ClearActorAssignmentsCommand { get; }
+    public RelayCommand AddPermissionRuleCommand { get; }
+    public RelayCommand<ActorPermissionRow> RemovePermissionRuleCommand { get; }
     public RelayCommand ApplySelectedActorCommand { get; }
     public RelayCommand OpenScenarioEditorCommand { get; }
     public RelayCommand CloseScenarioEditorCommand { get; }
@@ -2566,6 +2704,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 AssignSelectedNodeToActorCommand.NotifyCanExecuteChanged();
                 AssignSelectedEdgeToActorCommand.NotifyCanExecuteChanged();
                 ClearActorAssignmentsCommand.NotifyCanExecuteChanged();
+                AddPermissionRuleCommand.NotifyCanExecuteChanged();
+                RemovePermissionRuleCommand.NotifyCanExecuteChanged();
                 ApplySelectedActorCommand.NotifyCanExecuteChanged();
             }
         }
@@ -5378,6 +5518,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return;
         }
 
+        var deletedEdges = network.Edges
+            .Where(edge => selectedEdges.Contains(edge.Id) || selectedNodes.Contains(edge.FromNodeId) || selectedNodes.Contains(edge.ToNodeId))
+            .Select(edge => edge.Id)
+            .ToHashSet(Comparer);
+
         network.Nodes.RemoveAll(node => selectedNodes.Contains(node.Id));
         network.Edges.RemoveAll(edge =>
             selectedEdges.Contains(edge.Id) ||
@@ -5388,6 +5533,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             actor.ControlledNodeIds = actor.ControlledNodeIds.Where(id => !selectedNodes.Contains(id)).Distinct(Comparer).ToList();
             actor.ControlledEdgeIds = actor.ControlledEdgeIds.Where(id => !selectedEdges.Contains(id)).Distinct(Comparer).ToList();
             actor.ControlledEdgeIds = actor.ControlledEdgeIds.Where(id => network.Edges.Any(edge => Comparer.Equals(edge.Id, id))).ToList();
+            actor.Capability?.Permissions.RemoveAll(permission =>
+                (permission.NodeId is not null && selectedNodes.Contains(permission.NodeId)) ||
+                (permission.EdgeId is not null && deletedEdges.Contains(permission.EdgeId)));
         }
         network.Actors = SimulationActors.ToList();
 
@@ -5517,6 +5665,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             actorAllowAllTrafficTypes = true;
             ActorValidationText = string.Empty;
             ActorTrafficTypeRows.Clear();
+            ActorPermissionRows.Clear();
             RaiseActorDraftProperties();
             return;
         }
@@ -5533,6 +5682,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         actorAllowAllTrafficTypes = actor.Capability.AllowAllTrafficTypes;
         ActorValidationText = string.Empty;
         RebuildActorTrafficTypeRows();
+        RebuildActorPermissionRows();
         RaiseActorDraftProperties();
     }
 
@@ -5600,6 +5750,24 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         }
     }
 
+    private void RebuildActorPermissionRows()
+    {
+        ActorPermissionRows.Clear();
+        if (SelectedSimulationActor?.Capability is null)
+        {
+            return;
+        }
+
+        SelectedSimulationActor.Capability.Permissions ??= [];
+        var trafficTypes = network.TrafficTypes.Select(definition => definition.Name).ToArray();
+        var nodeIds = network.Nodes.Select(node => node.Id).ToArray();
+        var edgeIds = network.Edges.Select(edge => edge.Id).ToArray();
+        foreach (var permission in SelectedSimulationActor.Capability.Permissions)
+        {
+            ActorPermissionRows.Add(new ActorPermissionRow(permission, trafficTypes, nodeIds, edgeIds, UpdateActorPermissionRule));
+        }
+    }
+
     private void ToggleActorTrafficType(ActorTrafficTypeSelectionRow row)
     {
         if (SelectedSimulationActor?.Capability is null || ActorAllowAllTrafficTypes)
@@ -5620,6 +5788,63 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         SelectedSimulationActor.Capability.AllowedTrafficTypes = allowed.OrderBy(name => name, Comparer).ToArray();
         MarkDirty();
         RefreshSelectedActorDisplayState();
+    }
+
+    private void AddPermissionRule()
+    {
+        if (SelectedSimulationActor is null)
+        {
+            return;
+        }
+
+        EnsureActorCapability(SelectedSimulationActor);
+        var actionKind = SelectedSimulationActor.Capability.AllowedActionKinds.FirstOrDefault();
+        var permission = new SimulationActorPermission
+        {
+            ActionKind = actionKind,
+            IsAllowed = true
+        };
+        SelectedSimulationActor.Capability.Permissions.Add(permission);
+        ActorPermissionRows.Add(new ActorPermissionRow(
+            permission,
+            network.TrafficTypes.Select(definition => definition.Name).ToArray(),
+            network.Nodes.Select(node => node.Id).ToArray(),
+            network.Edges.Select(edge => edge.Id).ToArray(),
+            UpdateActorPermissionRule));
+        network.Actors = SimulationActors.ToList();
+        MarkDirty();
+        RefreshAgentViewModels();
+    }
+
+    private void RemovePermissionRule(ActorPermissionRow row)
+    {
+        if (SelectedSimulationActor?.Capability is null)
+        {
+            return;
+        }
+
+        SelectedSimulationActor.Capability.Permissions.Remove(row.Permission);
+        ActorPermissionRows.Remove(row);
+        network.Actors = SimulationActors.ToList();
+        MarkDirty();
+        RefreshAgentViewModels();
+    }
+
+    private void UpdateActorPermissionRule(ActorPermissionRow row)
+    {
+        if (SelectedSimulationActor?.Capability is null)
+        {
+            return;
+        }
+
+        if (!SelectedSimulationActor.Capability.Permissions.Contains(row.Permission))
+        {
+            SelectedSimulationActor.Capability.Permissions.Add(row.Permission);
+        }
+
+        network.Actors = SimulationActors.ToList();
+        MarkDirty();
+        RefreshAgentViewModels();
     }
 
     private void ApplySelectedActorCommandExecute()
@@ -5734,9 +5959,20 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var preservedAllowedTraffic = preserveTrafficScope && previousCapability is not null
             ? (previousCapability.AllowedTrafficTypes ?? []).ToArray()
             : Array.Empty<string>();
+        var preservedPermissions = previousCapability?.Permissions is null
+            ? []
+            : previousCapability.Permissions.Select(permission => new SimulationActorPermission
+            {
+                ActionKind = permission.ActionKind,
+                TrafficType = permission.TrafficType,
+                NodeId = permission.NodeId,
+                EdgeId = permission.EdgeId,
+                IsAllowed = permission.IsAllowed
+            }).ToList();
 
         actor.Capability = SimulationActorCapabilityCatalog.ForKind(actor.Id, actor.Kind);
         actor.Capability.ActorId = actor.Id;
+        actor.Capability.Permissions = preservedPermissions;
         if (preserveTrafficScope)
         {
             actor.Capability.AllowAllTrafficTypes = preservedAllowAll;
@@ -5858,6 +6094,14 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             AllowedActionKinds = [.. SelectedSimulationActor.Capability.AllowedActionKinds],
             AllowAllTrafficTypes = SelectedSimulationActor.Capability.AllowAllTrafficTypes,
             AllowedTrafficTypes = [.. SelectedSimulationActor.Capability.AllowedTrafficTypes],
+            Permissions = SelectedSimulationActor.Capability.Permissions.Select(permission => new SimulationActorPermission
+            {
+                ActionKind = permission.ActionKind,
+                TrafficType = permission.TrafficType,
+                NodeId = permission.NodeId,
+                EdgeId = permission.EdgeId,
+                IsAllowed = permission.IsAllowed
+            }).ToList(),
             IsCustomActorType = SelectedSimulationActor.Capability.IsCustomActorType,
             CustomActorTypeName = SelectedSimulationActor.Capability.CustomActorTypeName
         };
@@ -9833,6 +10077,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         actor.Capability.ActorId = string.IsNullOrWhiteSpace(actor.Capability.ActorId) ? actor.Id : actor.Capability.ActorId;
         actor.Capability.AllowedActionKinds ??= [];
         actor.Capability.AllowedTrafficTypes ??= [];
+        actor.Capability.Permissions ??= [];
     }
 
     private static List<PeriodWindow> BuildPeriodWindows(IEnumerable<PeriodWindowEditorRow> rows, string label)

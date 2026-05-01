@@ -50,12 +50,28 @@ public sealed class SimulationActorActionApplier
         }
 
         var capability = actor.Capability ?? SimulationActorCapabilityCatalog.ForKind(actor.Id, actor.Kind);
-        if (!capability.AllowedActionKinds.Contains(action.Kind))
+        capability.Permissions ??= [];
+        var matching = capability.Permissions
+            .Where(p =>
+                p.ActionKind == action.Kind &&
+                (p.TrafficType == null || Comparer.Equals(p.TrafficType, action.TrafficType)) &&
+                (p.NodeId == null || Comparer.Equals(p.NodeId, action.TargetNodeId)) &&
+                (p.EdgeId == null || Comparer.Equals(p.EdgeId, action.TargetEdgeId)))
+            .ToList();
+
+        if (matching.Count > 0 && !matching.Any(p => p.IsAllowed))
+        {
+            return (false, "Permission explicitly denied.");
+        }
+
+        var isExplicitlyAllowed = matching.Any(p => p.IsAllowed);
+        if (!isExplicitlyAllowed && !capability.AllowedActionKinds.Contains(action.Kind))
         {
             return (false, $"Actor capability does not allow action '{action.Kind}'.");
         }
 
-        if (!string.IsNullOrWhiteSpace(action.TrafficType) &&
+        if (!isExplicitlyAllowed &&
+            !string.IsNullOrWhiteSpace(action.TrafficType) &&
             !capability.AllowAllTrafficTypes &&
             !capability.AllowedTrafficTypes.Contains(action.TrafficType, Comparer))
         {
@@ -77,30 +93,35 @@ public sealed class SimulationActorActionApplier
             return (false, "Insufficient actor cash for action cost.");
         }
 
+        (bool Applied, string Reason) FinalizePermissionResult((bool Applied, string Reason) result) =>
+            isExplicitlyAllowed && result.Applied
+                ? (true, "Permission explicitly allowed.")
+                : result;
+
         switch (action.Kind)
         {
             case SimulationActorActionKind.NoOp:
-                return (true, "NoOp accepted.");
+                return FinalizePermissionResult((true, "NoOp accepted."));
 
             case SimulationActorActionKind.AdjustProduction:
             case SimulationActorActionKind.AdjustConsumption:
             case SimulationActorActionKind.AdjustTrafficPrice:
-                return ApplyNodeProfileAction(network, action);
+                return FinalizePermissionResult(ApplyNodeProfileAction(network, action));
 
             case SimulationActorActionKind.AdjustEdgeCapacity:
             case SimulationActorActionKind.SubsidiseCapacity:
-                return ApplyEdgeCapacityAction(network, action, currentFlowByEdgeId);
+                return FinalizePermissionResult(ApplyEdgeCapacityAction(network, action, currentFlowByEdgeId));
 
             case SimulationActorActionKind.AdjustEdgeCost:
             case SimulationActorActionKind.TaxRoute:
             case SimulationActorActionKind.PreferRoute:
-                return ApplyEdgeCostAction(network, action);
+                return FinalizePermissionResult(ApplyEdgeCostAction(network, action));
 
             case SimulationActorActionKind.BanTrafficOnEdge:
-                return ApplyRouteBan(network, action);
+                return FinalizePermissionResult(ApplyRouteBan(network, action));
 
             case SimulationActorActionKind.AdjustRoutePermission:
-                return ApplyRoutePermission(network, action);
+                return FinalizePermissionResult(ApplyRoutePermission(network, action));
 
             case SimulationActorActionKind.BuyTraffic:
             case SimulationActorActionKind.SellTraffic:

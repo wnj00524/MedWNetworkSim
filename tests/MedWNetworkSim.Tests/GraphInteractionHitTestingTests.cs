@@ -1,5 +1,6 @@
 using MedWNetworkSim.Interaction;
 using MedWNetworkSim.Rendering;
+using Xunit;
 
 namespace MedWNetworkSim.Tests;
 

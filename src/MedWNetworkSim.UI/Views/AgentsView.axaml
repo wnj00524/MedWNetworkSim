@@ -1,0 +1,22 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid ColumnDefinitions="320,*" ColumnSpacing="12">
+    <StackPanel Spacing="8">
+      <TextBlock Text="Agents" FontWeight="Bold" />
+      <ListBox ItemsSource="{Binding Agents}" />
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Content="Add Agent" Command="{Binding AddFirmActorCommand}" />
+        <Button Content="Remove Agent" Command="{Binding RemoveSelectedActorCommand}" />
+      </StackPanel>
+    </StackPanel>
+    <StackPanel Grid.Column="1" Spacing="8">
+      <TextBlock Text="Agent Details" FontWeight="Bold" />
+      <TextBox Text="{Binding ActorNameText}" Watermark="Name" />
+      <TextBox Text="{Binding ActorBudgetText}" Watermark="Budget" />
+      <CheckBox Content="Allowed traffic types: all" IsChecked="{Binding ActorAllowAllTrafficTypes}" />
+      <ItemsControl ItemsSource="{Binding ActorTrafficTypeRows}" />
+      <TextBlock Text="{Binding SelectedActorAllowedActionsText}" TextWrapping="Wrap" />
+      <Button Content="Apply changes" Command="{Binding ApplySelectedActorCommand}" />
+    </StackPanel>
+  </Grid>
+</UserControl>

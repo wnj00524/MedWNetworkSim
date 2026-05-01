@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:MedWNetworkSim.UI">
+  <TabControl>
+    <TabItem Header="Sankey">
+      <ui:GraphCanvasControl ViewModel="{Binding}" />
+    </TabItem>
+    <TabItem Header="Demand/Flow charts">
+      <DataGrid ItemsSource="{Binding FlowSeries}" AutoGenerateColumns="True" IsReadOnly="True" />
+    </TabItem>
+    <TabItem Header="Node pressure">
+      <DataGrid ItemsSource="{Binding NodePressureSeries}" AutoGenerateColumns="True" IsReadOnly="True" />
+    </TabItem>
+  </TabControl>
+</UserControl>

@@ -206,6 +206,7 @@ public sealed class GraphCanvasControl : Control, IDisposable
 
     private readonly GraphRenderer renderer = new();
     private readonly SankeyRenderer sankeyRenderer = new();
+    private readonly PieChartRenderer pieRenderer = new();
     private readonly OsmRasterTileProvider osmTileProvider = new();
     private readonly MapGraphRenderer mapRenderer;
     private readonly IMapProjectionService mapProjectionService = new MapWebMercatorProjectionService();
@@ -338,7 +339,8 @@ public sealed class GraphCanvasControl : Control, IDisposable
             var mode = ViewModel.ActiveView switch
             {
                 AppView.Map or AppView.OSMImport => VisualisationMode.Map,
-                AppView.Sankey or AppView.Analytics => VisualisationMode.Sankey,
+                AppView.Sankey => VisualisationMode.Sankey,
+                AppView.Analytics => VisualisationMode.Analytics,
                 _ => VisualisationMode.Graph
             };
             if (mode == VisualisationMode.Sankey)
@@ -377,6 +379,21 @@ public sealed class GraphCanvasControl : Control, IDisposable
             {
                 var geoLookup = ViewModel.BuildGeoNodeLookup().ToDictionary(item => item.Key, item => new MapGeoCoordinate(item.Value.Latitude, item.Value.Longitude), StringComparer.OrdinalIgnoreCase);
                 mapRenderer.Render(surface.Canvas, interactionContext.Scene, interactionContext.Viewport, transform.LogicalViewport, geoLookup, ViewModel.VisualisationState.ShowMapBackground, ViewModel.MapCamera, ViewModel.BuildMapSelectionOverlay(), out _);
+            }
+            else if (mode == VisualisationMode.Analytics)
+            {
+                surface.Canvas.Clear(SKColor.Parse("#08111D"));
+                var viewport = transform.LogicalViewport;
+                var chartSize = (float)Math.Max(96d, Math.Min(viewport.Width, viewport.Height) * 0.28d);
+                var gap = Math.Max(48f, chartSize * 0.35f);
+                var totalWidth = (chartSize * 2f) + gap;
+                var startX = (float)((viewport.Width - totalWidth) / 2d);
+                var centerY = (float)(viewport.Height / 2d);
+                var chartBounds1 = new SKRect(startX, centerY - (chartSize / 2f), startX + chartSize, centerY + (chartSize / 2f));
+                var chartBounds2 = new SKRect(startX + chartSize + gap, centerY - (chartSize / 2f), startX + (chartSize * 2f) + gap, centerY + (chartSize / 2f));
+
+                pieRenderer.Draw(surface.Canvas, ViewModel.TrafficByTypeChart, chartBounds1);
+                pieRenderer.Draw(surface.Canvas, ViewModel.NodeRoleChart, chartBounds2);
             }
             else
             {
@@ -4771,8 +4788,8 @@ public sealed class ShellWindow : Window
                             BuildButton("Add Government", viewModel.AddGovernmentActorCommand),
                             BuildButton("Add Logistics Planner", viewModel.AddLogisticsPlannerActorCommand),
                             BuildButton("Remove actor", viewModel.RemoveSelectedActorCommand),
-                            BuildButton("Assign selected nodes", viewModel.AssignSelectedNodeToActorCommand),
-                            BuildButton("Assign selected routes", viewModel.AssignSelectedEdgeToActorCommand),
+                            BuildButton("Assign Selected Nodes", viewModel.AssignSelectedNodeToActorCommand),
+                            BuildButton("Assign Selected Edges", viewModel.AssignSelectedEdgeToActorCommand),
                             BuildButton("Clear assignments", viewModel.ClearActorAssignmentsCommand)
                         }
                     },
@@ -4787,11 +4804,12 @@ public sealed class ShellWindow : Window
                     trafficTypeChecklist,
                     BuildButton("Apply actor changes", viewModel.ApplySelectedActorCommand),
                     BuildReadOnlyRow("Actor validation", nameof(WorkspaceViewModel.ActorValidationText)),
+                    BuildSectionTitle("Selected Actor", "Controlled nodes and routes assigned to the active actor."),
                     BuildReadOnlyRow("Controlled node count", nameof(WorkspaceViewModel.SelectedActorNodeCountText)),
                     BuildReadOnlyRow("Controlled route count", nameof(WorkspaceViewModel.SelectedActorEdgeCountText)),
                     BuildReadOnlyRow("Traffic scope", nameof(WorkspaceViewModel.SelectedActorTrafficScopeText)),
-                    BuildReadOnlyRow("Controlled node ids", nameof(WorkspaceViewModel.SelectedActorControlledNodesDisplay)),
-                    BuildReadOnlyRow("Controlled route ids", nameof(WorkspaceViewModel.SelectedActorControlledEdgesDisplay)),
+                    BuildReadOnlyRow("Controlled Nodes", nameof(WorkspaceViewModel.SelectedActorControlledNodesDisplay)),
+                    BuildReadOnlyRow("Controlled Edges", nameof(WorkspaceViewModel.SelectedActorControlledEdgesDisplay)),
                     BuildReadOnlyRow("Actor status", nameof(WorkspaceViewModel.ActorStatusMessage)),
                     BuildLabeledRow("Ticks", new NumericUpDown { [!NumericUpDown.ValueProperty] = new Binding(nameof(WorkspaceViewModel.ActorRunTicks), BindingMode.TwoWay), Minimum = 1, Maximum = 1000 }),
                     new WrapPanel

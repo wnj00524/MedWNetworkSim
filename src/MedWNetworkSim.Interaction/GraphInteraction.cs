@@ -104,6 +104,16 @@ public sealed class GraphInteractionController
             return;
         }
 
+        if (context.ToolMode == GraphToolMode.Agent && hit.NodeId is not null)
+        {
+            context.Scene.Selection.SelectedNodeIds.Add(hit.NodeId);
+            context.Scene.Selection.KeyboardNodeId = hit.NodeId;
+            context.Scene.Selection.KeyboardEdgeId = null;
+            context.SelectionChanged(hit.NodeId, null);
+            context.StatusChanged("Node selected for agent assignment.");
+            return;
+        }
+
         if ((controlPressed || shiftPressed) && hit.NodeId is not null && context.ToolMode == GraphToolMode.Select)
         {
             SelectNode(context, hit.NodeId, additive: false);

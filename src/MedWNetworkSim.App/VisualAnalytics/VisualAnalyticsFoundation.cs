@@ -8,6 +8,7 @@ public enum VisualisationMode
 {
     Graph,
     Sankey,
+    Analytics,
     Map,
     ScenarioDiff
 }

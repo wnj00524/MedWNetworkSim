@@ -1082,7 +1082,7 @@ static void ScenarioTrafficTypesRailButtonOpensAndClosesTrafficWorkspace()
     backButton!.Command?.Execute(null);
 
     shellWorkspaceMode = GetPrivateField<object>(shell, "shellWorkspaceMode");
-    AssertTrue(trafficHost.IsVisible == false, "traffic workspace back button closes traffic workspace");
+    AssertTrue(trafficHost!.IsVisible == false, "traffic workspace back button closes traffic workspace");
     AssertTrue(standardHost?.IsVisible == true, "traffic workspace back button restores standard workspace");
     AssertTextEqual("Standard", shellWorkspaceMode?.ToString() ?? string.Empty, "traffic workspace returns to standard mode");
 }

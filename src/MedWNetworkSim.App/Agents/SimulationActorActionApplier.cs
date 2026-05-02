@@ -79,10 +79,11 @@ public sealed class SimulationActorActionApplier
         }
 
         spentByActorId.TryGetValue(actor.Id, out var spentThisTick);
-        var availableCash = Math.Max(0d, actor.Cash - spentThisTick);
-        if (action.Cost > 0d && availableCash < action.Cost)
+        var spendLimit = actor.Budget > 0d ? actor.Budget : actor.Cash;
+        var availableFunds = Math.Max(0d, spendLimit - spentThisTick);
+        if (action.Cost > 0d && availableFunds < action.Cost)
         {
-            return (false, "Insufficient actor cash for action cost.");
+            return (false, "Insufficient actor funds for action cost.");
         }
 
         (bool Applied, string Reason) FinalizePermissionResult((bool Applied, string Reason) result) =>

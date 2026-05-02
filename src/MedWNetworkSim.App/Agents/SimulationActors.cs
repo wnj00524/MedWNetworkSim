@@ -61,6 +61,8 @@ public abstract class SimulationActorBase : ISimulationActor
             ? !actionRules.Any(permission => permission.IsAllowed)
             : matching.Any(permission => permission.IsAllowed) && !matching.Any(permission => !permission.IsAllowed);
     }
+
+    protected bool HasSpendingCapacity => State.Budget > 0d || State.Cash > 0d;
 }
 
 public sealed class FirmSimulationActor : SimulationActorBase
@@ -80,7 +82,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
                 if (profile.Production <= 0d &&
                     profile.Consumption <= 0d &&
                     !string.IsNullOrWhiteSpace(profile.TrafficType) &&
-                    State.Cash > 0d &&
+                    HasSpendingCapacity &&
                     IsPermittedByPermissions(SimulationActorActionKind.AdjustProduction, profile.TrafficType, node.Id))
                 {
                     actions.Add(new SimulationActorAction
@@ -110,7 +112,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
 
                 if (profile.Production > 0d &&
                     deliveredRatio >= 0.85d &&
-                    State.Cash > 0d &&
+                    HasSpendingCapacity &&
                     IsPermittedByPermissions(SimulationActorActionKind.AdjustProduction, profile.TrafficType, node.Id))
                 {
                     var delta = Math.Max(1d, profile.Production * 0.1d);
@@ -176,9 +178,9 @@ public sealed class FirmSimulationActor : SimulationActorBase
             }
 
             var isBottleneck = InsightsForEdge(context.CurrentInsights, edge.Id).Any(i => i.Category == InsightCategory.Capacity);
-            if (!isBottleneck || State.Cash <= 0d)
+            if (!isBottleneck || !HasSpendingCapacity)
             {
-                if (State.Cash > 0d)
+                if (HasSpendingCapacity)
                 {
                     var preventiveDelta = Math.Max(1d, (edge.Capacity ?? 10d) * 0.05d);
                     actions.Add(new SimulationActorAction
@@ -321,7 +323,7 @@ public sealed class GovernmentSimulationActor : SimulationActorBase
             }
         }
 
-        if (actions.Count == 0 && State.Cash > 0d)
+        if (actions.Count == 0 && HasSpendingCapacity)
         {
             var targetEdge = context.CurrentNetwork.Edges
                 .Where(edge => IsPermittedByPermissions(SimulationActorActionKind.SubsidiseCapacity, edgeId: edge.Id))

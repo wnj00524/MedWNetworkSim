@@ -484,6 +484,79 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
+    public void BudgetedActor_CanAdjustProductionAcrossMultipleTicks()
+    {
+        var network = BuildHighThroughputNetwork();
+        var coordinator = new SimulationActorCoordinator();
+        var actor = new SimulationActorState
+        {
+            Id = "firm",
+            Name = "Firm",
+            Kind = SimulationActorKind.Firm,
+            Objective = SimulationActorObjective.MaximiseProfit,
+            Budget = 100,
+            Cash = 4,
+            Capability = new SimulationActorCapability
+            {
+                ActorId = "firm",
+                AllowedActionKinds = [SimulationActorActionKind.AdjustProduction],
+                Permissions =
+                [
+                    new SimulationActorPermission
+                    {
+                        ActionKind = SimulationActorActionKind.AdjustProduction,
+                        TrafficType = "Food",
+                        NodeId = "producer",
+                        IsAllowed = true
+                    }
+                ]
+            }
+        };
+
+        for (var tick = 0; tick < 3; tick++)
+        {
+            var step = coordinator.StepActorsOnce(network, [actor], tick);
+            Assert.Contains(step.ActionOutcomes, outcome =>
+                outcome.Applied &&
+                outcome.Action.Kind == SimulationActorActionKind.AdjustProduction &&
+                outcome.Action.TargetNodeId == "producer");
+            network = step.NetworkAfterStep;
+        }
+
+        var production = network.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single(profile => profile.TrafficType == "Food").Production;
+        Assert.True(production > 130d);
+    }
+
+    [Fact]
+    public void BudgetedActor_CanApplyOtherCostedActionsAcrossMultipleTicks()
+    {
+        var network = BuildDraftNetwork();
+        var coordinator = new SimulationActorCoordinator();
+        var actor = new SimulationActorState
+        {
+            Id = "gov",
+            Name = "Government",
+            Kind = SimulationActorKind.Government,
+            Objective = SimulationActorObjective.StabiliseNetwork,
+            Budget = 2,
+            Cash = 2,
+            Capability = SimulationActorCapabilityCatalog.ForKind("gov", SimulationActorKind.Government)
+        };
+
+        for (var tick = 0; tick < 3; tick++)
+        {
+            var step = coordinator.StepActorsOnce(network, [actor], tick);
+            Assert.Contains(step.ActionOutcomes, outcome =>
+                outcome.Applied &&
+                outcome.Action.Kind == SimulationActorActionKind.SubsidiseCapacity &&
+                outcome.Action.TargetEdgeId == "draft-edge");
+            network = step.NetworkAfterStep;
+        }
+
+        Assert.True(network.Edges.Single(edge => edge.Id == "draft-edge").Capacity > 34d);
+    }
+
+    [Fact]
     public void AddPermissionRule_AddsGranularNodeRule()
     {
         var vm = BuildWorkspaceViewModelWithNetwork();
@@ -892,6 +965,13 @@ public sealed class SimulationActorsTests
                 }
             ]
         };
+    }
+
+    private static NetworkModel BuildHighThroughputNetwork()
+    {
+        var network = BuildNetwork();
+        network.Edges.Single(edge => edge.Id == "edge-a").Capacity = 1000;
+        return network;
     }
 
     private static Dictionary<string, SimulationActorState> BuildActorMap(params SimulationActorState[] actors) =>

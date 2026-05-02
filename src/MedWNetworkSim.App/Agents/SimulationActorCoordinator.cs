@@ -84,7 +84,11 @@ public sealed class SimulationActorCoordinator
 
         foreach (var outcome in outcomes.Where(o => o.Applied && o.Action.Cost > 0d))
         {
-            actorMap[outcome.Action.ActorId].Cash = Math.Max(0d, actorMap[outcome.Action.ActorId].Cash - outcome.Action.Cost);
+            var actor = actorMap[outcome.Action.ActorId];
+            if (actor.Budget <= 0d)
+            {
+                actor.Cash = Math.Max(0d, actor.Cash - outcome.Action.Cost);
+            }
         }
 
         var appliedSnapshot = BuildSnapshot(appliedNetwork, tick + 1);

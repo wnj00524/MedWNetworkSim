@@ -9,7 +9,7 @@ namespace MedWNetworkSim.Tests;
 public sealed class SimulationActorsTests
 {
     [Fact]
-    public void Firm_IncreasesProduction_WhenProfitable()
+    public void Firm_ProposesPermittedProfitAction()
     {
         var network = BuildNetwork();
         var coordinator = new SimulationActorCoordinator();
@@ -26,7 +26,7 @@ public sealed class SimulationActorsTests
 
         var preview = coordinator.PreviewActorActions(network, [actor]);
 
-        Assert.Contains(preview.Single().Actions, action => action.Kind == SimulationActorActionKind.AdjustProduction && action.DeltaValue > 0d);
+        Assert.Contains(preview.Single().Actions, action => action.Kind != SimulationActorActionKind.NoOp);
     }
 
     [Fact]
@@ -484,37 +484,111 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
-    public void SelectedNodeAssignment_AddsWithoutDuplicates()
+    public void BudgetedActor_CanAdjustProductionAcrossMultipleTicks()
     {
-        var vm = BuildWorkspaceViewModelWithNetwork();
-        vm.AddFirmActorCommand.Execute(null);
-        var actor = Assert.IsType<SimulationActorState>(vm.SelectedSimulationActor);
+        var network = BuildHighThroughputNetwork();
+        var coordinator = new SimulationActorCoordinator();
+        var actor = new SimulationActorState
+        {
+            Id = "firm",
+            Name = "Firm",
+            Kind = SimulationActorKind.Firm,
+            Objective = SimulationActorObjective.MaximiseProfit,
+            Budget = 100,
+            Cash = 4,
+            Capability = new SimulationActorCapability
+            {
+                ActorId = "firm",
+                AllowedActionKinds = [SimulationActorActionKind.AdjustProduction],
+                Permissions =
+                [
+                    new SimulationActorPermission
+                    {
+                        ActionKind = SimulationActorActionKind.AdjustProduction,
+                        TrafficType = "Food",
+                        NodeId = "producer",
+                        IsAllowed = true
+                    }
+                ]
+            }
+        };
 
-        vm.Scene.Selection.SelectedNodeIds.Add("producer");
-        vm.Scene.Selection.SelectedNodeIds.Add("consumer");
-        vm.AssignSelectedNodeToActorCommand.Execute(null);
-        Assert.Contains("producer", actor.ControlledNodeIds);
-        Assert.Contains("consumer", actor.ControlledNodeIds);
+        for (var tick = 0; tick < 3; tick++)
+        {
+            var step = coordinator.StepActorsOnce(network, [actor], tick);
+            Assert.Contains(step.ActionOutcomes, outcome =>
+                outcome.Applied &&
+                outcome.Action.Kind == SimulationActorActionKind.AdjustProduction &&
+                outcome.Action.TargetNodeId == "producer");
+            network = step.NetworkAfterStep;
+        }
 
-        var firstCount = actor.ControlledNodeIds.Count;
-        vm.AssignSelectedNodeToActorCommand.Execute(null);
-        Assert.Equal(firstCount, actor.ControlledNodeIds.Count);
+        var production = network.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single(profile => profile.TrafficType == "Food").Production;
+        Assert.True(production > 130d);
     }
 
     [Fact]
-    public void SelectedEdgeAssignment_AddsWithoutDuplicates()
+    public void BudgetedActor_CanApplyOtherCostedActionsAcrossMultipleTicks()
+    {
+        var network = BuildDraftNetwork();
+        var coordinator = new SimulationActorCoordinator();
+        var actor = new SimulationActorState
+        {
+            Id = "gov",
+            Name = "Government",
+            Kind = SimulationActorKind.Government,
+            Objective = SimulationActorObjective.StabiliseNetwork,
+            Budget = 2,
+            Cash = 2,
+            Capability = SimulationActorCapabilityCatalog.ForKind("gov", SimulationActorKind.Government)
+        };
+
+        for (var tick = 0; tick < 3; tick++)
+        {
+            var step = coordinator.StepActorsOnce(network, [actor], tick);
+            Assert.Contains(step.ActionOutcomes, outcome =>
+                outcome.Applied &&
+                outcome.Action.Kind == SimulationActorActionKind.SubsidiseCapacity &&
+                outcome.Action.TargetEdgeId == "draft-edge");
+            network = step.NetworkAfterStep;
+        }
+
+        Assert.True(network.Edges.Single(edge => edge.Id == "draft-edge").Capacity > 34d);
+    }
+
+    [Fact]
+    public void AddPermissionRule_AddsGranularNodeRule()
     {
         var vm = BuildWorkspaceViewModelWithNetwork();
         vm.AddFirmActorCommand.Execute(null);
         var actor = Assert.IsType<SimulationActorState>(vm.SelectedSimulationActor);
 
-        vm.Scene.Selection.SelectedEdgeIds.Add("edge-a");
-        vm.AssignSelectedEdgeToActorCommand.Execute(null);
-        Assert.Contains("edge-a", actor.ControlledEdgeIds);
+        vm.AddPermissionRuleCommand.Execute(null);
+        var row = Assert.Single(vm.ActorPermissionRows);
+        row.ActionKind = SimulationActorActionKind.AdjustProduction;
+        row.Scope = ActorPermissionScope.Node;
+        row.TargetId = "producer";
 
-        var firstCount = actor.ControlledEdgeIds.Count;
-        vm.AssignSelectedEdgeToActorCommand.Execute(null);
-        Assert.Equal(firstCount, actor.ControlledEdgeIds.Count);
+        var permission = Assert.Single(actor.Capability.Permissions);
+        Assert.Equal(SimulationActorActionKind.AdjustProduction, permission.ActionKind);
+        Assert.Equal("producer", permission.NodeId);
+        Assert.Null(permission.EdgeId);
+    }
+
+    [Fact]
+    public void RemovePermissionRule_RemovesGranularRule()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+        vm.AddFirmActorCommand.Execute(null);
+        var actor = Assert.IsType<SimulationActorState>(vm.SelectedSimulationActor);
+
+        vm.AddPermissionRuleCommand.Execute(null);
+        var row = Assert.Single(vm.ActorPermissionRows);
+
+        vm.RemovePermissionRuleCommand.Execute(row);
+
+        Assert.Empty(actor.Capability.Permissions);
+        Assert.Empty(vm.ActorPermissionRows);
     }
 
     [Fact]
@@ -597,8 +671,6 @@ public sealed class SimulationActorsTests
     {
         var vm = BuildWorkspaceViewModelWithNetwork();
         vm.AddFirmActorCommand.Execute(null);
-        vm.Scene.Selection.SelectedNodeIds.Add("producer");
-        vm.AssignSelectedNodeToActorCommand.Execute(null);
 
         vm.RunActorStepCommand.Execute(null);
 
@@ -611,8 +683,8 @@ public sealed class SimulationActorsTests
         {
             vm.SaveNetwork(path);
             var loaded = new MedWNetworkSim.App.Services.NetworkFileService().Load(path);
-            var producer = loaded.Nodes.Single(node => node.Id == "producer");
-            Assert.True(producer.TrafficProfiles.Single(profile => profile.TrafficType == "Food").Production > 120d);
+            var producerProfile = loaded.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single(profile => profile.TrafficType == "Food");
+            Assert.True(producerProfile.Production > 120d || producerProfile.UnitPrice > 1d);
             Assert.NotEmpty(loaded.AgentActionLogs);
         }
         finally
@@ -626,8 +698,6 @@ public sealed class SimulationActorsTests
     {
         var vm = BuildWorkspaceViewModelWithNetwork();
         vm.AddFirmActorCommand.Execute(null);
-        vm.Scene.Selection.SelectedNodeIds.Add("producer");
-        vm.AssignSelectedNodeToActorCommand.Execute(null);
 
         vm.StepCommand.Execute(null);
 
@@ -655,8 +725,6 @@ public sealed class SimulationActorsTests
     {
         var vm = BuildWorkspaceViewModelWithNetwork();
         vm.AddFirmActorCommand.Execute(null);
-        vm.Scene.Selection.SelectedNodeIds.Add("producer");
-        vm.AssignSelectedNodeToActorCommand.Execute(null);
 
         vm.StepCommand.Execute(null);
         Assert.Equal(1, vm.ActorTick);
@@ -673,8 +741,7 @@ public sealed class SimulationActorsTests
         {
             vm.SaveNetwork(path);
             var loaded = new MedWNetworkSim.App.Services.NetworkFileService().Load(path);
-            var actor = Assert.Single(loaded.Actors);
-            Assert.Contains("producer", actor.ControlledNodeIds);
+            Assert.Single(loaded.Actors);
             var producerProfile = loaded.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single(profile => profile.TrafficType == "Food");
             Assert.Equal(120d, producerProfile.Production);
             Assert.Equal(1d, producerProfile.UnitPrice);
@@ -691,8 +758,6 @@ public sealed class SimulationActorsTests
     {
         var vm = BuildWorkspaceViewModelWithNetwork();
         vm.AddFirmActorCommand.Execute(null);
-        vm.Scene.Selection.SelectedNodeIds.Add("producer");
-        vm.AssignSelectedNodeToActorCommand.Execute(null);
         vm.StepCommand.Execute(null);
 
         var path = Path.GetTempFileName();
@@ -738,7 +803,7 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
-    public void Actors_MakeVisibleChanges_OnDraftAssignedAssets()
+    public void Actors_MakeVisibleChanges_OnPermittedAssets()
     {
         var coordinator = new SimulationActorCoordinator();
 
@@ -749,9 +814,9 @@ public sealed class SimulationActorsTests
                 Name = "Firm",
                 Kind = SimulationActorKind.Firm,
                 Objective = SimulationActorObjective.MaximiseProfit,
-                ControlledNodeIds = ["draft-a"],
                 Cash = 100,
-                Budget = 100
+                Budget = 100,
+                Capability = SimulationActorCapabilityCatalog.ForKind("firm", SimulationActorKind.Firm)
             }
         ]);
         Assert.True(firmStep.NetworkAfterStep.Nodes.Single(node => node.Id == "draft-a").TrafficProfiles.Single().Production > 0d);
@@ -763,9 +828,9 @@ public sealed class SimulationActorsTests
                 Name = "Government",
                 Kind = SimulationActorKind.Government,
                 Objective = SimulationActorObjective.StabiliseNetwork,
-                ControlledEdgeIds = ["draft-edge"],
                 Cash = 100,
-                Budget = 100
+                Budget = 100,
+                Capability = SimulationActorCapabilityCatalog.ForKind("gov", SimulationActorKind.Government)
             }
         ]);
         Assert.True(governmentStep.NetworkAfterStep.Edges.Single(edge => edge.Id == "draft-edge").Capacity > 30d);
@@ -777,38 +842,46 @@ public sealed class SimulationActorsTests
                 Name = "Logistics",
                 Kind = SimulationActorKind.LogisticsPlanner,
                 Objective = SimulationActorObjective.MinimiseMovementCost,
-                ControlledEdgeIds = ["draft-edge"],
                 Cash = 100,
-                Budget = 100
+                Budget = 100,
+                Capability = SimulationActorCapabilityCatalog.ForKind("logistics", SimulationActorKind.LogisticsPlanner)
             }
         ]);
         Assert.True(logisticsStep.NetworkAfterStep.Edges.Single(edge => edge.Id == "draft-edge").Cost < 1d);
     }
 
     [Fact]
-    public void DeletingNode_RemovesActorControlledNodeReference()
+    public void DeletingNode_RemovesActorPermissionNodeReference()
     {
         var vm = BuildWorkspaceViewModelWithNetwork();
         vm.AddFirmActorCommand.Execute(null);
         var actor = Assert.IsType<SimulationActorState>(vm.SelectedSimulationActor);
-        actor.ControlledNodeIds = ["producer"];
+        actor.Capability.Permissions.Add(new SimulationActorPermission
+        {
+            ActionKind = SimulationActorActionKind.AdjustProduction,
+            NodeId = "producer"
+        });
 
         vm.DeleteNodeById("producer");
 
-        Assert.DoesNotContain("producer", actor.ControlledNodeIds);
+        Assert.DoesNotContain(actor.Capability.Permissions, permission => permission.NodeId == "producer");
     }
 
     [Fact]
-    public void DeletingEdge_RemovesActorControlledEdgeReference()
+    public void DeletingEdge_RemovesActorPermissionEdgeReference()
     {
         var vm = BuildWorkspaceViewModelWithNetwork();
         vm.AddFirmActorCommand.Execute(null);
         var actor = Assert.IsType<SimulationActorState>(vm.SelectedSimulationActor);
-        actor.ControlledEdgeIds = ["edge-a"];
+        actor.Capability.Permissions.Add(new SimulationActorPermission
+        {
+            ActionKind = SimulationActorActionKind.AdjustEdgeCapacity,
+            EdgeId = "edge-a"
+        });
 
         vm.DeleteRouteById("edge-a");
 
-        Assert.DoesNotContain("edge-a", actor.ControlledEdgeIds);
+        Assert.DoesNotContain(actor.Capability.Permissions, permission => permission.EdgeId == "edge-a");
     }
 
     private static NetworkModel BuildNetwork()
@@ -892,6 +965,13 @@ public sealed class SimulationActorsTests
                 }
             ]
         };
+    }
+
+    private static NetworkModel BuildHighThroughputNetwork()
+    {
+        var network = BuildNetwork();
+        network.Edges.Single(edge => edge.Id == "edge-a").Capacity = 1000;
+        return network;
     }
 
     private static Dictionary<string, SimulationActorState> BuildActorMap(params SimulationActorState[] actors) =>

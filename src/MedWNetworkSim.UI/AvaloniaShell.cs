@@ -2957,14 +2957,6 @@ public sealed class ShellWindow : Window
             {
                 new DataGridTextColumn { Header = "Agent ID", Binding = new Binding(nameof(SimulationActorState.Id)) },
                 new DataGridTextColumn { Header = "Type", Binding = new Binding(nameof(SimulationActorState.Kind)) },
-                new DataGridTextColumn
-                {
-                    Header = "Current Node",
-                    Binding = new Binding(nameof(SimulationActorState.ControlledNodeIds))
-                    {
-                        Converter = new FuncValueConverter<List<string>, string?>(ids => ids?.FirstOrDefault() ?? "None")
-                    }
-                },
                 new DataGridTextColumn { Header = "Destination", Binding = new Binding(nameof(SimulationActorState.Objective)) },
                 new DataGridTextColumn { Header = "Status", Binding = new Binding(nameof(SimulationActorState.IsEnabled)) },
                 new DataGridTextColumn { Header = "Payload", Binding = new Binding(nameof(SimulationActorState.Cash)) }
@@ -4858,7 +4850,7 @@ public sealed class ShellWindow : Window
             Children =
             {
                 new TextBlock { Text = actor is null ? string.Empty : $"{actor.Name} · {actor.Kind} · {(actor.IsEnabled ? "Enabled" : "Disabled")}" },
-                new TextBlock { Text = actor is null ? string.Empty : $"Objective {actor.Objective} | Cash {actor.Cash:0.##} | Nodes {actor.ControlledNodeIds.Count} | Edges {actor.ControlledEdgeIds.Count}", FontSize = 11 }
+                new TextBlock { Text = actor is null ? string.Empty : $"Objective {actor.Objective} | Cash {actor.Cash:0.##} | Rules {actor.Capability?.Permissions.Count ?? 0}", FontSize = 11 }
             }
         });
 
@@ -5065,9 +5057,6 @@ public sealed class ShellWindow : Window
                             BuildButton("Add Government", viewModel.AddGovernmentActorCommand),
                             BuildButton("Add Logistics Planner", viewModel.AddLogisticsPlannerActorCommand),
                             BuildButton("Remove actor", viewModel.RemoveSelectedActorCommand),
-                            BuildButton("Assign Selected Nodes", viewModel.AssignSelectedNodeToActorCommand),
-                            BuildButton("Assign Selected Edges", viewModel.AssignSelectedEdgeToActorCommand),
-                            BuildButton("Clear assignments", viewModel.ClearActorAssignmentsCommand)
                         }
                     },
                     BuildLabeledTextBox("Name", nameof(WorkspaceViewModel.ActorNameText)),
@@ -5082,12 +5071,8 @@ public sealed class ShellWindow : Window
                     permissionsPanel,
                     BuildButton("Apply actor changes", viewModel.ApplySelectedActorCommand),
                     BuildReadOnlyRow("Actor validation", nameof(WorkspaceViewModel.ActorValidationText)),
-                    BuildSectionTitle("Selected Actor", "Controlled nodes and routes assigned to the active actor."),
-                    BuildReadOnlyRow("Controlled node count", nameof(WorkspaceViewModel.SelectedActorNodeCountText)),
-                    BuildReadOnlyRow("Controlled route count", nameof(WorkspaceViewModel.SelectedActorEdgeCountText)),
+                    BuildSectionTitle("Selected Actor", "Fine-grained permissions for the active actor."),
                     BuildReadOnlyRow("Traffic scope", nameof(WorkspaceViewModel.SelectedActorTrafficScopeText)),
-                    BuildReadOnlyRow("Controlled Nodes", nameof(WorkspaceViewModel.SelectedActorControlledNodesDisplay)),
-                    BuildReadOnlyRow("Controlled Edges", nameof(WorkspaceViewModel.SelectedActorControlledEdgesDisplay)),
                     BuildReadOnlyRow("Actor status", nameof(WorkspaceViewModel.ActorStatusMessage)),
                     BuildLabeledRow("Ticks", new NumericUpDown { [!NumericUpDown.ValueProperty] = new Binding(nameof(WorkspaceViewModel.ActorRunTicks), BindingMode.TwoWay), Minimum = 1, Maximum = 1000 }),
                     new WrapPanel

@@ -2216,9 +2216,6 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ApplyPreviewedActorActionsCommand = new RelayCommand(RunActorStep);
         ResetActorHistoryCommand = new RelayCommand(ResetActorHistory);
         ExportAgentLogsCommand = new RelayCommand(() => ExportAgentLogsRequested?.Invoke(this, EventArgs.Empty));
-        AssignSelectedNodeToActorCommand = new RelayCommand(AssignSelectedNodeToActor, () => SelectedSimulationActor is not null);
-        AssignSelectedEdgeToActorCommand = new RelayCommand(AssignSelectedEdgeToActor, () => SelectedSimulationActor is not null);
-        ClearActorAssignmentsCommand = new RelayCommand(ClearActorAssignments, () => SelectedSimulationActor is not null);
         AddPermissionRuleCommand = new RelayCommand(AddPermissionRule, () => SelectedSimulationActor is not null);
         RemovePermissionRuleCommand = new RelayCommand<ActorPermissionRow>(RemovePermissionRule, row => SelectedSimulationActor is not null && row is not null);
         ApplySelectedActorCommand = new RelayCommand(ApplySelectedActorCommandExecute, () => SelectedSimulationActor is not null);
@@ -2427,9 +2424,6 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public RelayCommand ApplyPreviewedActorActionsCommand { get; }
     public RelayCommand ResetActorHistoryCommand { get; }
     public RelayCommand ExportAgentLogsCommand { get; }
-    public RelayCommand AssignSelectedNodeToActorCommand { get; }
-    public RelayCommand AssignSelectedEdgeToActorCommand { get; }
-    public RelayCommand ClearActorAssignmentsCommand { get; }
     public RelayCommand AddPermissionRuleCommand { get; }
     public RelayCommand<ActorPermissionRow> RemovePermissionRuleCommand { get; }
     public RelayCommand ApplySelectedActorCommand { get; }
@@ -2701,9 +2695,6 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 RefreshSelectedActorDisplayState();
                 RemoveSelectedActorCommand.NotifyCanExecuteChanged();
                 DuplicateSelectedActorCommand.NotifyCanExecuteChanged();
-                AssignSelectedNodeToActorCommand.NotifyCanExecuteChanged();
-                AssignSelectedEdgeToActorCommand.NotifyCanExecuteChanged();
-                ClearActorAssignmentsCommand.NotifyCanExecuteChanged();
                 AddPermissionRuleCommand.NotifyCanExecuteChanged();
                 RemovePermissionRuleCommand.NotifyCanExecuteChanged();
                 ApplySelectedActorCommand.NotifyCanExecuteChanged();
@@ -2762,8 +2753,6 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         private set => SetProperty(ref nodeUtilizationMixData, value);
     }
 
-    public string SelectedActorNodeCountText => SelectedSimulationActor is null ? "Nodes: 0" : $"Nodes: {SelectedSimulationActor.ControlledNodeIds?.Count ?? 0}";
-    public string SelectedActorEdgeCountText => SelectedSimulationActor is null ? "Routes: 0" : $"Routes: {SelectedSimulationActor.ControlledEdgeIds?.Count ?? 0}";
     public string SelectedActorTrafficScopeText
     {
         get
@@ -2782,12 +2771,6 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return allowed.Count == 0 ? "Traffic scope: no traffic types selected" : $"Traffic scope: {string.Join(", ", allowed)}";
         }
     }
-    public string SelectedActorControlledNodesDisplay => SelectedSimulationActor?.ControlledNodeIds is not { Count: > 0 }
-        ? "None"
-        : string.Join(", ", SelectedSimulationActor.ControlledNodeIds);
-    public string SelectedActorControlledEdgesDisplay => SelectedSimulationActor?.ControlledEdgeIds is not { Count: > 0 }
-        ? "None"
-        : string.Join(", ", SelectedSimulationActor.ControlledEdgeIds);
     public bool ShowActorTrafficTypeChecklist => !ActorAllowAllTrafficTypes;
     public LayerListItemViewModel? SelectedLayerItem
     {
@@ -3497,11 +3480,6 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         else
         {
             FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.None);
-        }
-
-        if (ActiveToolMode == GraphToolMode.Agent && SelectedSimulationActor is not null)
-        {
-            AssignCurrentSelectionToActor();
         }
 
         RefreshInspector();
@@ -4995,12 +4973,6 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Scene.Nodes.Clear();
         Scene.Edges.Clear();
         Scene.Simulation.ShowAgentOverlays = ShowAgentTools;
-        var controlledNodes = ShowAgentTools && SelectedSimulationActor is not null
-            ? SelectedSimulationActor.ControlledNodeIds.ToHashSet(Comparer)
-            : new HashSet<string>(Comparer);
-        var controlledEdges = ShowAgentTools && SelectedSimulationActor is not null
-            ? SelectedSimulationActor.ControlledEdgeIds.ToHashSet(Comparer)
-            : new HashSet<string>(Comparer);
         var zoomTier = graphRenderer.GetZoomTier(Viewport.Zoom);
         var projectionViewport = IsMapLayoutLockedForGraph ? BuildGraphProjectionViewport(LastViewportSize) : (MapProjectionViewport?)null;
 
@@ -5034,12 +5006,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 IsMultiFacilityCovered = false,
                 PrimaryFacilityId = null,
                 PrimaryFacilityTravelTime = null,
-                IsActorControlled = controlledNodes.Contains(node.Id)
+                IsActorControlled = false
             };
-            if (ShowAgentTools)
-            {
-                sceneNode.VisualOpacity = SelectedSimulationActor is null || sceneNode.IsActorControlled ? 1d : 0.42d;
-            }
             var layout = GraphRenderer.GetOrBuildNodeLayout(sceneNode, zoomTier);
             GraphRenderer.ApplyLayoutBoundsKeepingCenter(sceneNode, layout);
             Scene.Nodes.Add(sceneNode);
@@ -5063,12 +5031,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 FlowRate = 0d,
                 ToolTipText = AppendEdgeActorControlText(edge.Id, BuildEdgeToolTipText(edge, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty, 0d, null)),
                 HasWarning = isLocked,
-                IsActorControlled = controlledEdges.Contains(edge.Id)
+                IsActorControlled = false
             });
-            if (ShowAgentTools && SelectedSimulationActor is not null && !controlledEdges.Contains(edge.Id))
-            {
-                Scene.Edges[^1].VisualOpacity = 0.42d;
-            }
         }
 
         ApplyIsochroneVisuals();
@@ -5701,12 +5665,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private void RefreshSelectedActorDisplayState()
     {
-        Raise(nameof(SelectedActorNodeCountText));
-        Raise(nameof(SelectedActorEdgeCountText));
         Raise(nameof(SelectedActorTrafficScopeText));
         Raise(nameof(SelectedActorAllowedActionsText));
-        Raise(nameof(SelectedActorControlledNodesDisplay));
-        Raise(nameof(SelectedActorControlledEdgesDisplay));
         RefreshAgentViewModels();
     }
 
@@ -6084,8 +6044,6 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         copy.Cash = SelectedSimulationActor.Cash;
         copy.RiskTolerance = SelectedSimulationActor.RiskTolerance;
         copy.CooperationWeight = SelectedSimulationActor.CooperationWeight;
-        copy.ControlledNodeIds = [.. SelectedSimulationActor.ControlledNodeIds];
-        copy.ControlledEdgeIds = [.. SelectedSimulationActor.ControlledEdgeIds];
         copy.Notes = SelectedSimulationActor.Notes;
         copy.IsEnabled = SelectedSimulationActor.IsEnabled;
         copy.Capability = new SimulationActorCapability
@@ -6129,13 +6087,6 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         if (SimulationActors.Count == 0) { ActorStatusMessage = "Add an actor first."; return false; }
         if (SimulationActors.All(actor => !actor.IsEnabled)) { ActorStatusMessage = "Enable at least one actor."; return false; }
-        var actorWithoutNodes = SimulationActors.FirstOrDefault(actor => actor.IsEnabled && !actor.ControlledNodeIds.Any());
-        if (actorWithoutNodes is not null)
-        {
-            ActorStatusMessage = "Actor has no assigned nodes.";
-            StatusText = "Actor has no assigned nodes.";
-            return false;
-        }
         if (network.Nodes.Count == 0 || network.Edges.Count == 0) { ActorStatusMessage = "Create or import a network before running actors."; return false; }
         return true;
     }
@@ -6275,106 +6226,6 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         network.ActorTick = 0;
         HasActorPreview = false;
         ActorStatusMessage = "Actor history reset.";
-    }
-
-    private void AssignSelectedNodeToActor()
-    {
-        if (SelectedSimulationActor is null)
-        {
-            ActorStatusMessage = "Select an actor first.";
-            return;
-        }
-
-        var (nodeCount, _) = AssignCurrentSelectionToActor(assignNodes: true, assignEdges: false);
-        if (nodeCount == 0)
-        {
-            ActorStatusMessage = "Select one or more nodes first.";
-        }
-    }
-
-    private void AssignSelectedEdgeToActor()
-    {
-        if (SelectedSimulationActor is null)
-        {
-            ActorStatusMessage = "Select an actor first.";
-            return;
-        }
-
-        var (_, edgeCount) = AssignCurrentSelectionToActor(assignNodes: false, assignEdges: true);
-        if (edgeCount == 0)
-        {
-            ActorStatusMessage = "Select one or more routes first.";
-        }
-    }
-
-    private (int NodeCount, int EdgeCount) AssignCurrentSelectionToActor(bool assignNodes = true, bool assignEdges = true)
-    {
-        if (SelectedSimulationActor is null)
-        {
-            return (0, 0);
-        }
-
-        var selectedNodeIds = assignNodes
-            ? Scene.Selection.SelectedNodeIds
-                .Where(id => network.Nodes.Any(node => Comparer.Equals(node.Id, id)))
-                .Distinct(Comparer)
-                .ToList()
-            : [];
-        var selectedEdgeIds = assignEdges
-            ? Scene.Selection.SelectedEdgeIds
-                .Where(id => network.Edges.Any(edge => Comparer.Equals(edge.Id, id)))
-                .Distinct(Comparer)
-                .ToList()
-            : [];
-
-        if (selectedNodeIds.Count == 0 && selectedEdgeIds.Count == 0)
-        {
-            return (0, 0);
-        }
-
-        var currentNodes = SelectedSimulationActor.ControlledNodeIds.ToHashSet(Comparer);
-        foreach (var nodeId in selectedNodeIds)
-        {
-            currentNodes.Add(nodeId);
-        }
-
-        SelectedSimulationActor.ControlledNodeIds = currentNodes.OrderBy(id => id, Comparer).ToList();
-        var current = SelectedSimulationActor.ControlledEdgeIds.ToHashSet(Comparer);
-        foreach (var edgeId in selectedEdgeIds)
-        {
-            current.Add(edgeId);
-        }
-
-        SelectedSimulationActor.ControlledEdgeIds = current.OrderBy(id => id, Comparer).ToList();
-        network.Actors = SimulationActors.ToList();
-        MarkDirty();
-        RefreshSelectedActorDisplayState();
-        BuildSceneFromNetwork();
-        Raise(nameof(SimulationActors));
-        ActorStatusMessage = selectedNodeIds.Count > 0 && selectedEdgeIds.Count > 0
-            ? "Updated actor node and route assignments."
-            : selectedNodeIds.Count > 0
-                ? "Updated actor node assignments."
-                : "Updated actor route assignments.";
-        return (selectedNodeIds.Count, selectedEdgeIds.Count);
-    }
-
-    private void ClearActorAssignments()
-    {
-        if (SelectedSimulationActor is null)
-        {
-            ActorStatusMessage = "Select an actor first.";
-            return;
-        }
-
-        EnsureActorReferences(SelectedSimulationActor);
-        SelectedSimulationActor.ControlledNodeIds.Clear();
-        SelectedSimulationActor.ControlledEdgeIds.Clear();
-        network.Actors = SimulationActors.ToList();
-        MarkDirty();
-        RefreshSelectedActorDisplayState();
-        BuildSceneFromNetwork();
-        Raise(nameof(SimulationActors));
     }
 
     private void AdvanceTimeline()
@@ -9979,23 +9830,23 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private string AppendNodeActorControlText(string nodeId, string baseText)
     {
         var controllers = SimulationActors
-            .Where(actor => actor.ControlledNodeIds.Contains(nodeId, Comparer))
+            .Where(actor => actor.Capability?.Permissions.Any(permission => permission.NodeId is not null && Comparer.Equals(permission.NodeId, nodeId)) == true)
             .Select(actor => string.IsNullOrWhiteSpace(actor.Name) ? actor.Id : actor.Name)
             .ToList();
         return controllers.Count == 0
-            ? $"{baseText}{Environment.NewLine}Controlled by: none"
-            : $"{baseText}{Environment.NewLine}Controlled by: {string.Join(", ", controllers)}";
+            ? $"{baseText}{Environment.NewLine}Actor rules: none"
+            : $"{baseText}{Environment.NewLine}Actor rules: {string.Join(", ", controllers)}";
     }
 
     private string AppendEdgeActorControlText(string edgeId, string baseText)
     {
         var controllers = SimulationActors
-            .Where(actor => actor.ControlledEdgeIds.Contains(edgeId, Comparer))
+            .Where(actor => actor.Capability?.Permissions.Any(permission => permission.EdgeId is not null && Comparer.Equals(permission.EdgeId, edgeId)) == true)
             .Select(actor => string.IsNullOrWhiteSpace(actor.Name) ? actor.Id : actor.Name)
             .ToList();
         return controllers.Count == 0
-            ? $"{baseText}{Environment.NewLine}Controlled by: none"
-            : $"{baseText}{Environment.NewLine}Controlled by: {string.Join(", ", controllers)}";
+            ? $"{baseText}{Environment.NewLine}Actor rules: none"
+            : $"{baseText}{Environment.NewLine}Actor rules: {string.Join(", ", controllers)}";
     }
 
     private string ResolveEdgeLabel(string edgeId)

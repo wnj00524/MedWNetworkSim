@@ -45,6 +45,14 @@ public sealed class TrafficTypeDefinition
     /// </summary>
     public double? CapacityBidPerUnit { get; set; }
 
+    public double DefaultUnitSalePrice { get; set; }
+
+    public double DefaultUnitProductionCost { get; set; }
+
+    public double SalesTaxRate { get; set; }
+
+    public double RouteTaxRate { get; set; }
+
     /// <summary>
     /// Gets or sets how many timeline periods this traffic type can remain in the network
     /// before it expires. Null means it does not perish.

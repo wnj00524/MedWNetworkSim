@@ -379,6 +379,7 @@ public sealed class TemporalNetworkSimulationEngine
                     var production = CalculateAndConsumeProductionInputs(
                         node.Id,
                         profile,
+                        definitionsByTraffic.GetValueOrDefault(profile.TrafficType),
                         nodeStates,
                         profilesByNodeAndTraffic.GetValueOrDefault(node.Id) ?? new Dictionary<string, NodeTrafficProfile>(Comparer));
 
@@ -963,13 +964,15 @@ public sealed class TemporalNetworkSimulationEngine
     private static ProductionResult CalculateAndConsumeProductionInputs(
         string nodeId,
         NodeTrafficProfile outputProfile,
+        TrafficTypeDefinition? definition,
         IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
         IReadOnlyDictionary<string, NodeTrafficProfile> profilesByTrafficType)
     {
         var outputQuantity = outputProfile.Production;
+        var baseProductionCost = ResolveBaseProductionCost(outputProfile, definition);
         if (outputProfile.InputRequirements.Count == 0)
         {
-            return new ProductionResult(outputQuantity, 0d);
+            return new ProductionResult(outputQuantity, baseProductionCost);
         }
 
         foreach (var requirement in outputProfile.InputRequirements)
@@ -998,7 +1001,7 @@ public sealed class TemporalNetworkSimulationEngine
             inheritedUnitCost += consumedUnitCost * inputPerOutputUnit;
         }
 
-        return new ProductionResult(outputQuantity, inheritedUnitCost);
+        return new ProductionResult(outputQuantity, inheritedUnitCost + baseProductionCost);
     }
 
     private static void AddImplicitRecipeDemand(
@@ -2123,6 +2126,16 @@ public sealed class TemporalNetworkSimulationEngine
             : 0d;
 
         return baseBid + perishabilityBonus;
+    }
+
+    private static double ResolveBaseProductionCost(NodeTrafficProfile? profile, TrafficTypeDefinition? definition)
+    {
+        if (profile?.ProductionCostPerUnit is { } profileCost)
+        {
+            return Math.Max(0d, profileCost);
+        }
+
+        return Math.Max(0d, definition?.DefaultUnitProductionCost ?? 0d);
     }
 
     private static double GetCapacityBidPerUnit(TemporalTrafficContext context, string consumerNodeId)

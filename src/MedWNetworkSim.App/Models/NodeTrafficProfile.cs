@@ -67,6 +67,10 @@ public sealed class NodeTrafficProfile
 
     public double UnitPrice { get; set; }
 
+    public double? ProductionCostPerUnit { get; set; }
+
+    public double? SalesTaxRate { get; set; }
+
     public double HoldingCostPerTime { get; set; }
 
     public double Revenue { get; set; }

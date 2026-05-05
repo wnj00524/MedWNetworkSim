@@ -99,6 +99,8 @@ public sealed class SimulationActorActionApplier
             case SimulationActorActionKind.AdjustProduction:
             case SimulationActorActionKind.AdjustConsumption:
             case SimulationActorActionKind.AdjustTrafficPrice:
+            case SimulationActorActionKind.BuyTraffic:
+            case SimulationActorActionKind.SellTraffic:
                 return FinalizePermissionResult(ApplyNodeProfileAction(network, action));
 
             case SimulationActorActionKind.AdjustEdgeCapacity:
@@ -116,8 +118,6 @@ public sealed class SimulationActorActionApplier
             case SimulationActorActionKind.AdjustRoutePermission:
                 return FinalizePermissionResult(ApplyRoutePermission(network, action));
 
-            case SimulationActorActionKind.BuyTraffic:
-            case SimulationActorActionKind.SellTraffic:
             case SimulationActorActionKind.SetNodePolicy:
             case SimulationActorActionKind.SetEdgePolicy:
                 return (false, "Action type is not yet supported by the network model.");
@@ -152,10 +152,22 @@ public sealed class SimulationActorActionApplier
             return (true, "Production updated.");
         }
 
+        if (action.Kind == SimulationActorActionKind.SellTraffic)
+        {
+            profile.Production = Math.Max(0d, action.AbsoluteValue ?? profile.Production + action.DeltaValue);
+            return (true, "Sell traffic intent updated production.");
+        }
+
         if (action.Kind == SimulationActorActionKind.AdjustConsumption)
         {
             profile.Consumption = Math.Max(0d, action.AbsoluteValue ?? profile.Consumption + action.DeltaValue);
             return (true, "Consumption updated.");
+        }
+
+        if (action.Kind == SimulationActorActionKind.BuyTraffic)
+        {
+            profile.Consumption = Math.Max(0d, action.AbsoluteValue ?? profile.Consumption + action.DeltaValue);
+            return (true, "Buy traffic intent updated consumption.");
         }
 
         profile.UnitPrice = Math.Max(0d, action.AbsoluteValue ?? profile.UnitPrice + action.DeltaValue);

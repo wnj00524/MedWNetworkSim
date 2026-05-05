@@ -161,6 +161,12 @@ public sealed class SimulationActorMetrics
     public int BottleneckEdgeCount { get; set; }
     public Dictionary<string, double> ActorCashById { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, double> ActorUtilityById { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, double> ActorSalesRevenueById { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, double> ActorProductionCostById { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, double> ActorTransportCostById { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, double> ActorTaxesPaidById { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, double> ActorTaxesReceivedById { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, double> ActorProfitById { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public int PolicyRestrictionCount { get; set; }
     public double CooperationIndex { get; set; }
 }

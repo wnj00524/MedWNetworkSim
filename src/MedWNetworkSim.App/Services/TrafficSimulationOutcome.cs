@@ -53,6 +53,16 @@ public sealed class TrafficSimulationOutcome
     /// </summary>
     public double NoPermittedPathDemand { get; init; }
 
+    public double TotalSalesRevenue { get; init; }
+
+    public double TotalTransportCost { get; init; }
+
+    public double TotalProductionCost { get; init; }
+
+    public double TotalTax { get; init; }
+
+    public double TotalProfit { get; init; }
+
     /// <summary>
     /// Gets the detailed local and routed allocations that make up the outcome.
     /// </summary>

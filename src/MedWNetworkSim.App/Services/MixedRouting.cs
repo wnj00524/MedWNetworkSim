@@ -483,6 +483,10 @@ public static partial class MixedRoutingAllocator
         var supply = profilesByNodeId
             .Where(pair => pair.Value?.Production > Epsilon)
             .ToDictionary(pair => pair.Key, pair => pair.Value!.Production, Comparer);
+        var supplyUnitCosts = supply.ToDictionary(
+            pair => pair.Key,
+            pair => ResolveBaseProductionCost(profilesByNodeId.GetValueOrDefault(pair.Key), definition),
+            Comparer);
         var demand = profilesByNodeId
             .Where(pair => pair.Value?.Consumption > Epsilon)
             .ToDictionary(pair => pair.Key, pair => pair.Value!.Consumption, Comparer);
@@ -501,6 +505,7 @@ public static partial class MixedRoutingAllocator
             NodesById = nodesById,
             ProfilesByNodeId = profilesByNodeId,
             Supply = supply,
+            SupplyUnitCosts = supplyUnitCosts,
             Demand = demand,
             TotalProduction = supply.Values.Sum(),
             TotalConsumption = demand.Values.Sum()
@@ -1079,6 +1084,16 @@ public static partial class MixedRoutingAllocator
         }
 
         return definition.RoutingPreference == RoutingPreference.Speed ? 1d : 0d;
+    }
+
+    private static double ResolveBaseProductionCost(NodeTrafficProfile? profile, TrafficTypeDefinition definition)
+    {
+        if (profile?.ProductionCostPerUnit is { } profileCost)
+        {
+            return Math.Max(0d, profileCost);
+        }
+
+        return Math.Max(0d, definition.DefaultUnitProductionCost);
     }
 
     private static List<string> GetOrderedTrafficNames(NetworkModel network)

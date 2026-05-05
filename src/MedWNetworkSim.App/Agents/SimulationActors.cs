@@ -21,7 +21,7 @@ public abstract class SimulationActorBase : ISimulationActor
     {
         return objective switch
         {
-            SimulationActorObjective.MaximiseProfit => outcomes.Sum(o => o.TotalDelivered * 2d) - outcomes.Sum(o => o.Allocations.Sum(a => a.TotalMovementCost)),
+            SimulationActorObjective.MaximiseProfit => outcomes.Sum(o => o.TotalProfit),
             SimulationActorObjective.MinimiseUnmetDemand => -outcomes.Sum(o => o.UnmetDemand),
             SimulationActorObjective.MinimiseMovementCost => -outcomes.Sum(o => o.Allocations.Sum(a => a.TotalMovementCost)),
             SimulationActorObjective.MaximiseThroughput => outcomes.Sum(o => o.TotalDelivered),
@@ -109,9 +109,11 @@ public sealed class FirmSimulationActor : SimulationActorBase
 
                 var unmetRatio = outcome.TotalConsumption <= 0d ? 0d : outcome.UnmetDemand / outcome.TotalConsumption;
                 var deliveredRatio = outcome.TotalConsumption <= 0d ? 0d : outcome.TotalDelivered / outcome.TotalConsumption;
+                var expectedMargin = EstimateMargin(context.CurrentNetwork, profile, outcome);
 
                 if (profile.Production > 0d &&
                     deliveredRatio >= 0.85d &&
+                    expectedMargin >= 0d &&
                     HasSpendingCapacity &&
                     IsPermittedByPermissions(SimulationActorActionKind.AdjustProduction, profile.TrafficType, node.Id))
                 {
@@ -126,8 +128,8 @@ public sealed class FirmSimulationActor : SimulationActorBase
                         TrafficType = profile.TrafficType,
                         DeltaValue = delta,
                         Cost = cost,
-                        Reason = "Delivered demand is strong and production is profitable.",
-                        ExpectedEffect = "Increase delivered quantity and revenue.",
+                        Reason = $"Delivered demand is strong with estimated unit margin {expectedMargin:0.##}.",
+                        ExpectedEffect = "Increase delivered quantity and profit.",
                         IsPolicyAction = false
                     });
                 }
@@ -162,8 +164,26 @@ public sealed class FirmSimulationActor : SimulationActorBase
                         TrafficType = profile.TrafficType,
                         DeltaValue = -Math.Max(1d, profile.Production * 0.1d),
                         Cost = 0d,
-                        Reason = "Delivered demand collapsed relative to output.",
-                        ExpectedEffect = "Reduce overproduction and waste.",
+                        Reason = "Delivered ratio is poor relative to output.",
+                        ExpectedEffect = "Reduce overproduction and protect margin.",
+                        IsPolicyAction = false
+                    });
+                }
+                else if (expectedMargin < 0d &&
+                    profile.Production > 0d &&
+                    IsPermittedByPermissions(SimulationActorActionKind.AdjustProduction, profile.TrafficType, node.Id))
+                {
+                    actions.Add(new SimulationActorAction
+                    {
+                        Id = $"{State.Id}:margin-cut:{context.Tick}:{node.Id}:{profile.TrafficType}",
+                        ActorId = State.Id,
+                        Kind = SimulationActorActionKind.AdjustProduction,
+                        TargetNodeId = node.Id,
+                        TrafficType = profile.TrafficType,
+                        DeltaValue = -Math.Max(1d, profile.Production * 0.1d),
+                        Cost = 0d,
+                        Reason = $"Actual margin is negative ({expectedMargin:0.##} per unit).",
+                        ExpectedEffect = "Reduce loss-making production.",
                         IsPolicyAction = false
                     });
                 }
@@ -238,6 +258,19 @@ public sealed class FirmSimulationActor : SimulationActorBase
             Explanation = "Firm actor evaluated demand, delivery, route constraints, and profit levers.",
             Evidence = context.CurrentInsights.Take(3).Select(i => i.Summary).ToList()
         };
+    }
+
+    private static double EstimateMargin(NetworkModel network, NodeTrafficProfile profile, TrafficSimulationOutcome outcome)
+    {
+        if (outcome.TotalDelivered > 0d)
+        {
+            return outcome.TotalProfit / outcome.TotalDelivered;
+        }
+
+        var definition = network.TrafficTypes.FirstOrDefault(definition => Comparer.Equals(definition.Name, profile.TrafficType));
+        var unitPrice = profile.UnitPrice > 0d ? profile.UnitPrice : Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d);
+        var productionCost = profile.ProductionCostPerUnit ?? Math.Max(0d, definition?.DefaultUnitProductionCost ?? 0d);
+        return unitPrice - productionCost;
     }
 
     private SimulationActorAction BuildNoOp(string reason) => new()

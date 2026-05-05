@@ -28,10 +28,15 @@ public sealed class NetworkSimulationEngine
 
         if (network.FacilityModeEnabled)
         {
-            return new FacilityModeSimulationEngine(this).Simulate(network);
+            var facilityOutcomes = new FacilityModeSimulationEngine(this).Simulate(network);
+            return new TrafficEconomicSettlementService().Settle(network, facilityOutcomes).Outcomes;
         }
 
         var hasRecipeDependencies = HasStaticRecipeDependencies(network);
+        var definitionsByTraffic = network.TrafficTypes
+            .Where(definition => !string.IsNullOrWhiteSpace(definition.Name))
+            .GroupBy(definition => definition.Name, Comparer)
+            .ToDictionary(group => group.Key, group => group.First(), Comparer);
         var contexts = MixedRoutingAllocator.BuildStaticContexts(network, applyLocalAllocations: !hasRecipeDependencies).ToList();
         var remainingCapacityByEdgeId = network.Edges.ToDictionary(
             edge => edge.Id,
@@ -64,7 +69,7 @@ public sealed class NetworkSimulationEngine
                     continue;
                 }
 
-                SetStaticSourceUnitCosts(context, sourceUnitCosts, landedUnitCosts);
+                SetStaticSourceUnitCosts(context, definitionsByTraffic, sourceUnitCosts, landedUnitCosts);
                 MixedRoutingAllocator.ApplyLocalAllocations(context, period: 0);
                 MixedRoutingAllocator.Allocate(network, [context], remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId);
                 landedUnitCosts[context.TrafficType] = SummarizeLandedUnitCosts(context.Allocations);
@@ -122,7 +127,7 @@ public sealed class NetworkSimulationEngine
             }
         }
 
-        return contexts
+        var outcomes = contexts
             .Select(context => new TrafficSimulationOutcome
             {
                 TrafficType = context.TrafficType,
@@ -138,6 +143,8 @@ public sealed class NetworkSimulationEngine
                 Notes = context.Notes.ToList()
             })
             .ToList();
+
+        return new TrafficEconomicSettlementService().Settle(network, outcomes).Outcomes;
     }
 
 
@@ -413,20 +420,22 @@ public sealed class NetworkSimulationEngine
 
     private static void SetStaticSourceUnitCosts(
         RoutingTrafficContext context,
+        IReadOnlyDictionary<string, TrafficTypeDefinition> definitionsByTraffic,
         IReadOnlyDictionary<string, Dictionary<string, double>> sourceUnitCosts,
         IReadOnlyDictionary<string, Dictionary<string, double>> landedUnitCosts)
     {
         context.SupplyUnitCosts.Clear();
+        definitionsByTraffic.TryGetValue(context.TrafficType, out var definition);
         foreach (var pair in context.Supply)
         {
             var nodeId = pair.Key;
             if (!context.ProfilesByNodeId.TryGetValue(nodeId, out var profile) || profile is null)
             {
-                context.SupplyUnitCosts[nodeId] = 0d;
+                context.SupplyUnitCosts[nodeId] = Math.Max(0d, definition?.DefaultUnitProductionCost ?? 0d);
                 continue;
             }
 
-            var sourceUnitCost = CalculateStaticSourceUnitCost(profile, nodeId, landedUnitCosts);
+            var sourceUnitCost = CalculateStaticSourceUnitCost(profile, definition, nodeId, landedUnitCosts);
             context.SupplyUnitCosts[nodeId] = sourceUnitCost;
             sourceUnitCosts[context.TrafficType][nodeId] = sourceUnitCost;
         }
@@ -434,6 +443,7 @@ public sealed class NetworkSimulationEngine
 
     private static double CalculateStaticSourceUnitCost(
     NodeTrafficProfile profile,
+    TrafficTypeDefinition? definition,
     string nodeId,
     IReadOnlyDictionary<string, Dictionary<string, double>> landedUnitCosts)
     {
@@ -443,12 +453,7 @@ public sealed class NetworkSimulationEngine
                 requirement.QuantityPerOutputUnit.GetValueOrDefault() > Epsilon)
             .ToList();
 
-        if (requirements.Count == 0)
-        {
-            return 0d;
-        }
-
-        var sourceUnitCost = 0d;
+        var sourceUnitCost = ResolveBaseProductionCost(profile, definition);
         foreach (var requirement in requirements)
         {
             var precursorUnitCost = landedUnitCosts.TryGetValue(requirement.TrafficType, out var costsByNode)
@@ -459,6 +464,16 @@ public sealed class NetworkSimulationEngine
         }
 
         return sourceUnitCost;
+    }
+
+    private static double ResolveBaseProductionCost(NodeTrafficProfile? profile, TrafficTypeDefinition? definition)
+    {
+        if (profile?.ProductionCostPerUnit is { } profileCost)
+        {
+            return Math.Max(0d, profileCost);
+        }
+
+        return Math.Max(0d, definition?.DefaultUnitProductionCost ?? 0d);
     }
 
     private static Dictionary<string, double> SummarizeLandedUnitCosts(IEnumerable<RouteAllocation> allocations)

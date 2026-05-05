@@ -223,33 +223,30 @@ public sealed class EconomicCalculator : IEconomicCalculator
 {
     public EconomicSummary Calculate(NetworkModel network, SimulationResult result)
     {
-        var revenueByNodeTraffic = network.Nodes
-            .SelectMany(node => node.TrafficProfiles.Select(profile => new { node.Id, profile.TrafficType, UnitPrice = Math.Max(0d, profile.UnitPrice) }))
-            .ToDictionary(item => (item.Id, item.TrafficType), item => item.UnitPrice);
         var shortagePenaltyByTraffic = network.Nodes
             .SelectMany(node => node.TrafficProfiles.Select(profile => new { profile.TrafficType, Penalty = Math.Max(0d, profile.ShortagePenalty) }))
             .GroupBy(item => item.TrafficType, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.Max(item => item.Penalty), StringComparer.OrdinalIgnoreCase);
 
-        var revenue = result.Outcomes
-            .Sum(outcome => outcome.Allocations.Sum(allocation =>
-            {
-                var key = (allocation.ConsumerNodeId, allocation.TrafficType);
-                var unitPrice = revenueByNodeTraffic.GetValueOrDefault(key, 0d);
-                return allocation.Quantity * unitPrice;
-            }));
+        var settled = new TrafficEconomicSettlementService().Settle(network, result.Outcomes).Outcomes;
+        var salesRevenue = settled.Sum(outcome => outcome.TotalSalesRevenue);
+        var transport = settled.Sum(outcome => outcome.TotalTransportCost);
+        var production = settled.Sum(outcome => outcome.TotalProductionCost);
+        var tax = settled.Sum(outcome => outcome.TotalTax);
         var holding = 0d;
-        var shortage = result.Outcomes.Sum(outcome =>
+        var shortage = settled.Sum(outcome =>
             Math.Max(0d, outcome.UnmetDemand) * shortagePenaltyByTraffic.GetValueOrDefault(outcome.TrafficType, 0d));
 
-        var transport = result.Outcomes.Sum(outcome => outcome.Allocations.Sum(allocation => allocation.TotalMovementCost));
         return new EconomicSummary
         {
-            TotalRevenue = revenue,
+            TotalRevenue = salesRevenue,
+            TotalSalesRevenue = salesRevenue,
             TotalTransportCost = transport,
+            TotalProductionCost = production,
+            TotalTax = tax,
             TotalHoldingCost = holding,
             TotalShortagePenalty = shortage,
-            TotalProfit = revenue - transport - holding - shortage
+            TotalProfit = salesRevenue - (transport + production + tax + holding + shortage)
         };
     }
 }
@@ -569,6 +566,11 @@ public sealed class ScenarioRunner : IScenarioRunner
                     UnmetDemand = unmetByTraffic.GetValueOrDefault(traffic),
                     NoPermittedPathDemand = noPermittedPathByTraffic.GetValueOrDefault(traffic),
                     Allocations = allocationsByTraffic.GetValueOrDefault(traffic) ?? [],
+                    TotalSalesRevenue = (allocationsByTraffic.GetValueOrDefault(traffic) ?? []).Sum(allocation => allocation.SaleRevenue),
+                    TotalTransportCost = (allocationsByTraffic.GetValueOrDefault(traffic) ?? []).Sum(allocation => allocation.TotalTransportCost),
+                    TotalProductionCost = (allocationsByTraffic.GetValueOrDefault(traffic) ?? []).Sum(allocation => allocation.TotalProductionCost),
+                    TotalTax = (allocationsByTraffic.GetValueOrDefault(traffic) ?? []).Sum(allocation => allocation.TotalTax),
+                    TotalProfit = (allocationsByTraffic.GetValueOrDefault(traffic) ?? []).Sum(allocation => allocation.Profit),
                     Notes = notesByTraffic.TryGetValue(traffic, out var notes) ? notes.ToList() : []
                 })
                 .ToList(),

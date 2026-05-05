@@ -8,6 +8,7 @@ namespace MedWNetworkSim.App.Agents;
 public sealed class SimulationActorCoordinator
 {
     private readonly NetworkSimulationEngine simulationEngine = new();
+    private readonly TrafficEconomicSettlementService economicSettlementService = new();
     private readonly INetworkInsightService insightService;
     private readonly SimulationActorActionApplier actionApplier;
     private readonly IAgentActionLogger actionLogger;
@@ -92,7 +93,23 @@ public sealed class SimulationActorCoordinator
         }
 
         var appliedSnapshot = BuildSnapshot(appliedNetwork, tick + 1);
-        var metrics = BuildMetrics(tick, appliedSnapshot, actorStates, decisions);
+        var settlement = economicSettlementService.Settle(appliedNetwork, appliedSnapshot.TrafficOutcomes, actorMap);
+        foreach (var ledger in settlement.Ledgers.Values)
+        {
+            if (actorMap.TryGetValue(ledger.ActorId, out var actor))
+            {
+                actor.Cash += ledger.CashDelta;
+            }
+        }
+
+        appliedSnapshot = new VisualAnalyticsSnapshot
+        {
+            Network = appliedSnapshot.Network,
+            TrafficOutcomes = settlement.Outcomes,
+            ConsumerCosts = simulationEngine.SummarizeConsumerCosts(settlement.Outcomes.SelectMany(outcome => outcome.Allocations)),
+            Period = appliedSnapshot.Period
+        };
+        var metrics = BuildMetrics(tick, appliedSnapshot, actorStates, decisions, settlement.Ledgers);
 
         return new SimulationActorStepResult
         {
@@ -173,8 +190,10 @@ public sealed class SimulationActorCoordinator
         int tick,
         VisualAnalyticsSnapshot snapshot,
         IReadOnlyList<SimulationActorState> actors,
-        IReadOnlyList<SimulationActorDecision> decisions)
+        IReadOnlyList<SimulationActorDecision> decisions,
+        IReadOnlyDictionary<string, SimulationActorEconomicLedger>? ledgers = null)
     {
+        ledgers ??= new Dictionary<string, SimulationActorEconomicLedger>(StringComparer.OrdinalIgnoreCase);
         var flows = BuildFlowByEdge(snapshot.TrafficOutcomes);
         var utilisation = snapshot.Network.Edges
             .Where(edge => edge.Capacity.HasValue && edge.Capacity.Value > 0d)
@@ -191,6 +210,12 @@ public sealed class SimulationActorCoordinator
             BottleneckEdgeCount = utilisation.Count(u => u >= 0.9d),
             ActorCashById = actors.ToDictionary(a => a.Id, a => a.Cash, StringComparer.OrdinalIgnoreCase),
             ActorUtilityById = decisions.ToDictionary(d => d.ActorId, d => d.ExpectedUtilityAfter, StringComparer.OrdinalIgnoreCase),
+            ActorSalesRevenueById = actors.ToDictionary(a => a.Id, a => ledgers.GetValueOrDefault(a.Id)?.SalesRevenue ?? 0d, StringComparer.OrdinalIgnoreCase),
+            ActorProductionCostById = actors.ToDictionary(a => a.Id, a => ledgers.GetValueOrDefault(a.Id)?.ProductionCost ?? 0d, StringComparer.OrdinalIgnoreCase),
+            ActorTransportCostById = actors.ToDictionary(a => a.Id, a => ledgers.GetValueOrDefault(a.Id)?.TransportCost ?? 0d, StringComparer.OrdinalIgnoreCase),
+            ActorTaxesPaidById = actors.ToDictionary(a => a.Id, a => ledgers.GetValueOrDefault(a.Id)?.TaxesPaid ?? 0d, StringComparer.OrdinalIgnoreCase),
+            ActorTaxesReceivedById = actors.ToDictionary(a => a.Id, a => ledgers.GetValueOrDefault(a.Id)?.TaxesReceived ?? 0d, StringComparer.OrdinalIgnoreCase),
+            ActorProfitById = actors.ToDictionary(a => a.Id, a => ledgers.GetValueOrDefault(a.Id)?.Profit ?? 0d, StringComparer.OrdinalIgnoreCase),
             PolicyRestrictionCount = snapshot.Network.Edges.Sum(edge => edge.TrafficPermissions.Count(p => p.IsActive && p.Mode == EdgeTrafficPermissionMode.Blocked)),
             CooperationIndex = actors.Count == 0 ? 0d : actors.Average(a => Math.Clamp(a.CooperationWeight, 0d, 1d))
         };

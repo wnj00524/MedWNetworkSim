@@ -183,6 +183,47 @@ public sealed class TrafficEconomicSettlementTests
         Assert.Equal(0d, outcome.Allocations.Single().TotalMovementCost);
     }
 
+    [Fact]
+    public void TemporalOverlay_PreservesEconomicsForSettledAllocations()
+    {
+        var network = BuildSimpleNetwork(
+            production: 5d,
+            consumption: 5d,
+            salePrice: 10d,
+            productionCost: 3d,
+            edgeCost: 2d,
+            salesTaxRate: 0.1d);
+        network.TimelineEvents.Add(new TimelineEventModel
+        {
+            Id = "fuel-shock",
+            Name = "Fuel shock",
+            StartPeriod = 1,
+            EndPeriod = 1,
+            Effects =
+            [
+                new TimelineEventEffectModel
+                {
+                    EffectType = TimelineEventEffectType.RouteCostMultiplier,
+                    EdgeId = "edge",
+                    Multiplier = 2d
+                }
+            ]
+        });
+
+        var engine = new TemporalNetworkSimulationEngine();
+        var state = engine.Initialize(network);
+        var allocation = engine.Advance(network, state).Allocations.Single();
+
+        Assert.Equal(50d, allocation.SaleRevenue);
+        Assert.Equal(20d, allocation.TotalTransportCost);
+        Assert.Equal(15d, allocation.TotalProductionCost);
+        Assert.Equal(5d, allocation.TotalTax);
+        Assert.Equal(
+            allocation.SaleRevenue - (allocation.TotalTransportCost + allocation.TotalProductionCost + allocation.TotalTax),
+            allocation.Profit);
+        Assert.True(allocation.Profit > 0d);
+    }
+
     private static NetworkModel BuildSimpleNetwork(
         double production,
         double consumption,

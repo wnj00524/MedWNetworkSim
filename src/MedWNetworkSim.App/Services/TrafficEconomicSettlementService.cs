@@ -15,7 +15,13 @@ public sealed class SimulationActorEconomicLedger
 
     public double TransportCost { get; set; }
 
+    public double TaxesPaidBySeller { get; set; }
+
+    public double TaxesPaidByBuyer { get; set; }
+
     public double TaxesPaid { get; set; }
+
+    public double TaxesReceivedByAuthority { get; set; }
 
     public double TaxesReceived { get; set; }
 
@@ -124,6 +130,7 @@ public sealed class TrafficEconomicSettlementService
             seller.SalesRevenue += saleRevenue;
             seller.ProductionCost += totalProductionCost;
             seller.TransportCost += totalTransportCost;
+            seller.TaxesPaidBySeller += totalTax;
             seller.TaxesPaid += totalTax;
             seller.Profit += profit;
             seller.CashDelta += profit;
@@ -133,13 +140,13 @@ public sealed class TrafficEconomicSettlementService
         {
             var buyer = GetLedger(ledgers, buyerActorId);
             buyer.PurchaseCost += saleRevenue;
-            buyer.TaxesPaid += totalTax;
-            buyer.CashDelta -= saleRevenue + totalTax;
+            buyer.CashDelta -= saleRevenue;
         }
 
         if (!string.IsNullOrWhiteSpace(taxAuthorityActorId))
         {
             var taxAuthority = GetLedger(ledgers, taxAuthorityActorId);
+            taxAuthority.TaxesReceivedByAuthority += totalTax;
             taxAuthority.TaxesReceived += totalTax;
             taxAuthority.CashDelta += totalTax;
         }

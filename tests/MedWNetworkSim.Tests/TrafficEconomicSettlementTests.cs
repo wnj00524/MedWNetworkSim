@@ -164,8 +164,52 @@ public sealed class TrafficEconomicSettlementTests
 
         var result = new SimulationActorCoordinator().StepActorsOnce(network, [seller, buyer, government]);
 
+        Assert.Equal(18d, seller.Cash);
+        Assert.Equal(50d, buyer.Cash);
         Assert.Equal(7d, government.Cash);
+        Assert.Equal(7d, result.Metrics.ActorTaxesPaidById["seller"]);
+        Assert.Equal(0d, result.Metrics.ActorTaxesPaidById["buyer"]);
         Assert.Equal(7d, result.Metrics.ActorTaxesReceivedById["gov"]);
+    }
+
+    [Fact]
+    public void TaxLedgerPolicy_SellerRemitsSalesAndRouteTax()
+    {
+        var network = BuildSimpleNetwork(
+            production: 5d,
+            consumption: 5d,
+            salePrice: 10d,
+            productionCost: 3d,
+            edgeCost: 2d,
+            salesTaxRate: 0.1d,
+            routeTaxRate: 0.2d);
+        var actors = new Dictionary<string, SimulationActorState>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["seller"] = new() { Id = "seller", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["producer"] },
+            ["buyer"] = new() { Id = "buyer", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["consumer"] },
+            ["gov"] = new() { Id = "gov", Kind = SimulationActorKind.Government }
+        };
+        var outcomes = new NetworkSimulationEngine().Simulate(network);
+
+        var settlement = new TrafficEconomicSettlementService().Settle(network, outcomes, actors);
+
+        var seller = settlement.Ledgers["seller"];
+        Assert.Equal(7d, seller.TaxesPaidBySeller);
+        Assert.Equal(0d, seller.TaxesPaidByBuyer);
+        Assert.Equal(7d, seller.TaxesPaid);
+        Assert.Equal(18d, seller.Profit);
+        Assert.Equal(18d, seller.CashDelta);
+
+        var buyer = settlement.Ledgers["buyer"];
+        Assert.Equal(50d, buyer.PurchaseCost);
+        Assert.Equal(0d, buyer.TaxesPaidByBuyer);
+        Assert.Equal(0d, buyer.TaxesPaid);
+        Assert.Equal(-50d, buyer.CashDelta);
+
+        var government = settlement.Ledgers["gov"];
+        Assert.Equal(7d, government.TaxesReceivedByAuthority);
+        Assert.Equal(7d, government.TaxesReceived);
+        Assert.Equal(7d, government.CashDelta);
     }
 
     [Fact]

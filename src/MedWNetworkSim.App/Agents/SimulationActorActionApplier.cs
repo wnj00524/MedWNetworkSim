@@ -51,6 +51,7 @@ public sealed class SimulationActorActionApplier
 
         var capability = actor.Capability ?? SimulationActorCapabilityCatalog.ForKind(actor.Id, actor.Kind);
         capability.Permissions ??= [];
+        var hasExplicitAllows = capability.Permissions.Any(p => p.IsAllowed);
         var matching = capability.Permissions
             .Where(p =>
                 p.ActionKind == action.Kind &&
@@ -59,12 +60,17 @@ public sealed class SimulationActorActionApplier
                 (p.EdgeId == null || Comparer.Equals(p.EdgeId, action.TargetEdgeId)))
             .ToList();
 
-        if (matching.Count > 0 && !matching.Any(p => p.IsAllowed))
+        if (matching.Any(p => !p.IsAllowed))
         {
             return (false, "Permission explicitly denied.");
         }
 
         var isExplicitlyAllowed = matching.Any(p => p.IsAllowed);
+        if (hasExplicitAllows && !isExplicitlyAllowed)
+        {
+            return (false, "Permission is not explicitly allowed.");
+        }
+
         if (!isExplicitlyAllowed && !capability.AllowedActionKinds.Contains(action.Kind))
         {
             return (false, $"Actor capability does not allow action '{action.Kind}'.");

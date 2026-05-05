@@ -460,6 +460,62 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
+    public void Permission_ExplicitAllow_DoesNotPermitOtherActions()
+    {
+        var source = BuildNetwork();
+        var actor = new SimulationActorState
+        {
+            Id = "firm",
+            Kind = SimulationActorKind.Firm,
+            IsEnabled = true,
+            Cash = 100,
+            Capability = SimulationActorCapabilityCatalog.ForKind("firm", SimulationActorKind.Firm)
+        };
+        actor.Capability.Permissions.Add(new SimulationActorPermission
+        {
+            ActionKind = SimulationActorActionKind.AdjustProduction,
+            TrafficType = "Food",
+            NodeId = "producer",
+            IsAllowed = true
+        });
+
+        var (_, outcomes) = new SimulationActorActionApplier().Apply(source, [
+            new SimulationActorAction { Id = "deny-edge", ActorId = "firm", Kind = SimulationActorActionKind.AdjustEdgeCapacity, TargetEdgeId = "edge-a", DeltaValue = 10 }
+        ], BuildActorMap(actor), new Dictionary<string, double>());
+
+        Assert.False(outcomes.Single().Applied);
+        Assert.Equal("Permission is not explicitly allowed.", outcomes.Single().Reason);
+    }
+
+    [Fact]
+    public void Permission_ExplicitAllow_LimitsAutomaticActionsToMatchingScope()
+    {
+        var network = BuildNetwork();
+        var coordinator = new SimulationActorCoordinator();
+        var actor = new SimulationActorState
+        {
+            Id = "firm",
+            Name = "Firm",
+            Kind = SimulationActorKind.Firm,
+            Objective = SimulationActorObjective.MaximiseProfit,
+            Cash = 100,
+            Budget = 100,
+            Capability = SimulationActorCapabilityCatalog.ForKind("firm", SimulationActorKind.Firm)
+        };
+        actor.Capability.Permissions.Add(new SimulationActorPermission
+        {
+            ActionKind = SimulationActorActionKind.AdjustProduction,
+            TrafficType = "Food",
+            NodeId = "producer",
+            IsAllowed = true
+        });
+
+        var preview = coordinator.PreviewActorActions(network, [actor]);
+
+        Assert.DoesNotContain(preview.Single().Actions, action => action.Kind == SimulationActorActionKind.AdjustEdgeCapacity);
+    }
+
+    [Fact]
     public void Permission_NoRules_FallsBackToLegacyCapabilityBehavior()
     {
         var source = BuildNetwork();

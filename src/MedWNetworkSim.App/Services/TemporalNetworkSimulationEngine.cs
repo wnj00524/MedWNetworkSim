@@ -248,10 +248,11 @@ public sealed class TemporalNetworkSimulationEngine
             TemporalNodeTrafficKey.Comparer);
 
         clock.Advance(options.DeltaTime);
+        var settledAllocations = SettleAllocations(effectiveNetwork, plannedAllocations);
 
         return new TemporalSimulationStepResult(
             nextPeriod,
-            plannedAllocations,
+            settledAllocations,
             edgeFlowById,
             nodeFlowById,
             nodeSnapshots,
@@ -262,6 +263,37 @@ public sealed class TemporalNetworkSimulationEngine
             nodePressureSnapshot,
             edgePressureSnapshot,
             pressureEvents);
+    }
+
+    private static IReadOnlyList<RouteAllocation> SettleAllocations(NetworkModel network, IReadOnlyList<RouteAllocation> allocations)
+    {
+        if (allocations.Count == 0)
+        {
+            return allocations;
+        }
+
+        var outcomes = allocations
+            .GroupBy(allocation => allocation.TrafficType, Comparer)
+            .Select(group =>
+            {
+                var definition = network.TrafficTypes.FirstOrDefault(candidate => Comparer.Equals(candidate.Name, group.Key));
+                var trafficAllocations = group.ToList();
+                return new TrafficSimulationOutcome
+                {
+                    TrafficType = group.Key,
+                    RoutingPreference = definition?.RoutingPreference ?? trafficAllocations[0].RoutingPreference,
+                    AllocationMode = definition?.AllocationMode ?? trafficAllocations[0].AllocationMode,
+                    TotalDelivered = trafficAllocations.Sum(allocation => allocation.Quantity),
+                    Allocations = trafficAllocations
+                };
+            })
+            .ToList();
+
+        return new TrafficEconomicSettlementService()
+            .Settle(network, outcomes)
+            .Outcomes
+            .SelectMany(outcome => outcome.Allocations)
+            .ToList();
     }
 
     private static void ExpireNodeTraffic(
@@ -563,6 +595,10 @@ public sealed class TemporalNetworkSimulationEngine
                 InternalizeCongestion = definition.RouteChoiceSettings.InternalizeCongestion
             },
             CapacityBidPerUnit = definition.CapacityBidPerUnit,
+            DefaultUnitSalePrice = definition.DefaultUnitSalePrice,
+            DefaultUnitProductionCost = definition.DefaultUnitProductionCost,
+            SalesTaxRate = definition.SalesTaxRate,
+            RouteTaxRate = definition.RouteTaxRate,
             PerishabilityPeriods = definition.PerishabilityPeriods
         };
     }
@@ -603,7 +639,14 @@ public sealed class TemporalNetworkSimulationEngine
             ConsumptionWindows = profile.ConsumptionWindows.Select(CloneWindow).ToList(),
             InputRequirements = profile.InputRequirements.Select(CloneInputRequirement).ToList(),
             IsStore = profile.IsStore,
-            StoreCapacity = profile.StoreCapacity
+            StoreCapacity = profile.StoreCapacity,
+            UnitPrice = profile.UnitPrice,
+            ProductionCostPerUnit = profile.ProductionCostPerUnit,
+            SalesTaxRate = profile.SalesTaxRate,
+            HoldingCostPerTime = profile.HoldingCostPerTime,
+            Revenue = profile.Revenue,
+            Profit = profile.Profit,
+            ShortagePenalty = profile.ShortagePenalty
         };
     }
 

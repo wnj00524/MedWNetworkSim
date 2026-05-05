@@ -42,12 +42,13 @@ public abstract class SimulationActorBase : ISimulationActor
         string? edgeId = null)
     {
         var permissions = State.Capability?.Permissions ?? [];
+        var hasExplicitAllows = permissions.Any(permission => permission.IsAllowed);
         var actionRules = permissions
             .Where(permission => permission.ActionKind == actionKind)
             .ToList();
         if (actionRules.Count == 0)
         {
-            return true;
+            return !hasExplicitAllows;
         }
 
         var matching = actionRules
@@ -58,7 +59,7 @@ public abstract class SimulationActorBase : ISimulationActor
             .ToList();
 
         return matching.Count == 0
-            ? !actionRules.Any(permission => permission.IsAllowed)
+            ? !hasExplicitAllows
             : matching.Any(permission => permission.IsAllowed) && !matching.Any(permission => !permission.IsAllowed);
     }
 

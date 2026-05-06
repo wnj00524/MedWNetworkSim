@@ -175,6 +175,13 @@ public sealed class SimulationActorActionApplier
         if (action.Kind == SimulationActorActionKind.BuyTraffic)
         {
             profile.Consumption = Math.Max(0d, action.AbsoluteValue ?? profile.Consumption + action.DeltaValue);
+            var offeredPremium = EstimateCheapestInboundRouteCost(network, action);
+            if (offeredPremium > 0d)
+            {
+                profile.ConsumerPremiumPerUnit = Math.Max(profile.ConsumerPremiumPerUnit, offeredPremium);
+                return (true, "Buy traffic intent updated consumption and consumer premium.");
+            }
+
             return (true, "Buy traffic intent updated consumption.");
         }
 
@@ -322,6 +329,109 @@ public sealed class SimulationActorActionApplier
         }
 
         return (true, "Route permissions relaxed.");
+    }
+
+    private static double EstimateCheapestInboundRouteCost(NetworkModel network, SimulationActorAction action)
+    {
+        if (string.IsNullOrWhiteSpace(action.TargetNodeId) || string.IsNullOrWhiteSpace(action.TrafficType))
+        {
+            return 0d;
+        }
+
+        var producerIds = network.Nodes
+            .Where(node => node.TrafficProfiles.Any(profile =>
+                Comparer.Equals(profile.TrafficType, action.TrafficType) &&
+                profile.Production > 0d))
+            .Select(node => node.Id)
+            .ToList();
+        if (producerIds.Count == 0)
+        {
+            return 0d;
+        }
+
+        var resolver = new EdgeTrafficPermissionResolver();
+        var adjacency = new Dictionary<string, List<(string ToNodeId, EdgeModel Edge)>>(Comparer);
+        foreach (var edge in network.Edges)
+        {
+            AddArc(edge.FromNodeId, edge.ToNodeId, edge);
+            if (edge.IsBidirectional)
+            {
+                AddArc(edge.ToNodeId, edge.FromNodeId, edge);
+            }
+        }
+
+        var best = double.PositiveInfinity;
+        foreach (var producerId in producerIds)
+        {
+            var candidate = FindCheapestRouteCost(
+                network,
+                resolver,
+                adjacency,
+                producerId,
+                action.TargetNodeId,
+                action.TrafficType);
+            best = Math.Min(best, candidate);
+        }
+
+        return double.IsPositiveInfinity(best) ? 0d : Math.Max(0d, best);
+
+        void AddArc(string fromNodeId, string toNodeId, EdgeModel edge)
+        {
+            if (!adjacency.TryGetValue(fromNodeId, out var arcs))
+            {
+                arcs = [];
+                adjacency[fromNodeId] = arcs;
+            }
+
+            arcs.Add((toNodeId, edge));
+        }
+    }
+
+    private static double FindCheapestRouteCost(
+        NetworkModel network,
+        EdgeTrafficPermissionResolver resolver,
+        IReadOnlyDictionary<string, List<(string ToNodeId, EdgeModel Edge)>> adjacency,
+        string producerId,
+        string consumerId,
+        string trafficType)
+    {
+        var distances = new Dictionary<string, double>(Comparer) { [producerId] = 0d };
+        var queue = new PriorityQueue<string, double>();
+        queue.Enqueue(producerId, 0d);
+
+        while (queue.Count > 0)
+        {
+            var nodeId = queue.Dequeue();
+            var cost = distances[nodeId];
+            if (Comparer.Equals(nodeId, consumerId))
+            {
+                return cost;
+            }
+
+            if (!adjacency.TryGetValue(nodeId, out var arcs))
+            {
+                continue;
+            }
+
+            foreach (var (toNodeId, edge) in arcs)
+            {
+                if (resolver.Resolve(network, edge, trafficType).Mode == EdgeTrafficPermissionMode.Blocked)
+                {
+                    continue;
+                }
+
+                var nextCost = cost + Math.Max(0d, edge.Cost);
+                if (distances.TryGetValue(toNodeId, out var existing) && existing <= nextCost)
+                {
+                    continue;
+                }
+
+                distances[toNodeId] = nextCost;
+                queue.Enqueue(toNodeId, nextCost);
+            }
+        }
+
+        return double.PositiveInfinity;
     }
 
 }

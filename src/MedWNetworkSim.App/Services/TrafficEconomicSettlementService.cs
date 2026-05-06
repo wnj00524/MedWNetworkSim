@@ -129,7 +129,9 @@ public sealed class TrafficEconomicSettlementService
 
         var producerProfile = producer?.TrafficProfiles
             .FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, allocation.TrafficType));
-        var saleUnitPrice = ResolveSaleUnitPrice(producerProfile, definition);
+        var consumerProfile = consumer?.TrafficProfiles
+            .FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, allocation.TrafficType));
+        var saleUnitPrice = ResolveSaleUnitPrice(producerProfile, consumerProfile, definition);
         var baseProductionCost = ResolveBaseProductionCost(producerProfile, definition);
         var propagatedProductionCost = Math.Max(0d, allocation.SourceUnitCostPerUnit);
         var productionCostPerUnit = propagatedProductionCost > Epsilon
@@ -271,14 +273,22 @@ public sealed class TrafficEconomicSettlementService
         return taxByAuthority;
     }
 
-    private static double ResolveSaleUnitPrice(NodeTrafficProfile? producerProfile, TrafficTypeDefinition? definition)
+    private static double ResolveSaleUnitPrice(
+        NodeTrafficProfile? producerProfile,
+        NodeTrafficProfile? consumerProfile,
+        TrafficTypeDefinition? definition)
     {
+        var producerPrice = 0d;
         if (producerProfile?.UnitPrice > Epsilon)
         {
-            return producerProfile.UnitPrice;
+            producerPrice = producerProfile.UnitPrice;
+        }
+        else
+        {
+            producerPrice = Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d);
         }
 
-        return Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d);
+        return producerPrice + Math.Max(0d, consumerProfile?.ConsumerPremiumPerUnit ?? 0d);
     }
 
     private static double ResolveBaseProductionCost(NodeTrafficProfile? producerProfile, TrafficTypeDefinition? definition)

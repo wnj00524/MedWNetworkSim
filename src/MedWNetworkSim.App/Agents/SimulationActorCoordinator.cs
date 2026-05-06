@@ -26,13 +26,15 @@ public sealed class SimulationActorCoordinator
     public SimulationActorRunResult RunActorsForTicks(NetworkModel network, IReadOnlyList<SimulationActorState> actors, int ticks)
     {
         var working = Clone(network);
+        var actorStates = ResolveCurrentActorStates(working, actors);
         var decisions = new List<SimulationActorDecision>();
         var metrics = new List<SimulationActorMetrics>();
 
         for (var tick = 0; tick < Math.Max(0, ticks); tick++)
         {
-            var step = StepActorsOnce(working, actors, tick, decisions);
+            var step = StepActorsOnce(working, actorStates, tick, decisions);
             working = step.NetworkAfterStep;
+            actorStates = ResolveCurrentActorStates(working, actorStates);
             decisions.AddRange(step.Decisions);
             metrics.Add(step.Metrics);
         }
@@ -43,7 +45,7 @@ public sealed class SimulationActorCoordinator
             FinalNetwork = working,
             DecisionsByTick = decisions,
             MetricsByTick = metrics,
-            FinalSummary = $"Executed {ticks} ticks with {actors.Count(a => a.IsEnabled)} enabled actors."
+            FinalSummary = $"Executed {ticks} ticks with {actorStates.Count(a => a.IsEnabled)} enabled actors."
         };
     }
 
@@ -56,6 +58,7 @@ public sealed class SimulationActorCoordinator
     {
         previousDecisions ??= [];
         policySettings ??= new SimulationActorPolicySettings();
+        actorStates = ResolveCurrentActorStates(network, actorStates);
 
         var orderedActors = BuildActors(actorStates)
             .Where(actor => actor.State.IsEnabled)
@@ -130,6 +133,7 @@ public sealed class SimulationActorCoordinator
     {
         previousDecisions ??= [];
         policySettings ??= new SimulationActorPolicySettings();
+        actors = ResolveCurrentActorStates(network, actors);
         var snapshot = BuildSnapshot(network, tick);
         var insights = insightService.Generate(snapshot);
         var context = new SimulationActorContext
@@ -429,6 +433,15 @@ public sealed class SimulationActorCoordinator
         }
 
         return actorMap;
+    }
+
+    private static IReadOnlyList<SimulationActorState> ResolveCurrentActorStates(
+        NetworkModel network,
+        IReadOnlyList<SimulationActorState> actorStates)
+    {
+        return network.Actors.Count > 0
+            ? network.Actors
+            : actorStates;
     }
 
     private static NetworkModel Clone(NetworkModel network)

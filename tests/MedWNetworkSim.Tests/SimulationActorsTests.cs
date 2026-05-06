@@ -30,6 +30,81 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
+    public void Firm_AutomaticSupplyIncrease_UsesSellTrafficWhenPermitted()
+    {
+        var network = BuildHighThroughputNetwork();
+        network.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single().UnitPrice = 3d;
+        var coordinator = new SimulationActorCoordinator();
+        var actor = new SimulationActorState
+        {
+            Id = "firm-seller",
+            Name = "Seller",
+            Kind = SimulationActorKind.Firm,
+            Objective = SimulationActorObjective.MaximiseProfit,
+            ControlledNodeIds = ["producer"],
+            Cash = 100d,
+            Capability = new SimulationActorCapability
+            {
+                ActorId = "firm-seller",
+                AllowedActionKinds = [SimulationActorActionKind.SellTraffic],
+                Permissions =
+                [
+                    new SimulationActorPermission
+                    {
+                        ActionKind = SimulationActorActionKind.SellTraffic,
+                        TrafficType = "Food",
+                        NodeId = "producer",
+                        IsAllowed = true
+                    }
+                ]
+            }
+        };
+
+        var decision = coordinator.PreviewActorActions(network, [actor]).Single();
+
+        var action = Assert.Single(decision.Actions);
+        Assert.Equal(SimulationActorActionKind.SellTraffic, action.Kind);
+        Assert.Equal("Offer additional traffic for sale because delivered demand and unit margin are positive.", action.Reason);
+    }
+
+    [Fact]
+    public void Firm_AutomaticDemandIncrease_UsesBuyTrafficWhenPermitted()
+    {
+        var network = BuildNetwork();
+        var coordinator = new SimulationActorCoordinator();
+        var actor = new SimulationActorState
+        {
+            Id = "firm-buyer",
+            Name = "Buyer",
+            Kind = SimulationActorKind.Firm,
+            Objective = SimulationActorObjective.MaximiseProfit,
+            ControlledNodeIds = ["consumer"],
+            Cash = 100d,
+            Capability = new SimulationActorCapability
+            {
+                ActorId = "firm-buyer",
+                AllowedActionKinds = [SimulationActorActionKind.BuyTraffic],
+                Permissions =
+                [
+                    new SimulationActorPermission
+                    {
+                        ActionKind = SimulationActorActionKind.BuyTraffic,
+                        TrafficType = "Food",
+                        NodeId = "consumer",
+                        IsAllowed = true
+                    }
+                ]
+            }
+        };
+
+        var decision = coordinator.PreviewActorActions(network, [actor]).Single();
+
+        var action = Assert.Single(decision.Actions);
+        Assert.Equal(SimulationActorActionKind.BuyTraffic, action.Kind);
+        Assert.Equal("Buy/input traffic because it is required for profitable downstream production or unmet demand exists.", action.Reason);
+    }
+
+    [Fact]
     public void Government_Overrides_Firm_WhenPolicyConflicts()
     {
         var network = BuildNetwork();

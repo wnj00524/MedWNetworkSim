@@ -12,4 +12,8 @@
     <ProjectReference Include="..\MedWNetworkSim.UI\MedWNetworkSim.UI.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
+  </ItemGroup>
+
 </Project>

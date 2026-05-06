@@ -1,17 +1,25 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="clr-namespace:MedWNetworkSim.UI">
-  <Grid ColumnDefinitions="*,340" ColumnSpacing="12">
-    <ui:GraphCanvasControl ViewModel="{Binding}" />
-    <StackPanel Grid.Column="1" Spacing="10">
-      <TextBlock Text="OpenStreetMap Import" FontWeight="Bold" />
-      <CheckBox Content="Enable selection" IsChecked="{Binding IsOsmAreaSelectionEnabled}" />
-      <TextBlock Text="Node reduction %" />
-      <Slider Minimum="1" Maximum="100" Value="{Binding OsmNodeImportPercentage}" />
-      <TextBlock Text="{Binding OsmSelectedAreaText}" />
-      <TextBlock Text="{Binding OsmTileCountText}" />
-      <TextBlock Text="{Binding OsmValidationMessage}" TextWrapping="Wrap" />
-      <Button Content="Import Selected Area" Command="{Binding ImportOsmSelectionCommand}" />
-    </StackPanel>
+  <Grid ColumnDefinitions="*,380" ColumnSpacing="12">
+    <ui:GraphCanvasControl ViewModel="{Binding}" RenderModeOverride="Map" />
+    <Border Grid.Column="1" Padding="12">
+      <Expander Header="OSM import options" IsExpanded="True">
+        <StackPanel Spacing="10">
+          <TextBlock Text="OpenStreetMap Import" FontWeight="Bold" />
+          <CheckBox Content="Enable area selection" IsChecked="{Binding IsOsmAreaSelectionEnabled}" />
+          <TextBlock Text="Node reduction %" />
+          <Slider Minimum="1" Maximum="100" Value="{Binding OsmNodeImportPercentage}" />
+          <TextBlock Text="{Binding OsmSelectedAreaText}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding OsmTileCountText}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding OsmValidationMessage}" TextWrapping="Wrap" />
+          <WrapPanel>
+            <Button Content="Import Selected Area" Command="{Binding ImportOsmSelectionCommand}" />
+            <Button Content="Clear" Command="{Binding ClearOsmSelectionCommand}" />
+            <Button Content="Cancel" Command="{Binding CancelOsmImportCommand}" />
+          </WrapPanel>
+        </StackPanel>
+      </Expander>
+    </Border>
   </Grid>
 </UserControl>

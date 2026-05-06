@@ -386,7 +386,7 @@ public sealed class GraphCanvasControl : Control, IDisposable
                     return;
                 }
 
-                sankeyRenderer.Render(surface.Canvas, lastSankeyDiagram, transform.LogicalViewport, interactionContext.Scene.Selection.KeyboardNodeId, interactionContext.Scene.Selection.KeyboardEdgeId);
+                sankeyRenderer.Render(surface.Canvas, lastSankeyDiagram, transform.LogicalViewport, hoveredNodeId, hoveredEdgeId);
             }
             else if (mode == VisualisationMode.Map)
             {
@@ -407,6 +407,8 @@ public sealed class GraphCanvasControl : Control, IDisposable
 
                 pieRenderer.Draw(surface.Canvas, ViewModel.TrafficByTypeChart, chartBounds1);
                 pieRenderer.Draw(surface.Canvas, ViewModel.NodeRoleChart, chartBounds2);
+                pieRenderer.DrawLegend(surface.Canvas, ViewModel.TrafficByTypeChart, new SKPoint(chartBounds1.Left, chartBounds1.Bottom + 22f));
+                pieRenderer.DrawLegend(surface.Canvas, ViewModel.NodeRoleChart, new SKPoint(chartBounds2.Left, chartBounds2.Bottom + 22f));
             }
             else
             {
@@ -1049,6 +1051,7 @@ public sealed class GraphCanvasControl : Control, IDisposable
         hoveredNodeId = null;
         hoveredEdgeId = null;
         ToolTip.SetTip(this, null);
+        InvalidateVisual();
     }
 
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
@@ -1232,8 +1235,23 @@ public sealed class GraphCanvasControl : Control, IDisposable
             var sankeyHit = sankeyRenderer.HitTest(PointerToGraph(e, transform));
             if (sankeyHit is null)
             {
+                if (hoveredNodeId is not null || hoveredEdgeId is not null)
+                {
+                    hoveredNodeId = null;
+                    hoveredEdgeId = null;
+                    InvalidateVisual();
+                }
+
                 ToolTip.SetTip(this, null);
                 return;
+            }
+
+            if (!string.Equals(hoveredNodeId, sankeyHit.Value.NodeId, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(hoveredEdgeId, sankeyHit.Value.LinkId, StringComparison.OrdinalIgnoreCase))
+            {
+                hoveredNodeId = sankeyHit.Value.NodeId;
+                hoveredEdgeId = sankeyHit.Value.LinkId;
+                InvalidateVisual();
             }
 
             if (!string.IsNullOrWhiteSpace(sankeyHit.Value.NodeId) && sankeyNodeById.TryGetValue(sankeyHit.Value.NodeId!, out var sankeyNode))
@@ -1469,6 +1487,9 @@ public sealed class ShellWindow : Window
     private Border? toolRailHost;
     private Border? canvasHost;
     private Border? inspectorHost;
+    private bool isContextInspectorPinned;
+    private Button? contextInspectorPinButton;
+    private Button? contextInspectorToggleButton;
     private Border? dashboardStripHost;
     private Grid? dashboardStripContentGrid;
     private Control? dashboardStripBody;
@@ -1644,42 +1665,25 @@ public sealed class ShellWindow : Window
         {
             Margin = new Thickness(0, 12, 0, 0),
             ColumnSpacing = 12,
-            RowSpacing = 10,
             ColumnDefinitions =
             {
                 new ColumnDefinition(GridLength.Auto),
-                new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Auto)
-                {
-                    MinWidth = 300,
-                    MaxWidth = 360
-                }
+                new ColumnDefinition(GridLength.Star)
             },
             RowDefinitions =
             {
-                new RowDefinition(GridLength.Star),
-                new RowDefinition(new GridLength(BottomStripHeight))
-                {
-                    MinHeight = BottomStripMinHeight,
-                    MaxHeight = BottomStripMaxHeight
-                }
+                new RowDefinition(GridLength.Star)
             }
         };
 
         toolRailHost = (Border)BuildToolRail(viewModel);
         canvasHost = (Border)BuildMainContentArea(viewModel);
-        inspectorHost = BuildRightAnalyticsColumn(viewModel);
-        dashboardStripHost = BuildDashboardStrip(viewModel);
 
-        Place(toolRailHost, column: 0, row: 0, rowSpan: 2);
+        Place(toolRailHost, column: 0, row: 0);
         Place(canvasHost, column: 1, row: 0);
-        Place(inspectorHost, column: 2, row: 0);
-        Place(dashboardStripHost, column: 1, row: 1, columnSpan: 2);
 
         workspaceGrid.Children.Add(toolRailHost);
         workspaceGrid.Children.Add(canvasHost);
-        workspaceGrid.Children.Add(inspectorHost);
-        workspaceGrid.Children.Add(dashboardStripHost);
 
         return workspaceGrid;
     }
@@ -1845,51 +1849,45 @@ public sealed class ShellWindow : Window
         public const string OsmImport = "M12,3 V14 M8,10 L12,14 L16,10 M5,19 H19 M5,6 L9,4 L15,6 L19,4 V16 L15,18 L9,16 L5,18 Z";
         public const string Agents = "M8,11 A3,3 0 1 1 8,5 A3,3 0 1 1 8,11 M16,11 A3,3 0 1 1 16,5 A3,3 0 1 1 16,11 M3,20 C3,16 6,14 8,14 C10,14 13,16 13,20 M11,20 C11,16 14,14 16,14 C18,14 21,16 21,20";
         public const string Analytics = "M4,13 H8 V20 H4 Z M10,5 H14 V20 H10 Z M16,9 H20 V20 H16 Z M3,20 H21 V22 H3 Z";
+        public const string Facilities = "M12,3 A6,6 0 0 1 18,9 C18,14 12,21 12,21 C12,21 6,14 6,9 A6,6 0 0 1 12,3 M12,7 A2,2 0 1 1 12,11 A2,2 0 1 1 12,7 M4,20 H20";
+        public const string Reports = "M5,3 H16 L20,7 V21 H5 Z M15,3 V8 H20 M8,12 H17 M8,16 H17";
+        public const string Scenarios = "M4,7 H20 M7,4 V20 M17,4 V20 M4,17 H9 V9 H15 V17 H20";
+        public const string Inspector = "M5,4 H19 V20 H5 Z M8,8 H16 M8,12 H16 M8,16 H13";
+        public const string Pin = "M8,4 H16 L15,10 L18,13 V15 H13 V21 H11 V15 H6 V13 L9,10 Z";
+        public const string Close = "M6,6 L18,18 M18,6 L6,18";
+        public const string Labels = "M4,6 H20 V18 H4 Z M7,10 H17 M7,14 H13";
     }
 
     private Control BuildToolRail(WorkspaceViewModel viewModel)
     {
-        var newButton = BuildIconRailButton(IconPaths.New, "New", new RelayCommand(() => _ = CreateBlankNetworkAsync(viewModel)));
-        var openButton = BuildIconRailButton(IconPaths.Open, "Open", new RelayCommand(() => _ = OpenNetworkFileAsync(viewModel)));
-        var saveButton = BuildIconRailButton(IconPaths.Save, "Save", new RelayCommand(() => _ = SaveNetworkAsync(viewModel)));
-        var networkDetailsButton = BuildIconRailButton(IconPaths.Network, "Network Details", new RelayCommand(() => _ = ShowNetworkDetailsDialogAsync(viewModel)));
-        var importButton = BuildIconRailButton(IconPaths.ImportGraphMl, "Import GraphML", new RelayCommand(() => _ = ImportGraphMlAsync(viewModel)));
-        var exportButton = BuildIconRailButton(IconPaths.ExportGraphMl, "Export GraphML", new RelayCommand(() => _ = ExportGraphMlAsync(viewModel)));
-        var selectButton = BuildIconRailButton(IconPaths.Select, "Select", viewModel.SelectToolCommand, isToolButton: true);
-        var fitButton = BuildIconRailButton(IconPaths.FitView, "Fit View", viewModel.FitCommand);
-        var clearSelectionButton = BuildIconRailButton(IconPaths.ClearSelection, "Clear Selection", new RelayCommand(viewModel.ClearSelection));
-        var addNodeButton = BuildIconRailButton(IconPaths.AddNode, "Add Node", viewModel.AddNodeToolCommand, isToolButton: true);
-        var connectButton = BuildIconRailButton(IconPaths.ConnectRoute, "Connect Route", viewModel.ConnectToolCommand, isToolButton: true);
-        var deleteButton = BuildIconRailButton(IconPaths.DeleteSelection, "Delete Selection", viewModel.DeleteSelectionCommand, isDanger: true);
-        var trafficTypesButton = BuildIconRailButton(IconPaths.TrafficTypes, "Traffic Types", new RelayCommand(EnterTrafficTypeWorkspace));
-        var runButton = BuildIconRailButton(IconPaths.Run, "Run", viewModel.SimulateCommand);
-        var stepButton = BuildIconRailButton(IconPaths.Step, "Step", viewModel.StepCommand);
-        var resetButton = BuildIconRailButton(IconPaths.ResetTimeline, "Reset Timeline", viewModel.ResetTimelineCommand);
         var networkButton = BuildIconRailButton(IconPaths.Network, "Network", viewModel.SetNetworkViewCommand);
         var mapButton = BuildIconRailButton(IconPaths.Map, "Map", viewModel.SetMapViewCommand);
         var sankeyButton = BuildIconRailButton(IconPaths.Sankey, "Sankey", viewModel.SetSankeyViewCommand);
+        var analyticsButton = BuildIconRailButton(IconPaths.Analytics, "Analytics", viewModel.SetAnalyticsViewCommand);
+        var reportsButton = BuildIconRailButton(IconPaths.Reports, "Reports", viewModel.SetReportsViewCommand);
+        var facilitiesButton = BuildIconRailButton(IconPaths.Facilities, "Facility Planning", viewModel.SetFacilitiesViewCommand);
         var osmButton = BuildIconRailButton(IconPaths.OsmImport, "Import OSM", viewModel.SetOsmImportViewCommand);
         var agentsButton = BuildIconRailButton(IconPaths.Agents, "Agents", viewModel.SetAgentsViewCommand);
-        var analyticsButton = BuildIconRailButton(IconPaths.Analytics, "Analytics", viewModel.SetAnalyticsViewCommand);
+        var trafficTypesButton = BuildIconRailButton(IconPaths.TrafficTypes, "Traffic Types", new RelayCommand(EnterTrafficTypeWorkspace));
+        var scenariosButton = BuildIconRailButton(IconPaths.Scenarios, "Scenarios", viewModel.OpenScenarioEditorCommand);
 
         void RefreshToolState()
         {
-            ApplyToolButtonState(selectButton, viewModel.IsSelectToolActive);
-            ApplyToolButtonState(addNodeButton, viewModel.IsAddNodeToolActive);
-            ApplyToolButtonState(connectButton, viewModel.IsConnectToolActive);
             ApplyToolButtonState(networkButton, viewModel.ActiveView == AppView.Network && shellWorkspaceMode == ShellWorkspaceMode.Standard);
             ApplyToolButtonState(mapButton, viewModel.ActiveView == AppView.Map && shellWorkspaceMode == ShellWorkspaceMode.Standard);
             ApplyToolButtonState(sankeyButton, viewModel.ActiveView == AppView.Sankey && shellWorkspaceMode == ShellWorkspaceMode.Standard);
-            ApplyToolButtonState(osmButton, viewModel.ActiveView == AppView.OSMImport && shellWorkspaceMode == ShellWorkspaceMode.Standard);
-            ApplyToolButtonState(agentsButton, viewModel.ActiveView == AppView.Agents && shellWorkspaceMode == ShellWorkspaceMode.Standard);
             ApplyToolButtonState(analyticsButton, viewModel.ActiveView == AppView.Analytics && shellWorkspaceMode == ShellWorkspaceMode.Standard);
+            ApplyToolButtonState(reportsButton, viewModel.ActiveView == AppView.Reports && shellWorkspaceMode == ShellWorkspaceMode.Standard);
+            ApplyToolButtonState(facilitiesButton, viewModel.ActiveView == AppView.Facilities && shellWorkspaceMode == ShellWorkspaceMode.Standard);
+            ApplyToolButtonState(osmButton, viewModel.ActiveView == AppView.OSMImport || viewModel.IsOsmImportWorkspaceMode);
+            ApplyToolButtonState(agentsButton, viewModel.ActiveView == AppView.Agents && shellWorkspaceMode == ShellWorkspaceMode.Standard);
             ApplyToolButtonState(trafficTypesButton, shellWorkspaceMode == ShellWorkspaceMode.TrafficTypes);
         }
         refreshToolRailState = RefreshToolState;
 
         viewModel.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(WorkspaceViewModel.ActiveView) or nameof(WorkspaceViewModel.IsSelectToolActive) or nameof(WorkspaceViewModel.IsAddNodeToolActive) or nameof(WorkspaceViewModel.IsConnectToolActive))
+            if (e.PropertyName is nameof(WorkspaceViewModel.ActiveView) or nameof(WorkspaceViewModel.CurrentWorkspaceMode))
             {
                 RefreshToolState();
             }
@@ -1901,25 +1899,30 @@ public sealed class ShellWindow : Window
             Spacing = 8,
             Children =
             {
-                BuildIconRailGroupLabel("Workspace"),
-                newButton, openButton, saveButton, networkDetailsButton, importButton, exportButton,
-                BuildIconRailGroupLabel("Navigate"),
-                selectButton, fitButton, clearSelectionButton,
-                BuildIconRailGroupLabel("Edit Network"),
-                addNodeButton, connectButton, deleteButton, trafficTypesButton,
-                BuildIconRailGroupLabel("Simulation"),
-                runButton, stepButton, resetButton,
-                BuildIconRailGroupLabel("Analysis/Views"),
-                networkButton, mapButton, sankeyButton, osmButton, agentsButton, analyticsButton
+                networkButton,
+                mapButton,
+                sankeyButton,
+                BuildRailSeparator(),
+                analyticsButton,
+                reportsButton,
+                facilitiesButton,
+                BuildRailSeparator(),
+                osmButton,
+                agentsButton,
+                trafficTypesButton,
+                scenariosButton
             }
         };
 
-        var border = BuildDashboardPanel(
-            new ScrollViewer { Content = content },
-            header: "Command Rail",
-            padding: new Thickness(6),
-            radius: new CornerRadius(14));
-        return border;
+        return new IconRail
+        {
+            Child = new ScrollViewer
+            {
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = content
+            }
+        };
     }
 
     private Control BuildMainContentArea(WorkspaceViewModel viewModel)
@@ -1932,9 +1935,11 @@ public sealed class ShellWindow : Window
 
         Control BuildView(AppView view) => view switch
         {
-            AppView.OSMImport => BuildOsmImportView(viewModel),
+            AppView.OSMImport => BuildCanvasArea(viewModel),
             AppView.Agents => BuildAgentsView(viewModel),
             AppView.Analytics => BuildAnalyticsView(viewModel),
+            AppView.Facilities => BuildFacilitiesWorkspace(viewModel),
+            AppView.Reports => BuildReportsWorkspace(viewModel),
             _ => BuildCanvasArea(viewModel)
         };
 
@@ -1947,11 +1952,15 @@ public sealed class ShellWindow : Window
             }
         };
 
-        var host = BuildDashboardPanel(
-            content,
-            header: "Workspace",
-            padding: new Thickness(10),
-            radius: new CornerRadius(18));
+        var host = new Border
+        {
+            Child = content,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(18),
+            ClipToBounds = true
+        };
         host.MinHeight = 260;
         host.MinWidth = 480;
         return host;
@@ -2028,7 +2037,138 @@ public sealed class ShellWindow : Window
 
     private Control BuildAgentsView(WorkspaceViewModel viewModel)
     {
-        return BuildActorsPanel(viewModel);
+        var actorCards = new ListBox
+        {
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.FilteredSimulationActors)),
+            [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(WorkspaceViewModel.SelectedSimulationActor), BindingMode.TwoWay),
+            ItemTemplate = new FuncDataTemplate<SimulationActorState>((actor, _) =>
+            {
+                if (actor is null)
+                {
+                    return new TextBlock();
+                }
+
+                return new Border
+                {
+                    Margin = new Thickness(0, 0, 0, 8),
+                    Padding = new Thickness(10),
+                    BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(8),
+                    Child = new StackPanel
+                    {
+                        Spacing = 4,
+                        Children =
+                        {
+                            new TextBlock { Text = actor.Name, FontWeight = FontWeight.Bold, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText), TextWrapping = TextWrapping.Wrap },
+                            new TextBlock { Text = $"{actor.Kind} | {(actor.IsEnabled ? "Enabled" : "Disabled")} | Cash {actor.Cash:0.##}", Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText), FontSize = 12 },
+                            new TextBlock { Text = actor.Objective.ToString(), Foreground = new SolidColorBrush(AvaloniaDashboardTheme.MutedText), FontSize = 11, TextWrapping = TextWrapping.Wrap }
+                        }
+                    }
+                };
+            })
+        };
+
+        var listGrid = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,Auto,*"),
+            RowSpacing = 10,
+            Children =
+            {
+                BuildSectionTitle("Actor Cards", "Budget, status, and objective at a glance."),
+                BuildLabeledTextBox("Search", nameof(WorkspaceViewModel.AgentSearchText)),
+                actorCards
+            }
+        };
+        Grid.SetRow(listGrid.Children[1], 1);
+        Grid.SetRow(listGrid.Children[2], 2);
+        var listColumn = BuildDashboardPanel(
+            listGrid,
+            header: "Agents",
+            padding: new Thickness(12),
+            radius: new CornerRadius(12));
+
+        var editor = BuildDashboardPanel(
+            new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Content = new StackPanel
+                {
+                    Spacing = 10,
+                    Children =
+                    {
+                        BuildSectionTitle("Editor Drawer", "Permissions, traffic scope, and run controls for the selected actor."),
+                        BuildReadOnlyRow("Status", nameof(WorkspaceViewModel.ActorStatusMessage)),
+                        BuildReadOnlyRow("Traffic scope", nameof(WorkspaceViewModel.SelectedActorTrafficScopeText)),
+                        BuildLabeledTextBox("Name", nameof(WorkspaceViewModel.ActorNameText)),
+                        BuildLabeledTextBox("Budget", nameof(WorkspaceViewModel.ActorBudgetText)),
+                        BuildLabeledTextBox("Cash", nameof(WorkspaceViewModel.ActorCashText)),
+                        BuildLabeledTextBox("Risk tolerance", nameof(WorkspaceViewModel.ActorRiskToleranceText)),
+                        BuildLabeledTextBox("Cooperation", nameof(WorkspaceViewModel.ActorCooperationWeightText)),
+                        BuildLabeledCheckBox("Enabled", nameof(WorkspaceViewModel.ActorIsEnabled)),
+                        BuildLabeledCheckBox("Allow all traffic", nameof(WorkspaceViewModel.ActorAllowAllTrafficTypes)),
+                        BuildReadOnlyRow("Allowed actions", nameof(WorkspaceViewModel.SelectedActorAllowedActionsText)),
+                        BuildValidationBlock(nameof(WorkspaceViewModel.ActorValidationText)),
+                        new WrapPanel
+                        {
+                            Children =
+                            {
+                                BuildButton("Apply", viewModel.ApplySelectedActorCommand, isPrimary: true),
+                                BuildButton("Preview", viewModel.PreviewActorActionsCommand),
+                                BuildButton("Run step", viewModel.RunActorStepCommand),
+                                BuildButton("Export logs", viewModel.ExportAgentLogsCommand)
+                            }
+                        },
+                        new Expander
+                        {
+                            Header = "Advanced permissions and decision logs",
+                            Content = BuildActorsPanel(viewModel)
+                        }
+                    }
+                }
+            },
+            header: "Actor Editor",
+            padding: new Thickness(12),
+            radius: new CornerRadius(12));
+
+        var actions = new WrapPanel
+        {
+            Children =
+            {
+                BuildButton("Add Firm", viewModel.AddFirmActorCommand),
+                BuildButton("Add Government", viewModel.AddGovernmentActorCommand),
+                BuildButton("Add Logistics", viewModel.AddLogisticsPlannerActorCommand),
+                BuildButton("Duplicate", viewModel.DuplicateSelectedActorCommand),
+                BuildButton("Remove", viewModel.RemoveSelectedActorCommand)
+            }
+        };
+
+        var header = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+            Children =
+            {
+                BuildSectionTitle("Agents Workspace", "Manage actors separately from the Network canvas."),
+                actions
+            }
+        };
+        Grid.SetColumn(actions, 1);
+
+        var body = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("330,*"),
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            ColumnSpacing = 12,
+            RowSpacing = 12,
+            Margin = new Thickness(12),
+            Children = { header, listColumn, editor }
+        };
+        Grid.SetColumnSpan(header, 2);
+        Grid.SetRow(listColumn, 1);
+        Grid.SetRow(editor, 1);
+        Grid.SetColumn(editor, 1);
+        return body;
     }
 
     private Control BuildAnalyticsView(WorkspaceViewModel viewModel)
@@ -2040,19 +2180,286 @@ public sealed class ShellWindow : Window
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch
         };
+        ToolTip.SetTip(sankeyCanvas, "Hover a flow for details. Click a node or route flow to select it in the network.");
 
-        var flowCharts = BuildFlowChartPanel(viewModel);
-        var pressureCharts = BuildNodePressureChartPanel(viewModel);
-
-        return new TabControl
+        var visualCanvas = new AnalyticsCanvasControl
         {
-            Items =
+            ViewModel = viewModel,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+
+        var filterStrip = BuildAnalyticsFilterStrip(viewModel);
+        var kpis = BuildAnalyticsKpiStrip(viewModel);
+        var topIssues = BuildDashboardPanel(BuildTopIssuesPanel(viewModel), header: "Top Issues", padding: new Thickness(12), radius: new CornerRadius(12));
+        topIssues.MinWidth = 290;
+        topIssues.MaxWidth = 360;
+
+        var sidePanel = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = new StackPanel
             {
-                new TabItem { Header = "Sankey", Content = sankeyCanvas },
-                new TabItem { Header = "Demand/Flow charts", Content = flowCharts },
-                new TabItem { Header = "Node pressure", Content = pressureCharts }
+                Spacing = 10,
+                Children =
+                {
+                    topIssues,
+                    BuildNodePressureRankingPanel(viewModel),
+                    BuildRouteHeatmapPanel(viewModel),
+                    BuildScenarioComparisonPanel(viewModel)
+                }
             }
         };
+        Grid.SetColumn(sidePanel, 1);
+
+        var sankeyPanel = BuildDashboardPanel(sankeyCanvas, header: "Sankey Flow Map", padding: new Thickness(0), radius: new CornerRadius(12));
+        var canvasPanel = BuildDashboardPanel(visualCanvas, header: "Timeline and Pressure Surface", padding: new Thickness(0), radius: new CornerRadius(12));
+        var canvasStack = new Grid
+        {
+            RowDefinitions = new RowDefinitions("1.15*,0.85*"),
+            RowSpacing = 10,
+            Children = { sankeyPanel, canvasPanel }
+        };
+        Grid.SetRow(canvasPanel, 1);
+
+        var main = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,340"),
+            ColumnSpacing = 12,
+            Children = { canvasStack, sidePanel }
+        };
+        Grid.SetRow(filterStrip, 1);
+        Grid.SetRow(main, 2);
+
+        return new AnalyticsWorkspaceView
+        {
+            Margin = new Thickness(12),
+            Children =
+            {
+                kpis,
+                filterStrip,
+                main
+            }
+        };
+    }
+
+    private Control BuildAnalyticsFilterStrip(WorkspaceViewModel viewModel)
+    {
+        var exportCurrent = BuildButton("Export current HTML", new RelayCommand(() => _ = ExportCurrentReportAsync(viewModel, ReportExportFormat.Html)));
+        var exportTimeline = BuildButton("Export timeline CSV", new RelayCommand(() => _ = ExportTimelineReportAsync(viewModel, ReportExportFormat.Csv)));
+        return BuildDashboardPanel(
+            new WrapPanel
+            {
+                Children =
+                {
+                    BuildLabeledComboBox("Traffic type", nameof(WorkspaceViewModel.TrafficTypeNameOptions), "VisualisationState.ActiveTrafficTypeFilter"),
+                    new CheckBox { Content = "Show unmet demand", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) },
+                    new CheckBox { Content = "Show capacity utilisation", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowCapacityUtilisation", BindingMode.TwoWay) },
+                    new CheckBox { Content = "Collapse minor flows", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.CollapseMinorFlows", BindingMode.TwoWay) },
+                    BuildLabeledRow("Period", new NumericUpDown { Minimum = 0, Maximum = 10000, [!NumericUpDown.ValueProperty] = new Binding(nameof(WorkspaceViewModel.TimelinePosition), BindingMode.TwoWay) }),
+                    exportCurrent,
+                    exportTimeline
+                }
+            },
+            includeHeader: false,
+            padding: new Thickness(12, 8),
+            radius: new CornerRadius(12));
+    }
+
+    private static Control BuildAnalyticsKpiStrip(WorkspaceViewModel viewModel)
+    {
+        var panel = new UniformGrid
+        {
+            Rows = 1,
+            Columns = 6
+        };
+
+        void Rebuild()
+        {
+            panel.Children.Clear();
+            var flow = viewModel.FlowSeries.ToList();
+            var planned = flow.Sum(point => point.Planned);
+            var delivered = flow.Sum(point => point.Delivered);
+            var unmet = flow.Sum(point => point.UnmetDemand);
+            var backlog = flow.Sum(point => point.Backlog);
+            var serviceLevel = planned <= 0d ? 0d : delivered / planned;
+            var worstRoute = viewModel.RouteReports.FirstOrDefault(row => !string.Equals(row.Pressure, "None", StringComparison.OrdinalIgnoreCase));
+            var utilisation = AveragePercent(viewModel.RouteReports.Select(row => row.Utilisation));
+            panel.Children.Add(BuildKpiCard("Delivered", $"{FormatAnalyticsNumber(delivered)} / {serviceLevel:P0}", "Service level"));
+            panel.Children.Add(BuildKpiCard("Unmet demand", FormatAnalyticsNumber(unmet), "Shortage"));
+            panel.Children.Add(BuildKpiCard("Backlog", FormatAnalyticsNumber(backlog), "Carry-forward"));
+            panel.Children.Add(BuildKpiCard("Worst bottleneck", worstRoute?.RouteId ?? "None", worstRoute?.Pressure ?? "No route pressure"));
+            panel.Children.Add(BuildKpiCard("Avg utilisation", utilisation <= 0d ? "0%" : $"{utilisation:P0}", "Route load"));
+            panel.Children.Add(BuildKpiCard("Period", viewModel.SimulationSummary, viewModel.VisualisationState.ActiveTrafficTypeFilter ?? "All traffic"));
+        }
+
+        Rebuild();
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(WorkspaceViewModel.FlowSeries)
+                or nameof(WorkspaceViewModel.RouteReports)
+                or nameof(WorkspaceViewModel.SimulationSummary))
+            {
+                Rebuild();
+            }
+        };
+        viewModel.VisualisationState.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(VisualisationState.ActiveTrafficTypeFilter))
+            {
+                Rebuild();
+            }
+        };
+        return panel;
+    }
+
+    private static Control BuildKpiCard(string title, string value, string caption)
+    {
+        return new Border
+        {
+            Margin = new Thickness(0, 0, 8, 0),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(12, 9),
+            Child = new StackPanel
+            {
+                Spacing = 2,
+                Children =
+                {
+                    new TextBlock { Text = title, FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) },
+                    new TextBlock { Text = value, FontSize = 18, FontWeight = FontWeight.Bold, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText), TextWrapping = TextWrapping.Wrap },
+                    new TextBlock { Text = caption, FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.MutedText), TextWrapping = TextWrapping.Wrap }
+                }
+            }
+        };
+    }
+
+    private static Border BuildNodePressureRankingPanel(WorkspaceViewModel viewModel)
+    {
+        var content = new StackPanel { Spacing = 8 };
+        void Rebuild()
+        {
+            content.Children.Clear();
+            var series = viewModel.NodePressureSeries.Take(8).ToList();
+            if (series.Count == 0)
+            {
+                content.Children.Add(BuildEmptyAnalyticsMessage("Step the timeline to rank nodes by pressure."));
+                return;
+            }
+
+            var max = Math.Max(1d, series.Max(point => point.Pressure));
+            foreach (var point in series)
+            {
+                content.Children.Add(BuildAnalyticsBar(point.Node, point.Pressure, max, AvaloniaDashboardTheme.Warning));
+            }
+        }
+
+        Rebuild();
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(WorkspaceViewModel.NodePressureSeries))
+            {
+                Rebuild();
+            }
+        };
+        return BuildDashboardPanel(content, header: "Node Pressure", padding: new Thickness(12), radius: new CornerRadius(12));
+    }
+
+    private static Border BuildRouteHeatmapPanel(WorkspaceViewModel viewModel)
+    {
+        var content = new StackPanel { Spacing = 8 };
+        void Rebuild()
+        {
+            content.Children.Clear();
+            var routes = viewModel.RouteReports.Take(10).ToList();
+            if (routes.Count == 0)
+            {
+                content.Children.Add(BuildEmptyAnalyticsMessage("Run or step simulation to populate route pressure."));
+                return;
+            }
+
+            foreach (var route in routes)
+            {
+                content.Children.Add(new Border
+                {
+                    Background = new SolidColorBrush(PressureColor(route.Pressure), 0.25),
+                    BorderBrush = new SolidColorBrush(PressureColor(route.Pressure), 0.9),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(8),
+                    Padding = new Thickness(8),
+                    Child = new StackPanel
+                    {
+                        Spacing = 2,
+                        Children =
+                        {
+                            new TextBlock { Text = route.RouteId, FontWeight = FontWeight.SemiBold, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText), TextWrapping = TextWrapping.Wrap },
+                            new TextBlock { Text = $"{route.FromTo} | Utilisation {route.Utilisation} | Pressure {route.Pressure}", FontSize = 11, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText), TextWrapping = TextWrapping.Wrap }
+                        }
+                    }
+                });
+            }
+        }
+
+        Rebuild();
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(WorkspaceViewModel.RouteReports))
+            {
+                Rebuild();
+            }
+        };
+        return BuildDashboardPanel(content, header: "Route Heatmap", padding: new Thickness(12), radius: new CornerRadius(12));
+    }
+
+    private static Border BuildScenarioComparisonPanel(WorkspaceViewModel viewModel)
+    {
+        return BuildDashboardPanel(
+            new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    BuildQuickStat("Scenario", nameof(WorkspaceViewModel.ScenarioResultSummary)),
+                    new TextBlock
+                    {
+                        Text = "Baseline-vs-scenario deltas appear after running a scenario. Use the scenario workspace to configure closures, demand shifts, and cost changes.",
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                        TextWrapping = TextWrapping.Wrap
+                    },
+                    BuildButton("Open scenario workspace", viewModel.OpenScenarioEditorCommand, isPrimary: true)
+                }
+            },
+            header: "Scenario Comparison",
+            padding: new Thickness(12),
+            radius: new CornerRadius(12));
+    }
+
+    private static double AveragePercent(IEnumerable<string> values)
+    {
+        var parsed = values
+            .Select(value => value.Trim().TrimEnd('%'))
+            .Select(value => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed / 100d : 0d)
+            .Where(value => value > 0d)
+            .ToArray();
+        return parsed.Length == 0 ? 0d : parsed.Average();
+    }
+
+    private static Color PressureColor(string pressure)
+    {
+        if (pressure.Contains("high", StringComparison.OrdinalIgnoreCase) || pressure.Contains("critical", StringComparison.OrdinalIgnoreCase))
+        {
+            return AvaloniaDashboardTheme.Danger;
+        }
+
+        if (pressure.Contains("medium", StringComparison.OrdinalIgnoreCase) || pressure.Contains("moderate", StringComparison.OrdinalIgnoreCase))
+        {
+            return AvaloniaDashboardTheme.Warning;
+        }
+
+        return AvaloniaDashboardTheme.Success;
     }
 
     private static Control BuildFlowChartPanel(WorkspaceViewModel viewModel)
@@ -2268,154 +2675,6 @@ public sealed class ShellWindow : Window
 
     private Control BuildCanvasArea(WorkspaceViewModel viewModel)
     {
-        var graphModeButton = BuildBoundButton("Graph", nameof(WorkspaceViewModel.ShowGraphModeCommand));
-        graphModeButton.Classes.Add("toolbar-button");
-        graphModeButton.Focusable = true;
-        var sankeyModeButton = BuildBoundButton("Sankey", nameof(WorkspaceViewModel.ShowSankeyModeCommand));
-        sankeyModeButton.Classes.Add("toolbar-button");
-        sankeyModeButton.Focusable = true;
-        var mapModeButton = BuildBoundButton("Map", nameof(WorkspaceViewModel.ShowMapModeCommand));
-        mapModeButton.Classes.Add("toolbar-button");
-        mapModeButton.Focusable = true;
-
-        void RefreshModeButtons()
-        {
-            ApplyToolButtonState(graphModeButton, viewModel.IsGraphMode);
-            ApplyToolButtonState(sankeyModeButton, viewModel.IsSankeyMode);
-            ApplyToolButtonState(mapModeButton, viewModel.IsMapMode);
-        }
-
-        viewModel.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName is nameof(WorkspaceViewModel.IsGraphMode) or nameof(WorkspaceViewModel.IsSankeyMode) or nameof(WorkspaceViewModel.IsMapMode))
-            {
-                RefreshModeButtons();
-            }
-        };
-        RefreshModeButtons();
-
-        var modeSelector = BuildWrapPanel(graphModeButton, sankeyModeButton, mapModeButton);
-
-        var labelsToggle = BuildButton(viewModel.GraphLabelsToggleText, viewModel.ToggleGraphLabelsCommand, toolTip: "Toggle boxed graph labels. When labels are off, node details stay in the inspector.");
-        labelsToggle.Classes.Add("toolbar-button");
-        labelsToggle.Focusable = true;
-        void RefreshGraphLabelToggle()
-        {
-            labelsToggle.Content = viewModel.GraphLabelsToggleText;
-            ApplyToolButtonState(labelsToggle, viewModel.VisualisationState.ShowGraphLabels);
-        }
-
-        viewModel.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(WorkspaceViewModel.GraphLabelsToggleText))
-            {
-                RefreshGraphLabelToggle();
-            }
-        };
-        RefreshGraphLabelToggle();
-
-        var graphOptions = BuildWrapPanel(labelsToggle);
-        graphOptions.IsVisible = viewModel.IsGraphMode;
-
-        var sankeyOptions = BuildWrapPanel(
-            BuildLabeledComboBox("Traffic type", nameof(WorkspaceViewModel.TrafficTypeNameOptions), "VisualisationState.ActiveTrafficTypeFilter"),
-            new CheckBox { Content = "Collapse minor flows", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.CollapseMinorFlows", BindingMode.TwoWay) },
-            new CheckBox { Content = "Show unmet demand", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) });
-        sankeyOptions.IsVisible = viewModel.IsSankeyMode;
-
-        var mapOptions = new StackPanel
-        {
-            Orientation = Orientation.Vertical,
-            Spacing = 12,
-            IsVisible = viewModel.IsMapMode,
-            Children =
-            {
-                BuildWrapPanel(
-                    new CheckBox { Content = "Show map background", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowMapBackground", BindingMode.TwoWay) },
-                    new CheckBox { Content = "Show capacity utilisation", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowCapacityUtilisation", BindingMode.TwoWay) },
-                    new CheckBox { Content = "Show unmet demand", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) },
-                    BuildToggleButton("Select area", viewModel.ToggleOsmAreaSelectionCommand, "Drag to select an area up to 2 square degrees."),
-                    BuildButton("Import selected area", viewModel.ImportOsmSelectionCommand, toolTip: "Download and import the selected OpenStreetMap area."),
-                    BuildButton("Clear selection", viewModel.ClearOsmSelectionCommand, toolTip: "Clear the selected OSM area."),
-                    BuildButton("Fit to network", viewModel.FitMapToNetworkCommand, toolTip: "Fit the map camera to imported network nodes.")),
-                BuildOsmDownloadPanel(viewModel)
-            }
-        };
-
-        var lockLayoutToggle = new CheckBox
-        {
-            Content = "Lock layout to map",
-            [!ToggleButton.IsCheckedProperty] = new Binding(nameof(WorkspaceViewModel.LockLayoutToMap), BindingMode.TwoWay),
-            [!InputElement.IsEnabledProperty] = new Binding(nameof(WorkspaceViewModel.IsLockLayoutToMapEnabled))
-        };
-        ApplyFocusVisual(lockLayoutToggle);
-        ToolTip.SetTip(lockLayoutToggle, "Keep node positions tied to their map coordinates while panning or zooming.");
-
-        var lockLayoutHint = new TextBlock
-        {
-            Text = "Middle mouse pans. Mouse wheel zooms toward pointer focus.",
-            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
-            FontSize = 12
-        };
-        var lockLayoutDisabledHint = new TextBlock
-        {
-            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
-            FontSize = 12
-        };
-        lockLayoutDisabledHint.Bind(TextBlock.TextProperty, new Binding(nameof(WorkspaceViewModel.LockLayoutToMapDisabledReason)));
-        lockLayoutDisabledHint.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.IsLockLayoutToMapEnabled))
-        {
-            Converter = new FuncValueConverter<bool, bool>(enabled => !enabled)
-        });
-
-        viewModel.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName is nameof(WorkspaceViewModel.IsGraphMode) or nameof(WorkspaceViewModel.IsSankeyMode) or nameof(WorkspaceViewModel.IsMapMode))
-            {
-                graphOptions.IsVisible = viewModel.IsGraphMode;
-                sankeyOptions.IsVisible = viewModel.IsSankeyMode;
-                mapOptions.IsVisible = viewModel.IsMapMode;
-            }
-        };
-
-        var header = new Border
-        {
-            Padding = new Thickness(12, 8),
-            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
-            CornerRadius = new CornerRadius(10),
-            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
-            BorderThickness = new Thickness(1),
-            Child = new StackPanel
-            {
-                Spacing = 3,
-                Children =
-                {
-                    new TextBlock
-                    {
-                        Text = "Network Topology",
-                        FontSize = 16,
-                        FontWeight = FontWeight.Bold,
-                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
-                        TextWrapping = TextWrapping.Wrap
-                    },
-                    new TextBlock
-                    {
-                        [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.ActiveModeLabel)),
-                        FontSize = 12,
-                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
-                        TextWrapping = TextWrapping.Wrap
-                    },
-                    new TextBlock
-                    {
-                        [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.ToolStatusText)),
-                        FontSize = 12,
-                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
-                        TextWrapping = TextWrapping.Wrap
-                    }
-                }
-            }
-        };
-
         var graphCanvas = new GraphCanvasControl
         {
             ViewModel = viewModel,
@@ -2470,38 +2729,361 @@ public sealed class ShellWindow : Window
         };
         graphCanvas.FullNodeEditorRequested += (_, _) => OpenFullNodeEditor();
 
-        var canvasSurface = new Grid
+        var statusPill = new Border
         {
-            RowDefinitions = new RowDefinitions("Auto,Auto,*"),
-            Children =
+            Margin = new Thickness(14),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground, 0.86),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(10, 7),
+            Child = new StackPanel
             {
-                header
+                Spacing = 1,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.ActiveModeLabel)),
+                        FontWeight = FontWeight.SemiBold,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                    },
+                    new TextBlock
+                    {
+                        [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.ToolStatusText)),
+                        FontSize = 11,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
+                    }
+                }
             }
         };
-        var controlsStrip = new StackPanel
+
+        var floatingBar = BuildFloatingCommandBar(viewModel);
+        floatingBar.HorizontalAlignment = HorizontalAlignment.Center;
+        floatingBar.VerticalAlignment = VerticalAlignment.Top;
+        floatingBar.Margin = new Thickness(14);
+
+        var transportBar = BuildSimulationTransportBar(viewModel);
+        transportBar.HorizontalAlignment = HorizontalAlignment.Center;
+        transportBar.VerticalAlignment = VerticalAlignment.Bottom;
+        transportBar.Margin = new Thickness(14);
+
+        var modeOptions = BuildCanvasModeOptions(viewModel);
+        modeOptions.HorizontalAlignment = HorizontalAlignment.Left;
+        modeOptions.VerticalAlignment = VerticalAlignment.Bottom;
+        modeOptions.Margin = new Thickness(14);
+
+        inspectorHost = BuildContextInspectorDrawer(viewModel);
+        contextInspectorToggleButton = BuildIconRailButton(IconPaths.Inspector, "Toggle Inspector", new RelayCommand(ToggleContextInspectorPinned));
+        contextInspectorToggleButton.HorizontalAlignment = HorizontalAlignment.Right;
+        contextInspectorToggleButton.VerticalAlignment = VerticalAlignment.Top;
+        contextInspectorToggleButton.Margin = new Thickness(14);
+
+        viewModel.PropertyChanged += (_, e) =>
         {
-            Margin = new Thickness(2, 6, 2, 8),
-            Spacing = 6,
-            Children =
+            if (e.PropertyName is nameof(WorkspaceViewModel.IsEditingNode)
+                or nameof(WorkspaceViewModel.IsEditingEdge)
+                or nameof(WorkspaceViewModel.IsEditingSelection)
+                or nameof(WorkspaceViewModel.CurrentInspectorEditMode))
             {
-                modeSelector,
-                lockLayoutToggle,
-                lockLayoutHint,
-                lockLayoutDisabledHint,
-                graphOptions,
-                sankeyOptions,
-                mapOptions
+                RefreshContextInspectorDrawer();
             }
         };
-        Grid.SetRow(controlsStrip, 1);
-        canvasSurface.Children.Add(controlsStrip);
-        Grid.SetRow(graphCanvas, 2);
-        Grid.SetRow(fallbackPanel, 2);
-        canvasSurface.Children.Add(graphCanvas);
-        canvasSurface.Children.Add(fallbackPanel);
-        canvasSurface.MinHeight = 260;
-        canvasSurface.MinWidth = 480;
+        RefreshContextInspectorDrawer();
+
+        var canvasSurface = new NetworkWorkspaceView
+        {
+            Children =
+            {
+                graphCanvas,
+                fallbackPanel,
+                statusPill,
+                floatingBar,
+                modeOptions,
+                transportBar,
+                contextInspectorToggleButton,
+                inspectorHost
+            }
+        };
         return canvasSurface;
+    }
+
+    private FloatingCommandBar BuildFloatingCommandBar(WorkspaceViewModel viewModel)
+    {
+        var newButton = BuildIconRailButton(IconPaths.New, "New", new RelayCommand(() => _ = CreateBlankNetworkAsync(viewModel)), shortcutText: "Ctrl+N");
+        var openButton = BuildIconRailButton(IconPaths.Open, "Open", new RelayCommand(() => _ = OpenNetworkFileAsync(viewModel)), shortcutText: "Ctrl+O");
+        var saveButton = BuildIconRailButton(IconPaths.Save, "Save", new RelayCommand(() => _ = SaveNetworkAsync(viewModel)), shortcutText: "Ctrl+S");
+        var networkDetailsButton = BuildIconRailButton(IconPaths.Network, "Network Details", new RelayCommand(() => _ = ShowNetworkDetailsDialogAsync(viewModel)));
+        var importButton = BuildIconRailButton(IconPaths.ImportGraphMl, "Import GraphML", new RelayCommand(() => _ = ImportGraphMlAsync(viewModel)));
+        var exportButton = BuildIconRailButton(IconPaths.ExportGraphMl, "Export GraphML", new RelayCommand(() => _ = ExportGraphMlAsync(viewModel)));
+        var selectButton = BuildIconRailButton(IconPaths.Select, "Select", viewModel.SelectToolCommand, shortcutText: "Esc", isToolButton: true);
+        var addNodeButton = BuildIconRailButton(IconPaths.AddNode, "Add Node", viewModel.AddNodeToolCommand, isToolButton: true);
+        var connectButton = BuildIconRailButton(IconPaths.ConnectRoute, "Connect Route", viewModel.ConnectToolCommand, isToolButton: true);
+        var fitButton = BuildIconRailButton(IconPaths.FitView, "Fit View", viewModel.FitCommand, shortcutText: "F");
+        var labelsButton = BuildIconRailButton(IconPaths.Labels, "Toggle Labels", viewModel.ToggleGraphLabelsCommand);
+        var clearSelectionButton = BuildIconRailButton(IconPaths.ClearSelection, "Clear Selection", new RelayCommand(viewModel.ClearSelection));
+        var deleteButton = BuildIconRailButton(IconPaths.DeleteSelection, "Delete Selection", viewModel.DeleteSelectionCommand, shortcutText: "Del", isDanger: true);
+
+        void RefreshToolButtons()
+        {
+            ApplyToolButtonState(selectButton, viewModel.IsSelectToolActive);
+            ApplyToolButtonState(addNodeButton, viewModel.IsAddNodeToolActive);
+            ApplyToolButtonState(connectButton, viewModel.IsConnectToolActive);
+            ApplyToolButtonState(labelsButton, viewModel.VisualisationState.ShowGraphLabels);
+        }
+
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(WorkspaceViewModel.IsSelectToolActive)
+                or nameof(WorkspaceViewModel.IsAddNodeToolActive)
+                or nameof(WorkspaceViewModel.IsConnectToolActive)
+                or nameof(WorkspaceViewModel.GraphLabelsToggleText))
+            {
+                RefreshToolButtons();
+            }
+        };
+        RefreshToolButtons();
+
+        return new FloatingCommandBar
+        {
+            Child = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 7,
+                Children =
+                {
+                    newButton,
+                    openButton,
+                    saveButton,
+                    networkDetailsButton,
+                    importButton,
+                    exportButton,
+                    BuildCommandSeparator(),
+                    selectButton,
+                    addNodeButton,
+                    connectButton,
+                    fitButton,
+                    labelsButton,
+                    clearSelectionButton,
+                    deleteButton
+                }
+            }
+        };
+    }
+
+    private SimulationTransportBar BuildSimulationTransportBar(WorkspaceViewModel viewModel)
+    {
+        var runButton = BuildIconRailButton(IconPaths.Run, "Run Simulation", viewModel.SimulateCommand, shortcutText: "Ctrl+R");
+        var stepButton = BuildIconRailButton(IconPaths.Step, "Step Timeline", viewModel.StepCommand);
+        var resetButton = BuildIconRailButton(IconPaths.ResetTimeline, "Reset Timeline", viewModel.ResetTimelineCommand);
+        var slider = new Slider
+        {
+            Width = 220,
+            Minimum = 0,
+            Maximum = 12,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        slider.Bind(RangeBase.ValueProperty, new Binding(nameof(WorkspaceViewModel.TimelinePosition), BindingMode.TwoWay));
+        ApplyFocusVisual(slider);
+
+        return new SimulationTransportBar
+        {
+            Child = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                Children =
+                {
+                    runButton,
+                    stepButton,
+                    resetButton,
+                    new TextBlock
+                    {
+                        [!TextBlock.TextProperty] = new Binding(nameof(WorkspaceViewModel.SimulationSummary)),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                        FontSize = 12
+                    },
+                    slider
+                }
+            }
+        };
+    }
+
+    private static Control BuildCommandSeparator() =>
+        new Border
+        {
+            Width = 1,
+            Height = 28,
+            Margin = new Thickness(4, 0),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder)
+        };
+
+    private Control BuildCanvasModeOptions(WorkspaceViewModel viewModel)
+    {
+        var sankeyOptions = BuildDashboardPanel(
+            new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                Children =
+                {
+                    BuildLabeledComboBox("Traffic", nameof(WorkspaceViewModel.TrafficTypeNameOptions), "VisualisationState.ActiveTrafficTypeFilter"),
+                    new CheckBox { Content = "Unmet", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) },
+                    new CheckBox { Content = "Collapse minor", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.CollapseMinorFlows", BindingMode.TwoWay) }
+                }
+            },
+            includeHeader: false,
+            padding: new Thickness(10, 7),
+            radius: new CornerRadius(12));
+        sankeyOptions.IsVisible = viewModel.IsSankeyMode;
+
+        var lockLayoutToggle = new CheckBox
+        {
+            Content = "Lock layout to map",
+            [!ToggleButton.IsCheckedProperty] = new Binding(nameof(WorkspaceViewModel.LockLayoutToMap), BindingMode.TwoWay),
+            [!InputElement.IsEnabledProperty] = new Binding(nameof(WorkspaceViewModel.IsLockLayoutToMapEnabled))
+        };
+        ApplyFocusVisual(lockLayoutToggle);
+        ToolTip.SetTip(lockLayoutToggle, "Keep node positions tied to map coordinates.");
+
+        var mapOptions = BuildDashboardPanel(
+            new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                Children =
+                {
+                    new CheckBox { Content = "Map", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowMapBackground", BindingMode.TwoWay) },
+                    new CheckBox { Content = "Utilisation", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowCapacityUtilisation", BindingMode.TwoWay) },
+                    new CheckBox { Content = "Unmet", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) },
+                    lockLayoutToggle
+                }
+            },
+            includeHeader: false,
+            padding: new Thickness(10, 7),
+            radius: new CornerRadius(12));
+        mapOptions.IsVisible = viewModel.IsMapMode;
+
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(WorkspaceViewModel.IsSankeyMode) or nameof(WorkspaceViewModel.IsMapMode) or nameof(WorkspaceViewModel.IsGraphMode))
+            {
+                sankeyOptions.IsVisible = viewModel.IsSankeyMode;
+                mapOptions.IsVisible = viewModel.IsMapMode;
+            }
+        };
+
+        return new StackPanel
+        {
+            Spacing = 8,
+            Children = { sankeyOptions, mapOptions }
+        };
+    }
+
+    private Border BuildContextInspectorDrawer(WorkspaceViewModel viewModel)
+    {
+        var closeButton = BuildIconRailButton(IconPaths.Close, "Close Inspector", new RelayCommand(() =>
+        {
+            isContextInspectorPinned = false;
+            RefreshContextInspectorDrawer();
+        }));
+        contextInspectorPinButton = BuildIconRailButton(IconPaths.Pin, "Pin Inspector", new RelayCommand(ToggleContextInspectorPinned));
+        var header = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"),
+            ColumnSpacing = 8,
+            Children =
+            {
+                new StackPanel
+                {
+                    Spacing = 2,
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = "Inspector",
+                            FontSize = 18,
+                            FontWeight = FontWeight.Bold,
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+                        },
+                        new TextBlock
+                        {
+                            Text = "Selection editing and validation",
+                            FontSize = 12,
+                            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText)
+                        }
+                    }
+                }
+            }
+        };
+        Grid.SetColumn(contextInspectorPinButton, 1);
+        Grid.SetColumn(closeButton, 2);
+        header.Children.Add(contextInspectorPinButton);
+        header.Children.Add(closeButton);
+
+        var body = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = BuildContextInspectorBody(viewModel)
+        };
+        Grid.SetRow(body, 1);
+
+        return new ContextInspectorDrawer
+        {
+            Child = new Grid
+            {
+                RowDefinitions = new RowDefinitions("Auto,*"),
+                RowSpacing = 12,
+                Children = { header, body }
+            }
+        };
+    }
+
+    private Control BuildContextInspectorBody(WorkspaceViewModel viewModel)
+    {
+        return new StackPanel
+        {
+            Spacing = 12,
+            Children =
+            {
+                BuildHeadlineBlock(),
+                BuildInspectorDetails(),
+                BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
+                BuildCompactNodeInspector(viewModel),
+                BuildCompactEdgeInspector(viewModel),
+                BuildCompactBulkInspector(viewModel),
+                BuildCompactNetworkSummary()
+            }
+        };
+    }
+
+    private void ToggleContextInspectorPinned()
+    {
+        isContextInspectorPinned = !isContextInspectorPinned;
+        RefreshContextInspectorDrawer();
+    }
+
+    private void RefreshContextInspectorDrawer()
+    {
+        var hasSelectionEditor = viewModel.IsEditingNode || viewModel.IsEditingEdge || viewModel.IsEditingSelection;
+        if (inspectorHost is not null)
+        {
+            inspectorHost.IsVisible = hasSelectionEditor || isContextInspectorPinned;
+        }
+
+        if (contextInspectorPinButton is not null)
+        {
+            ApplyToolButtonState(contextInspectorPinButton, isContextInspectorPinned);
+        }
+
+        if (contextInspectorToggleButton is not null)
+        {
+            ApplyToolButtonState(contextInspectorToggleButton, isContextInspectorPinned || hasSelectionEditor);
+        }
     }
 
     private Control BuildFacilityPlanningPanel(WorkspaceViewModel viewModel)
@@ -2627,6 +3209,119 @@ public sealed class ShellWindow : Window
                 uncoveredList
             }
         };
+    }
+
+    private Control BuildFacilitiesWorkspace(WorkspaceViewModel viewModel)
+    {
+        var mapCanvas = new GraphCanvasControl
+        {
+            ViewModel = viewModel,
+            RenderModeOverride = VisualisationMode.Graph,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+
+        var enableToggle = new ToggleButton
+        {
+            Content = "Coverage selection",
+            Command = viewModel.ToggleFacilityPlanningModeCommand,
+            [!ToggleButton.IsCheckedProperty] = new Binding(nameof(WorkspaceViewModel.IsFacilityPlanningMode))
+        };
+        ToolTip.SetTip(enableToggle, "Click graph nodes to add or remove facility origins.");
+
+        var drawer = BuildDashboardPanel(
+            new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Content = new StackPanel
+                {
+                    Spacing = 10,
+                    Children =
+                    {
+                        BuildSectionTitle("Facility Planning", "Coverage, overlap, and unreachable nodes are visualised on the canvas."),
+                        enableToggle,
+                        BuildFacilityPlanningPanel(viewModel)
+                    }
+                }
+            },
+            header: "Coverage Drawer",
+            padding: new Thickness(12),
+            radius: new CornerRadius(14));
+        drawer.Width = 430;
+        Grid.SetColumn(drawer, 1);
+
+        return new FacilitiesWorkspaceView
+        {
+            Margin = new Thickness(12),
+            Children =
+            {
+                mapCanvas,
+                drawer
+            }
+        };
+    }
+
+    private Control BuildReportsWorkspace(WorkspaceViewModel viewModel)
+    {
+        var exports = new WrapPanel
+        {
+            Children =
+            {
+                BuildButton("Export Current (HTML)", new RelayCommand(() => _ = ExportCurrentReportAsync(viewModel, ReportExportFormat.Html)), isPrimary: true),
+                BuildButton("Export Current (CSV)", new RelayCommand(() => _ = ExportCurrentReportAsync(viewModel, ReportExportFormat.Csv))),
+                BuildButton("Export Timeline (CSV)", new RelayCommand(() => _ = ExportTimelineReportAsync(viewModel, ReportExportFormat.Csv)))
+            }
+        };
+
+        var metrics = new ItemsControl
+        {
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ReportMetrics)),
+            ItemTemplate = new FuncDataTemplate<ReportMetricViewModel>((metric, _) =>
+                metric is null
+                    ? new TextBlock()
+                    : BuildKpiCard(metric.Label, metric.Value, "Open detail"))
+        };
+
+        var body = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,Auto,*"),
+            RowSpacing = 12,
+            Margin = new Thickness(12),
+            Children =
+            {
+                BuildSectionTitle("Reports", "Exports and tabular details live away from the Network canvas."),
+                exports,
+                new ScrollViewer
+                {
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    Content = new StackPanel
+                    {
+                        Spacing = 12,
+                        Children =
+                        {
+                            metrics,
+                            BuildTrafficReportSection(),
+                            BuildReportSection<RouteReportRowViewModel>(
+                                "Route Summary",
+                                new[] { ("Route", 1.0), ("From -> to", 1.5), ("Flow", 1.0), ("Capacity", 0.9), ("Utilisation", 0.9), ("Pressure", 1.2) },
+                                nameof(WorkspaceViewModel.RouteReports),
+                                static row => new[] { row.RouteId, row.FromTo, row.CurrentFlow, row.Capacity, row.Utilisation, row.Pressure }),
+                            BuildReportSection<NodePressureReportRowViewModel>(
+                                "Node Pressure Summary",
+                                new[] { ("Node", 1.3), ("Prices P:C", 1.2), ("Pressure", 0.8), ("Top cause", 1.2), ("Unmet need", 1.0) },
+                                nameof(WorkspaceViewModel.NodePressureReports),
+                                static row => new[] { row.Node, row.CommodityPrices, row.PressureScore, row.TopCause, row.UnmetNeed })
+                        }
+                    }
+                }
+            }
+        };
+        Grid.SetRow(exports, 1);
+        Grid.SetRow(body.Children[2], 2);
+
+        return body;
     }
 
     private Control BuildOsmDownloadPanel(WorkspaceViewModel viewModel)
@@ -3165,34 +3860,40 @@ public sealed class ShellWindow : Window
         var mapCanvas = new GraphCanvasControl
         {
             ViewModel = viewModel,
+            RenderModeOverride = VisualisationMode.Map,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch
         };
 
         var rightPanel = BuildDashboardPanel(
-            new StackPanel
+            new Expander
             {
-                Spacing = 10,
-                Children =
+                Header = "Import options",
+                IsExpanded = true,
+                Content = new StackPanel
                 {
-                    BuildSectionTitle("Import from OpenStreetMap", "Pan and zoom the map, then drag to select an area."),
-                    BuildReadOnlyRow("West", nameof(WorkspaceViewModel.OsmWestText)),
-                    BuildReadOnlyRow("South", nameof(WorkspaceViewModel.OsmSouthText)),
-                    BuildReadOnlyRow("East", nameof(WorkspaceViewModel.OsmEastText)),
-                    BuildReadOnlyRow("North", nameof(WorkspaceViewModel.OsmNorthText)),
-                    BuildReadOnlyRow("Selected area", nameof(WorkspaceViewModel.OsmSelectedAreaText)),
-                    BuildReadOnlyRow("Tile estimate", nameof(WorkspaceViewModel.OsmTileCountText)),
-                    BuildReadOnlyRow("Validation", nameof(WorkspaceViewModel.OsmValidationMessage)),
-                    BuildLabeledComboBox("Nodes to import", nameof(WorkspaceViewModel.OsmNodeImportPercentagePresets), nameof(WorkspaceViewModel.OsmNodeImportPercentage)),
-                    new StackPanel
+                    Spacing = 10,
+                    Children =
                     {
-                        Orientation = Orientation.Horizontal,
-                        Spacing = 8,
-                        Children =
+                        BuildSectionTitle("Import from OpenStreetMap", "Pan and zoom the map, then drag to select an area."),
+                        BuildReadOnlyRow("West", nameof(WorkspaceViewModel.OsmWestText)),
+                        BuildReadOnlyRow("South", nameof(WorkspaceViewModel.OsmSouthText)),
+                        BuildReadOnlyRow("East", nameof(WorkspaceViewModel.OsmEastText)),
+                        BuildReadOnlyRow("North", nameof(WorkspaceViewModel.OsmNorthText)),
+                        BuildReadOnlyRow("Selected area", nameof(WorkspaceViewModel.OsmSelectedAreaText)),
+                        BuildReadOnlyRow("Tile estimate", nameof(WorkspaceViewModel.OsmTileCountText)),
+                        BuildReadOnlyRow("Validation", nameof(WorkspaceViewModel.OsmValidationMessage)),
+                        BuildLabeledComboBox("Nodes to import", nameof(WorkspaceViewModel.OsmNodeImportPercentagePresets), nameof(WorkspaceViewModel.OsmNodeImportPercentage)),
+                        new StackPanel
                         {
-                            BuildButton("Import selected area", viewModel.ImportOsmSelectionCommand, isPrimary: true),
-                            BuildButton("Clear selection", viewModel.ClearOsmSelectionCommand),
-                            BuildButton("Cancel", viewModel.CancelOsmImportCommand)
+                            Orientation = Orientation.Horizontal,
+                            Spacing = 8,
+                            Children =
+                            {
+                                BuildButton("Import selected area", viewModel.ImportOsmSelectionCommand, isPrimary: true),
+                                BuildButton("Clear selection", viewModel.ClearOsmSelectionCommand),
+                                BuildButton("Cancel", viewModel.CancelOsmImportCommand)
+                            }
                         }
                     }
                 }
@@ -4248,6 +4949,7 @@ public sealed class ShellWindow : Window
         strip.MaxHeight = BottomStripMaxHeight;
         strip.HorizontalAlignment = HorizontalAlignment.Stretch;
         strip.VerticalAlignment = VerticalAlignment.Stretch;
+        dashboardStripHost = strip;
         return strip;
     }
 
@@ -5109,8 +5811,8 @@ public sealed class ShellWindow : Window
                     BuildLabeledRow("Agent filter",
                         new ComboBox
                         {
-                            [!ItemsControl.ItemsSourceProperty] = new Binding("AgentLog.AvailableAgentIds"),
-                            [!SelectingItemsControl.SelectedItemProperty] = new Binding("AgentLog.SelectedAgentId", BindingMode.TwoWay)
+                            [!ItemsControl.ItemsSourceProperty] = new Binding("AgentLog.AvailableAgents"),
+                            [!SelectingItemsControl.SelectedItemProperty] = new Binding("AgentLog.SelectedAgent", BindingMode.TwoWay)
                         }),
                     BuildLabeledRow("Min tick", new NumericUpDown { Minimum = 0, Maximum = 100000, [!NumericUpDown.ValueProperty] = new Binding("AgentLog.MinTick", BindingMode.TwoWay) }),
                     BuildLabeledRow("Max tick", new NumericUpDown { Minimum = 0, Maximum = 100000, [!NumericUpDown.ValueProperty] = new Binding("AgentLog.MaxTick", BindingMode.TwoWay) }),
@@ -5689,6 +6391,13 @@ public sealed class ShellWindow : Window
         if (shellWorkspaceMode == ShellWorkspaceMode.TrafficTypes)
         {
             ExitTrafficTypeWorkspace();
+            e.Handled = true;
+            return;
+        }
+
+        if (viewModel.ActiveToolMode != GraphToolMode.Select)
+        {
+            viewModel.SelectToolCommand.Execute(null);
             e.Handled = true;
             return;
         }
@@ -6726,7 +7435,7 @@ public sealed class ShellWindow : Window
         return button;
     }
 
-    private static Button BuildIconRailButton(string pathData, string toolTip, ICommand command, bool isToolButton = false, bool isDanger = false)
+    private static Button BuildIconRailButton(string pathData, string toolTip, ICommand command, string? shortcutText = null, bool isToolButton = false, bool isDanger = false)
     {
         var icon = new PathIcon
         {
@@ -6751,7 +7460,7 @@ public sealed class ShellWindow : Window
             button.Classes.Add("danger");
         }
         AutomationProperties.SetName(button, toolTip);
-        ToolTip.SetTip(button, toolTip);
+        ToolTip.SetTip(button, string.IsNullOrWhiteSpace(shortcutText) ? toolTip : $"{toolTip} ({shortcutText})");
         return button;
     }
 
@@ -6761,6 +7470,14 @@ public sealed class ShellWindow : Window
         label.Classes.Add("icon-rail-group-label");
         return label;
     }
+
+    private static Control BuildRailSeparator() =>
+        new Border
+        {
+            Height = 1,
+            Margin = new Thickness(8, 6),
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder)
+        };
 
     private static void ApplyToolButtonState(Button button, bool isActive)
     {

@@ -1,10 +1,35 @@
 <UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-  <StackPanel Spacing="8">
-    <TextBlock Text="Facilities" />
-    <TextBlock Text="Budget" />
-    <TextBlock Text="Reachable nodes" />
-    <TextBlock Text="Uncovered nodes" />
-    <TextBlock Text="Overlap" />
-  </StackPanel>
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:MedWNetworkSim.UI">
+  <Grid ColumnDefinitions="*,410" ColumnSpacing="12" Margin="12">
+    <ui:GraphCanvasControl ViewModel="{Binding}" />
+    <ScrollViewer Grid.Column="1">
+      <StackPanel Spacing="10">
+        <TextBlock Text="Facility Planning" FontWeight="Bold" />
+        <ToggleButton Content="Coverage selection"
+                      Command="{Binding ToggleFacilityPlanningModeCommand}"
+                      IsChecked="{Binding IsFacilityPlanningMode, Mode=OneWay}" />
+        <UniformGrid Columns="2">
+          <TextBlock Text="{Binding ReachableNodeCountText}" />
+          <TextBlock Text="{Binding UncoveredNodeCountText}" />
+          <TextBlock Text="{Binding OverlapNodeCountText}" />
+          <TextBlock Text="{Binding CoveragePercentageText}" />
+        </UniformGrid>
+        <TextBlock Text="{Binding FacilitySelectionSummary}" TextWrapping="Wrap" />
+        <TextBox Text="{Binding IsochroneBudget}" Watermark="Default max time" />
+        <ListBox ItemsSource="{Binding SelectedFacilityNodes}"
+                 SelectedItem="{Binding SelectedFacilityNodeItem}" />
+        <WrapPanel>
+          <Button Content="Run analysis" Command="{Binding RunMultiOriginIsochroneCommand}" />
+          <Button Content="Add selected" Command="{Binding AddFacilityOriginCommand}" />
+          <Button Content="Remove selected" Command="{Binding RemoveFacilityOriginCommand}" />
+          <Button Content="Clear" Command="{Binding ClearFacilityOriginsCommand}" />
+        </WrapPanel>
+        <TextBlock Text="Uncovered" FontWeight="Bold" />
+        <ItemsControl ItemsSource="{Binding UncoveredPlanningItems}" />
+        <TextBlock Text="Facility comparison" FontWeight="Bold" />
+        <ItemsControl ItemsSource="{Binding FacilityComparisonRows}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
 </UserControl>

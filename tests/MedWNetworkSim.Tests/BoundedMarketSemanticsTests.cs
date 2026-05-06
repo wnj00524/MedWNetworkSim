@@ -93,6 +93,78 @@ public sealed class BoundedMarketSemanticsTests
         Assert.Contains("scaled", outcomes.Single().Reason, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Logistics_CapacityReduction_AppliesWhenAboveCurrentRoutedFlow()
+    {
+        var network = BuildSupplyDemandNetwork(production: 200d, consumption: 200d, capacity: 100d);
+        var actor = BuildPlanner(cash: 50d);
+        var action = new SimulationActorAction
+        {
+            Id = "cap-reduce",
+            ActorId = actor.Id,
+            Kind = SimulationActorActionKind.AdjustEdgeCapacity,
+            TargetEdgeId = "edge",
+            TrafficType = "Food",
+            AbsoluteValue = 75d
+        };
+
+        var (updated, outcomes) = new SimulationActorActionApplier().Apply(
+            network,
+            [action],
+            new Dictionary<string, SimulationActorState>(StringComparer.OrdinalIgnoreCase) { [actor.Id] = actor },
+            new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase) { ["edge"] = 60d });
+
+        Assert.True(outcomes.Single().Applied);
+        Assert.Equal(75d, updated.Edges.Single().Capacity);
+        Assert.Equal(0d, action.Cost);
+        Assert.Contains("reduced", outcomes.Single().Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Logistics_CapacityReduction_DoesNotDropBelowCurrentRoutedFlow()
+    {
+        var network = BuildSupplyDemandNetwork(production: 200d, consumption: 200d, capacity: 100d);
+        var actor = BuildPlanner(cash: 50d);
+        var action = new SimulationActorAction
+        {
+            Id = "cap-over-reduce",
+            ActorId = actor.Id,
+            Kind = SimulationActorActionKind.AdjustEdgeCapacity,
+            TargetEdgeId = "edge",
+            TrafficType = "Food",
+            AbsoluteValue = 50d
+        };
+
+        var (updated, outcomes) = new SimulationActorActionApplier().Apply(
+            network,
+            [action],
+            new Dictionary<string, SimulationActorState>(StringComparer.OrdinalIgnoreCase) { [actor.Id] = actor },
+            new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase) { ["edge"] = 60d });
+
+        Assert.False(outcomes.Single().Applied);
+        Assert.Equal(100d, updated.Edges.Single().Capacity);
+        Assert.Contains("routed flow", outcomes.Single().Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuyTraffic_RouteSelectionMinimisesProducerPricePlusTransportCost()
+    {
+        var network = BuildLandedCostRouteNetwork();
+        var method = typeof(SimulationActorCoordinator).GetMethod(
+            "FindCheapestRouteWithResidualCapacity",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var remainingCapacityByEdgeId = network.Edges.ToDictionary(edge => edge.Id, edge => edge.Capacity ?? double.PositiveInfinity, StringComparer.OrdinalIgnoreCase);
+        var route = ((double ResidualCapacity, double RouteCost, double LandedUnitPrice, IReadOnlyList<string> PathEdgeIds))method.Invoke(
+            null,
+            [network, "consumer", "Food", remainingCapacityByEdgeId])!;
+
+        Assert.Equal(["expensive-direct"], route.PathEdgeIds);
+        Assert.Equal(0d, route.RouteCost);
+        Assert.Equal(10d, route.LandedUnitPrice);
+    }
+
     private static SimulationActorState BuildPlanner(double cash) => new()
     {
         Id = "planner",
@@ -109,6 +181,27 @@ public sealed class BoundedMarketSemanticsTests
             ]
         }
     };
+
+    private static NetworkModel BuildLandedCostRouteNetwork()
+    {
+        var layerId = Guid.NewGuid();
+        return new NetworkModel
+        {
+            Layers = [new NetworkLayerModel { Id = layerId, Name = "Layer", Type = NetworkLayerType.Physical }],
+            TrafficTypes = [new TrafficTypeDefinition { Name = "Food", RoutingPreference = RoutingPreference.Cost, AllocationMode = AllocationMode.GreedyBestRoute, DefaultUnitSalePrice = 5d }],
+            Nodes =
+            [
+                new NodeModel { Id = "cheap-producer", Name = "Cheap Producer", LayerId = layerId, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Food", Production = 100d, UnitPrice = 1d }] },
+                new NodeModel { Id = "expensive-producer", Name = "Expensive Producer", LayerId = layerId, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Food", Production = 100d, UnitPrice = 10d }] },
+                new NodeModel { Id = "consumer", Name = "Consumer", LayerId = layerId, TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Food", Consumption = 100d }] }
+            ],
+            Edges =
+            [
+                new EdgeModel { Id = "cheap-long-haul", FromNodeId = "cheap-producer", ToNodeId = "consumer", LayerId = layerId, Capacity = 100d, Cost = 100d, Time = 1d },
+                new EdgeModel { Id = "expensive-direct", FromNodeId = "expensive-producer", ToNodeId = "consumer", LayerId = layerId, Capacity = 100d, Cost = 0d, Time = 1d }
+            ]
+        };
+    }
 
     private static NetworkModel BuildSupplyDemandNetwork(double production, double consumption, double capacity)
     {

@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using MedWNetworkSim.App.Models;
@@ -11,6 +12,7 @@ using MedWNetworkSim.UI;
 using System.Globalization;
 using System.Reflection;
 
+EnsureAvaloniaPlatform();
 ScenarioCoordinateTransformPreservesLogicalInput();
 ScenarioCoordinateTransformClampsPointerOutsideCanvas();
 ScenarioAddNodePlacementMatchesClickedWorldPosition();
@@ -69,6 +71,18 @@ ScenarioFacilityPlanning_ChangingMaxTravelTimeRecomputesCoverage();
 ScenarioFacilityPlanning_ComputeIsochroneStillWorks();
 
 Console.WriteLine("Avalonia verification passed.");
+
+static void EnsureAvaloniaPlatform()
+{
+    if (Application.Current is not null)
+    {
+        return;
+    }
+
+    AppBuilder.Configure<Application>()
+        .UsePlatformDetect()
+        .SetupWithoutStarting();
+}
 
 static void ScenarioCoordinateTransformPreservesLogicalInput()
 {
@@ -1053,15 +1067,14 @@ static void ScenarioRouteEditorDeleteReturnsToNormalWorkspace()
 static void ScenarioTrafficTypesRailButtonOpensAndClosesTrafficWorkspace()
 {
     var shell = new ShellWindow();
-    var trafficButton = shell
-        .GetVisualDescendants()
+    var trafficButton = EnumerateControls(shell.Content)
         .OfType<Button>()
-        .FirstOrDefault(button => NormalizeButtonLabel(button.Content) == "Traffic Types");
+        .FirstOrDefault(button => AutomationProperties.GetName(button) == "Traffic Types");
 
     AssertTrue(trafficButton is not null, "traffic types rail button exists");
     AssertTrue(trafficButton!.Focusable, "traffic types rail button is keyboard focusable");
     AssertTextEqual(
-        "Edit traffic types used by nodes and routes",
+        "Traffic Types",
         ToolTip.GetTip(trafficButton)?.ToString() ?? string.Empty,
         "traffic types rail button tooltip");
 
@@ -1074,8 +1087,7 @@ static void ScenarioTrafficTypesRailButtonOpensAndClosesTrafficWorkspace()
     AssertTrue(standardHost?.IsVisible == false, "traffic types workspace hides standard workspace");
     AssertTextEqual("TrafficTypes", shellWorkspaceMode?.ToString() ?? string.Empty, "traffic types workspace mode");
 
-    var backButton = trafficHost!
-        .GetVisualDescendants()
+    var backButton = EnumerateControls(trafficHost!)
         .OfType<Button>()
         .FirstOrDefault(button => NormalizeButtonLabel(button.Content) == "Back to Network");
     AssertTrue(backButton is not null, "traffic types workspace back button exists");
@@ -1830,6 +1842,41 @@ static string NormalizeButtonLabel(object? content)
 {
     var text = content?.ToString() ?? string.Empty;
     return text.StartsWith("● ", StringComparison.Ordinal) ? text[2..].TrimStart() : text;
+}
+
+static IEnumerable<Control> EnumerateControls(object? root)
+{
+    if (root is not Control control)
+    {
+        yield break;
+    }
+
+    yield return control;
+
+    switch (control)
+    {
+        case ContentControl contentControl:
+            foreach (var descendant in EnumerateControls(contentControl.Content))
+            {
+                yield return descendant;
+            }
+            break;
+        case Decorator decorator:
+            foreach (var descendant in EnumerateControls(decorator.Child))
+            {
+                yield return descendant;
+            }
+            break;
+        case Panel panel:
+            foreach (var child in panel.Children)
+            {
+                foreach (var descendant in EnumerateControls(child))
+                {
+                    yield return descendant;
+                }
+            }
+            break;
+    }
 }
 
 static T? GetPrivateField<T>(object instance, string fieldName) where T : class

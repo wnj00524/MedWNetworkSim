@@ -1573,16 +1573,52 @@ public sealed class SimulationActorMetricsViewModel
     public string CooperationIndex { get; init; } = string.Empty;
 }
 
+public sealed class AgentLogAgentFilterItem
+{
+    public AgentLogAgentFilterItem(Guid? agentId, string name)
+    {
+        AgentId = agentId;
+        Name = string.IsNullOrWhiteSpace(name) ? "Unnamed agent" : name.Trim();
+    }
+
+    public Guid? AgentId { get; }
+    public string Name { get; }
+
+    public override string ToString() => Name;
+}
+
 public sealed class AgentLogViewModel : ObservableObject
 {
     private Guid? selectedAgentId;
+    private AgentLogAgentFilterItem? selectedAgent;
     private int? minTick;
     private int? maxTick;
+    private readonly Func<AgentActionLogEntry, string> resolveAgentName;
     private readonly ObservableCollection<AgentActionLogEntry> allEntries = [];
-    private readonly ObservableCollection<Guid> availableAgentIds = [];
+    private readonly ObservableCollection<AgentLogAgentFilterItem> availableAgents = [];
+
+    public AgentLogViewModel(Func<AgentActionLogEntry, string>? resolveAgentName = null)
+    {
+        this.resolveAgentName = resolveAgentName ?? ResolveDefaultAgentName;
+        SelectedAgent = new AgentLogAgentFilterItem(null, "All agents");
+    }
 
     public ObservableCollection<AgentActionLogEntry> Entries { get; } = [];
-    public ObservableCollection<Guid> AvailableAgentIds => availableAgentIds;
+    public ObservableCollection<AgentLogAgentFilterItem> AvailableAgents => availableAgents;
+
+    public AgentLogAgentFilterItem? SelectedAgent
+    {
+        get => selectedAgent;
+        set
+        {
+            if (SetProperty(ref selectedAgent, value))
+            {
+                selectedAgentId = value?.AgentId;
+                Raise(nameof(SelectedAgentId));
+                ApplyFilters();
+            }
+        }
+    }
 
     public Guid? SelectedAgentId
     {
@@ -1591,6 +1627,8 @@ public sealed class AgentLogViewModel : ObservableObject
         {
             if (SetProperty(ref selectedAgentId, value))
             {
+                selectedAgent = availableAgents.FirstOrDefault(agent => agent.AgentId == value);
+                Raise(nameof(SelectedAgent));
                 ApplyFilters();
             }
         }
@@ -1628,12 +1666,22 @@ public sealed class AgentLogViewModel : ObservableObject
             allEntries.Add(entry);
         }
 
-        availableAgentIds.Clear();
-        foreach (var agentId in allEntries.Select(e => e.AgentId).Distinct().OrderBy(id => id))
+        var selectedId = SelectedAgentId;
+        availableAgents.Clear();
+        availableAgents.Add(new AgentLogAgentFilterItem(null, "All agents"));
+        foreach (var agent in allEntries
+            .GroupBy(e => e.AgentId)
+            .Select(group => new AgentLogAgentFilterItem(group.Key, resolveAgentName(group.First())))
+            .OrderBy(agent => agent.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(agent => agent.AgentId))
         {
-            availableAgentIds.Add(agentId);
+            availableAgents.Add(agent);
         }
 
+        selectedAgent = availableAgents.FirstOrDefault(agent => agent.AgentId == selectedId) ?? availableAgents[0];
+        selectedAgentId = selectedAgent.AgentId;
+        Raise(nameof(SelectedAgent));
+        Raise(nameof(SelectedAgentId));
         ApplyFilters();
     }
 
@@ -1649,6 +1697,16 @@ public sealed class AgentLogViewModel : ObservableObject
         {
             Entries.Add(entry);
         }
+    }
+
+    private static string ResolveDefaultAgentName(AgentActionLogEntry entry)
+    {
+        if (!string.IsNullOrWhiteSpace(entry.AgentName))
+        {
+            return entry.AgentName;
+        }
+
+        return !string.IsNullOrWhiteSpace(entry.ActorId) ? entry.ActorId : entry.AgentId.ToString();
     }
 }
 
@@ -2086,7 +2144,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ActorDecisions = [];
         ActorActionOutcomes = [];
         ActorMetrics = [];
-        AgentLog = new AgentLogViewModel();
+        AgentLog = new AgentLogViewModel(ResolveAgentLogAgentName);
         SimulationActors.CollectionChanged += (_, _) => RefreshAgentViewModels();
         TopIssues.CollectionChanged += (_, _) => Raise(nameof(TopIssueEmptyStateText));
         TopIssueAdvisories.CollectionChanged += (_, _) => Raise(nameof(HasTopIssueAdvisories));
@@ -2112,9 +2170,15 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         SetNetworkViewCommand = new RelayCommand(() => ActiveView = AppView.Network);
         SetMapViewCommand = new RelayCommand(() => ActiveView = AppView.Map);
         SetSankeyViewCommand = new RelayCommand(() => ActiveView = AppView.Sankey);
-        SetOsmImportViewCommand = new RelayCommand(EnterOsmImportView);
+        SetOsmImportViewCommand = new RelayCommand(EnterOsmImportWorkspace);
         SetAgentsViewCommand = new RelayCommand(() => ActiveView = AppView.Agents);
         SetAnalyticsViewCommand = new RelayCommand(() => ActiveView = AppView.Analytics);
+        SetFacilitiesViewCommand = new RelayCommand(() =>
+        {
+            SetFacilityPlanningMode(true);
+            ActiveView = AppView.Facilities;
+        });
+        SetReportsViewCommand = new RelayCommand(() => ActiveView = AppView.Reports);
         SetGraphVisualisationCommand = new RelayCommand(() => ActiveView = AppView.Network);
         SetSankeyVisualisationCommand = new RelayCommand(() => ActiveView = AppView.Sankey);
         SetMapVisualisationCommand = new RelayCommand(() => ActiveView = AppView.Map);
@@ -2301,6 +2365,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public ICommand SetOsmImportViewCommand { get; }
     public ICommand SetAgentsViewCommand { get; }
     public ICommand SetAnalyticsViewCommand { get; }
+    public ICommand SetFacilitiesViewCommand { get; }
+    public ICommand SetReportsViewCommand { get; }
     public RelayCommand SetGraphVisualisationCommand { get; }
     public RelayCommand SetSankeyVisualisationCommand { get; }
     public RelayCommand SetMapVisualisationCommand { get; }
@@ -2898,12 +2964,17 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             {
                 AppView.Map or AppView.OSMImport => VisualisationMode.Map,
                 AppView.Sankey => VisualisationMode.Sankey,
-                AppView.Analytics => VisualisationMode.Analytics,
+                AppView.Analytics or AppView.Reports => VisualisationMode.Analytics,
                 _ => VisualisationMode.Graph
             };
             if (CurrentWorkspaceMode == WorkspaceMode.OsmImport && value != AppView.OSMImport)
             {
                 CurrentWorkspaceMode = WorkspaceMode.Normal;
+            }
+
+            if (value != AppView.Facilities && isFacilityPlanningMode)
+            {
+                SetFacilityPlanningMode(false);
             }
 
             Raise(nameof(IsNetworkView));
@@ -2912,6 +2983,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             Raise(nameof(IsOsmImportView));
             Raise(nameof(IsAgentsView));
             Raise(nameof(IsAnalyticsView));
+            Raise(nameof(IsFacilitiesView));
+            Raise(nameof(IsReportsView));
             NotifyVisualChanged();
         }
     }
@@ -2924,6 +2997,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public bool IsOsmImportView => ActiveView == AppView.OSMImport;
     public bool IsAgentsView => ActiveView == AppView.Agents;
     public bool IsAnalyticsView => ActiveView == AppView.Analytics;
+    public bool IsFacilitiesView => ActiveView == AppView.Facilities;
+    public bool IsReportsView => ActiveView == AppView.Reports;
     public WorkspaceMode CurrentWorkspaceMode
     {
         get => workspaceMode;
@@ -3886,6 +3961,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         IsOsmAreaSelectionEnabled = false;
         CurrentWorkspaceMode = WorkspaceMode.Normal;
+        if (ActiveView == AppView.OSMImport)
+        {
+            ActiveView = AppView.Map;
+        }
         ToolStatusText = "OSM import canceled.";
     }
 

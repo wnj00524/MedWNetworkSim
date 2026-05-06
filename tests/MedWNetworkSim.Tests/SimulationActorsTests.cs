@@ -1180,6 +1180,24 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
+    public void AgentLogFilter_ListsReadableAgentNames()
+    {
+        var vm = BuildWorkspaceViewModelWithNetwork();
+        vm.AddFirmActorCommand.Execute(null);
+
+        vm.RunActorStepCommand.Execute(null);
+
+        Assert.Contains(vm.AgentLog.AvailableAgents, agent => agent.Name == "All agents");
+        var firmFilter = Assert.Single(vm.AgentLog.AvailableAgents, agent => agent.Name == "Firm 001");
+        Assert.NotEqual(firmFilter.AgentId.ToString(), firmFilter.ToString());
+
+        vm.AgentLog.SelectedAgent = firmFilter;
+
+        Assert.NotEmpty(vm.AgentLog.Entries);
+        Assert.All(vm.AgentLog.Entries, entry => Assert.Equal(firmFilter.AgentId, entry.AgentId));
+    }
+
+    [Fact]
     public void MainTimelineStep_RunsAgentsBeforeAdvancingPeriod()
     {
         var vm = BuildWorkspaceViewModelWithNetwork();

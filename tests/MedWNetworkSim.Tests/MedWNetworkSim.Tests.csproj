@@ -12,5 +12,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/MedWNetworkSim.Presentation/MedWNetworkSim.Presentation.csproj" />
+    <ProjectReference Include="../../src/MedWNetworkSim.UI/MedWNetworkSim.UI.csproj" />
   </ItemGroup>
 </Project>

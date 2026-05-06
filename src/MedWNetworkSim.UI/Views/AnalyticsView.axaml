@@ -1,15 +1,34 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="clr-namespace:MedWNetworkSim.UI">
-  <TabControl>
-    <TabItem Header="Sankey">
-      <ui:GraphCanvasControl ViewModel="{Binding}" />
-    </TabItem>
-    <TabItem Header="Demand/Flow charts">
-      <DataGrid ItemsSource="{Binding FlowSeries}" AutoGenerateColumns="True" IsReadOnly="True" />
-    </TabItem>
-    <TabItem Header="Node pressure">
-      <DataGrid ItemsSource="{Binding NodePressureSeries}" AutoGenerateColumns="True" IsReadOnly="True" />
-    </TabItem>
-  </TabControl>
+  <Grid RowDefinitions="Auto,*" RowSpacing="12" Margin="12">
+    <WrapPanel>
+      <ComboBox MinWidth="180"
+                ItemsSource="{Binding TrafficTypeNameOptions}"
+                SelectedItem="{Binding VisualisationState.ActiveTrafficTypeFilter}" />
+      <CheckBox Content="Show unmet demand"
+                IsChecked="{Binding VisualisationState.ShowUnmetDemand}" />
+      <CheckBox Content="Show capacity utilisation"
+                IsChecked="{Binding VisualisationState.ShowCapacityUtilisation}" />
+      <CheckBox Content="Collapse minor flows"
+                IsChecked="{Binding VisualisationState.CollapseMinorFlows}" />
+    </WrapPanel>
+    <Grid Grid.Row="1" ColumnDefinitions="*,330" ColumnSpacing="12">
+      <Grid RowDefinitions="1.1*,0.9*" RowSpacing="10">
+        <ui:GraphCanvasControl ViewModel="{Binding}" RenderModeOverride="Sankey" />
+        <ui:AnalyticsCanvasControl Grid.Row="1" ViewModel="{Binding}" />
+      </Grid>
+      <ScrollViewer Grid.Column="1">
+        <StackPanel Spacing="10">
+          <TextBlock Text="Top Issues" FontWeight="Bold" />
+          <ListBox ItemsSource="{Binding TopIssues}"
+                   SelectedItem="{Binding SelectedTopIssue}" />
+          <TextBlock Text="Node Pressure" FontWeight="Bold" />
+          <ItemsControl ItemsSource="{Binding NodePressureReports}" />
+          <TextBlock Text="Route Pressure" FontWeight="Bold" />
+          <ItemsControl ItemsSource="{Binding RouteReports}" />
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </Grid>
 </UserControl>

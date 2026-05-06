@@ -7,5 +7,7 @@ public enum AppView
     Sankey,
     OSMImport,
     Agents,
-    Analytics
+    Analytics,
+    Facilities,
+    Reports
 }

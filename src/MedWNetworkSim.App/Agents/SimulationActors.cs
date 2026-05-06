@@ -114,25 +114,69 @@ public sealed class FirmSimulationActor : SimulationActorBase
 
                 if (profile.Production > 0d &&
                     deliveredRatio >= 0.85d &&
-                    expectedMargin >= 0d &&
-                    HasSpendingCapacity &&
-                    IsPermittedByPermissions(SimulationActorActionKind.AdjustProduction, profile.TrafficType, node.Id))
+                    HasSpendingCapacity)
                 {
                     var delta = Math.Max(1d, profile.Production * 0.1d);
                     var cost = delta * 0.25d;
-                    actions.Add(new SimulationActorAction
+                    var actionKind = ResolveMarketAction(
+                        SimulationActorActionKind.SellTraffic,
+                        SimulationActorActionKind.AdjustProduction,
+                        profile.TrafficType,
+                        node.Id);
+                    if (actionKind == SimulationActorActionKind.SellTraffic && expectedMargin <= 0d)
                     {
-                        Id = $"{State.Id}:prod:{context.Tick}:{node.Id}:{profile.TrafficType}",
-                        ActorId = State.Id,
-                        Kind = SimulationActorActionKind.AdjustProduction,
-                        TargetNodeId = node.Id,
-                        TrafficType = profile.TrafficType,
-                        DeltaValue = delta,
-                        Cost = cost,
-                        Reason = $"Delivered demand is strong with estimated unit margin {expectedMargin:0.##}.",
-                        ExpectedEffect = "Increase delivered quantity and profit.",
-                        IsPolicyAction = false
-                    });
+                        actionKind = IsPermittedByPermissions(SimulationActorActionKind.AdjustProduction, profile.TrafficType, node.Id)
+                            ? SimulationActorActionKind.AdjustProduction
+                            : null;
+                    }
+
+                    if (actionKind is not null)
+                    {
+                        actions.Add(new SimulationActorAction
+                        {
+                            Id = $"{State.Id}:prod:{context.Tick}:{node.Id}:{profile.TrafficType}",
+                            ActorId = State.Id,
+                            Kind = actionKind.Value,
+                            TargetNodeId = node.Id,
+                            TrafficType = profile.TrafficType,
+                            DeltaValue = delta,
+                            Cost = cost,
+                            Reason = actionKind.Value == SimulationActorActionKind.SellTraffic
+                                ? "Offer additional traffic for sale because delivered demand and unit margin are positive."
+                                : $"Delivered demand is strong with estimated unit margin {expectedMargin:0.##}.",
+                            ExpectedEffect = "Increase delivered quantity and profit.",
+                            IsPolicyAction = false
+                        });
+                    }
+                }
+
+                if (profile.Consumption > 0d &&
+                    unmetRatio > 0d &&
+                    HasSpendingCapacity)
+                {
+                    var actionKind = ResolveMarketAction(
+                        SimulationActorActionKind.BuyTraffic,
+                        SimulationActorActionKind.AdjustConsumption,
+                        profile.TrafficType,
+                        node.Id);
+                    if (actionKind is not null)
+                    {
+                        actions.Add(new SimulationActorAction
+                        {
+                            Id = $"{State.Id}:buy:{context.Tick}:{node.Id}:{profile.TrafficType}",
+                            ActorId = State.Id,
+                            Kind = actionKind.Value,
+                            TargetNodeId = node.Id,
+                            TrafficType = profile.TrafficType,
+                            DeltaValue = Math.Max(1d, outcome.UnmetDemand * 0.1d),
+                            Cost = 0d,
+                            Reason = actionKind.Value == SimulationActorActionKind.BuyTraffic
+                                ? "Buy/input traffic because it is required for profitable downstream production or unmet demand exists."
+                                : "Unmet demand exists for this controlled consumer profile.",
+                            ExpectedEffect = "Increase demand-side market intent for this traffic.",
+                            IsPolicyAction = false
+                        });
+                    }
                 }
 
                 if (unmetRatio > 0.2d &&
@@ -259,6 +303,22 @@ public sealed class FirmSimulationActor : SimulationActorBase
             Explanation = "Firm actor evaluated demand, delivery, route constraints, and profit levers.",
             Evidence = context.CurrentInsights.Take(3).Select(i => i.Summary).ToList()
         };
+    }
+
+    private SimulationActorActionKind? ResolveMarketAction(
+        SimulationActorActionKind semanticAction,
+        SimulationActorActionKind fallbackAction,
+        string trafficType,
+        string nodeId)
+    {
+        if (IsPermittedByPermissions(semanticAction, trafficType, nodeId))
+        {
+            return semanticAction;
+        }
+
+        return IsPermittedByPermissions(fallbackAction, trafficType, nodeId)
+            ? fallbackAction
+            : null;
     }
 
     private static double EstimateMargin(NetworkModel network, NodeTrafficProfile profile, TrafficSimulationOutcome outcome)

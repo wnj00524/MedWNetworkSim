@@ -126,7 +126,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
 
                 if (profile.Production > 0d &&
                     (shouldHoldOrGrowDeliveredProduction || (demandFillRatio >= 0.85d && !hasMaterialOverproduction)) &&
-                    expectedMargin >= 0d &&
+                    expectedMargin > 0d &&
                     HasSpendingCapacity)
                 {
                     var delta = Math.Max(1d, profile.Production * 0.1d);
@@ -339,9 +339,9 @@ public sealed class FirmSimulationActor : SimulationActorBase
         }
 
         var definition = network.TrafficTypes.FirstOrDefault(definition => Comparer.Equals(definition.Name, profile.TrafficType));
-        var unitPrice = ResolveOfferedUnitPrice(network, profile);
         var productionCost = profile.ProductionCostPerUnit ?? Math.Max(0d, definition?.DefaultUnitProductionCost ?? 0d);
         var routeCost = EstimateCheapestOutboundRouteCost(network, node.Id, profile.TrafficType);
+        var unitPrice = ResolveOfferedUnitPrice(network, profile, productionCost, routeCost);
         return unitPrice - productionCost - routeCost;
     }
 
@@ -365,14 +365,16 @@ public sealed class FirmSimulationActor : SimulationActorBase
                     continue;
                 }
 
-                var offeredPrice = ResolveOfferedUnitPrice(context.CurrentNetwork, profile);
                 var routeCost = EstimateCheapestOutboundRouteCost(context.CurrentNetwork, node.Id, profile.TrafficType);
                 var definition = context.CurrentNetwork.TrafficTypes
                     .FirstOrDefault(definition => Comparer.Equals(definition.Name, profile.TrafficType));
                 var productionCost = profile.ProductionCostPerUnit ?? Math.Max(0d, definition?.DefaultUnitProductionCost ?? 0d);
-                if (routeCost > 0d && offeredPrice <= productionCost + routeCost)
+                var offeredPrice = ResolveOfferedUnitPrice(context.CurrentNetwork, profile, productionCost, routeCost);
+                var expectedMargin = offeredPrice - productionCost - routeCost;
+                if (routeCost > 0d && expectedMargin <= 0d)
                 {
-                    return $"Buyer demand exists, but offered price/premium is {offeredPrice:0.##} and route cost is {routeCost:0.##}, so supplier expansion is not profitable.";
+                    var buyerPremium = ResolveBuyerPremium(context.CurrentNetwork, profile.TrafficType);
+                    return $"Buyer demand exists, but offered premium is {buyerPremium:0.##} and delivered-cost sale price is {offeredPrice:0.##}, so supplier expansion is not profitable.";
                 }
             }
         }
@@ -380,21 +382,26 @@ public sealed class FirmSimulationActor : SimulationActorBase
         return "No profitable action available this tick; check permissions, consumption profiles, available supply, buyer price signals, and route costs.";
     }
 
-    private static double ResolveOfferedUnitPrice(NetworkModel network, NodeTrafficProfile producerProfile)
+    private static double ResolveOfferedUnitPrice(NetworkModel network, NodeTrafficProfile producerProfile, double productionCost, double routeCost)
     {
         var definition = network.TrafficTypes.FirstOrDefault(definition => Comparer.Equals(definition.Name, producerProfile.TrafficType));
         var producerPrice = producerProfile.UnitPrice > 0d
             ? producerProfile.UnitPrice
             : Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d);
-        var buyerPremium = network.Nodes
+        var deliveredCostFloor = Math.Max(0d, productionCost) + Math.Max(0d, routeCost);
+        return Math.Max(producerPrice, deliveredCostFloor) + ResolveBuyerPremium(network, producerProfile.TrafficType);
+    }
+
+    private static double ResolveBuyerPremium(NetworkModel network, string trafficType)
+    {
+        return network.Nodes
             .SelectMany(node => node.TrafficProfiles)
             .Where(profile =>
-                Comparer.Equals(profile.TrafficType, producerProfile.TrafficType) &&
+                Comparer.Equals(profile.TrafficType, trafficType) &&
                 profile.Consumption > 0d)
             .Select(profile => Math.Max(0d, profile.ConsumerPremiumPerUnit))
             .DefaultIfEmpty(0d)
             .Max();
-        return producerPrice + buyerPremium;
     }
 
     private static double EstimateCheapestOutboundRouteCost(NetworkModel network, string producerNodeId, string trafficType)

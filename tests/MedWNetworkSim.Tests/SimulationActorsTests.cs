@@ -126,6 +126,23 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
+    public void Firm_AutomaticSupplyIncrease_UsesDeliveredCostPlusPremiumForSellTrafficMargin()
+    {
+        var network = BuildBuyerSignalNetwork();
+        var producerProfile = network.Nodes.Single(node => node.Id == "node-1").TrafficProfiles.Single();
+        producerProfile.UnitPrice = 1d;
+        network.Nodes.Single(node => node.Id == "node-3").TrafficProfiles.Single().ConsumerPremiumPerUnit = 0.5d;
+        var coordinator = new SimulationActorCoordinator();
+        var actor = network.Actors.Single(actor => actor.Id == "actor-firm-001");
+
+        var decision = coordinator.PreviewActorActions(network, [actor]).Single();
+
+        var action = Assert.Single(decision.Actions);
+        Assert.Equal(SimulationActorActionKind.SellTraffic, action.Kind);
+        Assert.True(action.DeltaValue > 0d);
+    }
+
+    [Fact]
     public void Firm_AutomaticSupplyIncrease_DoesNotExpandLossMakingProduction()
     {
         var network = BuildHighThroughputNetwork();
@@ -312,7 +329,7 @@ public sealed class SimulationActorsTests
         var producerNoOp = Assert.Single(producerDecision.Actions);
         Assert.Equal(SimulationActorActionKind.NoOp, producerNoOp.Kind);
         Assert.Equal(
-            "Buyer demand exists, but offered price/premium is 0 and route cost is 2, so supplier expansion is not profitable.",
+            "Buyer demand exists, but offered premium is 0 and delivered-cost sale price is 2, so supplier expansion is not profitable.",
             producerNoOp.Reason);
 
         var nextStep = coordinator.StepActorsOnce(step.NetworkAfterStep, staleActors, tick: 1, previousDecisions: step.Decisions);

@@ -280,21 +280,15 @@ public sealed class TrafficEconomicSettlementService
         TrafficTypeDefinition? definition)
     {
         var consumerPremium = Math.Max(0d, consumerProfile?.ConsumerPremiumPerUnit ?? 0d);
-        if (producerProfile?.UnitPrice > Epsilon)
-        {
-            return producerProfile.UnitPrice + consumerPremium;
-        }
-
-        var defaultSalePrice = Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d);
-        if (defaultSalePrice > Epsilon)
-        {
-            return defaultSalePrice + consumerPremium;
-        }
-
-        var deliveredCost = allocation.DeliveredCostPerUnit > Epsilon
+        var declaredSalePrice = producerProfile?.UnitPrice > Epsilon
+            ? producerProfile.UnitPrice
+            : Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d);
+        var productionCost = ResolveBaseProductionCost(producerProfile, definition);
+        var transportCost = allocation.DeliveredCostPerUnit > Epsilon
             ? allocation.DeliveredCostPerUnit
-            : Math.Max(0d, allocation.SourceUnitCostPerUnit) + Math.Max(0d, allocation.TotalCost) + Math.Max(0d, allocation.BidCostPerUnit);
-        return deliveredCost + consumerPremium;
+            : Math.Max(0d, allocation.TotalCost) + Math.Max(0d, allocation.BidCostPerUnit);
+        var deliveredCostFloor = productionCost + transportCost;
+        return Math.Max(declaredSalePrice, deliveredCostFloor) + consumerPremium;
     }
 
     private static double ResolveBaseProductionCost(NodeTrafficProfile? producerProfile, TrafficTypeDefinition? definition)

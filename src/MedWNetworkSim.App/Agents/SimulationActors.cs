@@ -75,6 +75,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
         var actions = new List<SimulationActorAction>();
         var outcomes = context.CurrentSnapshot.TrafficOutcomes;
         var utilityBefore = EstimateUtility(State.Objective, outcomes);
+        var buyerPremiumByTrafficType = ResolveBuyerPremiums(context.CurrentNetwork);
 
         foreach (var node in context.CurrentNetwork.Nodes.OrderBy(node => node.Id, Comparer))
         {
@@ -122,7 +123,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
                 var hasOverproductionEvidence =
                     profile.Production > outcome.TotalDelivered + 0.01d &&
                     !hasSignificantUnmetDemand;
-                var expectedMargin = EstimateMargin(context.CurrentNetwork, node, profile, outcome);
+                var expectedMargin = EstimateMargin(context.CurrentNetwork, node, profile, outcome, buyerPremiumByTrafficType);
 
                 if (profile.Production > 0d &&
                     (shouldHoldOrGrowDeliveredProduction || (demandFillRatio >= 0.85d && !hasMaterialOverproduction)) &&
@@ -293,7 +294,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
 
         if (actions.Count == 0)
         {
-            actions.Add(BuildNoOp(BuildNoOpReason(context)));
+            actions.Add(BuildNoOp(BuildNoOpReason(context, buyerPremiumByTrafficType)));
         }
 
         return new SimulationActorDecision
@@ -331,21 +332,44 @@ public sealed class FirmSimulationActor : SimulationActorBase
             : null;
     }
 
-    private static double EstimateMargin(NetworkModel network, NodeModel node, NodeTrafficProfile profile, TrafficSimulationOutcome outcome)
+    private static double EstimateMargin(
+        NetworkModel network,
+        NodeModel node,
+        NodeTrafficProfile profile,
+        TrafficSimulationOutcome outcome,
+        IReadOnlyDictionary<string, double> buyerPremiumByTrafficType)
     {
+        var definition = network.TrafficTypes.FirstOrDefault(definition => Comparer.Equals(definition.Name, profile.TrafficType));
+        var productionCost = EstimateProductionCost(network, node, profile);
+
         if (outcome.TotalDelivered > 0d)
         {
-            return outcome.TotalProfit / outcome.TotalDelivered;
+            var producerAllocations = outcome.Allocations
+                .Where(allocation =>
+                    Comparer.Equals(allocation.ProducerNodeId, node.Id) &&
+                    Comparer.Equals(allocation.TrafficType, profile.TrafficType))
+                .ToList();
+
+            if (producerAllocations.Count > 0)
+            {
+                var deliveredQuantity = producerAllocations.Sum(allocation => allocation.Quantity);
+                if (deliveredQuantity > 0d)
+                {
+                    var revenuePerUnit = producerAllocations.Sum(allocation => allocation.SaleUnitPrice * allocation.Quantity) / deliveredQuantity;
+                    var transportCostPerUnit = producerAllocations.Sum(allocation => GetTransportCostPerUnit(allocation) * allocation.Quantity) / deliveredQuantity;
+                    return revenuePerUnit - productionCost - transportCostPerUnit;
+                }
+            }
         }
 
-        var definition = network.TrafficTypes.FirstOrDefault(definition => Comparer.Equals(definition.Name, profile.TrafficType));
-        var productionCost = profile.ProductionCostPerUnit ?? Math.Max(0d, definition?.DefaultUnitProductionCost ?? 0d);
         var routeCost = EstimateCheapestOutboundRouteCost(network, node.Id, profile.TrafficType);
-        var unitPrice = ResolveOfferedUnitPrice(network, profile, productionCost, routeCost);
+        var unitPrice = ResolveOfferedUnitPrice(profile, definition, productionCost, routeCost, buyerPremiumByTrafficType);
         return unitPrice - productionCost - routeCost;
     }
 
-    private string BuildNoOpReason(SimulationActorContext context)
+    private string BuildNoOpReason(
+        SimulationActorContext context,
+        IReadOnlyDictionary<string, double> buyerPremiumByTrafficType)
     {
         foreach (var node in context.CurrentNetwork.Nodes.OrderBy(node => node.Id, Comparer))
         {
@@ -368,12 +392,12 @@ public sealed class FirmSimulationActor : SimulationActorBase
                 var routeCost = EstimateCheapestOutboundRouteCost(context.CurrentNetwork, node.Id, profile.TrafficType);
                 var definition = context.CurrentNetwork.TrafficTypes
                     .FirstOrDefault(definition => Comparer.Equals(definition.Name, profile.TrafficType));
-                var productionCost = profile.ProductionCostPerUnit ?? Math.Max(0d, definition?.DefaultUnitProductionCost ?? 0d);
-                var offeredPrice = ResolveOfferedUnitPrice(context.CurrentNetwork, profile, productionCost, routeCost);
+                var productionCost = EstimateProductionCost(context.CurrentNetwork, node, profile);
+                var offeredPrice = ResolveOfferedUnitPrice(profile, definition, productionCost, routeCost, buyerPremiumByTrafficType);
                 var expectedMargin = offeredPrice - productionCost - routeCost;
                 if (routeCost > 0d && expectedMargin <= 0d)
                 {
-                    var buyerPremium = ResolveBuyerPremium(context.CurrentNetwork, profile.TrafficType);
+                    var buyerPremium = buyerPremiumByTrafficType.GetValueOrDefault(profile.TrafficType);
                     return $"Buyer demand exists, but offered premium is {buyerPremium:0.##} and delivered-cost sale price is {offeredPrice:0.##}, so supplier expansion is not profitable.";
                 }
             }
@@ -382,26 +406,105 @@ public sealed class FirmSimulationActor : SimulationActorBase
         return "No profitable action available this tick; check permissions, consumption profiles, available supply, buyer price signals, and route costs.";
     }
 
-    private static double ResolveOfferedUnitPrice(NetworkModel network, NodeTrafficProfile producerProfile, double productionCost, double routeCost)
+    private static double ResolveOfferedUnitPrice(
+        NodeTrafficProfile producerProfile,
+        TrafficTypeDefinition? definition,
+        double productionCost,
+        double routeCost,
+        IReadOnlyDictionary<string, double> buyerPremiumByTrafficType)
     {
-        var definition = network.TrafficTypes.FirstOrDefault(definition => Comparer.Equals(definition.Name, producerProfile.TrafficType));
         var producerPrice = producerProfile.UnitPrice > 0d
             ? producerProfile.UnitPrice
             : Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d);
         var deliveredCostFloor = Math.Max(0d, productionCost) + Math.Max(0d, routeCost);
-        return Math.Max(producerPrice, deliveredCostFloor) + ResolveBuyerPremium(network, producerProfile.TrafficType);
+        return Math.Max(producerPrice, deliveredCostFloor) + buyerPremiumByTrafficType.GetValueOrDefault(producerProfile.TrafficType);
     }
 
-    private static double ResolveBuyerPremium(NetworkModel network, string trafficType)
+    private static IReadOnlyDictionary<string, double> ResolveBuyerPremiums(NetworkModel network)
     {
         return network.Nodes
             .SelectMany(node => node.TrafficProfiles)
-            .Where(profile =>
-                Comparer.Equals(profile.TrafficType, trafficType) &&
-                profile.Consumption > 0d)
-            .Select(profile => Math.Max(0d, profile.ConsumerPremiumPerUnit))
-            .DefaultIfEmpty(0d)
-            .Max();
+            .Where(profile => !string.IsNullOrWhiteSpace(profile.TrafficType) && profile.Consumption > 0d)
+            .GroupBy(profile => profile.TrafficType, Comparer)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Max(profile => Math.Max(0d, profile.ConsumerPremiumPerUnit)),
+                Comparer);
+    }
+
+    private static double EstimateProductionCost(NetworkModel network, NodeModel node, NodeTrafficProfile profile)
+    {
+        var definitionsByTraffic = network.TrafficTypes
+            .Where(definition => !string.IsNullOrWhiteSpace(definition.Name))
+            .GroupBy(definition => definition.Name, Comparer)
+            .ToDictionary(group => group.Key, group => group.First(), Comparer);
+        return EstimateProductionCost(node, profile, definitionsByTraffic, []);
+    }
+
+    private static double EstimateProductionCost(
+        NodeModel node,
+        NodeTrafficProfile profile,
+        IReadOnlyDictionary<string, TrafficTypeDefinition> definitionsByTraffic,
+        ISet<string> visitingTrafficTypes)
+    {
+        var baseCost = ResolveBaseProductionCost(profile, definitionsByTraffic.GetValueOrDefault(profile.TrafficType));
+        if (profile.InputRequirements.Count == 0 || !visitingTrafficTypes.Add(profile.TrafficType))
+        {
+            return baseCost;
+        }
+
+        var inputCost = 0d;
+        foreach (var requirement in profile.InputRequirements)
+        {
+            var inputPerOutputUnit = ResolveInputPerOutputUnit(requirement);
+            if (inputPerOutputUnit <= 0d)
+            {
+                continue;
+            }
+
+            var inputProfile = node.TrafficProfiles
+                .FirstOrDefault(candidate => Comparer.Equals(candidate.TrafficType, requirement.TrafficType));
+            var inputUnitCost = inputProfile is null
+                ? ResolveBaseProductionCost(null, definitionsByTraffic.GetValueOrDefault(requirement.TrafficType))
+                : EstimateProductionCost(node, inputProfile, definitionsByTraffic, visitingTrafficTypes);
+
+            inputCost += inputUnitCost * inputPerOutputUnit;
+        }
+
+        visitingTrafficTypes.Remove(profile.TrafficType);
+        return baseCost + inputCost;
+    }
+
+    private static double ResolveBaseProductionCost(NodeTrafficProfile? profile, TrafficTypeDefinition? definition)
+    {
+        if (profile?.ProductionCostPerUnit is { } profileCost)
+        {
+            return Math.Max(0d, profileCost);
+        }
+
+        return Math.Max(0d, definition?.DefaultUnitProductionCost ?? 0d);
+    }
+
+    private static double ResolveInputPerOutputUnit(ProductionInputRequirement requirement)
+    {
+        if (requirement.QuantityPerOutputUnit is { } quantityPerOutputUnit)
+        {
+            return Math.Max(0d, quantityPerOutputUnit);
+        }
+
+        return requirement.OutputQuantity > 0d
+            ? Math.Max(0d, requirement.InputQuantity) / requirement.OutputQuantity
+            : 0d;
+    }
+
+    private static double GetTransportCostPerUnit(RouteAllocation allocation)
+    {
+        if (allocation.DeliveredCostPerUnit > 0d)
+        {
+            return Math.Max(0d, allocation.DeliveredCostPerUnit - Math.Max(0d, allocation.SourceUnitCostPerUnit));
+        }
+
+        return Math.Max(0d, allocation.TotalCost) + Math.Max(0d, allocation.BidCostPerUnit);
     }
 
     private static double EstimateCheapestOutboundRouteCost(NetworkModel network, string producerNodeId, string trafficType)
@@ -498,6 +601,7 @@ public sealed class GovernmentSimulationActor : SimulationActorBase
         var actions = new List<SimulationActorAction>();
         var outcomes = context.CurrentSnapshot.TrafficOutcomes;
         var utilityBefore = EstimateUtility(State.Objective, outcomes);
+        var buyerPremiumByTrafficType = ResolveBuyerPremiums(context.CurrentNetwork);
 
         foreach (var outcome in outcomes)
         {
@@ -630,6 +734,7 @@ public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
         var actions = new List<SimulationActorAction>();
         var outcomes = context.CurrentSnapshot.TrafficOutcomes;
         var utilityBefore = EstimateUtility(State.Objective, outcomes);
+        var buyerPremiumByTrafficType = ResolveBuyerPremiums(context.CurrentNetwork);
         var totalUnmetDemand = outcomes.Sum(o => Math.Max(0d, o.UnmetDemand));
         var totalDemand = outcomes.Sum(o => Math.Max(0d, o.TotalConsumption));
         var severeUnmetDemand = totalUnmetDemand > 0d &&

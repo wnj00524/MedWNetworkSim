@@ -119,6 +119,47 @@ public sealed class TrafficEconomicSettlementTests
         Assert.Equal(0.5d, allocation.Profit);
     }
 
+
+    [Fact]
+    public void SalePriceFloor_UsesPropagatedSourceCostOnlyOnce()
+    {
+        var network = BuildSimpleNetwork(production: 0d, consumption: 0d, salePrice: 1d, productionCost: 0d, edgeCost: 0d);
+        network.Nodes.Single(node => node.Id == "consumer").TrafficProfiles.Single().ConsumerPremiumPerUnit = 0.5d;
+        var settlement = new TrafficEconomicSettlementService().Settle(
+            network,
+            [
+                new TrafficSimulationOutcome
+                {
+                    TrafficType = "Food",
+                    Allocations =
+                    [
+                        new RouteAllocation
+                        {
+                            TrafficType = "Food",
+                            ProducerNodeId = "producer",
+                            ProducerName = "Producer",
+                            ConsumerNodeId = "consumer",
+                            ConsumerName = "Consumer",
+                            Quantity = 2d,
+                            TotalCost = 2d,
+                            SourceUnitCostPerUnit = 8d,
+                            DeliveredCostPerUnit = 10d,
+                            TotalMovementCost = 20d,
+                            PathNodeIds = ["producer", "consumer"],
+                            PathNodeNames = ["Producer", "Consumer"],
+                            PathEdgeIds = ["edge"]
+                        }
+                    ]
+                }
+            ]);
+
+        var allocation = settlement.Outcomes.Single().Allocations.Single();
+        Assert.Equal(10.5d, allocation.SaleUnitPrice);
+        Assert.Equal(8d, allocation.ProductionCostPerUnit);
+        Assert.Equal(2d, allocation.TransportCostPerUnit);
+        Assert.Equal(1d, allocation.Profit);
+    }
+
     [Fact]
     public void ResoldLocalTraffic_AddsConsumerPremiumToPricePaidCostBasis()
     {

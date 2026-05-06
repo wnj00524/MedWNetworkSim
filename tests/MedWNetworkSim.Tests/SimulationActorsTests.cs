@@ -106,6 +106,91 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
+    public void Firm_DoesNotCutProduction_WhenAllProductionDeliveredAndUnmetDemandRemains()
+    {
+        var network = BuildProductionPressureNetwork(production: 10d, consumption: 400d);
+        var coordinator = new SimulationActorCoordinator();
+        var actor = BuildProductionOnlyFirm();
+
+        var outcome = new MedWNetworkSim.App.Services.NetworkSimulationEngine().Simulate(network).Single();
+        Assert.Equal(10d, outcome.TotalDelivered);
+        Assert.Equal(390d, outcome.UnmetDemand);
+
+        var decision = coordinator.PreviewActorActions(network, [actor]).Single();
+
+        Assert.DoesNotContain(decision.Actions, action =>
+            action.Kind == SimulationActorActionKind.AdjustProduction &&
+            action.DeltaValue < 0d);
+    }
+
+    [Fact]
+    public void Firm_IncreasesOrHoldsProduction_WhenDeliveredProductionHasUnmetDemand()
+    {
+        var network = BuildProductionPressureNetwork(production: 10d, consumption: 400d);
+        var coordinator = new SimulationActorCoordinator();
+        var actor = BuildProductionOnlyFirm();
+
+        var decision = coordinator.PreviewActorActions(network, [actor]).Single();
+        var productionActions = decision.Actions
+            .Where(action => action.Kind == SimulationActorActionKind.AdjustProduction)
+            .ToList();
+
+        Assert.DoesNotContain(productionActions, action => action.DeltaValue < 0d);
+        Assert.True(
+            productionActions.Any(action => action.DeltaValue > 0d) ||
+            decision.Actions.Any(action => action.Kind == SimulationActorActionKind.NoOp));
+    }
+
+    [Fact]
+    public void Firm_CutsProduction_WhenProductionExceedsDeliveredDemandAndUnmetDemandIsZero()
+    {
+        var network = BuildProductionPressureNetwork(production: 100d, consumption: 10d);
+        var actor = BuildProductionOnlyFirm();
+        var firm = new FirmSimulationActor(actor);
+
+        var decision = firm.Decide(new SimulationActorContext
+        {
+            CurrentNetwork = network,
+            CurrentSnapshot = new MedWNetworkSim.App.VisualAnalytics.VisualAnalyticsSnapshot
+            {
+                Network = network,
+                TrafficOutcomes =
+                [
+                    new TrafficSimulationOutcome
+                    {
+                        TrafficType = "Food",
+                        TotalProduction = 100d,
+                        TotalConsumption = 10d,
+                        TotalDelivered = 10d,
+                        UnusedSupply = 90d,
+                        UnmetDemand = 0d,
+                        Allocations =
+                        [
+                            new RouteAllocation
+                            {
+                                TrafficType = "Food",
+                                ProducerNodeId = "producer",
+                                ConsumerNodeId = "consumer",
+                                Quantity = 10d
+                            }
+                        ]
+                    }
+                ],
+                ConsumerCosts = [],
+                Period = 0
+            },
+            CurrentInsights = [],
+            Tick = 0,
+            PreviousDecisions = [],
+            PolicySettings = new SimulationActorPolicySettings()
+        });
+
+        Assert.Contains(decision.Actions, action =>
+            action.Kind == SimulationActorActionKind.AdjustProduction &&
+            action.DeltaValue < 0d);
+    }
+
+    [Fact]
     public void Firm_AutomaticDemandIncrease_UsesBuyTrafficWhenPermitted()
     {
         var network = BuildNetwork();
@@ -1232,6 +1317,40 @@ public sealed class SimulationActorsTests
         network.Edges.Single(edge => edge.Id == "edge-a").Capacity = 1000;
         return network;
     }
+
+    private static NetworkModel BuildProductionPressureNetwork(double production, double consumption)
+    {
+        var network = BuildHighThroughputNetwork();
+        network.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single().Production = production;
+        network.Nodes.Single(node => node.Id == "consumer").TrafficProfiles.Single().Consumption = consumption;
+        return network;
+    }
+
+    private static SimulationActorState BuildProductionOnlyFirm() => new()
+    {
+        Id = "firm-producer",
+        Name = "Producer",
+        Kind = SimulationActorKind.Firm,
+        Objective = SimulationActorObjective.MaximiseProfit,
+        ControlledNodeIds = ["producer"],
+        Cash = 100d,
+        Budget = 100d,
+        Capability = new SimulationActorCapability
+        {
+            ActorId = "firm-producer",
+            AllowedActionKinds = [SimulationActorActionKind.AdjustProduction],
+            Permissions =
+            [
+                new SimulationActorPermission
+                {
+                    ActionKind = SimulationActorActionKind.AdjustProduction,
+                    TrafficType = "Food",
+                    NodeId = "producer",
+                    IsAllowed = true
+                }
+            ]
+        }
+    };
 
     private static Dictionary<string, SimulationActorState> BuildActorMap(params SimulationActorState[] actors) =>
         actors.ToDictionary(actor => actor.Id, StringComparer.OrdinalIgnoreCase);

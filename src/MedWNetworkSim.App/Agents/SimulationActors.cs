@@ -109,11 +109,23 @@ public sealed class FirmSimulationActor : SimulationActorBase
                 }
 
                 var unmetRatio = outcome.TotalConsumption <= 0d ? 0d : outcome.UnmetDemand / outcome.TotalConsumption;
-                var deliveredRatio = outcome.TotalConsumption <= 0d ? 0d : outcome.TotalDelivered / outcome.TotalConsumption;
+                var deliveredDemandRatio = outcome.TotalConsumption <= 0d ? 0d : outcome.TotalDelivered / outcome.TotalConsumption;
+                var productionDelivered = EstimateProductionDelivered(outcome, node.Id);
+                var productionDeliveryRatio = profile.Production <= 0d
+                    ? 0d
+                    : Math.Min(1d, productionDelivered / profile.Production);
+                var hasSignificantUnmetDemand = outcome.UnmetDemand > Math.Max(0.01d, outcome.TotalConsumption * 0.01d);
+                var isMostlyDeliveredProduction = productionDeliveryRatio >= 0.8d;
+                var hasMaterialOverproduction =
+                    profile.Production > Math.Max(1d, productionDelivered) * 1.5d &&
+                    !hasSignificantUnmetDemand;
+                var hasOverproductionEvidence =
+                    profile.Production > productionDelivered + 0.01d &&
+                    !hasSignificantUnmetDemand;
                 var expectedMargin = EstimateMargin(context.CurrentNetwork, profile, outcome);
 
                 if (profile.Production > 0d &&
-                    deliveredRatio >= 0.85d &&
+                    (isMostlyDeliveredProduction || (deliveredDemandRatio >= 0.85d && !hasMaterialOverproduction)) &&
                     expectedMargin >= 0d &&
                     HasSpendingCapacity)
                 {
@@ -191,7 +203,8 @@ public sealed class FirmSimulationActor : SimulationActorBase
                         IsPolicyAction = false
                     });
                 }
-                else if (deliveredRatio < 0.4d &&
+                else if (hasOverproductionEvidence &&
+                    productionDeliveryRatio < 0.4d &&
                     profile.Production > 0d &&
                     IsPermittedByPermissions(SimulationActorActionKind.AdjustProduction, profile.TrafficType, node.Id))
                 {
@@ -204,7 +217,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
                         TrafficType = profile.TrafficType,
                         DeltaValue = -Math.Max(1d, profile.Production * 0.1d),
                         Cost = 0d,
-                        Reason = "Delivered ratio is poor relative to output.",
+                        Reason = "Delivered production is poor and no unmet demand remains for this traffic.",
                         ExpectedEffect = "Reduce overproduction and protect margin.",
                         IsPolicyAction = false
                     });
@@ -327,6 +340,18 @@ public sealed class FirmSimulationActor : SimulationActorBase
         var unitPrice = profile.UnitPrice > 0d ? profile.UnitPrice : Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d);
         var productionCost = profile.ProductionCostPerUnit ?? Math.Max(0d, definition?.DefaultUnitProductionCost ?? 0d);
         return unitPrice - productionCost;
+    }
+
+    private static double EstimateProductionDelivered(TrafficSimulationOutcome outcome, string nodeId)
+    {
+        if (outcome.Allocations.Count == 0)
+        {
+            return outcome.TotalDelivered;
+        }
+
+        return outcome.Allocations
+            .Where(allocation => Comparer.Equals(allocation.ProducerNodeId, nodeId))
+            .Sum(allocation => allocation.Quantity);
     }
 
     private SimulationActorAction BuildNoOp(string reason) => new()

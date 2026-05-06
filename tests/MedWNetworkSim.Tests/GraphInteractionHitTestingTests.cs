@@ -42,7 +42,7 @@ public sealed class GraphInteractionHitTestingTests
         var context = BuildContext(scene, viewport);
 
         var start = viewport.WorldToScreen(new GraphPoint(10, 10), context.ViewportSize);
-        var end = viewport.WorldToScreen(new GraphPoint(200, 100), context.ViewportSize);
+        var end = viewport.WorldToScreen(new GraphPoint(320, 100), context.ViewportSize);
         controller.OnPointerPressed(context, GraphPointerButton.Left, start, shiftPressed: false, altPressed: false, controlPressed: false);
         controller.OnPointerMoved(context, end);
         controller.OnPointerReleased(context, GraphPointerButton.Left, end, shiftPressed: false);
@@ -50,6 +50,18 @@ public sealed class GraphInteractionHitTestingTests
         Assert.Contains("a", scene.Selection.SelectedNodeIds);
         Assert.Contains("b", scene.Selection.SelectedNodeIds);
         Assert.Contains("a->b", scene.Selection.SelectedEdgeIds);
+    }
+
+    [Fact]
+    public void CompactMode_IgnoresHiddenLabelBoundsForNodeHitTesting()
+    {
+        var scene = BuildScene();
+        var node = scene.Nodes[0];
+        var pointInsideLabelBoundsOnly = new GraphPoint(node.Bounds.Left + 4d, node.Bounds.CenterY);
+
+        var hit = new GraphHitTester().HitTest(scene, pointInsideLabelBoundsOnly, zoom: 1d, showNodeLabels: false);
+
+        Assert.Null(hit.NodeId);
     }
 
     private static GraphScene BuildScene()
@@ -105,6 +117,7 @@ public sealed class GraphInteractionHitTestingTests
             Scene = scene,
             Viewport = viewport,
             ViewportSize = new GraphSize(1000, 700),
+            ShowNodeLabels = true,
             ToolMode = GraphToolMode.Select,
             CreateEdge = (_, _, _) => false,
             AddNodeAt = _ => string.Empty,

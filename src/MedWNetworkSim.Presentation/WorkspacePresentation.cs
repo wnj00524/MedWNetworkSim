@@ -3554,6 +3554,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             Scene = Scene,
             Viewport = Viewport,
             ViewportSize = viewportSize,
+            ShowNodeLabels = VisualisationState.ShowGraphLabels,
             ToolMode = ActiveToolMode,
             ToolModeChanged = SetActiveTool,
             CreateEdge = CreateEdge,

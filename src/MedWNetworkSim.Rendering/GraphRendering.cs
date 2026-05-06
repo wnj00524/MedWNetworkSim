@@ -213,11 +213,13 @@ public readonly record struct GraphHitResult(string? NodeId, string? EdgeId);
 
 public sealed class GraphHitTester
 {
+    public const double CompactNodeRadius = 7d;
+
     public double NodeHitPadding { get; set; } = 6d;
     public double EdgeHitRadius { get; set; } = 10d;
     public double EdgeHandleRadius { get; set; } = 10d;
 
-    public GraphHitResult HitTest(GraphScene scene, GraphPoint worldPoint, double zoom = 1d)
+    public GraphHitResult HitTest(GraphScene scene, GraphPoint worldPoint, double zoom = 1d, bool showNodeLabels = true)
     {
         var safeZoom = Math.Max(0.05d, zoom);
         var nodePaddingWorld = NodeHitPadding / safeZoom;
@@ -226,19 +228,26 @@ public sealed class GraphHitTester
 
         foreach (var node in scene.Nodes.OrderByDescending(node => node.Bounds.Top))
         {
-            var padded = new GraphRect(
-                node.Bounds.X - nodePaddingWorld,
-                node.Bounds.Y - nodePaddingWorld,
-                node.Bounds.Width + (nodePaddingWorld * 2d),
-                node.Bounds.Height + (nodePaddingWorld * 2d));
-            if (padded.Contains(worldPoint))
+            if (showNodeLabels)
+            {
+                var padded = new GraphRect(
+                    node.Bounds.X - nodePaddingWorld,
+                    node.Bounds.Y - nodePaddingWorld,
+                    node.Bounds.Width + (nodePaddingWorld * 2d),
+                    node.Bounds.Height + (nodePaddingWorld * 2d));
+                if (padded.Contains(worldPoint))
+                {
+                    return new GraphHitResult(node.Id, null);
+                }
+            }
+            else if ((worldPoint - GetNodeCenter(node)).Length <= CompactNodeRadius + nodePaddingWorld)
             {
                 return new GraphHitResult(node.Id, null);
             }
         }
 
         var handleHit = scene.Edges
-            .Select(candidate => new { Edge = candidate, Distance = DistanceToMidpoint(scene, candidate, worldPoint) })
+            .Select(candidate => new { Edge = candidate, Distance = DistanceToMidpoint(scene, candidate, worldPoint, showNodeLabels) })
             .Where(candidate => candidate.Distance <= edgeHandleRadiusWorld)
             .OrderBy(candidate => candidate.Distance)
             .FirstOrDefault();
@@ -248,7 +257,7 @@ public sealed class GraphHitTester
         }
 
         var edge = scene.Edges
-            .Select(candidate => new { Edge = candidate, Distance = DistanceToEdge(scene, candidate, worldPoint) })
+            .Select(candidate => new { Edge = candidate, Distance = DistanceToEdge(scene, candidate, worldPoint, showNodeLabels) })
             .Where(candidate => candidate.Distance <= edgeRadiusWorld)
             .OrderBy(candidate => candidate.Distance)
             .FirstOrDefault();
@@ -258,18 +267,25 @@ public sealed class GraphHitTester
 
     public static GraphPoint GetEdgeMidpoint(GraphScene scene, GraphEdgeSceneItem edge)
     {
-        var start = GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId);
-        var end = GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId);
+        var start = GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels: true);
+        var end = GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels: true);
         return new GraphPoint((start.X + end.X) / 2d, (start.Y + end.Y) / 2d);
     }
 
-    private static double DistanceToMidpoint(GraphScene scene, GraphEdgeSceneItem edge, GraphPoint worldPoint) =>
-        (worldPoint - GetEdgeMidpoint(scene, edge)).Length;
-
-    private static double DistanceToEdge(GraphScene scene, GraphEdgeSceneItem edge, GraphPoint worldPoint)
+    public static GraphPoint GetEdgeMidpoint(GraphScene scene, GraphEdgeSceneItem edge, bool showNodeLabels)
     {
-        var start = GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId);
-        var end = GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId);
+        var start = GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels);
+        var end = GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels);
+        return new GraphPoint((start.X + end.X) / 2d, (start.Y + end.Y) / 2d);
+    }
+
+    private static double DistanceToMidpoint(GraphScene scene, GraphEdgeSceneItem edge, GraphPoint worldPoint, bool showNodeLabels) =>
+        (worldPoint - GetEdgeMidpoint(scene, edge, showNodeLabels)).Length;
+
+    private static double DistanceToEdge(GraphScene scene, GraphEdgeSceneItem edge, GraphPoint worldPoint, bool showNodeLabels)
+    {
+        var start = GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels);
+        var end = GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels);
         var segment = end - start;
         var point = worldPoint - start;
         var lengthSquared = (segment.X * segment.X) + (segment.Y * segment.Y);
@@ -283,8 +299,33 @@ public sealed class GraphHitTester
         return (worldPoint - nearest).Length;
     }
 
-    public static GraphPoint GetEdgeAnchor(GraphScene scene, string sourceId, string targetId)
+    public static GraphPoint GetNodeCenter(GraphNodeSceneItem node) => new(node.Bounds.CenterX, node.Bounds.CenterY);
+
+    public static GraphPoint GetEdgeAnchor(GraphScene scene, string sourceId, string targetId, bool showNodeLabels = true)
     {
+        if (!showNodeLabels)
+        {
+            var compactSource = scene.FindNode(sourceId);
+            var compactTarget = scene.FindNode(targetId);
+            if (compactSource is null || compactTarget is null)
+            {
+                return new GraphPoint(0d, 0d);
+            }
+
+            var compactSourceCenter = GetNodeCenter(compactSource);
+            var compactTargetCenter = GetNodeCenter(compactTarget);
+            var delta = compactTargetCenter - compactSourceCenter;
+            var length = delta.Length;
+            if (length < 0.001d)
+            {
+                return compactSourceCenter;
+            }
+
+            return new GraphPoint(
+                compactSourceCenter.X + ((delta.X / length) * CompactNodeRadius),
+                compactSourceCenter.Y + ((delta.Y / length) * CompactNodeRadius));
+        }
+
         var source = scene.FindNode(sourceId);
         var target = scene.FindNode(targetId);
         if (source is null || target is null)
@@ -527,8 +568,8 @@ public sealed class GraphRenderer
 
         foreach (var edge in scene.Edges)
         {
-            var start = viewport.WorldToScreen(GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels), viewportSize);
-            var end = viewport.WorldToScreen(GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels), viewportSize);
+            var start = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels), viewportSize);
+            var end = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels), viewportSize);
             var edgeAlpha = (byte)Math.Clamp(Math.Round((edge.HasWarning ? 190d : 180d) * edge.VisualOpacity), 15d, 255d);
             edgePaint.Color = edge.HasWarning ? WarningColor.WithAlpha(edgeAlpha) : EdgeColor.WithAlpha(edgeAlpha);
             edgePaint.StrokeWidth = (float)(2.4d + (edge.LoadRatio * 1.6d));
@@ -552,8 +593,8 @@ public sealed class GraphRenderer
             string.Equals(scene.Selection.KeyboardEdgeId, edge.Id, StringComparison.OrdinalIgnoreCase));
         foreach (var edge in overlayEdges)
         {
-            var start = viewport.WorldToScreen(GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels), viewportSize);
-            var end = viewport.WorldToScreen(GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels), viewportSize);
+            var start = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels), viewportSize);
+            var end = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels), viewportSize);
             var isSelected = scene.Selection.SelectedEdgeIds.Contains(edge.Id);
             var isHovered = string.Equals(scene.Selection.HoverEdgeId, edge.Id, StringComparison.OrdinalIgnoreCase);
             var isKeyboard = string.Equals(scene.Selection.KeyboardEdgeId, edge.Id, StringComparison.OrdinalIgnoreCase);
@@ -660,7 +701,7 @@ public sealed class GraphRenderer
 
         foreach (var node in scene.Nodes)
         {
-            var center = viewport.WorldToScreen(GetNodeCenter(node), viewportSize);
+            var center = viewport.WorldToScreen(GraphHitTester.GetNodeCenter(node), viewportSize);
             var isSelected = scene.Selection.SelectedNodeIds.Contains(node.Id);
             var isHighlighted = scene.Selection.HighlightedNodeIds.Contains(node.Id);
             var isHovered = string.Equals(scene.Selection.HoverNodeId, node.Id, StringComparison.OrdinalIgnoreCase);
@@ -890,8 +931,8 @@ public sealed class GraphRenderer
         using var pulsePaint = new SKPaint { Color = OverlayColor.WithAlpha(210), IsAntialias = true, Style = SKPaintStyle.Fill };
         foreach (var edge in scene.Edges.Where(edge => edge.FlowRate > 0.01d))
         {
-            var start = viewport.WorldToScreen(GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels), viewportSize);
-            var end = viewport.WorldToScreen(GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels), viewportSize);
+            var start = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels), viewportSize);
+            var end = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels), viewportSize);
             var t = scene.Simulation.ReducedMotion ? 0.55d : (scene.Simulation.AnimationTime * (0.12d + edge.FlowRate)) % 1d;
             var x = start.X + ((end.X - start.X) * t);
             var y = start.Y + ((end.Y - start.Y) * t);
@@ -947,8 +988,8 @@ public sealed class GraphRenderer
 
         foreach (var edge in scene.Edges)
         {
-            var start = GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels);
-            var end = GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels);
+            var start = GraphHitTester.GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels);
+            var end = GraphHitTester.GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels);
             canvas.DrawLine(
                 originX + (float)((start.X - bounds.Left) * scale),
                 originY + (float)((start.Y - bounds.Top) * scale),
@@ -959,7 +1000,7 @@ public sealed class GraphRenderer
 
         foreach (var node in scene.Nodes)
         {
-            var center = GetNodeCenter(node);
+            var center = GraphHitTester.GetNodeCenter(node);
             var x = originX + (float)((center.X - bounds.Left) * scale);
             var y = originY + (float)((center.Y - bounds.Top) * scale);
             canvas.DrawCircle(x, y, 3.2f, nodePaint);
@@ -975,41 +1016,8 @@ public sealed class GraphRenderer
         canvas.DrawRect(viewRect, viewPaint);
     }
 
-    private static GraphPoint GetNodeCenter(GraphNodeSceneItem node) => new(node.Bounds.CenterX, node.Bounds.CenterY);
-
     private static GraphPoint GetEdgeMidpoint(GraphScene scene, GraphEdgeSceneItem edge, bool showNodeLabels)
     {
-        var start = GetEdgeAnchor(scene, edge.FromNodeId, edge.ToNodeId, showNodeLabels);
-        var end = GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels);
-        return new GraphPoint((start.X + end.X) / 2d, (start.Y + end.Y) / 2d);
-    }
-
-    private static GraphPoint GetEdgeAnchor(GraphScene scene, string sourceId, string targetId, bool showNodeLabels)
-    {
-        if (showNodeLabels)
-        {
-            return GraphHitTester.GetEdgeAnchor(scene, sourceId, targetId);
-        }
-
-        var source = scene.FindNode(sourceId);
-        var target = scene.FindNode(targetId);
-        if (source is null || target is null)
-        {
-            return new GraphPoint(0d, 0d);
-        }
-
-        var sourceCenter = GetNodeCenter(source);
-        var targetCenter = GetNodeCenter(target);
-        var delta = targetCenter - sourceCenter;
-        var length = delta.Length;
-        if (length < 0.001d)
-        {
-            return sourceCenter;
-        }
-
-        const double compactRadius = 7d;
-        return new GraphPoint(
-            sourceCenter.X + ((delta.X / length) * compactRadius),
-            sourceCenter.Y + ((delta.Y / length) * compactRadius));
+        return GraphHitTester.GetEdgeMidpoint(scene, edge, showNodeLabels);
     }
 }

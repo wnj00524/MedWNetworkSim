@@ -35,6 +35,18 @@ public abstract class SimulationActorBase : ISimulationActor
     protected static IEnumerable<NetworkInsight> InsightsForEdge(IReadOnlyList<NetworkInsight> insights, string edgeId) =>
         insights.Where(i => string.Equals(i.TargetEdgeId, edgeId, StringComparison.OrdinalIgnoreCase));
 
+    protected static IReadOnlyDictionary<string, double> ResolveBuyerPremiums(NetworkModel network)
+    {
+        return network.Nodes
+            .SelectMany(node => node.TrafficProfiles)
+            .Where(profile => !string.IsNullOrWhiteSpace(profile.TrafficType) && profile.Consumption > 0d)
+            .GroupBy(profile => profile.TrafficType, Comparer)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Max(profile => Math.Max(0d, profile.ConsumerPremiumPerUnit)),
+                Comparer);
+    }
+
     protected bool IsPermittedByPermissions(
         SimulationActorActionKind actionKind,
         string? trafficType = null,
@@ -420,25 +432,13 @@ public sealed class FirmSimulationActor : SimulationActorBase
         return Math.Max(producerPrice, deliveredCostFloor) + buyerPremiumByTrafficType.GetValueOrDefault(producerProfile.TrafficType);
     }
 
-    private static IReadOnlyDictionary<string, double> ResolveBuyerPremiums(NetworkModel network)
-    {
-        return network.Nodes
-            .SelectMany(node => node.TrafficProfiles)
-            .Where(profile => !string.IsNullOrWhiteSpace(profile.TrafficType) && profile.Consumption > 0d)
-            .GroupBy(profile => profile.TrafficType, Comparer)
-            .ToDictionary(
-                group => group.Key,
-                group => group.Max(profile => Math.Max(0d, profile.ConsumerPremiumPerUnit)),
-                Comparer);
-    }
-
     private static double EstimateProductionCost(NetworkModel network, NodeModel node, NodeTrafficProfile profile)
     {
         var definitionsByTraffic = network.TrafficTypes
             .Where(definition => !string.IsNullOrWhiteSpace(definition.Name))
             .GroupBy(definition => definition.Name, Comparer)
             .ToDictionary(group => group.Key, group => group.First(), Comparer);
-        return EstimateProductionCost(node, profile, definitionsByTraffic, []);
+        return EstimateProductionCost(node, profile, definitionsByTraffic, new HashSet<string>(Comparer));
     }
 
     private static double EstimateProductionCost(

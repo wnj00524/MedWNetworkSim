@@ -173,6 +173,144 @@ public sealed class TrafficEconomicSettlementTests
     }
 
     [Fact]
+    public void GovernmentTaxRouteAction_CreatesTaxRevenue()
+    {
+        var network = BuildSimpleNetwork(
+            production: 5d,
+            consumption: 5d,
+            salePrice: 10d,
+            productionCost: 3d,
+            edgeCost: 2d);
+        var seller = new SimulationActorState { Id = "seller", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["producer"], Cash = 0d, GenerateAutomaticDecisions = false };
+        var buyer = new SimulationActorState { Id = "buyer", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["consumer"], Cash = 100d, GenerateAutomaticDecisions = false };
+        var government = new SimulationActorState
+        {
+            Id = "gov",
+            Kind = SimulationActorKind.Government,
+            Cash = 0d,
+            GenerateAutomaticDecisions = false,
+            Capability = SimulationActorCapabilityCatalog.ForKind("gov", SimulationActorKind.Government)
+        };
+        var actors = new Dictionary<string, SimulationActorState>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["seller"] = seller,
+            ["buyer"] = buyer,
+            ["gov"] = government
+        };
+
+        var (taxedNetwork, outcomes) = new SimulationActorActionApplier().Apply(
+            network,
+            [
+                new SimulationActorAction
+                {
+                    Id = "tax",
+                    ActorId = "gov",
+                    Kind = SimulationActorActionKind.TaxRoute,
+                    TargetEdgeId = "edge",
+                    TrafficType = "Food",
+                    AbsoluteValue = 0.2d
+                }
+            ],
+            actors,
+            new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase));
+
+        Assert.True(outcomes.Single().Applied);
+        var rule = Assert.Single(taxedNetwork.RouteTaxRules);
+        Assert.Equal("edge", rule.EdgeId);
+        Assert.Equal("Food", rule.TrafficType);
+        Assert.Equal(0.2d, rule.TaxRate);
+        Assert.Equal("gov", rule.TaxAuthorityActorId);
+
+        var result = new SimulationActorCoordinator().StepActorsOnce(taxedNetwork, [seller, buyer, government]);
+
+        Assert.Equal(2d, result.Metrics.ActorTaxesReceivedById["gov"]);
+        Assert.Equal(2d, government.Cash);
+        Assert.Equal(23d, seller.Cash);
+    }
+
+    [Fact]
+    public void EdgeCostChangesRemainTransportCost_NotTax()
+    {
+        var network = BuildSimpleNetwork(
+            production: 5d,
+            consumption: 5d,
+            salePrice: 10d,
+            productionCost: 3d,
+            edgeCost: 2d);
+        var actors = new Dictionary<string, SimulationActorState>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["planner"] = new()
+            {
+                Id = "planner",
+                Kind = SimulationActorKind.LogisticsPlanner,
+                Cash = 100d,
+                Capability = SimulationActorCapabilityCatalog.ForKind("planner", SimulationActorKind.LogisticsPlanner)
+            },
+            ["seller"] = new() { Id = "seller", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["producer"] },
+            ["buyer"] = new() { Id = "buyer", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["consumer"] },
+            ["gov"] = new() { Id = "gov", Kind = SimulationActorKind.Government }
+        };
+
+        var (updated, outcomes) = new SimulationActorActionApplier().Apply(
+            network,
+            [new SimulationActorAction { Id = "cost", ActorId = "planner", Kind = SimulationActorActionKind.AdjustEdgeCost, TargetEdgeId = "edge", AbsoluteValue = 4d }],
+            actors,
+            new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase));
+
+        Assert.True(outcomes.Single().Applied);
+        Assert.Empty(updated.RouteTaxRules);
+
+        var movement = new RouteAllocation
+        {
+            TrafficType = "Food",
+            RoutingPreference = RoutingPreference.Cost,
+            AllocationMode = AllocationMode.GreedyBestRoute,
+            ProducerNodeId = "producer",
+            ConsumerNodeId = "consumer",
+            Quantity = 5d,
+            TotalCost = updated.Edges.Single(edge => edge.Id == "edge").Cost,
+            PathEdgeIds = ["edge"]
+        };
+
+        var allocation = new TrafficEconomicSettlementService()
+            .Settle(updated, [new TrafficSimulationOutcome { TrafficType = "Food", Allocations = [movement] }], actors)
+            .Outcomes.Single().Allocations.Single();
+
+        Assert.Equal(20d, allocation.TotalTransportCost);
+        Assert.Equal(0d, allocation.TotalTax);
+    }
+
+    [Fact]
+    public void RouteTax_AppliesOnlyToMatchingTrafficTypeAndEdge()
+    {
+        var network = BuildTwoTrafficTwoEdgeNetwork();
+        network.RouteTaxRules.Add(new RouteTaxRule
+        {
+            EdgeId = "taxed",
+            TrafficType = "Food",
+            TaxRate = 0.2d,
+            TaxAuthorityActorId = "gov",
+            IsActive = true
+        });
+        var actors = new Dictionary<string, SimulationActorState>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["seller"] = new() { Id = "seller", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["producer"] },
+            ["buyer"] = new() { Id = "buyer", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["consumer"] },
+            ["gov"] = new() { Id = "gov", Kind = SimulationActorKind.Government }
+        };
+
+        var settlement = new TrafficEconomicSettlementService()
+            .Settle(network, new NetworkSimulationEngine().Simulate(network), actors);
+
+        var food = settlement.Outcomes.Single(outcome => outcome.TrafficType == "Food").Allocations.Single();
+        var tools = settlement.Outcomes.Single(outcome => outcome.TrafficType == "Tools").Allocations.Single();
+
+        Assert.Equal(2d, food.TotalTax);
+        Assert.Equal(0d, tools.TotalTax);
+        Assert.Equal(2d, settlement.Ledgers["gov"].TaxesReceived);
+    }
+
+    [Fact]
     public void TaxLedgerPolicy_SellerRemitsSalesAndRouteTax()
     {
         var network = BuildSimpleNetwork(
@@ -383,6 +521,62 @@ public sealed class TrafficEconomicSettlementTests
                     Cost = edgeCost,
                     Time = 1d
                 }
+            ]
+        };
+    }
+
+    private static NetworkModel BuildTwoTrafficTwoEdgeNetwork()
+    {
+        var layerId = Guid.NewGuid();
+        return new NetworkModel
+        {
+            Name = "Route Tax Match Test",
+            Layers = [new NetworkLayerModel { Id = layerId, Name = "Physical", Type = NetworkLayerType.Physical, Order = 0 }],
+            TrafficTypes =
+            [
+                new TrafficTypeDefinition { Name = "Food", RoutingPreference = RoutingPreference.Cost, AllocationMode = AllocationMode.GreedyBestRoute, DefaultUnitSalePrice = 10d, DefaultUnitProductionCost = 3d },
+                new TrafficTypeDefinition { Name = "Tools", RoutingPreference = RoutingPreference.Cost, AllocationMode = AllocationMode.GreedyBestRoute, DefaultUnitSalePrice = 10d, DefaultUnitProductionCost = 3d }
+            ],
+            Nodes =
+            [
+                new NodeModel
+                {
+                    Id = "producer",
+                    Name = "Producer",
+                    LayerId = layerId,
+                    TrafficProfiles =
+                    [
+                        new NodeTrafficProfile { TrafficType = "Food", Production = 5d },
+                        new NodeTrafficProfile { TrafficType = "Tools", Production = 5d }
+                    ]
+                },
+                new NodeModel
+                {
+                    Id = "middle",
+                    Name = "Middle",
+                    LayerId = layerId,
+                    TrafficProfiles =
+                    [
+                        new NodeTrafficProfile { TrafficType = "Food", CanTransship = true },
+                        new NodeTrafficProfile { TrafficType = "Tools", CanTransship = true }
+                    ]
+                },
+                new NodeModel
+                {
+                    Id = "consumer",
+                    Name = "Consumer",
+                    LayerId = layerId,
+                    TrafficProfiles =
+                    [
+                        new NodeTrafficProfile { TrafficType = "Food", Consumption = 5d },
+                        new NodeTrafficProfile { TrafficType = "Tools", Consumption = 5d }
+                    ]
+                }
+            ],
+            Edges =
+            [
+                new EdgeModel { Id = "taxed", FromNodeId = "producer", ToNodeId = "middle", LayerId = layerId, Capacity = 100d, Cost = 2d, Time = 1d },
+                new EdgeModel { Id = "untaxed", FromNodeId = "middle", ToNodeId = "consumer", LayerId = layerId, Capacity = 100d, Cost = 2d, Time = 1d }
             ]
         };
     }

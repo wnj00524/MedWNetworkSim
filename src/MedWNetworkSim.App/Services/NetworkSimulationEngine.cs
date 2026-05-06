@@ -169,6 +169,7 @@ public sealed class NetworkSimulationEngine
             ScenarioDefinitions = network.ScenarioDefinitions,
             PolicyRules = network.PolicyRules,
             EdgeTrafficPermissionDefaults = network.EdgeTrafficPermissionDefaults,
+            RouteTaxRules = network.RouteTaxRules,
             Subnetworks = network.Subnetworks,
             Nodes = network.Nodes.OrderBy(node => order.GetValueOrDefault(node.LayerId, int.MaxValue)).ThenBy(node => node.Name, StringComparer.OrdinalIgnoreCase).ToList(),
             Edges = network.Edges.OrderBy(edge => order.GetValueOrDefault(edge.LayerId, int.MaxValue)).ThenBy(edge => edge.Id, StringComparer.OrdinalIgnoreCase).ToList()

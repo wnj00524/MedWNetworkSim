@@ -114,9 +114,11 @@ public sealed class SimulationActorActionApplier
                 return FinalizePermissionResult(ApplyEdgeCapacityAction(network, action, currentFlowByEdgeId));
 
             case SimulationActorActionKind.AdjustEdgeCost:
-            case SimulationActorActionKind.TaxRoute:
             case SimulationActorActionKind.PreferRoute:
                 return FinalizePermissionResult(ApplyEdgeCostAction(network, action));
+
+            case SimulationActorActionKind.TaxRoute:
+                return FinalizePermissionResult(ApplyRouteTaxAction(network, action));
 
             case SimulationActorActionKind.BanTrafficOnEdge:
                 return FinalizePermissionResult(ApplyRouteBan(network, action));
@@ -224,6 +226,45 @@ public sealed class SimulationActorActionApplier
 
         edge.Cost = Math.Max(0d, action.AbsoluteValue ?? edge.Cost + action.DeltaValue);
         return (true, "Edge cost updated.");
+    }
+
+    private static (bool Applied, string Reason) ApplyRouteTaxAction(NetworkModel network, SimulationActorAction action)
+    {
+        if (string.IsNullOrWhiteSpace(action.TargetEdgeId) || string.IsNullOrWhiteSpace(action.TrafficType))
+        {
+            return (false, "Edge and traffic type are required for route taxes.");
+        }
+
+        var edge = network.Edges.FirstOrDefault(e => Comparer.Equals(e.Id, action.TargetEdgeId));
+        if (edge is null)
+        {
+            return (false, $"Edge '{action.TargetEdgeId}' was not found.");
+        }
+
+        var existing = network.RouteTaxRules.FirstOrDefault(rule =>
+            Comparer.Equals(rule.EdgeId, action.TargetEdgeId) &&
+            Comparer.Equals(rule.TrafficType, action.TrafficType) &&
+            Comparer.Equals(rule.TaxAuthorityActorId, action.ActorId));
+        var taxRate = Math.Max(0d, action.AbsoluteValue ?? (existing?.TaxRate ?? 0d) + action.DeltaValue);
+
+        if (existing is null)
+        {
+            network.RouteTaxRules.Add(new RouteTaxRule
+            {
+                EdgeId = action.TargetEdgeId,
+                TrafficType = action.TrafficType,
+                TaxRate = taxRate,
+                TaxAuthorityActorId = action.ActorId,
+                IsActive = true
+            });
+        }
+        else
+        {
+            existing.TaxRate = taxRate;
+            existing.IsActive = true;
+        }
+
+        return (true, "Route tax rule updated.");
     }
 
     private static (bool Applied, string Reason) ApplyRouteBan(NetworkModel network, SimulationActorAction action)

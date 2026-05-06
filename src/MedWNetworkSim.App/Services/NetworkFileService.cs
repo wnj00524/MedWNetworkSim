@@ -238,6 +238,7 @@ public sealed class NetworkFileService
             edgeId: null,
             edgeCapacity: null,
             allowInactiveRules: false);
+        var routeTaxRules = NormalizeRouteTaxRules(model.RouteTaxRules, edgeIds, trafficNames);
         for (var index = 0; index < normalizedEdges.Count; index++)
         {
             var normalizedEdge = normalizedEdges[index];
@@ -316,6 +317,7 @@ public sealed class NetworkFileService
             Edges = normalizedEdges,
             TrafficTypes = trafficDefinitions,
             EdgeTrafficPermissionDefaults = edgeTrafficPermissionDefaults,
+            RouteTaxRules = routeTaxRules,
             TimelineEvents = timelineEvents,
             ScenarioDefinitions = (model.ScenarioDefinitions ?? []).Where(s => s is not null).ToList(),
             Actors = normalizedActors,
@@ -327,6 +329,57 @@ public sealed class NetworkFileService
             ActorTick = Math.Max(0, model.ActorTick),
             Subnetworks = NormalizeSubnetworks(model.Subnetworks, normalizedNodes, normalizedEdges, forceLayoutAllNodes, depth, ancestry)
         };
+    }
+
+    private static List<RouteTaxRule> NormalizeRouteTaxRules(
+        IEnumerable<RouteTaxRule>? rules,
+        IReadOnlySet<string> edgeIds,
+        IReadOnlySet<string> trafficNames)
+    {
+        var normalized = new Dictionary<string, RouteTaxRule>(Comparer);
+
+        foreach (var rule in rules ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(rule.EdgeId) ||
+                string.IsNullOrWhiteSpace(rule.TrafficType) ||
+                string.IsNullOrWhiteSpace(rule.TaxAuthorityActorId))
+            {
+                continue;
+            }
+
+            var edgeId = rule.EdgeId.Trim();
+            var trafficType = rule.TrafficType.Trim();
+            var authorityActorId = rule.TaxAuthorityActorId.Trim();
+            if (!edgeIds.Contains(edgeId))
+            {
+                throw new InvalidOperationException($"Route tax rule references missing edge '{edgeId}'.");
+            }
+
+            if (!trafficNames.Contains(trafficType))
+            {
+                throw new InvalidOperationException($"Route tax rule for edge '{edgeId}' references missing traffic type '{trafficType}'.");
+            }
+
+            if (double.IsNaN(rule.TaxRate) || double.IsInfinity(rule.TaxRate) || rule.TaxRate < 0d)
+            {
+                throw new InvalidOperationException($"Route tax rule for edge '{edgeId}' and traffic type '{trafficType}' has an invalid tax rate.");
+            }
+
+            normalized[$"{edgeId}\n{trafficType}\n{authorityActorId}"] = new RouteTaxRule
+            {
+                EdgeId = edgeId,
+                TrafficType = trafficType,
+                TaxRate = rule.TaxRate,
+                TaxAuthorityActorId = authorityActorId,
+                IsActive = rule.IsActive
+            };
+        }
+
+        return normalized.Values
+            .OrderBy(rule => rule.EdgeId, Comparer)
+            .ThenBy(rule => rule.TrafficType, Comparer)
+            .ThenBy(rule => rule.TaxAuthorityActorId, Comparer)
+            .ToList();
     }
 
     private NetworkModel NormalizePreAgentMutationNetwork(

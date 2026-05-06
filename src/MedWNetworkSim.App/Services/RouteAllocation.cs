@@ -93,6 +93,19 @@ public sealed class RouteAllocation
     /// </summary>
     public double TotalScore { get; init; }
 
+    public double SaleUnitPrice { get; init; }
+    public double SaleRevenue { get; init; }
+    public double TransportCostPerUnit { get; init; }
+    public double TotalTransportCost { get; init; }
+    public double ProductionCostPerUnit { get; init; }
+    public double TotalProductionCost { get; init; }
+    public double TaxPerUnit { get; init; }
+    public double TotalTax { get; init; }
+    public double Profit { get; init; }
+    public string? SellerActorId { get; init; }
+    public string? BuyerActorId { get; init; }
+    public string? TaxAuthorityActorId { get; init; }
+
     /// <summary>
     /// Gets the ordered node names visited by the movement path.
     /// </summary>

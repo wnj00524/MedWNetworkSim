@@ -223,33 +223,30 @@ public sealed class EconomicCalculator : IEconomicCalculator
 {
     public EconomicSummary Calculate(NetworkModel network, SimulationResult result)
     {
-        var revenueByNodeTraffic = network.Nodes
-            .SelectMany(node => node.TrafficProfiles.Select(profile => new { node.Id, profile.TrafficType, UnitPrice = Math.Max(0d, profile.UnitPrice) }))
-            .ToDictionary(item => (item.Id, item.TrafficType), item => item.UnitPrice);
+        var settlement = new TrafficEconomicSettlementService().Settle(network, result.Outcomes);
         var shortagePenaltyByTraffic = network.Nodes
             .SelectMany(node => node.TrafficProfiles.Select(profile => new { profile.TrafficType, Penalty = Math.Max(0d, profile.ShortagePenalty) }))
             .GroupBy(item => item.TrafficType, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.Max(item => item.Penalty), StringComparer.OrdinalIgnoreCase);
 
-        var revenue = result.Outcomes
-            .Sum(outcome => outcome.Allocations.Sum(allocation =>
-            {
-                var key = (allocation.ConsumerNodeId, allocation.TrafficType);
-                var unitPrice = revenueByNodeTraffic.GetValueOrDefault(key, 0d);
-                return allocation.Quantity * unitPrice;
-            }));
+        var revenue = settlement.Outcomes.Sum(outcome => outcome.TotalSalesRevenue);
         var holding = 0d;
         var shortage = result.Outcomes.Sum(outcome =>
             Math.Max(0d, outcome.UnmetDemand) * shortagePenaltyByTraffic.GetValueOrDefault(outcome.TrafficType, 0d));
 
-        var transport = result.Outcomes.Sum(outcome => outcome.Allocations.Sum(allocation => allocation.TotalMovementCost));
+        var transport = settlement.Outcomes.Sum(outcome => outcome.TotalTransportCost);
+        var production = settlement.Outcomes.Sum(outcome => outcome.TotalProductionCost);
+        var tax = settlement.Outcomes.Sum(outcome => outcome.TotalTax);
         return new EconomicSummary
         {
             TotalRevenue = revenue,
+            TotalSalesRevenue = revenue,
             TotalTransportCost = transport,
+            TotalProductionCost = production,
+            TotalTax = tax,
             TotalHoldingCost = holding,
             TotalShortagePenalty = shortage,
-            TotalProfit = revenue - transport - holding - shortage
+            TotalProfit = revenue - transport - production - tax - holding - shortage
         };
     }
 }

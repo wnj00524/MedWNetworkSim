@@ -21,7 +21,7 @@ public abstract class SimulationActorBase : ISimulationActor
     {
         return objective switch
         {
-            SimulationActorObjective.MaximiseProfit => outcomes.Sum(o => o.TotalDelivered * 2d) - outcomes.Sum(o => o.Allocations.Sum(a => a.TotalMovementCost)),
+            SimulationActorObjective.MaximiseProfit => outcomes.Sum(o => o.TotalProfit),
             SimulationActorObjective.MinimiseUnmetDemand => -outcomes.Sum(o => o.UnmetDemand),
             SimulationActorObjective.MinimiseMovementCost => -outcomes.Sum(o => o.Allocations.Sum(a => a.TotalMovementCost)),
             SimulationActorObjective.MaximiseThroughput => outcomes.Sum(o => o.TotalDelivered),

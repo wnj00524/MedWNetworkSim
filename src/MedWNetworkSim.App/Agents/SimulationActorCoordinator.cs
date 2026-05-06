@@ -11,6 +11,7 @@ public sealed class SimulationActorCoordinator
     private readonly INetworkInsightService insightService;
     private readonly SimulationActorActionApplier actionApplier;
     private readonly IAgentActionLogger actionLogger;
+    private readonly TrafficEconomicSettlementService settlementService = new();
 
     public SimulationActorCoordinator(
         INetworkInsightService? insightService = null,
@@ -92,6 +93,22 @@ public sealed class SimulationActorCoordinator
         }
 
         var appliedSnapshot = BuildSnapshot(appliedNetwork, tick + 1);
+        var settlement = settlementService.Settle(appliedNetwork, appliedSnapshot.TrafficOutcomes, actorMap);
+        appliedSnapshot = new VisualAnalyticsSnapshot
+        {
+            Network = appliedSnapshot.Network,
+            TrafficOutcomes = settlement.Outcomes.ToList(),
+            ConsumerCosts = appliedSnapshot.ConsumerCosts,
+            Period = appliedSnapshot.Period
+        };
+
+        foreach (var item in settlement.LedgersByActorId)
+        {
+            if (actorMap.TryGetValue(item.Key, out var actor))
+            {
+                actor.Cash += item.Value.CashDelta;
+            }
+        }
         var metrics = BuildMetrics(tick, appliedSnapshot, actorStates, decisions);
 
         return new SimulationActorStepResult
@@ -180,6 +197,7 @@ public sealed class SimulationActorCoordinator
             .Where(edge => edge.Capacity.HasValue && edge.Capacity.Value > 0d)
             .Select(edge => flows.GetValueOrDefault(edge.Id) / edge.Capacity!.Value)
             .ToList();
+        var allocations = snapshot.TrafficOutcomes.SelectMany(o => o.Allocations).ToList();
 
         return new SimulationActorMetrics
         {
@@ -191,6 +209,12 @@ public sealed class SimulationActorCoordinator
             BottleneckEdgeCount = utilisation.Count(u => u >= 0.9d),
             ActorCashById = actors.ToDictionary(a => a.Id, a => a.Cash, StringComparer.OrdinalIgnoreCase),
             ActorUtilityById = decisions.ToDictionary(d => d.ActorId, d => d.ExpectedUtilityAfter, StringComparer.OrdinalIgnoreCase),
+            ActorSalesRevenueById = allocations.Where(a => !string.IsNullOrWhiteSpace(a.SellerActorId)).GroupBy(a => a.SellerActorId!, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Sum(x => x.SaleRevenue), StringComparer.OrdinalIgnoreCase),
+            ActorProductionCostById = allocations.Where(a => !string.IsNullOrWhiteSpace(a.SellerActorId)).GroupBy(a => a.SellerActorId!, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Sum(x => x.TotalProductionCost), StringComparer.OrdinalIgnoreCase),
+            ActorTransportCostById = allocations.Where(a => !string.IsNullOrWhiteSpace(a.SellerActorId)).GroupBy(a => a.SellerActorId!, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Sum(x => x.TotalTransportCost), StringComparer.OrdinalIgnoreCase),
+            ActorTaxesPaidById = allocations.Where(a => !string.IsNullOrWhiteSpace(a.BuyerActorId)).GroupBy(a => a.BuyerActorId!, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Sum(x => x.TotalTax), StringComparer.OrdinalIgnoreCase),
+            ActorTaxesReceivedById = allocations.Where(a => !string.IsNullOrWhiteSpace(a.TaxAuthorityActorId)).GroupBy(a => a.TaxAuthorityActorId!, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Sum(x => x.TotalTax), StringComparer.OrdinalIgnoreCase),
+            ActorProfitById = allocations.Where(a => !string.IsNullOrWhiteSpace(a.SellerActorId)).GroupBy(a => a.SellerActorId!, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Sum(x => x.Profit), StringComparer.OrdinalIgnoreCase),
             PolicyRestrictionCount = snapshot.Network.Edges.Sum(edge => edge.TrafficPermissions.Count(p => p.IsActive && p.Mode == EdgeTrafficPermissionMode.Blocked)),
             CooperationIndex = actors.Count == 0 ? 0d : actors.Average(a => Math.Clamp(a.CooperationWeight, 0d, 1d))
         };

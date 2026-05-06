@@ -12,6 +12,7 @@ public sealed class NetworkSimulationEngine
     private readonly INetworkLayerResolver layerResolver = new NetworkLayerResolver();
     private const double Epsilon = 0.000001d;
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+    private readonly TrafficEconomicSettlementService settlementService = new();
 
     /// <summary>
     /// Runs the routing simulation for every traffic type present in the network.
@@ -122,7 +123,7 @@ public sealed class NetworkSimulationEngine
             }
         }
 
-        return contexts
+        var rawOutcomes = contexts
             .Select(context => new TrafficSimulationOutcome
             {
                 TrafficType = context.TrafficType,
@@ -138,6 +139,8 @@ public sealed class NetworkSimulationEngine
                 Notes = context.Notes.ToList()
             })
             .ToList();
+
+        return settlementService.Settle(network, rawOutcomes).Outcomes;
     }
 
 
@@ -180,6 +183,8 @@ public sealed class NetworkSimulationEngine
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Distinct(Comparer)
             .ToList();
+
+        return settlementService.Settle(network, rawOutcomes).Outcomes;
 
         foreach (var rule in network.PolicyRules.Where(rule => rule.IsEnabled))
         {
@@ -286,6 +291,8 @@ public sealed class NetworkSimulationEngine
             .OrderBy(summary => summary.TrafficType, Comparer)
             .ThenBy(summary => summary.ConsumerName, Comparer)
             .ToList();
+
+        return settlementService.Settle(network, rawOutcomes).Outcomes;
     }
 
     private static double GetRequiredInputPerOutputUnit(
@@ -376,6 +383,8 @@ public sealed class NetworkSimulationEngine
             .OrderBy(trafficType => originalIndex.GetValueOrDefault(trafficType, int.MaxValue))
             .ThenBy(trafficType => trafficType, Comparer)
             .ToList();
+
+        return settlementService.Settle(network, rawOutcomes).Outcomes;
         var result = new List<string>(graph.Count);
         while (ready.Count > 0)
         {
@@ -395,6 +404,8 @@ public sealed class NetworkSimulationEngine
                         .OrderBy(item => originalIndex.GetValueOrDefault(item, int.MaxValue))
                         .ThenBy(item => item, Comparer)
                         .ToList();
+
+        return settlementService.Settle(network, rawOutcomes).Outcomes;
                 }
             }
         }
@@ -442,6 +453,8 @@ public sealed class NetworkSimulationEngine
                 (requirement.InputQuantity > Epsilon && requirement.OutputQuantity > Epsilon) ||
                 requirement.QuantityPerOutputUnit.GetValueOrDefault() > Epsilon)
             .ToList();
+
+        return settlementService.Settle(network, rawOutcomes).Outcomes;
 
         if (requirements.Count == 0)
         {
@@ -849,6 +862,8 @@ public sealed class NetworkSimulationEngine
             .ThenBy(branch => branch.ToNodeId, Comparer)
             .ThenBy(branch => branch.EdgeId, Comparer)
             .ToList();
+
+        return settlementService.Settle(network, rawOutcomes).Outcomes;
     }
 
     private static List<BranchShare> AllocateAcrossBranchRoutes(double availableSupply, IReadOnlyList<BranchDemand> branches)
@@ -857,6 +872,8 @@ public sealed class NetworkSimulationEngine
             .Select(branch => new BranchShareState(branch, branch.DownstreamDemand, Math.Min(branch.DownstreamDemand, branch.FirstHopCapacity)))
             .Where(state => state.RemainingCapacity > Epsilon)
             .ToList();
+
+        return settlementService.Settle(network, rawOutcomes).Outcomes;
         var remainingSupply = availableSupply;
 
         while (remainingSupply > Epsilon)
@@ -895,6 +912,8 @@ public sealed class NetworkSimulationEngine
             .Where(state => state.Quantity > Epsilon)
             .Select(state => new BranchShare(state.Branch, state.Quantity))
             .ToList();
+
+        return settlementService.Settle(network, rawOutcomes).Outcomes;
     }
 
     private static void AddRouteAllocation(

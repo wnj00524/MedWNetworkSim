@@ -58,6 +58,12 @@ public sealed class TrafficSimulationOutcome
     /// </summary>
     public IReadOnlyList<RouteAllocation> Allocations { get; init; } = [];
 
+    public double TotalSalesRevenue { get; init; }
+    public double TotalTransportCost { get; init; }
+    public double TotalProductionCost { get; init; }
+    public double TotalTax { get; init; }
+    public double TotalProfit { get; init; }
+
     /// <summary>
     /// Gets informational notes describing notable routing conditions or constraints.
     /// </summary>

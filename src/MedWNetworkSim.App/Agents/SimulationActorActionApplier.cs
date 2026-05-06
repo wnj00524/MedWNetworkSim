@@ -118,6 +118,8 @@ public sealed class SimulationActorActionApplier
 
             case SimulationActorActionKind.BuyTraffic:
             case SimulationActorActionKind.SellTraffic:
+                return FinalizePermissionResult(ApplyTradeIntentAction(network, action));
+
             case SimulationActorActionKind.SetNodePolicy:
             case SimulationActorActionKind.SetEdgePolicy:
                 return (false, "Action type is not yet supported by the network model.");
@@ -125,6 +127,35 @@ public sealed class SimulationActorActionApplier
             default:
                 return (false, "Action type is not yet supported by the network model.");
         }
+    }
+
+    private static (bool Applied, string Reason) ApplyTradeIntentAction(NetworkModel network, SimulationActorAction action)
+    {
+        if (string.IsNullOrWhiteSpace(action.TargetNodeId) || string.IsNullOrWhiteSpace(action.TrafficType))
+        {
+            return (false, "Node and traffic type are required.");
+        }
+
+        var node = network.Nodes.FirstOrDefault(n => Comparer.Equals(n.Id, action.TargetNodeId));
+        if (node is null)
+        {
+            return (false, $"Node '{action.TargetNodeId}' was not found.");
+        }
+
+        var profile = node.TrafficProfiles.FirstOrDefault(p => Comparer.Equals(p.TrafficType, action.TrafficType));
+        if (profile is null)
+        {
+            return (false, $"Node '{node.Id}' does not have traffic profile '{action.TrafficType}'.");
+        }
+
+        if (action.Kind == SimulationActorActionKind.BuyTraffic)
+        {
+            profile.Consumption = Math.Max(0d, action.AbsoluteValue ?? profile.Consumption + action.DeltaValue);
+            return (true, "Buy intent updated consumption.");
+        }
+
+        profile.Production = Math.Max(0d, action.AbsoluteValue ?? profile.Production + action.DeltaValue);
+        return (true, "Sell intent updated production.");
     }
 
     private static (bool Applied, string Reason) ApplyNodeProfileAction(NetworkModel network, SimulationActorAction action)

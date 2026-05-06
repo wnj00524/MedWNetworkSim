@@ -1,155 +1,35 @@
 # MedWNetworkSim
 
-MedWNetworkSim is a .NET-based network simulation and analysis tool for modelling constrained flow across graph-based systems.
+MedWNetworkSim is a .NET network simulation and analysis tool for modelling constrained movement through graph-based systems.
 
-It allows you to build, import, edit, and simulate networks where traffic moves between nodes under capacity, cost, and time constraints.
+It supports networks where **traffic types** move between **nodes** over **edges** subject to routing, capacity, cost, timing, storage, production, consumption, policy, and scenario constraints.
+
+The current solution is centred on an **Avalonia desktop application** with shared UI, presentation, interaction, and rendering libraries. The repository also retains legacy WPF/CLI implementation code under `src/MedWNetworkSim.App`, which is used by the shared presentation layer and documented command-line workflows.
 
 ---
 
-## Overview
+## What it is useful for
 
-MedWNetworkSim is designed for analysing:
+MedWNetworkSim can be used to explore:
 
 - supply and demand imbalance
 - congestion and bottlenecks
 - route choice behaviour
 - capacity constraints
-- multi-period (timeline) flow dynamics
+- edge and node utilisation
+- unmet demand and backlog
+- multi-period timeline dynamics
+- scenario changes such as failures, closures, demand spikes, and route cost changes
+- policy-aware routing and flow blocking
+- economic summaries and issue explanations
 
-The primary application is a **desktop GUI built with Avalonia**.
-
----
-
-## Key Capabilities
-
-### Network Modelling
-
-- Create and edit networks visually
-- Add, remove, and configure nodes and edges
-- Define multiple traffic types
-- Configure:
-  - production
-  - consumption
-  - storage
-  - transformation
-  - transhipment
-
-### Simulation
-
-- Run single-step simulations
-- Run timeline-based simulations (multi-period)
-- Analyse:
-  - unmet demand
-  - backlog growth
-  - edge pressure
-  - utilisation
-  - routing behaviour
-
-### Routing Behaviour
-
-Supports multiple routing strategies:
-
-- fastest vs cheapest routing
-- deterministic vs responsive routing
-- single-path vs split-flow allocation
-- traffic-specific routing rules
-
-### Import / Export
-
-- JSON (full simulation fidelity)
-- GraphML (structure-only interchange)
-- OpenStreetMap (OSM) import with:
-  - graph simplification to key junctions
-  - preserved network shape
-  - distance-based edge costs
-
-### Analysis & Reporting
-
-- Inspect state directly on the canvas
-- Identify:
-  - shortages
-  - congestion
-  - routing conflicts
-- Export reports for further analysis
+Typical use cases include logistics planning, supply-chain modelling, infrastructure flow analysis, resource distribution, service-flow scenarios, and prototype network design.
 
 ---
 
-## Core Concepts
+## Current application focus
 
-### Nodes
-
-Nodes represent locations in the network.
-
-They can:
-
-- produce traffic
-- consume traffic
-- store traffic
-- transform inputs into outputs
-- act as transhipment points
-
-### Edges
-
-Edges represent routes between nodes.
-
-They support:
-
-- travel time
-- cost
-- capacity limits
-- directionality
-- traffic permissions
-
-### Traffic Types
-
-Traffic types define what flows through the network.
-
-Each type can have:
-
-- independent routing behaviour
-- separate constraints
-- unique production/consumption rules
-
----
-
-## Typical Workflow
-
-1. Create a new network or open a JSON file  
-2. Define traffic types  
-3. Add and configure nodes and edges  
-4. Run a simulation  
-5. Inspect results (pressure, unmet demand, routing)  
-6. Export reports if needed  
-7. Use timeline mode for multi-period scenarios  
-
----
-
-## Repository Structure
+The primary application in the current solution is:
 
 ```text
-src/
-  MedWNetworkSim.App.Avalonia/      Main desktop application
-  MedWNetworkSim.UI/                Shared UI components
-  MedWNetworkSim.Presentation/      View models and logic
-  MedWNetworkSim.Rendering/         Canvas and visual rendering
-  MedWNetworkSim.Interaction/       Editing and interaction logic
-  MedWNetworkSim.App.Verification/  Simulation verification tests
-## Advanced simulation foundations (incremental)
-
-The repository now includes additive foundations for advanced simulation without breaking existing JSON files:
-
-- **Network layers** (`Physical`, `Logical`, `Policy`) are stored in `NetworkModel.Layers`, with automatic backfill for legacy files and default layer assignment for nodes/edges.
-- **Continuous-time/event-driven primitives** are available via `SimulationClock`, `ISimulationEventQueue`, and `ISimulationScheduledEvent`, and are integrated into temporal simulation steps.
-- **Scenario engine primitives** include scenario events (node failure, edge closure, demand spike, edge cost change), isolated scenario execution, and baseline-vs-variant comparison.
-- **Adaptive routing memory** can add a learned penalty term when enabled in route choice settings.
-- **Economics/bottleneck/explainability/data I/O foundations** include economic summary calculation, top issue detection, explainability services, demand CSV import validation, and JSON/CSV simulation replay export.
-
-These additions are modular and backward compatible; existing behavior remains the default unless new options are enabled.
-
-### Advanced UI workflows now available
-
-- **Layers panel**: add `Physical`, `Logical`, and `Policy` layers; rename/delete safe-empty layers; assign selected nodes/edges; show/hide and lock/unlock layer groups.
-- **Scenario editor**: create, rename, duplicate, delete, and run scenarios; edit scenario timing fields; edit event fields (type, target, timing, value, notes, enabled state).
-- **Scenario results**: run summaries plus warning lists are surfaced directly in the scenario panel.
-- **Top Issues + Explanation**: issue severity includes icon + text and selection syncs with explanation sections for nodes and routes.
-- **Policy-aware simulation**: policy effects and scenario multipliers flow through simulation outputs and validation.
+src/MedWNetworkSim.App.Avalonia/

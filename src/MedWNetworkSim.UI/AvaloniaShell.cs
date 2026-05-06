@@ -4803,7 +4803,6 @@ public sealed class ShellWindow : Window
                     BuildQuickEditLabeledTextBox("Name", "NodeDraft.NodeNameText"),
                     BuildQuickEditLabeledAutoCompleteTextBox("Place type", "NodeDraft.PlaceTypeText", "NodeDraft.PlaceTypeSuggestions", "Type or choose a place type"),
                     BuildQuickEditLabeledTextBox("Transhipment capacity", "NodeDraft.TranshipmentCapacityText"),
-                    BuildQuickEditLabeledComboBox("Node shape", nameof(WorkspaceViewModel.NodeShapeOptions), "NodeDraft.Shape"),
                     BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
                     new StackPanel
                     {
@@ -5125,9 +5124,8 @@ public sealed class ShellWindow : Window
                     BuildReadOnlyRow("Template id", "NodeDraft.TemplateIdText")),
                 BuildEditorSection(
                     "Capabilities",
-                    "Node shape, relay capacity, and child-network exposure.",
+                    "Relay capacity and child-network exposure.",
                     BuildLabeledTextBox("Transhipment capacity", "NodeDraft.TranshipmentCapacityText"),
-                    BuildLabeledComboBox("Node shape", nameof(WorkspaceViewModel.NodeShapeOptions), "NodeDraft.Shape"),
                     BuildLabeledComboBox("Node kind", nameof(WorkspaceViewModel.NodeKindOptions), "NodeDraft.NodeKind"),
                     BuildLabeledAutoCompleteTextBox("Child network", "NodeDraft.ReferencedSubnetworkIdText", nameof(WorkspaceViewModel.SubnetworkIdSuggestions), "Type or choose a child network"),
                     BuildLabeledCheckBox("External-facing interface", "NodeDraft.IsExternalInterface"),
@@ -6850,7 +6848,6 @@ public sealed class ShellWindow : Window
                     BuildReadOnlyRow("Longitude", nameof(WorkspaceViewModel.SelectedNodeLongitudeText)),
                     BuildLabeledTextBox("Description", "NodeDraft.DescriptionText"),
                     BuildLabeledTextBox("Transhipment capacity", "NodeDraft.TranshipmentCapacityText"),
-                    BuildLabeledComboBox("Node shape", nameof(WorkspaceViewModel.NodeShapeOptions), "NodeDraft.Shape"),
                     BuildLabeledComboBox("Node kind", nameof(WorkspaceViewModel.NodeKindOptions), "NodeDraft.NodeKind"),
                     BuildSectionTitle("Traffic Roles", "Select a role, then edit traffic, supply, demand, storage, and timing right below."),
                     profileList,

@@ -7595,13 +7595,14 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         StatusText = "Updated network settings.";
     }
 
-    public void ApplyNetworkDetails(string name, string notes, bool loops, int loopLength)
+    public void ApplyNetworkDetails(string name, string notes, bool loops, int loopLength, bool limitMeetingNodeDemandBySellLocalPermission)
     {
         NetworkNameText = string.IsNullOrWhiteSpace(name) ? "Untitled Network" : name.Trim();
         NetworkDescriptionText = notes?.Trim() ?? string.Empty;
         NetworkTimelineLoopLengthText = loops
             ? Math.Max(1, loopLength).ToString(CultureInfo.InvariantCulture)
             : string.Empty;
+        LimitMeetingNodeDemandBySellLocalPermission = limitMeetingNodeDemandBySellLocalPermission;
         ApplyNetworkEdits();
         BuildSceneFromNetwork();
         RefreshInspector();

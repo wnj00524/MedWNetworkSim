@@ -5396,9 +5396,8 @@ public sealed class ShellWindow : Window
         };
         selector.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.AgentMode), BindingMode.TwoWay));
         ToolTip.SetTip(selector, "Off uses default demand fulfilment. SellLocal requires an enabled controlling actor with explicit SellLocal permission before that node's produced or purchased supply can fulfil demand.");
-        var limitCheckBox = BuildCheckBox("Limit meeting-node demand");
+        var limitCheckBox = BuildMeetingDemandLimitCheckBox();
         limitCheckBox.Bind(ToggleButton.IsCheckedProperty, new Binding(nameof(WorkspaceViewModel.LimitMeetingNodeDemandBySellLocalPermission), BindingMode.TwoWay));
-        ToolTip.SetTip(limitCheckBox, "Limit meeting-node demand by Sell local permission.");
         return new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -7899,6 +7898,13 @@ public sealed class ShellWindow : Window
         return checkBox;
     }
 
+    private static CheckBox BuildMeetingDemandLimitCheckBox()
+    {
+        var checkBox = BuildCheckBox("Limit meeting-node demand");
+        ToolTip.SetTip(checkBox, "Limit meeting-node demand by Sell local permission.");
+        return checkBox;
+    }
+
     private static Control BuildValidationBlock(string propertyName)
     {
         var textBlock = new TextBlock
@@ -8579,6 +8585,8 @@ public sealed class ShellWindow : Window
         var loopInput = BuildTextBox("Loop length");
         loopInput.Text = loopLength.ToString(CultureInfo.InvariantCulture);
         loopInput.IsEnabled = loops;
+        var limitMeetingDemandCheckBox = BuildMeetingDemandLimitCheckBox();
+        limitMeetingDemandCheckBox.IsChecked = viewModel.LimitMeetingNodeDemandBySellLocalPermission;
         var validation = new TextBlock
         {
             Foreground = new SolidColorBrush(AvaloniaDashboardTheme.Danger),
@@ -8603,7 +8611,12 @@ public sealed class ShellWindow : Window
                 return;
             }
 
-            viewModel.ApplyNetworkDetails(nameInput.Text ?? string.Empty, notesInput.Text ?? string.Empty, shouldLoop, loopLength);
+            viewModel.ApplyNetworkDetails(
+                nameInput.Text ?? string.Empty,
+                notesInput.Text ?? string.Empty,
+                shouldLoop,
+                loopLength,
+                limitMeetingDemandCheckBox.IsChecked == true);
             dialog.Close();
         }
 
@@ -8647,6 +8660,7 @@ public sealed class ShellWindow : Window
                     },
                     BuildLabeledRow("Name", nameInput),
                     BuildLabeledRow("Notes", notesInput),
+                    limitMeetingDemandCheckBox,
                     loopToggle,
                     BuildLabeledRow("Loop length", loopInput),
                     validation,

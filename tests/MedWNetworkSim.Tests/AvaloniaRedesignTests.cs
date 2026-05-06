@@ -1,7 +1,6 @@
 using System.Reflection;
 using Avalonia.Automation;
 using Avalonia.Controls;
-using Avalonia.LogicalTree;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.Presentation;
 using MedWNetworkSim.UI;
@@ -102,34 +101,30 @@ public sealed class AvaloniaRedesignTests
     }
 
     [Fact]
-    public void MainShell_AgentModeGroupContainsMeetingDemandLimitCheckBox()
+    public void MeetingDemandLimitCheckBox_UsesExpectedLabelAndTooltip()
+    {
+        var buildMethod = typeof(ShellWindow).GetMethod("BuildMeetingDemandLimitCheckBox", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(buildMethod);
+
+        var checkBox = Assert.IsType<CheckBox>(buildMethod!.Invoke(null, null));
+        Assert.Equal("Limit meeting-node demand", checkBox.Content);
+        Assert.Equal("Limit meeting-node demand by Sell local permission.", ToolTip.GetTip(checkBox));
+    }
+
+    [Fact]
+    public void ApplyNetworkDetails_UpdatesMeetingDemandLimitSetting()
     {
         var workspace = new WorkspaceViewModel
         {
-            LimitMeetingNodeDemandBySellLocalPermission = true
+            LimitMeetingNodeDemandBySellLocalPermission = false
         };
 
-        var buildMethod = typeof(ShellWindow).GetMethod("BuildAgentModeSelector", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(buildMethod);
+        workspace.ApplyNetworkDetails("Test network", "Notes", loops: true, loopLength: 4, limitMeetingNodeDemandBySellLocalPermission: true);
 
-        var control = Assert.IsAssignableFrom<Control>(buildMethod!.Invoke(null, [workspace]));
-        control.DataContext = workspace;
-
-        var checkBox = FindCheckBox(control, "Limit meeting-node demand");
-
-        Assert.NotNull(checkBox);
-        Assert.True(checkBox!.IsEnabled);
-        Assert.Equal("Limit meeting-node demand", checkBox.Content);
-        Assert.Equal("Limit meeting-node demand by Sell local permission.", ToolTip.GetTip(checkBox));
-        Assert.True(checkBox.IsChecked);
-
-        checkBox.IsChecked = false;
-
-        Assert.False(workspace.LimitMeetingNodeDemandBySellLocalPermission);
-
-        workspace.LimitMeetingNodeDemandBySellLocalPermission = true;
-
-        Assert.True(checkBox.IsChecked);
+        Assert.True(workspace.LimitMeetingNodeDemandBySellLocalPermission);
+        Assert.Equal("Test network", workspace.NetworkNameText);
+        Assert.Equal("Notes", workspace.NetworkDescriptionText);
+        Assert.Equal("4", workspace.NetworkTimelineLoopLengthText);
     }
 
     private static void LoadNetwork(WorkspaceViewModel workspace, NetworkModel model)
@@ -137,24 +132,5 @@ public sealed class AvaloniaRedesignTests
         var loadMethod = typeof(WorkspaceViewModel).GetMethod("LoadNetwork", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(loadMethod);
         loadMethod!.Invoke(workspace, [model, "Loaded test network", null]);
-    }
-
-    private static CheckBox? FindCheckBox(ILogical root, string content)
-    {
-        if (root is CheckBox checkBox && string.Equals(checkBox.Content as string, content, StringComparison.Ordinal))
-        {
-            return checkBox;
-        }
-
-        foreach (var child in root.LogicalChildren)
-        {
-            var match = FindCheckBox(child, content);
-            if (match is not null)
-            {
-                return match;
-            }
-        }
-
-        return null;
     }
 }

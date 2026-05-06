@@ -114,6 +114,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
 
                 if (profile.Production > 0d &&
                     deliveredRatio >= 0.85d &&
+                    expectedMargin >= 0d &&
                     HasSpendingCapacity)
                 {
                     var delta = Math.Max(1d, profile.Production * 0.1d);
@@ -123,12 +124,6 @@ public sealed class FirmSimulationActor : SimulationActorBase
                         SimulationActorActionKind.AdjustProduction,
                         profile.TrafficType,
                         node.Id);
-                    if (actionKind == SimulationActorActionKind.SellTraffic && expectedMargin <= 0d)
-                    {
-                        actionKind = IsPermittedByPermissions(SimulationActorActionKind.AdjustProduction, profile.TrafficType, node.Id)
-                            ? SimulationActorActionKind.AdjustProduction
-                            : null;
-                    }
 
                     if (actionKind is not null)
                     {
@@ -168,7 +163,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
                             Kind = actionKind.Value,
                             TargetNodeId = node.Id,
                             TrafficType = profile.TrafficType,
-                            DeltaValue = Math.Max(1d, outcome.UnmetDemand * 0.1d),
+                            DeltaValue = Math.Max(1d, profile.Consumption * 0.1d),
                             Cost = 0d,
                             Reason = actionKind.Value == SimulationActorActionKind.BuyTraffic
                                 ? "Buy/input traffic because it is required for profitable downstream production or unmet demand exists."

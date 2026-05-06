@@ -180,6 +180,44 @@ public sealed class SimulationActorsTests
         Assert.DoesNotContain(decision.Actions, action => action.Kind == SimulationActorActionKind.SellTraffic);
     }
 
+
+    [Fact]
+    public void Firm_AutomaticSupplyIncrease_IncludesRecipeInputCostsInMargin()
+    {
+        var network = BuildRecipeMarginNetwork();
+        var coordinator = new SimulationActorCoordinator();
+        var actor = new SimulationActorState
+        {
+            Id = "recipe-firm",
+            Name = "Recipe Firm",
+            Kind = SimulationActorKind.Firm,
+            Objective = SimulationActorObjective.MaximiseProfit,
+            ControlledNodeIds = ["factory"],
+            Cash = 100d,
+            Capability = new SimulationActorCapability
+            {
+                ActorId = "recipe-firm",
+                AllowedActionKinds = [SimulationActorActionKind.SellTraffic],
+                Permissions =
+                [
+                    new SimulationActorPermission
+                    {
+                        ActionKind = SimulationActorActionKind.SellTraffic,
+                        TrafficType = "Finished",
+                        NodeId = "factory",
+                        IsAllowed = true
+                    }
+                ]
+            }
+        };
+
+        var decision = coordinator.PreviewActorActions(network, [actor]).Single();
+
+        Assert.DoesNotContain(decision.Actions, action =>
+            action.Kind == SimulationActorActionKind.SellTraffic &&
+            StringComparer.OrdinalIgnoreCase.Equals(action.TrafficType, "Finished"));
+    }
+
     [Fact]
     public void Firm_DoesNotCutProduction_WhenAllProductionDeliveredAndUnmetDemandRemains()
     {
@@ -1421,6 +1459,53 @@ public sealed class SimulationActorsTests
         network.Edges.Single(edge => edge.Id == "edge-a").Id = "blocked-capacity";
         network.Edges.Single(edge => edge.Id == "blocked-capacity").Capacity = 0d;
         return network;
+    }
+
+
+    private static NetworkModel BuildRecipeMarginNetwork()
+    {
+        var layerId = Guid.NewGuid();
+        return new NetworkModel
+        {
+            Name = "Recipe Actor Margin Test",
+            Layers = [new NetworkLayerModel { Id = layerId, Name = "Physical", Type = NetworkLayerType.Physical, Order = 0 }],
+            TrafficTypes =
+            [
+                new TrafficTypeDefinition { Name = "Raw", RoutingPreference = RoutingPreference.Cost, AllocationMode = AllocationMode.GreedyBestRoute, DefaultUnitProductionCost = 5d },
+                new TrafficTypeDefinition { Name = "Finished", RoutingPreference = RoutingPreference.Cost, AllocationMode = AllocationMode.GreedyBestRoute, DefaultUnitProductionCost = 1d, DefaultUnitSalePrice = 20d }
+            ],
+            Nodes =
+            [
+                new NodeModel
+                {
+                    Id = "factory",
+                    Name = "Factory",
+                    LayerId = layerId,
+                    TrafficProfiles =
+                    [
+                        new NodeTrafficProfile { TrafficType = "Raw", Production = 100d, ProductionCostPerUnit = 5d },
+                        new NodeTrafficProfile
+                        {
+                            TrafficType = "Finished",
+                            Production = 10d,
+                            UnitPrice = 20d,
+                            InputRequirements = [new ProductionInputRequirement { TrafficType = "Raw", InputQuantity = 10d, OutputQuantity = 1d }]
+                        }
+                    ]
+                },
+                new NodeModel
+                {
+                    Id = "buyer",
+                    Name = "Buyer",
+                    LayerId = layerId,
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Finished", Consumption = 100d }]
+                }
+            ],
+            Edges =
+            [
+                new EdgeModel { Id = "factory-buyer", FromNodeId = "factory", ToNodeId = "buyer", LayerId = layerId, Capacity = 100d, Cost = 1d, Time = 1d }
+            ]
+        };
     }
 
     private static NetworkModel BuildHighThroughputNetwork()

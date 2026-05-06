@@ -283,9 +283,11 @@ public sealed class TrafficEconomicSettlementService
         var declaredSalePrice = producerProfile?.UnitPrice > Epsilon
             ? producerProfile.UnitPrice
             : Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d);
-        var productionCost = ResolveBaseProductionCost(producerProfile, definition);
+        var productionCost = allocation.SourceUnitCostPerUnit > Epsilon
+            ? Math.Max(0d, allocation.SourceUnitCostPerUnit)
+            : ResolveBaseProductionCost(producerProfile, definition);
         var transportCost = allocation.DeliveredCostPerUnit > Epsilon
-            ? allocation.DeliveredCostPerUnit
+            ? Math.Max(0d, allocation.DeliveredCostPerUnit - productionCost)
             : Math.Max(0d, allocation.TotalCost) + Math.Max(0d, allocation.BidCostPerUnit);
         var deliveredCostFloor = productionCost + transportCost;
         return Math.Max(declaredSalePrice, deliveredCostFloor) + consumerPremium;

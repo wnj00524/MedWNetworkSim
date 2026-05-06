@@ -885,9 +885,7 @@ public sealed class TemporalNetworkSimulationEngine
 
         foreach (var nodeId in context.Supply.Keys.Intersect(context.Demand.Keys, Comparer).ToList())
         {
-            if (limitMeetingDemand &&
-                !permittedSellerNodeIds.Contains(nodeId) &&
-                !SimulationActorSellLocalPermissionResolver.CanSellLocal(network, nodeId, context.TrafficType))
+            if (limitMeetingDemand && !permittedSellerNodeIds.Contains(nodeId))
             {
                 continue;
             }

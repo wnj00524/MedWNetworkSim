@@ -66,6 +66,25 @@ public sealed class SimulationActorsTests
         Assert.Equal(10d, permitted.TotalDelivered);
         Assert.Equal(0d, permitted.UnmetDemand);
     }
+
+    [Fact]
+    public void NonSellLocalAgentMode_DoesNotRestrictSellerPermissionChecks()
+    {
+        var network = new NetworkModel
+        {
+            AgentMode = AgentMode.Off,
+            Nodes =
+            [
+                new NodeModel { Id = "seller" },
+                new NodeModel { Id = "buyer" }
+            ],
+            TrafficTypes = [new TrafficTypeDefinition { Name = "Food" }]
+        };
+
+        Assert.True(SimulationActorSellLocalPermissionResolver.CanSellLocal(network, "seller", "Food"));
+        Assert.Equal(["buyer", "seller"], SimulationActorSellLocalPermissionResolver.BuildPermittedSellerNodeSet(network, "Food").OrderBy(id => id).ToArray());
+    }
+
     [Fact]
     public void Firm_ProposesPermittedProfitAction()
     {

@@ -4428,7 +4428,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public void ExportCurrentReport(string path, ReportExportFormat format, bool applySellLocalMeetingDemandLimit)
     {
         CommitTransientEditorsToModel();
-        var exportNetwork = NetworkModelCloneUtility.Clone(fileService.NormalizeAndValidate(network));
+        var exportNetwork = fileService.NormalizeAndValidate(network);
         exportNetwork.LimitMeetingNodeDemandBySellLocalPermission = applySellLocalMeetingDemandLimit;
         var exportOutcomes = simulationEngine.Simulate(exportNetwork);
         var exportConsumerCosts = simulationEngine.SummarizeConsumerCosts(exportOutcomes.SelectMany(outcome => outcome.Allocations));
@@ -4444,7 +4444,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     public void ExportTimelineReport(string path, int periods, ReportExportFormat format, bool applySellLocalMeetingDemandLimit)
     {
         CommitTransientEditorsToModel();
-        var exportNetwork = NetworkModelCloneUtility.Clone(fileService.NormalizeAndValidate(network));
+        var exportNetwork = fileService.NormalizeAndValidate(network);
         exportNetwork.LimitMeetingNodeDemandBySellLocalPermission = applySellLocalMeetingDemandLimit;
         var state = temporalEngine.Initialize(exportNetwork);
         var results = new List<TemporalNetworkSimulationEngine.TemporalSimulationStepResult>();

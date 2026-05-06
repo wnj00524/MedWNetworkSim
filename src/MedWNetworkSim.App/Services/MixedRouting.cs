@@ -549,9 +549,7 @@ public static partial class MixedRoutingAllocator
 
         foreach (var nodeId in context.Supply.Keys.Intersect(context.Demand.Keys, Comparer).ToList())
         {
-            if (limitMeetingDemand &&
-                !permittedSellerNodeIds.Contains(nodeId) &&
-                !SimulationActorSellLocalPermissionResolver.CanSellLocal(network, nodeId, context.TrafficType))
+            if (limitMeetingDemand && !permittedSellerNodeIds.Contains(nodeId))
             {
                 var nodeName = context.NodesById.TryGetValue(nodeId, out var localNode) ? localNode.Name : nodeId;
                 context.Notes.Add($"Sell local meeting-demand limit is active: local demand at {nodeName} was not satisfied by same-node supply because no controlling actor has SellLocal permission.");

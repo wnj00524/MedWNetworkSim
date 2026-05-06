@@ -39,9 +39,11 @@ public sealed class NetworkFileService
     /// <returns>The normalized network model.</returns>
     public NetworkModel LoadJson(string json)
     {
-        var trafficTypesWithExplicitFlowSplitPolicy = ReadTrafficTypesWithExplicitFlowSplitPolicy(json);
-        var hasExplicitMeetingDemandLimit = HasExplicitProperty(json, nameof(NetworkModel.LimitMeetingNodeDemandBySellLocalPermission));
-        var model = JsonSerializer.Deserialize<NetworkModel>(json, serializerOptions)
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var trafficTypesWithExplicitFlowSplitPolicy = ReadTrafficTypesWithExplicitFlowSplitPolicy(root);
+        var hasExplicitMeetingDemandLimit = HasExplicitProperty(root, nameof(NetworkModel.LimitMeetingNodeDemandBySellLocalPermission));
+        var model = root.Deserialize<NetworkModel>(serializerOptions)
             ?? throw new InvalidOperationException("The selected JSON could not be deserialized into a network.");
 
         if (!hasExplicitMeetingDemandLimit && model.AgentMode == AgentMode.SellLocal)
@@ -85,16 +87,15 @@ public sealed class NetworkFileService
     }
 
 
-    private static bool HasExplicitProperty(string json, string propertyName)
+    private static bool HasExplicitProperty(JsonElement root, string propertyName)
     {
-        using var document = JsonDocument.Parse(json);
-        if (document.RootElement.ValueKind != JsonValueKind.Object)
+        if (root.ValueKind != JsonValueKind.Object)
         {
             return false;
         }
 
         var camelCaseName = JsonNamingPolicy.CamelCase.ConvertName(propertyName);
-        return document.RootElement.EnumerateObject().Any(property =>
+        return root.EnumerateObject().Any(property =>
             string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(property.Name, camelCaseName, StringComparison.OrdinalIgnoreCase));
     }
@@ -1191,11 +1192,10 @@ public sealed class NetworkFileService
         return normalized;
     }
 
-    private static ISet<string> ReadTrafficTypesWithExplicitFlowSplitPolicy(string json)
+    private static ISet<string> ReadTrafficTypesWithExplicitFlowSplitPolicy(JsonElement root)
     {
         var result = new HashSet<string>(Comparer);
-        using var document = JsonDocument.Parse(json);
-        if (!document.RootElement.TryGetProperty("trafficTypes", out var trafficTypes) ||
+        if (!root.TryGetProperty("trafficTypes", out var trafficTypes) ||
             trafficTypes.ValueKind != JsonValueKind.Array)
         {
             return result;

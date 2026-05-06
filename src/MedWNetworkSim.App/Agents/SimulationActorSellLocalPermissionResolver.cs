@@ -14,6 +14,11 @@ public static class SimulationActorSellLocalPermissionResolver
 
     public static bool CanSellLocal(NetworkModel network, string nodeId, string trafficType)
     {
+        if (!RequiresExplicitPermission(network))
+        {
+            return true;
+        }
+
         if (string.IsNullOrWhiteSpace(nodeId) || string.IsNullOrWhiteSpace(trafficType))
         {
             return false;
@@ -26,6 +31,14 @@ public static class SimulationActorSellLocalPermissionResolver
 
     public static HashSet<string> BuildPermittedSellerNodeSet(NetworkModel network, string trafficType)
     {
+        if (!RequiresExplicitPermission(network))
+        {
+            return network.Nodes
+                .Select(node => node.Id)
+                .Where(nodeId => !string.IsNullOrWhiteSpace(nodeId))
+                .ToHashSet(Comparer);
+        }
+
         var permitted = new HashSet<string>(Comparer);
         foreach (var actor in network.Actors.Where(actor => actor.IsEnabled))
         {
@@ -63,4 +76,7 @@ public static class SimulationActorSellLocalPermissionResolver
 
         return matching.Count > 0 && matching.Any(permission => permission.IsAllowed) && !matching.Any(permission => !permission.IsAllowed);
     }
+
+    private static bool RequiresExplicitPermission(NetworkModel network) =>
+        HasSellLocalAgentMode(network) || ShouldLimitMeetingNodeDemand(network);
 }

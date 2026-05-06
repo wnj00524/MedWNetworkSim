@@ -122,7 +122,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
                 var hasOverproductionEvidence =
                     profile.Production > outcome.TotalDelivered + 0.01d &&
                     !hasSignificantUnmetDemand;
-                var expectedMargin = EstimateMargin(context.CurrentNetwork, profile, outcome);
+                var expectedMargin = EstimateMargin(context.CurrentNetwork, node, profile, outcome);
 
                 if (profile.Production > 0d &&
                     (shouldHoldOrGrowDeliveredProduction || (demandFillRatio >= 0.85d && !hasMaterialOverproduction)) &&
@@ -293,7 +293,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
 
         if (actions.Count == 0)
         {
-            actions.Add(BuildNoOp("No profitable action available this tick."));
+            actions.Add(BuildNoOp(BuildNoOpReason(context)));
         }
 
         return new SimulationActorDecision
@@ -331,7 +331,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
             : null;
     }
 
-    private static double EstimateMargin(NetworkModel network, NodeTrafficProfile profile, TrafficSimulationOutcome outcome)
+    private static double EstimateMargin(NetworkModel network, NodeModel node, NodeTrafficProfile profile, TrafficSimulationOutcome outcome)
     {
         if (outcome.TotalDelivered > 0d)
         {
@@ -339,9 +339,137 @@ public sealed class FirmSimulationActor : SimulationActorBase
         }
 
         var definition = network.TrafficTypes.FirstOrDefault(definition => Comparer.Equals(definition.Name, profile.TrafficType));
-        var unitPrice = profile.UnitPrice > 0d ? profile.UnitPrice : Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d);
+        var unitPrice = ResolveOfferedUnitPrice(network, profile);
         var productionCost = profile.ProductionCostPerUnit ?? Math.Max(0d, definition?.DefaultUnitProductionCost ?? 0d);
-        return unitPrice - productionCost;
+        var routeCost = EstimateCheapestOutboundRouteCost(network, node.Id, profile.TrafficType);
+        return unitPrice - productionCost - routeCost;
+    }
+
+    private string BuildNoOpReason(SimulationActorContext context)
+    {
+        foreach (var node in context.CurrentNetwork.Nodes.OrderBy(node => node.Id, Comparer))
+        {
+            foreach (var profile in node.TrafficProfiles)
+            {
+                if (profile.Production <= 0d ||
+                    string.IsNullOrWhiteSpace(profile.TrafficType) ||
+                    !IsPermittedByPermissions(SimulationActorActionKind.AdjustProduction, profile.TrafficType, node.Id))
+                {
+                    continue;
+                }
+
+                var outcome = context.CurrentSnapshot.TrafficOutcomes
+                    .FirstOrDefault(outcome => Comparer.Equals(outcome.TrafficType, profile.TrafficType));
+                if (outcome?.UnmetDemand <= 0d)
+                {
+                    continue;
+                }
+
+                var offeredPrice = ResolveOfferedUnitPrice(context.CurrentNetwork, profile);
+                var routeCost = EstimateCheapestOutboundRouteCost(context.CurrentNetwork, node.Id, profile.TrafficType);
+                var definition = context.CurrentNetwork.TrafficTypes
+                    .FirstOrDefault(definition => Comparer.Equals(definition.Name, profile.TrafficType));
+                var productionCost = profile.ProductionCostPerUnit ?? Math.Max(0d, definition?.DefaultUnitProductionCost ?? 0d);
+                if (routeCost > 0d && offeredPrice <= productionCost + routeCost)
+                {
+                    return $"Buyer demand exists, but offered price/premium is {offeredPrice:0.##} and route cost is {routeCost:0.##}, so supplier expansion is not profitable.";
+                }
+            }
+        }
+
+        return "No profitable action available this tick; check permissions, consumption profiles, available supply, buyer price signals, and route costs.";
+    }
+
+    private static double ResolveOfferedUnitPrice(NetworkModel network, NodeTrafficProfile producerProfile)
+    {
+        var definition = network.TrafficTypes.FirstOrDefault(definition => Comparer.Equals(definition.Name, producerProfile.TrafficType));
+        var producerPrice = producerProfile.UnitPrice > 0d
+            ? producerProfile.UnitPrice
+            : Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d);
+        var buyerPremium = network.Nodes
+            .SelectMany(node => node.TrafficProfiles)
+            .Where(profile =>
+                Comparer.Equals(profile.TrafficType, producerProfile.TrafficType) &&
+                profile.Consumption > 0d)
+            .Select(profile => Math.Max(0d, profile.ConsumerPremiumPerUnit))
+            .DefaultIfEmpty(0d)
+            .Max();
+        return producerPrice + buyerPremium;
+    }
+
+    private static double EstimateCheapestOutboundRouteCost(NetworkModel network, string producerNodeId, string trafficType)
+    {
+        var consumerIds = network.Nodes
+            .Where(node => !Comparer.Equals(node.Id, producerNodeId) &&
+                node.TrafficProfiles.Any(profile =>
+                    Comparer.Equals(profile.TrafficType, trafficType) &&
+                    profile.Consumption > 0d))
+            .Select(node => node.Id)
+            .ToList();
+        if (consumerIds.Count == 0)
+        {
+            return 0d;
+        }
+
+        var resolver = new EdgeTrafficPermissionResolver();
+        var adjacency = new Dictionary<string, List<(string ToNodeId, EdgeModel Edge)>>(Comparer);
+        foreach (var edge in network.Edges)
+        {
+            AddArc(edge.FromNodeId, edge.ToNodeId, edge);
+            if (edge.IsBidirectional)
+            {
+                AddArc(edge.ToNodeId, edge.FromNodeId, edge);
+            }
+        }
+
+        var distances = new Dictionary<string, double>(Comparer) { [producerNodeId] = 0d };
+        var queue = new PriorityQueue<string, double>();
+        queue.Enqueue(producerNodeId, 0d);
+
+        while (queue.Count > 0)
+        {
+            var nodeId = queue.Dequeue();
+            var cost = distances[nodeId];
+            if (consumerIds.Contains(nodeId, Comparer))
+            {
+                return cost;
+            }
+
+            if (!adjacency.TryGetValue(nodeId, out var arcs))
+            {
+                continue;
+            }
+
+            foreach (var (toNodeId, edge) in arcs)
+            {
+                if (resolver.Resolve(network, edge, trafficType).Mode == EdgeTrafficPermissionMode.Blocked)
+                {
+                    continue;
+                }
+
+                var nextCost = cost + Math.Max(0d, edge.Cost);
+                if (distances.TryGetValue(toNodeId, out var existing) && existing <= nextCost)
+                {
+                    continue;
+                }
+
+                distances[toNodeId] = nextCost;
+                queue.Enqueue(toNodeId, nextCost);
+            }
+        }
+
+        return 0d;
+
+        void AddArc(string fromNodeId, string toNodeId, EdgeModel edge)
+        {
+            if (!adjacency.TryGetValue(fromNodeId, out var arcs))
+            {
+                arcs = [];
+                adjacency[fromNodeId] = arcs;
+            }
+
+            arcs.Add((toNodeId, edge));
+        }
     }
 
     private SimulationActorAction BuildNoOp(string reason) => new()

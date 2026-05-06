@@ -6095,6 +6095,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private void PreviewActorActions()
     {
         if (!ValidateActorRun()) return;
+        SyncNetworkActorsFromView();
         ActorDecisions.Clear();
         foreach (var decision in simulationActorCoordinator.PreviewActorActions(network, SimulationActors.ToList(), ActorTick, network.ActorDecisions))
         {
@@ -6110,6 +6111,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private void RunActorStep()
     {
         if (!ValidateActorRun()) return;
+        SyncNetworkActorsFromView();
         CapturePreAgentMutationNetwork();
         var step = simulationActorCoordinator.StepActorsOnce(network, SimulationActors.ToList(), ActorTick, network.ActorDecisions);
         ApplyActorStep(step, "Actor step applied.");
@@ -6121,6 +6123,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         CapturePreAgentMutationNetwork();
         for (var i = 0; i < ActorRunTicks; i++)
         {
+            SyncNetworkActorsFromView();
             var step = simulationActorCoordinator.StepActorsOnce(network, SimulationActors.ToList(), ActorTick, network.ActorDecisions);
             ApplyActorStep(step, i == ActorRunTicks - 1 ? "Actor run complete." : string.Empty);
         }
@@ -6266,9 +6269,15 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         }
 
         CapturePreAgentMutationNetwork();
+        SyncNetworkActorsFromView();
         var step = simulationActorCoordinator.StepActorsOnce(network, SimulationActors.ToList(), ActorTick, network.ActorDecisions);
         ApplyActorStep(step, $"Agent actions applied for period {CurrentPeriod + 1}.", refreshSimulation: false);
         return step.Decisions.Count > 0;
+    }
+
+    private void SyncNetworkActorsFromView()
+    {
+        network.Actors = SimulationActors.ToList();
     }
 
     private void ResetTimeline()

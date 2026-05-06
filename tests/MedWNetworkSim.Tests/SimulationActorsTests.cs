@@ -227,6 +227,45 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
+    public void ActorStep_UsesCurrentNetworkActors_AndSchedulesBuyer()
+    {
+        var network = BuildBuyerSignalNetwork();
+        var staleActors = network.Actors
+            .Where(actor => actor.Id is "actor-logistics-001" or "actor-firm-001")
+            .ToList();
+        var coordinator = new SimulationActorCoordinator();
+
+        var step = coordinator.StepActorsOnce(network, staleActors);
+
+        Assert.Contains(step.Decisions, decision => decision.ActorId == "actor-firm-002");
+        Assert.Contains(step.Metrics.ActorCashById, pair => pair.Key == "actor-firm-002");
+        Assert.Contains(step.Metrics.ActorUtilityById, pair => pair.Key == "actor-firm-002");
+        Assert.Contains(step.ActionOutcomes, outcome =>
+            outcome.Action.ActorId == "actor-firm-002" &&
+            outcome.Action.Kind == SimulationActorActionKind.BuyTraffic);
+
+        var buyerProfile = step.NetworkAfterStep.Nodes
+            .Single(node => node.Id == "node-3")
+            .TrafficProfiles
+            .Single(profile => profile.TrafficType == "general");
+        Assert.Equal(2d, buyerProfile.ConsumerPremiumPerUnit);
+
+        var producerDecision = Assert.Single(step.Decisions, decision => decision.ActorId == "actor-firm-001");
+        var producerNoOp = Assert.Single(producerDecision.Actions);
+        Assert.Equal(SimulationActorActionKind.NoOp, producerNoOp.Kind);
+        Assert.Equal(
+            "Buyer demand exists, but offered price/premium is 0 and route cost is 2, so supplier expansion is not profitable.",
+            producerNoOp.Reason);
+
+        var nextStep = coordinator.StepActorsOnce(step.NetworkAfterStep, staleActors, tick: 1, previousDecisions: step.Decisions);
+        var nextProducerDecision = Assert.Single(nextStep.Decisions, decision => decision.ActorId == "actor-firm-001");
+        Assert.Contains(nextProducerDecision.Actions, action =>
+            (action.Kind == SimulationActorActionKind.SellTraffic ||
+                action.Kind == SimulationActorActionKind.AdjustProduction) &&
+            action.DeltaValue > 0d);
+    }
+
+    [Fact]
     public void Government_Overrides_Firm_WhenPolicyConflicts()
     {
         var network = BuildNetwork();
@@ -1321,6 +1360,184 @@ public sealed class SimulationActorsTests
         var network = BuildHighThroughputNetwork();
         network.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single().Production = production;
         network.Nodes.Single(node => node.Id == "consumer").TrafficProfiles.Single().Consumption = consumption;
+        return network;
+    }
+
+    private static NetworkModel BuildBuyerSignalNetwork()
+    {
+        var layerId = Guid.NewGuid();
+        var network = new NetworkModel
+        {
+            Name = "Buyer Signal Test",
+            Layers = [new NetworkLayerModel { Id = layerId, Name = "Physical", Type = NetworkLayerType.Physical, Order = 0 }],
+            TrafficTypes =
+            [
+                new TrafficTypeDefinition
+                {
+                    Name = "general",
+                    RoutingPreference = RoutingPreference.Cost,
+                    AllocationMode = AllocationMode.GreedyBestRoute
+                }
+            ],
+            Nodes =
+            [
+                new NodeModel
+                {
+                    Id = "node-1",
+                    Name = "Node 1",
+                    LayerId = layerId,
+                    TranshipmentCapacity = 40,
+                    TrafficProfiles =
+                    [
+                        new NodeTrafficProfile
+                        {
+                            TrafficType = "general",
+                            Production = 9,
+                            CanTransship = true
+                        }
+                    ]
+                },
+                new NodeModel
+                {
+                    Id = "node-2",
+                    Name = "Node 2",
+                    LayerId = layerId,
+                    TranshipmentCapacity = 40,
+                    TrafficProfiles =
+                    [
+                        new NodeTrafficProfile
+                        {
+                            TrafficType = "general",
+                            CanTransship = true
+                        }
+                    ]
+                },
+                new NodeModel
+                {
+                    Id = "node-3",
+                    Name = "Node 3",
+                    LayerId = layerId,
+                    TranshipmentCapacity = 40,
+                    TrafficProfiles =
+                    [
+                        new NodeTrafficProfile
+                        {
+                            TrafficType = "general",
+                            Consumption = 50
+                        }
+                    ]
+                }
+            ],
+            Edges =
+            [
+                new EdgeModel
+                {
+                    Id = "node-1->node-2",
+                    FromNodeId = "node-1",
+                    ToNodeId = "node-2",
+                    LayerId = layerId,
+                    Cost = 1,
+                    Time = 1,
+                    Capacity = 1000,
+                    IsBidirectional = true
+                },
+                new EdgeModel
+                {
+                    Id = "node-2->node-3",
+                    FromNodeId = "node-2",
+                    ToNodeId = "node-3",
+                    LayerId = layerId,
+                    Cost = 1,
+                    Time = 1,
+                    Capacity = 1000,
+                    IsBidirectional = true
+                }
+            ]
+        };
+
+        network.Actors =
+        [
+            new SimulationActorState
+            {
+                Id = "actor-firm-001",
+                Name = "Firm 001",
+                Kind = SimulationActorKind.Firm,
+                Objective = SimulationActorObjective.MaximiseProfit,
+                Budget = 100,
+                Cash = 100,
+                Capability = new SimulationActorCapability
+                {
+                    ActorId = "actor-firm-001",
+                    AllowedActionKinds = [SimulationActorActionKind.SellTraffic, SimulationActorActionKind.AdjustProduction],
+                    AllowAllTrafficTypes = false,
+                    Permissions =
+                    [
+                        new SimulationActorPermission
+                        {
+                            ActionKind = SimulationActorActionKind.SellTraffic,
+                            TrafficType = "general",
+                            NodeId = "node-1",
+                            IsAllowed = true
+                        },
+                        new SimulationActorPermission
+                        {
+                            ActionKind = SimulationActorActionKind.AdjustProduction,
+                            TrafficType = "general",
+                            NodeId = "node-1",
+                            IsAllowed = true
+                        }
+                    ]
+                }
+            },
+            new SimulationActorState
+            {
+                Id = "actor-logistics-001",
+                Name = "Logistics 001",
+                Kind = SimulationActorKind.LogisticsPlanner,
+                Objective = SimulationActorObjective.MinimiseUnmetDemand,
+                Budget = 500,
+                Cash = 500,
+                Capability = new SimulationActorCapability
+                {
+                    ActorId = "actor-logistics-001",
+                    AllowedActionKinds = [SimulationActorActionKind.AdjustEdgeCapacity],
+                    AllowAllTrafficTypes = false,
+                    Permissions =
+                    [
+                        new SimulationActorPermission
+                        {
+                            ActionKind = SimulationActorActionKind.AdjustEdgeCapacity,
+                            IsAllowed = true
+                        }
+                    ]
+                }
+            },
+            new SimulationActorState
+            {
+                Id = "actor-firm-002",
+                Name = "Buyer",
+                Kind = SimulationActorKind.Firm,
+                Objective = SimulationActorObjective.MaximiseProfit,
+                Budget = 100,
+                Cash = 100,
+                Capability = new SimulationActorCapability
+                {
+                    ActorId = "actor-firm-002",
+                    AllowedActionKinds = [SimulationActorActionKind.BuyTraffic],
+                    AllowAllTrafficTypes = false,
+                    Permissions =
+                    [
+                        new SimulationActorPermission
+                        {
+                            ActionKind = SimulationActorActionKind.BuyTraffic,
+                            NodeId = "node-3",
+                            IsAllowed = true
+                        }
+                    ]
+                }
+            }
+        ];
+
         return network;
     }
 

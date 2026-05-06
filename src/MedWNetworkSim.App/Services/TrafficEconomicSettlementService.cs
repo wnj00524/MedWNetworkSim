@@ -54,6 +54,15 @@ public sealed class TrafficEconomicSettlementService
             .Where(definition => !string.IsNullOrWhiteSpace(definition.Name))
             .GroupBy(definition => definition.Name, Comparer)
             .ToDictionary(group => group.Key, group => group.First(), Comparer);
+        var actorIdByNodeId = SimulationActorNodeOwnership.BuildNodeActorLookup(
+            network.Nodes,
+            actorsById,
+            requireEnabledControlledActors: false);
+        var defaultTaxAuthorityActorId = actorsById.Values
+            .Where(actor => actor.IsEnabled && actor.Kind == SimulationActorKind.Government)
+            .OrderBy(actor => actor.Id, Comparer)
+            .Select(actor => actor.Id)
+            .FirstOrDefault();
         var routeTaxRules = network.RouteTaxRules
             .Where(rule =>
                 rule.IsActive &&
@@ -68,7 +77,15 @@ public sealed class TrafficEconomicSettlementService
             .Select(outcome =>
             {
                 var allocations = outcome.Allocations
-                    .Select(allocation => EnrichAllocation(allocation, nodesById, edgesById, definitionsByTraffic, routeTaxRules, actorsById, ledgers))
+                    .Select(allocation => EnrichAllocation(
+                        allocation,
+                        nodesById,
+                        edgesById,
+                        definitionsByTraffic,
+                        routeTaxRules,
+                        actorIdByNodeId,
+                        defaultTaxAuthorityActorId,
+                        ledgers))
                     .ToList();
 
                 return new TrafficSimulationOutcome
@@ -102,7 +119,8 @@ public sealed class TrafficEconomicSettlementService
         IReadOnlyDictionary<string, EdgeModel> edgesById,
         IReadOnlyDictionary<string, TrafficTypeDefinition> definitionsByTraffic,
         IReadOnlyList<RouteTaxRule> routeTaxRules,
-        IReadOnlyDictionary<string, SimulationActorState> actorsById,
+        IReadOnlyDictionary<string, string> actorIdByNodeId,
+        string? defaultTaxAuthorityActorId,
         IDictionary<string, SimulationActorEconomicLedger> ledgers)
     {
         definitionsByTraffic.TryGetValue(allocation.TrafficType, out var definition);
@@ -123,19 +141,14 @@ public sealed class TrafficEconomicSettlementService
         var saleRevenue = saleUnitPrice * allocation.Quantity;
         var salesTaxRate = ResolveSalesTaxRate(producerProfile, definition);
         var salesTax = saleRevenue * salesTaxRate;
-        var defaultTaxAuthorityActorId = actorsById.Values
-            .Where(actor => actor.IsEnabled && actor.Kind == SimulationActorKind.Government)
-            .OrderBy(actor => actor.Id, Comparer)
-            .Select(actor => actor.Id)
-            .FirstOrDefault();
         var legacyRouteTax = totalTransportCost * Math.Max(0d, definition?.RouteTaxRate ?? 0d);
         var routeTaxByAuthority = CalculateRouteTaxByAuthority(allocation, edgesById, routeTaxRules);
         var routeTax = legacyRouteTax + routeTaxByAuthority.Values.Sum();
         var totalTax = salesTax + routeTax;
         var profit = saleRevenue - (totalTransportCost + totalProductionCost + totalTax);
         var taxPerUnit = allocation.Quantity > Epsilon ? totalTax / allocation.Quantity : 0d;
-        var sellerActorId = ResolveActorForNode(allocation.ProducerNodeId, producer, actorsById);
-        var buyerActorId = ResolveActorForNode(allocation.ConsumerNodeId, consumer, actorsById);
+        actorIdByNodeId.TryGetValue(allocation.ProducerNodeId, out var sellerActorId);
+        actorIdByNodeId.TryGetValue(allocation.ConsumerNodeId, out var buyerActorId);
         var taxAuthorityActorId = routeTaxByAuthority.Keys.OrderBy(id => id, Comparer).FirstOrDefault()
             ?? defaultTaxAuthorityActorId;
 
@@ -226,23 +239,6 @@ public sealed class TrafficEconomicSettlementService
         }
 
         return taxByAuthority;
-    }
-
-    private static string? ResolveActorForNode(
-        string nodeId,
-        NodeModel? node,
-        IReadOnlyDictionary<string, SimulationActorState> actorsById)
-    {
-        var controlledActor = actorsById.Values
-            .Where(actor => actor.ControlledNodeIds.Contains(nodeId, Comparer))
-            .OrderBy(actor => actor.Id, Comparer)
-            .FirstOrDefault();
-        if (controlledActor is not null)
-        {
-            return controlledActor.Id;
-        }
-
-        return string.IsNullOrWhiteSpace(node?.ControllingActor) ? null : node.ControllingActor;
     }
 
     private static double ResolveSaleUnitPrice(NodeTrafficProfile? producerProfile, TrafficTypeDefinition? definition)

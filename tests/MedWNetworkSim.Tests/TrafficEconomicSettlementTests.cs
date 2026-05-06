@@ -382,12 +382,13 @@ public sealed class TrafficEconomicSettlementTests
     }
 
     [Theory]
-    [InlineData(0d, 50d, 5d)]
-    [InlineData(10d, 40d, 4d)]
+    [InlineData(0d, 50d, 5d, -50d)]
+    [InlineData(10d, 40d, 4d, -30d)]
     public void ActorSettlement_UsesBuyerBudgetWhenCashIsZeroOrBudgetIsConfigured(
         double buyerCash,
         double buyerBudget,
-        double expectedDelivered)
+        double expectedDelivered,
+        double expectedBuyerCash)
     {
         var network = BuildSimpleNetwork(production: 10d, consumption: 10d, salePrice: 10d);
         var seller = new SimulationActorState { Id = "seller", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["producer"], Cash = 0d, GenerateAutomaticDecisions = false };
@@ -406,6 +407,19 @@ public sealed class TrafficEconomicSettlementTests
         Assert.Equal(expectedDelivered, result.Metrics.TotalDelivered);
         Assert.Equal(expectedDelivered, result.NetworkAfterStep.Nodes.Single(node => node.Id == "consumer").TrafficProfiles.Single().Consumption);
         Assert.Equal(expectedDelivered * 10d, seller.Cash);
+        Assert.Equal(expectedBuyerCash, buyer.Cash);
+    }
+
+    [Fact]
+    public void ActorSettlement_CapsUnbudgetedBuyerCashAtZeroAfterSettlement()
+    {
+        var network = BuildSimpleNetwork(production: 5d, consumption: 5d, salePrice: 10d);
+        var seller = new SimulationActorState { Id = "seller", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["producer"], Cash = 0d, GenerateAutomaticDecisions = false };
+        var buyer = new SimulationActorState { Id = "buyer", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["consumer"], Cash = 50d, GenerateAutomaticDecisions = false };
+
+        var result = new SimulationActorCoordinator().StepActorsOnce(network, [seller, buyer]);
+
+        Assert.Equal(5d, result.Metrics.TotalDelivered);
         Assert.Equal(0d, buyer.Cash);
     }
 

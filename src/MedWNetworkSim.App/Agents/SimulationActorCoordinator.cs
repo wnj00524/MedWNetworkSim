@@ -230,8 +230,7 @@ public sealed class SimulationActorCoordinator
 
         remainingSupplyByTraffic.TryGetValue(intent.TrafficType, out var availableSupply);
         var route = FindCheapestRouteWithResidualCapacity(network, intent.TargetNodeId, intent.TrafficType, remainingCapacityByEdgeId);
-        var sellerPrice = ResolveLowestSellerUnitPrice(network, intent.TrafficType);
-        var landedUnitPrice = Math.Max(0.000001d, sellerPrice + route.RouteCost);
+        var landedUnitPrice = Math.Max(0.000001d, route.LandedUnitPrice);
         targetProfile.ConsumerPremiumPerUnit = Math.Max(targetProfile.ConsumerPremiumPerUnit, route.RouteCost);
         var affordableQuantity = buyer.Cash / landedUnitPrice;
         var executedQuantity = Math.Min(intent.RequestedQuantity, Math.Min(availableSupply, Math.Min(route.ResidualCapacity, affordableQuantity)));
@@ -252,30 +251,28 @@ public sealed class SimulationActorCoordinator
         return (executedQuantity, $"Purchase executed for {executedQuantity:0.##} of requested {intent.RequestedQuantity:0.##}; available supply={availableSupply:0.##}; feasible residual route capacity={route.ResidualCapacity:0.##}; landed unit price={landedUnitPrice:0.##}.");
     }
 
-    private static double ResolveLowestSellerUnitPrice(NetworkModel network, string trafficType)
-    {
-        var definition = network.TrafficTypes.FirstOrDefault(definition => StringComparer.OrdinalIgnoreCase.Equals(definition.Name, trafficType));
-        return network.Nodes
-            .SelectMany(node => node.TrafficProfiles)
-            .Where(profile => StringComparer.OrdinalIgnoreCase.Equals(profile.TrafficType, trafficType) && profile.Production > 0d)
-            .Select(profile => profile.UnitPrice > 0d ? profile.UnitPrice : Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d))
-            .DefaultIfEmpty(Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d))
-            .Min();
-    }
-
-    private static (double ResidualCapacity, double RouteCost, IReadOnlyList<string> PathEdgeIds) FindCheapestRouteWithResidualCapacity(
+    private static (double ResidualCapacity, double RouteCost, double LandedUnitPrice, IReadOnlyList<string> PathEdgeIds) FindCheapestRouteWithResidualCapacity(
         NetworkModel network,
         string targetNodeId,
         string trafficType,
         IDictionary<string, double> remainingCapacityByEdgeId)
     {
-        var producers = network.Nodes
-            .Where(node => node.TrafficProfiles.Any(profile => StringComparer.OrdinalIgnoreCase.Equals(profile.TrafficType, trafficType) && profile.Production > 0d))
-            .Select(node => node.Id)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var definition = network.TrafficTypes.FirstOrDefault(definition => StringComparer.OrdinalIgnoreCase.Equals(definition.Name, trafficType));
+        var producerPrices = network.Nodes
+            .Select(node => new
+            {
+                node.Id,
+                Profile = node.TrafficProfiles.FirstOrDefault(profile => StringComparer.OrdinalIgnoreCase.Equals(profile.TrafficType, trafficType) && profile.Production > 0d)
+            })
+            .Where(producer => producer.Profile is not null)
+            .ToDictionary(
+                producer => producer.Id,
+                producer => producer.Profile!.UnitPrice > 0d ? producer.Profile.UnitPrice : Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d),
+                StringComparer.OrdinalIgnoreCase);
+        var producers = producerPrices.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (producers.Count == 0)
         {
-            return (0d, 0d, []);
+            return (0d, 0d, 0d, []);
         }
 
         var resolver = new EdgeTrafficPermissionResolver();
@@ -294,8 +291,9 @@ public sealed class SimulationActorCoordinator
         var queue = new PriorityQueue<string, double>();
         foreach (var producerId in producers)
         {
-            distances[producerId] = 0d;
-            queue.Enqueue(producerId, 0d);
+            var producerUnitPrice = producerPrices[producerId];
+            distances[producerId] = producerUnitPrice;
+            queue.Enqueue(producerId, producerUnitPrice);
         }
 
         while (queue.Count > 0)
@@ -316,7 +314,9 @@ public sealed class SimulationActorCoordinator
                 }
 
                 pathEdges.Reverse();
-                return (double.IsPositiveInfinity(residual) ? double.MaxValue : residual, cost, pathEdges);
+                var sellerUnitPrice = producerPrices.GetValueOrDefault(current);
+                var routeCost = Math.Max(0d, cost - sellerUnitPrice);
+                return (double.IsPositiveInfinity(residual) ? double.MaxValue : residual, routeCost, cost, pathEdges);
             }
 
             if (!adjacency.TryGetValue(nodeId, out var arcs))
@@ -345,7 +345,7 @@ public sealed class SimulationActorCoordinator
             }
         }
 
-        return (0d, 0d, []);
+        return (0d, 0d, 0d, []);
 
         void AddArc(string fromNodeId, string toNodeId, EdgeModel edge)
         {

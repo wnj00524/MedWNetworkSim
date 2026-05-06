@@ -202,22 +202,30 @@ public sealed class SimulationActorActionApplier
 
         var existing = edge.Capacity ?? Math.Max(1d, currentFlowByEdgeId.GetValueOrDefault(edge.Id));
         var routedFlow = currentFlowByEdgeId.GetValueOrDefault(edge.Id);
-        var requestedDelta = action.AbsoluteValue.HasValue
-            ? Math.Max(0d, action.AbsoluteValue.Value - existing)
-            : Math.Max(0d, action.DeltaValue);
-        var capacityUnitCost = ResolveCapacityUnitCost(action, requestedDelta);
-        var requestedCost = requestedDelta * capacityUnitCost;
         var updated = Math.Max(0d, action.AbsoluteValue ?? existing + action.DeltaValue);
+        var requestedDelta = action.AbsoluteValue.HasValue
+            ? updated - existing
+            : action.DeltaValue;
+        var expansionDelta = Math.Max(0d, requestedDelta);
+        var capacityUnitCost = ResolveCapacityUnitCost(action, expansionDelta);
+        var requestedCost = expansionDelta * capacityUnitCost;
 
         if (!action.IsForced && updated < routedFlow)
         {
             return (false, $"Cannot reduce capacity below current routed flow ({routedFlow:0.##}).");
         }
 
-        if (requestedDelta <= 0.000001d)
+        if (updated < existing - 0.000001d)
         {
             action.Cost = 0d;
-            return (false, $"No capacity expansion: requested delta {requestedDelta:0.##}; current capacity {existing:0.##}.");
+            edge.Capacity = updated;
+            return (true, $"Edge capacity reduced to {updated:0.##}; current capacity {existing:0.##}.");
+        }
+
+        if (expansionDelta <= 0.000001d)
+        {
+            action.Cost = 0d;
+            return (false, $"No capacity expansion: requested delta {expansionDelta:0.##}; current capacity {existing:0.##}.");
         }
 
         if (availableActorFunds < requestedCost)
@@ -233,12 +241,12 @@ public sealed class SimulationActorActionApplier
             action.AbsoluteValue = null;
             action.Cost = affordableDelta * capacityUnitCost;
             edge.Capacity = existing + affordableDelta;
-            return (true, $"Edge capacity scaled to affordable delta {affordableDelta:0.##} from requested delta {requestedDelta:0.##}; current capacity {existing:0.##}; unit cost {capacityUnitCost:0.##}.");
+            return (true, $"Edge capacity scaled to affordable delta {affordableDelta:0.##} from requested delta {expansionDelta:0.##}; current capacity {existing:0.##}; unit cost {capacityUnitCost:0.##}.");
         }
 
         action.Cost = requestedCost;
         edge.Capacity = updated;
-        return (true, $"Edge capacity updated by {requestedDelta:0.##}; current capacity {existing:0.##}; unit cost {capacityUnitCost:0.##}; cost {action.Cost:0.##}.");
+        return (true, $"Edge capacity updated by {expansionDelta:0.##}; current capacity {existing:0.##}; unit cost {capacityUnitCost:0.##}; cost {action.Cost:0.##}.");
     }
 
     private static double ResolveCapacityUnitCost(SimulationActorAction action, double requestedDelta)

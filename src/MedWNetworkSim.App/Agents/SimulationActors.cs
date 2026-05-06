@@ -109,23 +109,23 @@ public sealed class FirmSimulationActor : SimulationActorBase
                 }
 
                 var unmetRatio = outcome.TotalConsumption <= 0d ? 0d : outcome.UnmetDemand / outcome.TotalConsumption;
-                var deliveredDemandRatio = outcome.TotalConsumption <= 0d ? 0d : outcome.TotalDelivered / outcome.TotalConsumption;
-                var productionDelivered = EstimateProductionDelivered(outcome, node.Id);
+                var demandFillRatio = outcome.TotalConsumption <= 0d ? 0d : outcome.TotalDelivered / outcome.TotalConsumption;
                 var productionDeliveryRatio = profile.Production <= 0d
                     ? 0d
-                    : Math.Min(1d, productionDelivered / profile.Production);
+                    : Math.Min(1d, outcome.TotalDelivered / profile.Production);
                 var hasSignificantUnmetDemand = outcome.UnmetDemand > Math.Max(0.01d, outcome.TotalConsumption * 0.01d);
                 var isMostlyDeliveredProduction = productionDeliveryRatio >= 0.8d;
+                var shouldHoldOrGrowDeliveredProduction = hasSignificantUnmetDemand && isMostlyDeliveredProduction;
                 var hasMaterialOverproduction =
-                    profile.Production > Math.Max(1d, productionDelivered) * 1.5d &&
+                    profile.Production > Math.Max(1d, outcome.TotalDelivered) * 1.5d &&
                     !hasSignificantUnmetDemand;
                 var hasOverproductionEvidence =
-                    profile.Production > productionDelivered + 0.01d &&
+                    profile.Production > outcome.TotalDelivered + 0.01d &&
                     !hasSignificantUnmetDemand;
                 var expectedMargin = EstimateMargin(context.CurrentNetwork, profile, outcome);
 
                 if (profile.Production > 0d &&
-                    (isMostlyDeliveredProduction || (deliveredDemandRatio >= 0.85d && !hasMaterialOverproduction)) &&
+                    (shouldHoldOrGrowDeliveredProduction || (demandFillRatio >= 0.85d && !hasMaterialOverproduction)) &&
                     expectedMargin >= 0d &&
                     HasSpendingCapacity)
                 {
@@ -203,7 +203,8 @@ public sealed class FirmSimulationActor : SimulationActorBase
                         IsPolicyAction = false
                     });
                 }
-                else if (hasOverproductionEvidence &&
+                else if (!shouldHoldOrGrowDeliveredProduction &&
+                    hasOverproductionEvidence &&
                     productionDeliveryRatio < 0.4d &&
                     profile.Production > 0d &&
                     IsPermittedByPermissions(SimulationActorActionKind.AdjustProduction, profile.TrafficType, node.Id))
@@ -222,7 +223,8 @@ public sealed class FirmSimulationActor : SimulationActorBase
                         IsPolicyAction = false
                     });
                 }
-                else if (expectedMargin < 0d &&
+                else if (!shouldHoldOrGrowDeliveredProduction &&
+                    expectedMargin < 0d &&
                     profile.Production > 0d &&
                     IsPermittedByPermissions(SimulationActorActionKind.AdjustProduction, profile.TrafficType, node.Id))
                 {
@@ -340,18 +342,6 @@ public sealed class FirmSimulationActor : SimulationActorBase
         var unitPrice = profile.UnitPrice > 0d ? profile.UnitPrice : Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d);
         var productionCost = profile.ProductionCostPerUnit ?? Math.Max(0d, definition?.DefaultUnitProductionCost ?? 0d);
         return unitPrice - productionCost;
-    }
-
-    private static double EstimateProductionDelivered(TrafficSimulationOutcome outcome, string nodeId)
-    {
-        if (outcome.Allocations.Count == 0)
-        {
-            return outcome.TotalDelivered;
-        }
-
-        return outcome.Allocations
-            .Where(allocation => Comparer.Equals(allocation.ProducerNodeId, nodeId))
-            .Sum(allocation => allocation.Quantity);
     }
 
     private SimulationActorAction BuildNoOp(string reason) => new()

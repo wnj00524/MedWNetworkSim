@@ -124,7 +124,7 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
-    public void Firm_IncreasesOrHoldsProduction_WhenDeliveredProductionHasUnmetDemand()
+    public void Firm_IncreasesProduction_WhenDeliveredProductionHasUnmetDemandAndMarginIsNonNegative()
     {
         var network = BuildProductionPressureNetwork(production: 10d, consumption: 400d);
         var coordinator = new SimulationActorCoordinator();
@@ -136,9 +136,7 @@ public sealed class SimulationActorsTests
             .ToList();
 
         Assert.DoesNotContain(productionActions, action => action.DeltaValue < 0d);
-        Assert.True(
-            productionActions.Any(action => action.DeltaValue > 0d) ||
-            decision.Actions.Any(action => action.Kind == SimulationActorActionKind.NoOp));
+        Assert.Contains(productionActions, action => action.DeltaValue > 0d);
     }
 
     [Fact]

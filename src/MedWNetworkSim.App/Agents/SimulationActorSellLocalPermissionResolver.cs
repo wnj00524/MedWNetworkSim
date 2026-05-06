@@ -29,6 +29,16 @@ public static class SimulationActorSellLocalPermissionResolver
             .Any(actor => HasExplicitSellLocalPermission(actor, nodeId, trafficType));
     }
 
+    public static bool CanReceiveMeetingNodeDemand(NetworkModel network, string nodeId, string trafficType)
+    {
+        if (!ShouldLimitMeetingNodeDemand(network))
+        {
+            return true;
+        }
+
+        return CanSellLocal(network, nodeId, trafficType);
+    }
+
     public static HashSet<string> BuildPermittedSellerNodeSet(NetworkModel network, string trafficType)
     {
         if (!RequiresExplicitPermission(network))

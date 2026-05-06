@@ -49,10 +49,9 @@ public sealed class MeetingDemandSellLocalLimitTests
 
         var outcome = new NetworkSimulationEngine().Simulate(network).Single();
 
-        Assert.Equal(10d, outcome.TotalDelivered);
-        Assert.Equal(0d, outcome.UnmetDemand);
-        Assert.Contains(outcome.Allocations, allocation => allocation.ProducerNodeId == "seller" && allocation.ConsumerNodeId == "meeting");
-        Assert.DoesNotContain(outcome.Allocations, allocation => allocation.IsLocalSupply && allocation.ProducerNodeId == "meeting");
+        Assert.Equal(0d, outcome.TotalDelivered);
+        Assert.Equal(10d, outcome.UnmetDemand);
+        Assert.DoesNotContain(outcome.Allocations, allocation => allocation.ConsumerNodeId == "meeting");
     }
 
     [Fact]
@@ -66,6 +65,68 @@ public sealed class MeetingDemandSellLocalLimitTests
         Assert.Equal(10d, outcome.TotalDelivered);
         Assert.Equal(0d, outcome.UnmetDemand);
         Assert.Contains(outcome.Allocations, allocation => allocation.IsLocalSupply && allocation.ProducerNodeId == "meeting");
+    }
+
+    [Fact]
+    public void ToggleOn_AllowsExternalDeliveryWhenConsumerNodeHasExplicitSellLocalPermission()
+    {
+        var network = new NetworkModel
+        {
+            LimitMeetingNodeDemandBySellLocalPermission = true,
+            TrafficTypes = [new TrafficTypeDefinition { Name = "Food" }],
+            Nodes =
+            [
+                new NodeModel
+                {
+                    Id = "meeting",
+                    Name = "Meeting Node",
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Food", Consumption = 10d }]
+                },
+                new NodeModel
+                {
+                    Id = "seller",
+                    Name = "Permitted Seller",
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Food", Production = 10d }]
+                }
+            ],
+            Edges = [new EdgeModel { Id = "seller-to-meeting", FromNodeId = "seller", ToNodeId = "meeting", IsBidirectional = true }]
+        };
+        network.Actors.Add(BuildSellLocalActor("meeting-actor", "meeting"));
+        network.Actors.Add(BuildSellLocalActor("seller-actor", "seller"));
+
+        var outcome = new NetworkSimulationEngine().Simulate(network).Single();
+
+        Assert.Equal(10d, outcome.TotalDelivered);
+        Assert.Equal(0d, outcome.UnmetDemand);
+        Assert.Contains(outcome.Allocations, allocation => allocation.ProducerNodeId == "seller" && allocation.ConsumerNodeId == "meeting");
+    }
+
+    [Fact]
+    public void TemporalToggleOn_BlocksExternalDeliveryWithoutControllingActorOnConsumerNode()
+    {
+        var network = BuildTemporalMeetingNetwork(limitMeetingDemand: true);
+        network.Nodes.Add(new NodeModel
+        {
+            Id = "seller",
+            Name = "Permitted Seller",
+            TrafficProfiles =
+            [
+                new NodeTrafficProfile
+                {
+                    TrafficType = "Food",
+                    Production = 10d,
+                    ProductionStartPeriod = 1
+                }
+            ]
+        });
+        network.Edges.Add(new EdgeModel { Id = "seller-to-meeting", FromNodeId = "seller", ToNodeId = "meeting", IsBidirectional = true });
+        network.Actors.Add(BuildSellLocalActor("seller-actor", "seller"));
+
+        var engine = new TemporalNetworkSimulationEngine();
+        var result = engine.Advance(network, engine.Initialize(network));
+
+        Assert.Empty(result.Allocations);
+        Assert.Contains(result.NodeStates, pair => pair.Key.NodeId == "meeting" && pair.Value.DemandBacklog >= 10d);
     }
 
     [Fact]

@@ -862,6 +862,9 @@ public sealed class TemporalNetworkSimulationEngine
             seed,
             nodesById,
             profilesByNodeId,
+            demand.Keys
+                .Where(nodeId => SimulationActorSellLocalPermissionResolver.CanReceiveMeetingNodeDemand(network, nodeId, definition.Name))
+                .ToHashSet(Comparer),
             supply,
             supplyUnitCosts,
             demand,
@@ -878,14 +881,9 @@ public sealed class TemporalNetworkSimulationEngine
         NetworkModel network,
         IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates)
     {
-        var limitMeetingDemand = SimulationActorSellLocalPermissionResolver.ShouldLimitMeetingNodeDemand(network);
-        var permittedSellerNodeIds = limitMeetingDemand
-            ? SimulationActorSellLocalPermissionResolver.BuildPermittedSellerNodeSet(network, context.TrafficType)
-            : new HashSet<string>(Comparer);
-
         foreach (var nodeId in context.Supply.Keys.Intersect(context.Demand.Keys, Comparer).ToList())
         {
-            if (limitMeetingDemand && !permittedSellerNodeIds.Contains(nodeId))
+            if (!SimulationActorSellLocalPermissionResolver.CanReceiveMeetingNodeDemand(network, nodeId, context.TrafficType))
             {
                 continue;
             }
@@ -928,7 +926,8 @@ public sealed class TemporalNetworkSimulationEngine
             ProfilesByNodeId = context.ProfilesByNodeId,
             Supply = context.Supply.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
             SupplyUnitCosts = context.SupplyUnitCosts.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
-            Demand = context.Demand.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer)
+            Demand = context.Demand.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
+            MeetingDemandEligibleNodeIds = context.MeetingDemandEligibleNodeIds
         };
     }
 
@@ -1871,7 +1870,10 @@ public sealed class TemporalNetworkSimulationEngine
 
         foreach (var producerNodeId in context.Supply.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
         {
-            foreach (var consumerNodeId in context.Demand.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
+            foreach (var consumerNodeId in context.Demand
+                .Where(pair => pair.Value > Epsilon)
+                .Select(pair => pair.Key)
+                .Where(nodeId => context.MeetingDemandEligibleNodeIds.Contains(nodeId)))
             {
                 if (Comparer.Equals(producerNodeId, consumerNodeId))
                 {
@@ -2653,6 +2655,7 @@ public sealed class TemporalNetworkSimulationEngine
         int Seed,
         IReadOnlyDictionary<string, NodeModel> NodesById,
         IReadOnlyDictionary<string, NodeTrafficProfile?> ProfilesByNodeId,
+        IReadOnlySet<string> MeetingDemandEligibleNodeIds,
         IDictionary<string, double> Supply,
         IDictionary<string, double> SupplyUnitCosts,
         IDictionary<string, double> Demand,

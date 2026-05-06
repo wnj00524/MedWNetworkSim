@@ -83,6 +83,7 @@ public sealed class RoutingTrafficContext
     public int Seed { get; init; }
     public IReadOnlyDictionary<string, NodeModel> NodesById { get; init; } = new Dictionary<string, NodeModel>(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyDictionary<string, NodeTrafficProfile?> ProfilesByNodeId { get; init; } = new Dictionary<string, NodeTrafficProfile?>(StringComparer.OrdinalIgnoreCase);
+    public IReadOnlySet<string> MeetingDemandEligibleNodeIds { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, double> Supply { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, double> SupplyUnitCosts { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, double> Demand { get; init; } = new(StringComparer.OrdinalIgnoreCase);
@@ -518,6 +519,9 @@ public static partial class MixedRoutingAllocator
             Seed = seed,
             NodesById = nodesById,
             ProfilesByNodeId = profilesByNodeId,
+            MeetingDemandEligibleNodeIds = demand.Keys
+                .Where(nodeId => SimulationActorSellLocalPermissionResolver.CanReceiveMeetingNodeDemand(network, nodeId, definition.Name))
+                .ToHashSet(Comparer),
             Supply = supply,
             SupplyUnitCosts = supplyUnitCosts,
             Demand = demand,
@@ -532,6 +536,17 @@ public static partial class MixedRoutingAllocator
                 : "Agent mode Sell local is active: only supply from actors with explicit SellLocal permission can fulfil demand.");
         }
 
+        if (SimulationActorSellLocalPermissionResolver.ShouldLimitMeetingNodeDemand(network))
+        {
+            foreach (var nodeId in demand.Keys
+                .Where(nodeId => !SimulationActorSellLocalPermissionResolver.CanReceiveMeetingNodeDemand(network, nodeId, definition.Name))
+                .OrderBy(nodeId => nodeId, Comparer))
+            {
+                var nodeName = nodesById.TryGetValue(nodeId, out var node) ? node.Name : nodeId;
+                context.Notes.Add($"Sell local meeting-demand limit is active: demand at {nodeName} cannot be satisfied because no controlling actor has SellLocal permission.");
+            }
+        }
+
         if (applyLocalAllocations)
         {
             ApplyLocalAllocations(context, network, period: 0);
@@ -542,17 +557,12 @@ public static partial class MixedRoutingAllocator
 
     public static void ApplyLocalAllocations(RoutingTrafficContext context, NetworkModel network, int period)
     {
-        var limitMeetingDemand = SimulationActorSellLocalPermissionResolver.ShouldLimitMeetingNodeDemand(network);
-        var permittedSellerNodeIds = limitMeetingDemand
-            ? SimulationActorSellLocalPermissionResolver.BuildPermittedSellerNodeSet(network, context.TrafficType)
-            : new HashSet<string>(Comparer);
-
         foreach (var nodeId in context.Supply.Keys.Intersect(context.Demand.Keys, Comparer).ToList())
         {
-            if (limitMeetingDemand && !permittedSellerNodeIds.Contains(nodeId))
+            if (!SimulationActorSellLocalPermissionResolver.CanReceiveMeetingNodeDemand(network, nodeId, context.TrafficType))
             {
                 var nodeName = context.NodesById.TryGetValue(nodeId, out var localNode) ? localNode.Name : nodeId;
-                context.Notes.Add($"Sell local meeting-demand limit is active: local demand at {nodeName} was not satisfied by same-node supply because no controlling actor has SellLocal permission.");
+                context.Notes.Add($"Sell local meeting-demand limit is active: local demand at {nodeName} was not satisfied because no controlling actor has SellLocal permission.");
                 continue;
             }
 
@@ -593,7 +603,10 @@ public static partial class MixedRoutingAllocator
         var routes = new List<RouteCandidate>();
         foreach (var producerNodeId in context.Supply.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
         {
-            foreach (var consumerNodeId in context.Demand.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
+            foreach (var consumerNodeId in context.Demand
+                .Where(pair => pair.Value > Epsilon)
+                .Select(pair => pair.Key)
+                .Where(nodeId => context.MeetingDemandEligibleNodeIds.Contains(nodeId)))
             {
                 if (Comparer.Equals(producerNodeId, consumerNodeId))
                 {

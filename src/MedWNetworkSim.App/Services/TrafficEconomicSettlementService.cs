@@ -54,21 +54,38 @@ public sealed class TrafficEconomicSettlementService
             .Where(definition => !string.IsNullOrWhiteSpace(definition.Name))
             .GroupBy(definition => definition.Name, Comparer)
             .ToDictionary(group => group.Key, group => group.First(), Comparer);
-        var routeTaxRules = network.RouteTaxRules
+        var actorIdByNodeId = SimulationActorNodeOwnership.BuildNodeActorLookup(
+            network.Nodes,
+            actorsById,
+            requireEnabledControlledActors: false);
+        var defaultTaxAuthorityActorId = actorsById.Values
+            .Where(actor => actor.IsEnabled && actor.Kind == SimulationActorKind.Government)
+            .OrderBy(actor => actor.Id, Comparer)
+            .Select(actor => actor.Id)
+            .FirstOrDefault();
+        var routeTaxRulesByEdgeAndTraffic = BuildRouteTaxRuleLookup(network.RouteTaxRules
             .Where(rule =>
                 rule.IsActive &&
                 rule.TaxRate > 0d &&
                 !string.IsNullOrWhiteSpace(rule.EdgeId) &&
                 !string.IsNullOrWhiteSpace(rule.TrafficType) &&
                 !string.IsNullOrWhiteSpace(rule.TaxAuthorityActorId))
-            .ToList();
+            .ToList());
         var ledgers = new Dictionary<string, SimulationActorEconomicLedger>(Comparer);
 
         var enrichedOutcomes = outcomes
             .Select(outcome =>
             {
                 var allocations = outcome.Allocations
-                    .Select(allocation => EnrichAllocation(allocation, nodesById, edgesById, definitionsByTraffic, routeTaxRules, actorsById, ledgers))
+                    .Select(allocation => EnrichAllocation(
+                        allocation,
+                        nodesById,
+                        edgesById,
+                        definitionsByTraffic,
+                        routeTaxRulesByEdgeAndTraffic,
+                        actorIdByNodeId,
+                        defaultTaxAuthorityActorId,
+                        ledgers))
                     .ToList();
 
                 return new TrafficSimulationOutcome
@@ -101,8 +118,9 @@ public sealed class TrafficEconomicSettlementService
         IReadOnlyDictionary<string, NodeModel> nodesById,
         IReadOnlyDictionary<string, EdgeModel> edgesById,
         IReadOnlyDictionary<string, TrafficTypeDefinition> definitionsByTraffic,
-        IReadOnlyList<RouteTaxRule> routeTaxRules,
-        IReadOnlyDictionary<string, SimulationActorState> actorsById,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, IReadOnlyList<RouteTaxRule>>> routeTaxRulesByEdgeAndTraffic,
+        IReadOnlyDictionary<string, string> actorIdByNodeId,
+        string? defaultTaxAuthorityActorId,
         IDictionary<string, SimulationActorEconomicLedger> ledgers)
     {
         definitionsByTraffic.TryGetValue(allocation.TrafficType, out var definition);
@@ -123,21 +141,25 @@ public sealed class TrafficEconomicSettlementService
         var saleRevenue = saleUnitPrice * allocation.Quantity;
         var salesTaxRate = ResolveSalesTaxRate(producerProfile, definition);
         var salesTax = saleRevenue * salesTaxRate;
-        var defaultTaxAuthorityActorId = actorsById.Values
-            .Where(actor => actor.IsEnabled && actor.Kind == SimulationActorKind.Government)
-            .OrderBy(actor => actor.Id, Comparer)
-            .Select(actor => actor.Id)
-            .FirstOrDefault();
         var legacyRouteTax = totalTransportCost * Math.Max(0d, definition?.RouteTaxRate ?? 0d);
-        var routeTaxByAuthority = CalculateRouteTaxByAuthority(allocation, edgesById, routeTaxRules);
+        var routeTaxByAuthority = CalculateRouteTaxByAuthority(allocation, edgesById, routeTaxRulesByEdgeAndTraffic);
         var routeTax = legacyRouteTax + routeTaxByAuthority.Values.Sum();
         var totalTax = salesTax + routeTax;
         var profit = saleRevenue - (totalTransportCost + totalProductionCost + totalTax);
         var taxPerUnit = allocation.Quantity > Epsilon ? totalTax / allocation.Quantity : 0d;
-        var sellerActorId = ResolveActorForNode(allocation.ProducerNodeId, producer, actorsById);
-        var buyerActorId = ResolveActorForNode(allocation.ConsumerNodeId, consumer, actorsById);
-        var taxAuthorityActorId = routeTaxByAuthority.Keys.OrderBy(id => id, Comparer).FirstOrDefault()
-            ?? defaultTaxAuthorityActorId;
+        actorIdByNodeId.TryGetValue(allocation.ProducerNodeId, out var sellerActorId);
+        actorIdByNodeId.TryGetValue(allocation.ConsumerNodeId, out var buyerActorId);
+        var taxesByAuthorityActorId = new Dictionary<string, double>(routeTaxByAuthority, Comparer);
+        var defaultTax = salesTax + legacyRouteTax;
+        if (!string.IsNullOrWhiteSpace(defaultTaxAuthorityActorId) && defaultTax > Epsilon)
+        {
+            taxesByAuthorityActorId.TryGetValue(defaultTaxAuthorityActorId, out var existingDefaultTax);
+            taxesByAuthorityActorId[defaultTaxAuthorityActorId] = existingDefaultTax + defaultTax;
+        }
+
+        var taxAuthorityActorId = taxesByAuthorityActorId.Count == 1
+            ? taxesByAuthorityActorId.Keys.First()
+            : null;
 
         if (!string.IsNullOrWhiteSpace(sellerActorId))
         {
@@ -161,7 +183,6 @@ public sealed class TrafficEconomicSettlementService
         if (!string.IsNullOrWhiteSpace(defaultTaxAuthorityActorId))
         {
             var defaultTaxAuthority = GetLedger(ledgers, defaultTaxAuthorityActorId);
-            var defaultTax = salesTax + legacyRouteTax;
             defaultTaxAuthority.TaxesReceivedByAuthority += defaultTax;
             defaultTaxAuthority.TaxesReceived += defaultTax;
             defaultTaxAuthority.CashDelta += defaultTax;
@@ -188,16 +209,34 @@ public sealed class TrafficEconomicSettlementService
             profit,
             sellerActorId,
             buyerActorId,
+            taxesByAuthorityActorId,
             taxAuthorityActorId);
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, IReadOnlyList<RouteTaxRule>>> BuildRouteTaxRuleLookup(
+        IReadOnlyList<RouteTaxRule> routeTaxRules)
+    {
+        var lookup = new Dictionary<string, IReadOnlyDictionary<string, IReadOnlyList<RouteTaxRule>>>(Comparer);
+        foreach (var edgeGroup in routeTaxRules.GroupBy(rule => rule.EdgeId, Comparer))
+        {
+            lookup[edgeGroup.Key] = edgeGroup
+                .GroupBy(rule => rule.TrafficType, Comparer)
+                .ToDictionary(
+                    group => group.Key,
+                    group => (IReadOnlyList<RouteTaxRule>)group.ToList(),
+                    Comparer);
+        }
+
+        return lookup;
     }
 
     private static Dictionary<string, double> CalculateRouteTaxByAuthority(
         RouteAllocation allocation,
         IReadOnlyDictionary<string, EdgeModel> edgesById,
-        IReadOnlyList<RouteTaxRule> routeTaxRules)
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, IReadOnlyList<RouteTaxRule>>> routeTaxRulesByEdgeAndTraffic)
     {
         var taxByAuthority = new Dictionary<string, double>(Comparer);
-        if (allocation.Quantity <= Epsilon || allocation.PathEdgeIds.Count == 0 || routeTaxRules.Count == 0)
+        if (allocation.Quantity <= Epsilon || allocation.PathEdgeIds.Count == 0 || routeTaxRulesByEdgeAndTraffic.Count == 0)
         {
             return taxByAuthority;
         }
@@ -215,9 +254,13 @@ public sealed class TrafficEconomicSettlementService
                 continue;
             }
 
-            foreach (var rule in routeTaxRules.Where(rule =>
-                Comparer.Equals(rule.EdgeId, edgeId) &&
-                Comparer.Equals(rule.TrafficType, allocation.TrafficType)))
+            if (!routeTaxRulesByEdgeAndTraffic.TryGetValue(edgeId, out var rulesByTraffic) ||
+                !rulesByTraffic.TryGetValue(allocation.TrafficType, out var matchingRules))
+            {
+                continue;
+            }
+
+            foreach (var rule in matchingRules)
             {
                 var tax = edgeTransportCost * Math.Max(0d, rule.TaxRate);
                 taxByAuthority.TryGetValue(rule.TaxAuthorityActorId, out var existing);
@@ -226,23 +269,6 @@ public sealed class TrafficEconomicSettlementService
         }
 
         return taxByAuthority;
-    }
-
-    private static string? ResolveActorForNode(
-        string nodeId,
-        NodeModel? node,
-        IReadOnlyDictionary<string, SimulationActorState> actorsById)
-    {
-        var controlledActor = actorsById.Values
-            .Where(actor => actor.ControlledNodeIds.Contains(nodeId, Comparer))
-            .OrderBy(actor => actor.Id, Comparer)
-            .FirstOrDefault();
-        if (controlledActor is not null)
-        {
-            return controlledActor.Id;
-        }
-
-        return string.IsNullOrWhiteSpace(node?.ControllingActor) ? null : node.ControllingActor;
     }
 
     private static double ResolveSaleUnitPrice(NodeTrafficProfile? producerProfile, TrafficTypeDefinition? definition)
@@ -299,6 +325,7 @@ public sealed class TrafficEconomicSettlementService
         double profit,
         string? sellerActorId,
         string? buyerActorId,
+        IReadOnlyDictionary<string, double> taxesByAuthorityActorId,
         string? taxAuthorityActorId)
     {
         return new RouteAllocation
@@ -330,6 +357,9 @@ public sealed class TrafficEconomicSettlementService
             Profit = profit,
             SellerActorId = sellerActorId,
             BuyerActorId = buyerActorId,
+            TaxesByAuthorityActorId = taxesByAuthorityActorId
+                .OrderBy(pair => pair.Key, Comparer)
+                .ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
             TaxAuthorityActorId = taxAuthorityActorId,
             TotalScore = allocation.TotalScore,
             PathNodeNames = allocation.PathNodeNames.ToList(),

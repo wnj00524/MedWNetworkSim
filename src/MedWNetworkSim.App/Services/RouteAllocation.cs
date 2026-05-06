@@ -110,6 +110,9 @@ public sealed class RouteAllocation
 
     public string? BuyerActorId { get; init; }
 
+    public IReadOnlyDictionary<string, double> TaxesByAuthorityActorId { get; init; } =
+        new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
     public string? TaxAuthorityActorId { get; init; }
 
     /// <summary>

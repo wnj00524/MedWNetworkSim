@@ -307,7 +307,53 @@ public sealed class TrafficEconomicSettlementTests
 
         Assert.Equal(2d, food.TotalTax);
         Assert.Equal(0d, tools.TotalTax);
+        Assert.Equal("gov", food.TaxAuthorityActorId);
+        Assert.Equal(2d, food.TaxesByAuthorityActorId["gov"]);
         Assert.Equal(2d, settlement.Ledgers["gov"].TaxesReceived);
+    }
+
+    [Fact]
+    public void RouteTax_WithMultipleAuthorities_ReportsPerAuthorityAllocationTaxes()
+    {
+        var network = BuildTwoTrafficTwoEdgeNetwork();
+        network.RouteTaxRules.AddRange(
+        [
+            new RouteTaxRule
+            {
+                EdgeId = "taxed",
+                TrafficType = "Food",
+                TaxRate = 0.2d,
+                TaxAuthorityActorId = "gov-a",
+                IsActive = true
+            },
+            new RouteTaxRule
+            {
+                EdgeId = "untaxed",
+                TrafficType = "Food",
+                TaxRate = 0.2d,
+                TaxAuthorityActorId = "gov-b",
+                IsActive = true
+            }
+        ]);
+        var actors = new Dictionary<string, SimulationActorState>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["seller"] = new() { Id = "seller", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["producer"] },
+            ["buyer"] = new() { Id = "buyer", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["consumer"] },
+            ["gov-a"] = new() { Id = "gov-a", Kind = SimulationActorKind.Government },
+            ["gov-b"] = new() { Id = "gov-b", Kind = SimulationActorKind.Government }
+        };
+
+        var settlement = new TrafficEconomicSettlementService()
+            .Settle(network, new NetworkSimulationEngine().Simulate(network), actors);
+
+        var food = settlement.Outcomes.Single(outcome => outcome.TrafficType == "Food").Allocations.Single();
+
+        Assert.Equal(4d, food.TotalTax);
+        Assert.Null(food.TaxAuthorityActorId);
+        Assert.Equal(2d, food.TaxesByAuthorityActorId["gov-a"]);
+        Assert.Equal(2d, food.TaxesByAuthorityActorId["gov-b"]);
+        Assert.Equal(2d, settlement.Ledgers["gov-a"].TaxesReceived);
+        Assert.Equal(2d, settlement.Ledgers["gov-b"].TaxesReceived);
     }
 
     [Fact]
@@ -382,12 +428,13 @@ public sealed class TrafficEconomicSettlementTests
     }
 
     [Theory]
-    [InlineData(0d, 50d, 5d)]
-    [InlineData(10d, 40d, 4d)]
+    [InlineData(0d, 50d, 5d, -50d)]
+    [InlineData(10d, 40d, 4d, -30d)]
     public void ActorSettlement_UsesBuyerBudgetWhenCashIsZeroOrBudgetIsConfigured(
         double buyerCash,
         double buyerBudget,
-        double expectedDelivered)
+        double expectedDelivered,
+        double expectedBuyerCash)
     {
         var network = BuildSimpleNetwork(production: 10d, consumption: 10d, salePrice: 10d);
         var seller = new SimulationActorState { Id = "seller", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["producer"], Cash = 0d, GenerateAutomaticDecisions = false };
@@ -406,6 +453,19 @@ public sealed class TrafficEconomicSettlementTests
         Assert.Equal(expectedDelivered, result.Metrics.TotalDelivered);
         Assert.Equal(expectedDelivered, result.NetworkAfterStep.Nodes.Single(node => node.Id == "consumer").TrafficProfiles.Single().Consumption);
         Assert.Equal(expectedDelivered * 10d, seller.Cash);
+        Assert.Equal(expectedBuyerCash, buyer.Cash);
+    }
+
+    [Fact]
+    public void ActorSettlement_CapsUnbudgetedBuyerCashAtZeroAfterSettlement()
+    {
+        var network = BuildSimpleNetwork(production: 5d, consumption: 5d, salePrice: 10d);
+        var seller = new SimulationActorState { Id = "seller", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["producer"], Cash = 0d, GenerateAutomaticDecisions = false };
+        var buyer = new SimulationActorState { Id = "buyer", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["consumer"], Cash = 50d, GenerateAutomaticDecisions = false };
+
+        var result = new SimulationActorCoordinator().StepActorsOnce(network, [seller, buyer]);
+
+        Assert.Equal(5d, result.Metrics.TotalDelivered);
         Assert.Equal(0d, buyer.Cash);
     }
 

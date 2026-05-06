@@ -274,11 +274,25 @@ public sealed class FacilityModeSimulationEngine
             TrafficTypes = trafficTypes,
             TimelineEvents = network.TimelineEvents.ToList(),
             EdgeTrafficPermissionDefaults = network.EdgeTrafficPermissionDefaults.ToList(),
+            RouteTaxRules = network.RouteTaxRules
+                .Where(rule => string.IsNullOrWhiteSpace(onlyTrafficType) || Comparer.Equals(rule.TrafficType, onlyTrafficType))
+                .Select(CloneRouteTaxRule)
+                .ToList(),
             Subnetworks = network.Subnetworks?.ToList(),
             Nodes = network.Nodes.Select(CloneNode).ToList(),
             Edges = network.Edges.Select(CloneEdge).ToList()
         };
     }
+
+    private static RouteTaxRule CloneRouteTaxRule(RouteTaxRule rule) =>
+        new()
+        {
+            EdgeId = rule.EdgeId,
+            TrafficType = rule.TrafficType,
+            TaxRate = rule.TaxRate,
+            TaxAuthorityActorId = rule.TaxAuthorityActorId,
+            IsActive = rule.IsActive
+        };
 
     private static NodeModel CloneNode(NodeModel node) =>
         new()

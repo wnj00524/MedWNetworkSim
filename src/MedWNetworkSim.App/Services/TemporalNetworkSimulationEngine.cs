@@ -567,8 +567,21 @@ public sealed class TemporalNetworkSimulationEngine
             SimulationSeed = network.SimulationSeed,
             TrafficTypes = network.TrafficTypes.Select(CloneTrafficTypeDefinition).ToList(),
             TimelineEvents = network.TimelineEvents,
+            RouteTaxRules = network.RouteTaxRules.Select(CloneRouteTaxRule).ToList(),
             Nodes = network.Nodes.Select(CloneNode).ToList(),
             Edges = network.Edges.Select(CloneEdge).ToList()
+        };
+    }
+
+    private static RouteTaxRule CloneRouteTaxRule(RouteTaxRule rule)
+    {
+        return new RouteTaxRule
+        {
+            EdgeId = rule.EdgeId,
+            TrafficType = rule.TrafficType,
+            TaxRate = rule.TaxRate,
+            TaxAuthorityActorId = rule.TaxAuthorityActorId,
+            IsActive = rule.IsActive
         };
     }
 

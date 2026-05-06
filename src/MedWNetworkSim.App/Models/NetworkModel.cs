@@ -84,6 +84,11 @@ public sealed class NetworkModel
     public List<EdgeTrafficPermissionRule> EdgeTrafficPermissionDefaults { get; set; } = [];
 
     /// <summary>
+    /// Gets or sets actor-owned route tax rules applied during economic settlement.
+    /// </summary>
+    public List<RouteTaxRule> RouteTaxRules { get; set; } = [];
+
+    /// <summary>
     /// Gets or sets embedded child networks that can be placed as composite nodes in this network.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

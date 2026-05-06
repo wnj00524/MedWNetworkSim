@@ -666,8 +666,8 @@ public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
                     Kind = SimulationActorActionKind.AdjustEdgeCapacity,
                     TargetEdgeId = edge.Id,
                     DeltaValue = Math.Max(1d, (capacity ?? routed) * 0.15d),
-                    Cost = 1d,
-                    Reason = "Edge is near capacity; expand before congestion worsens.",
+                    Cost = Math.Max(1d, (capacity ?? routed) * 0.15d),
+                    Reason = "Edge is near capacity; expand before congestion worsens with proportional capacity cost.",
                     ExpectedEffect = "Reduce unmet demand on constrained paths.",
                     IsPolicyAction = false
                 });
@@ -699,17 +699,14 @@ public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
                 .FirstOrDefault();
             if (targetEdge is not null)
             {
-                var baseline = Math.Max(1d, targetEdge.Capacity ?? 1d);
                 actions.Add(new SimulationActorAction
                 {
-                    Id = $"{State.Id}:proactive-cap:{context.Tick}:{targetEdge.Id}",
+                    Id = $"{State.Id}:proactive-cap-noop:{context.Tick}:{targetEdge.Id}",
                     ActorId = State.Id,
-                    Kind = SimulationActorActionKind.AdjustEdgeCapacity,
+                    Kind = SimulationActorActionKind.NoOp,
                     TargetEdgeId = targetEdge.Id,
-                    DeltaValue = Math.Max(5d, baseline * 0.5d),
-                    Cost = 1d,
-                    Reason = $"Severe unmet demand ({totalUnmetDemand:0.##}) persists while routed utilisation is low; proactively expand the lowest-capacity corridor.",
-                    ExpectedEffect = "Create route headroom for unmet demand that is not visible in current edge utilisation.",
+                    Reason = $"No capacity expansion: severe unmet demand ({totalUnmetDemand:0.##}) remains, but no supply-limited capacity need was identified for permitted corridors.",
+                    ExpectedEffect = "No logistics expansion until available supply justifies additional route capacity.",
                     IsPolicyAction = false
                 });
             }
@@ -812,7 +809,28 @@ public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
                 {
                     var routed = flowByEdgeId.GetValueOrDefault(constrainedEdge.Id);
                     var currentCapacity = constrainedEdge.Capacity ?? Math.Max(1d, routed);
-                    var targetHeadroom = Math.Max(outcome.UnmetDemand * 0.25d, 5d);
+                    var availableSupply = Math.Max(0d, outcome.TotalProduction);
+                    var totalDemandIntent = Math.Max(0d, outcome.TotalConsumption);
+                    var expectedFlow = Math.Min(totalDemandIntent, availableSupply);
+                    var safetyFactor = 1.1d;
+                    var requiredCapacity = expectedFlow * safetyFactor;
+                    var delta = Math.Max(0d, requiredCapacity - currentCapacity);
+                    if (delta <= Epsilon)
+                    {
+                        yield return new SimulationActorAction
+                        {
+                            Id = $"{State.Id}:unmet-cap-noop:{context.Tick}:{outcome.TrafficType}:{constrainedEdge.Id}",
+                            ActorId = State.Id,
+                            Kind = SimulationActorActionKind.NoOp,
+                            TargetEdgeId = constrainedEdge.Id,
+                            TrafficType = outcome.TrafficType,
+                            Reason = $"No capacity expansion: existing capacity exceeds supply-limited required flow. current capacity={currentCapacity:0.##}; required capacity={requiredCapacity:0.##}; available supply={availableSupply:0.##}; unmet demand={outcome.UnmetDemand:0.##}.",
+                            ExpectedEffect = "No change because unmet demand is supply-limited rather than capacity-limited.",
+                            IsPolicyAction = false
+                        };
+                        continue;
+                    }
+
                     yield return new SimulationActorAction
                     {
                         Id = $"{State.Id}:unmet-cap:{context.Tick}:{outcome.TrafficType}:{constrainedEdge.Id}",
@@ -820,10 +838,10 @@ public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
                         Kind = SimulationActorActionKind.AdjustEdgeCapacity,
                         TargetEdgeId = constrainedEdge.Id,
                         TrafficType = outcome.TrafficType,
-                        DeltaValue = Math.Max(targetHeadroom, Math.Max(1d, currentCapacity * 0.5d)),
-                        Cost = 1d,
-                        Reason = $"Severe unmet {outcome.TrafficType} demand ({outcome.UnmetDemand:0.##}) has a plausible route through a low-capacity corridor.",
-                        ExpectedEffect = "Increase corridor headroom even though current utilisation is low or zero.",
+                        DeltaValue = delta,
+                        Cost = delta,
+                        Reason = $"Supply-limited capacity expansion: requested delta={delta:0.##}; current capacity={currentCapacity:0.##}; required capacity={requiredCapacity:0.##}; available supply={availableSupply:0.##}; unmet demand={outcome.UnmetDemand:0.##}.",
+                        ExpectedEffect = "Right-size corridor headroom to routable available supply rather than total unmet demand.",
                         IsPolicyAction = false
                     };
                     continue;

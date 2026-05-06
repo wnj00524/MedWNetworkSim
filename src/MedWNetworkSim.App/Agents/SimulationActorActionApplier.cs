@@ -87,14 +87,16 @@ public sealed class SimulationActorActionApplier
         spentByActorId.TryGetValue(actor.Id, out var spentThisTick);
         var spendLimit = actor.Budget > 0d ? actor.Budget : actor.Cash;
         var availableFunds = Math.Max(0d, spendLimit - spentThisTick);
-        if (action.Cost > 0d && availableFunds < action.Cost)
+        if (action.Cost > 0d && availableFunds < action.Cost &&
+            action.Kind != SimulationActorActionKind.AdjustEdgeCapacity &&
+            action.Kind != SimulationActorActionKind.SubsidiseCapacity)
         {
             return (false, "Insufficient actor funds for action cost.");
         }
 
         (bool Applied, string Reason) FinalizePermissionResult((bool Applied, string Reason) result) =>
             isExplicitlyAllowed && result.Applied
-                ? (true, "Permission explicitly allowed.")
+                ? (true, $"Permission explicitly allowed. {result.Reason}")
                 : result;
 
         switch (action.Kind)
@@ -111,7 +113,7 @@ public sealed class SimulationActorActionApplier
 
             case SimulationActorActionKind.AdjustEdgeCapacity:
             case SimulationActorActionKind.SubsidiseCapacity:
-                return FinalizePermissionResult(ApplyEdgeCapacityAction(network, action, currentFlowByEdgeId));
+                return FinalizePermissionResult(ApplyEdgeCapacityAction(network, action, currentFlowByEdgeId, availableFunds));
 
             case SimulationActorActionKind.AdjustEdgeCost:
             case SimulationActorActionKind.PreferRoute:
@@ -174,15 +176,7 @@ public sealed class SimulationActorActionApplier
 
         if (action.Kind == SimulationActorActionKind.BuyTraffic)
         {
-            profile.Consumption = Math.Max(0d, action.AbsoluteValue ?? profile.Consumption + action.DeltaValue);
-            var offeredPremium = EstimateCheapestInboundRouteCost(network, action);
-            if (offeredPremium > 0d)
-            {
-                profile.ConsumerPremiumPerUnit = Math.Max(profile.ConsumerPremiumPerUnit, offeredPremium);
-                return (true, "Buy traffic intent updated consumption and consumer premium.");
-            }
-
-            return (true, "Buy traffic intent updated consumption.");
+            return (false, "BuyTraffic is a bounded market order and does not mutate consumption directly.");
         }
 
         profile.UnitPrice = Math.Max(0d, action.AbsoluteValue ?? profile.UnitPrice + action.DeltaValue);
@@ -192,7 +186,8 @@ public sealed class SimulationActorActionApplier
     private static (bool Applied, string Reason) ApplyEdgeCapacityAction(
         NetworkModel network,
         SimulationActorAction action,
-        IReadOnlyDictionary<string, double> currentFlowByEdgeId)
+        IReadOnlyDictionary<string, double> currentFlowByEdgeId,
+        double availableActorFunds)
     {
         if (string.IsNullOrWhiteSpace(action.TargetEdgeId))
         {
@@ -206,16 +201,54 @@ public sealed class SimulationActorActionApplier
         }
 
         var existing = edge.Capacity ?? Math.Max(1d, currentFlowByEdgeId.GetValueOrDefault(edge.Id));
-        var updated = Math.Max(0d, action.AbsoluteValue ?? existing + action.DeltaValue);
         var routedFlow = currentFlowByEdgeId.GetValueOrDefault(edge.Id);
+        var requestedDelta = action.AbsoluteValue.HasValue
+            ? Math.Max(0d, action.AbsoluteValue.Value - existing)
+            : Math.Max(0d, action.DeltaValue);
+        var capacityUnitCost = ResolveCapacityUnitCost(action, requestedDelta);
+        var requestedCost = requestedDelta * capacityUnitCost;
+        var updated = Math.Max(0d, action.AbsoluteValue ?? existing + action.DeltaValue);
 
         if (!action.IsForced && updated < routedFlow)
         {
             return (false, $"Cannot reduce capacity below current routed flow ({routedFlow:0.##}).");
         }
 
+        if (requestedDelta <= 0.000001d)
+        {
+            action.Cost = 0d;
+            return (false, $"No capacity expansion: requested delta {requestedDelta:0.##}; current capacity {existing:0.##}.");
+        }
+
+        if (availableActorFunds < requestedCost)
+        {
+            var affordableDelta = Math.Max(0d, availableActorFunds) / capacityUnitCost;
+            if (affordableDelta <= 0.000001d)
+            {
+                action.Cost = 0d;
+                return (false, $"No capacity expansion: requested delta {requestedDelta:0.##}, affordable delta 0, current capacity {existing:0.##}, unit cost {capacityUnitCost:0.##}.");
+            }
+
+            action.DeltaValue = affordableDelta;
+            action.AbsoluteValue = null;
+            action.Cost = affordableDelta * capacityUnitCost;
+            edge.Capacity = existing + affordableDelta;
+            return (true, $"Edge capacity scaled to affordable delta {affordableDelta:0.##} from requested delta {requestedDelta:0.##}; current capacity {existing:0.##}; unit cost {capacityUnitCost:0.##}.");
+        }
+
+        action.Cost = requestedCost;
         edge.Capacity = updated;
-        return (true, "Edge capacity updated.");
+        return (true, $"Edge capacity updated by {requestedDelta:0.##}; current capacity {existing:0.##}; unit cost {capacityUnitCost:0.##}; cost {action.Cost:0.##}.");
+    }
+
+    private static double ResolveCapacityUnitCost(SimulationActorAction action, double requestedDelta)
+    {
+        if (requestedDelta > 0.000001d && action.Cost >= requestedDelta)
+        {
+            return Math.Max(0.000001d, action.Cost / requestedDelta);
+        }
+
+        return 1d;
     }
 
     private static (bool Applied, string Reason) ApplyEdgeCostAction(NetworkModel network, SimulationActorAction action)

@@ -83,19 +83,24 @@ public sealed class SimulationActorCoordinator
         LogDecisions(decisions, outcomes: baseSnapshot.TrafficOutcomes, tick, actorMap);
         var actorKindsById = actorMap.ToDictionary(pair => pair.Key, pair => pair.Value.Kind, StringComparer.OrdinalIgnoreCase);
         var resolvedActions = ResolveConflicts(decisions.SelectMany(d => d.Actions).ToList(), actorKindsById);
+        var purchaseActions = resolvedActions
+            .Where(action => action.Kind == SimulationActorActionKind.BuyTraffic)
+            .ToList();
+        var nonPurchaseActions = resolvedActions
+            .Where(action => action.Kind != SimulationActorActionKind.BuyTraffic)
+            .ToList();
         var flowByEdge = BuildFlowByEdge(baseSnapshot.TrafficOutcomes);
-        var (appliedNetwork, outcomes) = actionApplier.Apply(network, resolvedActions, actorMap, flowByEdge);
+        var (appliedNetwork, outcomes) = actionApplier.Apply(network, nonPurchaseActions, actorMap, flowByEdge);
 
         foreach (var outcome in outcomes.Where(o => o.Applied && o.Action.Cost > 0d))
         {
             var actor = actorMap[outcome.Action.ActorId];
-            if (actor.Budget <= 0d)
-            {
-                actor.Cash = Math.Max(0d, actor.Cash - outcome.Action.Cost);
-            }
+            actor.Cash = Math.Max(0d, actor.Cash - outcome.Action.Cost);
         }
 
-        var affordableNetwork = ApplyBuyerAffordabilityPolicy(appliedNetwork, actorMap);
+        var purchaseSettlement = ApplyPurchaseOrders(appliedNetwork, purchaseActions, actorMap, tick, baseSnapshot.TrafficOutcomes, flowByEdge);
+        var affordableNetwork = ApplyBuyerAffordabilityPolicy(purchaseSettlement.Network, actorMap);
+        outcomes = outcomes.Concat(purchaseSettlement.Outcomes).ToList();
         var appliedSnapshot = BuildSnapshot(affordableNetwork, tick + 1);
         var settlement = economicSettlementService.Settle(affordableNetwork, appliedSnapshot.TrafficOutcomes, actorMap);
         foreach (var ledger in settlement.Ledgers.Values)
@@ -152,6 +157,206 @@ public sealed class SimulationActorCoordinator
             .ThenBy(actor => actor.State.Id, StringComparer.OrdinalIgnoreCase)
             .Select(actor => actor.Decide(context))
             .ToList();
+    }
+
+
+    private (NetworkModel Network, IReadOnlyList<SimulationActorActionOutcome> Outcomes) ApplyPurchaseOrders(
+        NetworkModel network,
+        IReadOnlyList<SimulationActorAction> purchaseActions,
+        IReadOnlyDictionary<string, SimulationActorState> actorsById,
+        int tick,
+        IReadOnlyList<TrafficSimulationOutcome> currentOutcomes,
+        IReadOnlyDictionary<string, double> currentFlowByEdgeId)
+    {
+        if (purchaseActions.Count == 0)
+        {
+            return (network, []);
+        }
+
+        var working = Clone(network);
+        var outcomes = new List<SimulationActorActionOutcome>();
+        var remainingSupplyByTraffic = currentOutcomes.ToDictionary(
+            outcome => outcome.TrafficType,
+            outcome => Math.Max(0d, outcome.UnusedSupply),
+            StringComparer.OrdinalIgnoreCase);
+        var remainingCapacityByEdgeId = working.Edges.ToDictionary(
+            edge => edge.Id,
+            edge => Math.Max(0d, (edge.Capacity ?? double.PositiveInfinity) - currentFlowByEdgeId.GetValueOrDefault(edge.Id)),
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var action in purchaseActions)
+        {
+            var (executed, reason) = ApplyPurchaseOrder(working, action, actorsById, tick, remainingSupplyByTraffic, remainingCapacityByEdgeId);
+            outcomes.Add(new SimulationActorActionOutcome { Action = action, Applied = executed > 0.000001d, Reason = reason });
+        }
+
+        return (working, outcomes);
+    }
+
+    private static (double ExecutedQuantity, string Reason) ApplyPurchaseOrder(
+        NetworkModel network,
+        SimulationActorAction action,
+        IReadOnlyDictionary<string, SimulationActorState> actorsById,
+        int tick,
+        IDictionary<string, double> remainingSupplyByTraffic,
+        IDictionary<string, double> remainingCapacityByEdgeId)
+    {
+        var intent = new TrafficPurchaseIntent
+        {
+            BuyerActorId = action.ActorId,
+            TargetNodeId = action.TargetNodeId ?? string.Empty,
+            TrafficType = action.TrafficType ?? string.Empty,
+            RequestedQuantity = Math.Max(0d, action.AbsoluteValue ?? action.DeltaValue),
+            OfferedPremium = Math.Max(0d, action.Cost),
+            Tick = tick
+        };
+
+        if (intent.RequestedQuantity <= 0.000001d || string.IsNullOrWhiteSpace(intent.TargetNodeId) || string.IsNullOrWhiteSpace(intent.TrafficType))
+        {
+            return (0d, "Purchase not executed: node, traffic type, and positive requested quantity are required.");
+        }
+
+        if (!actorsById.TryGetValue(intent.BuyerActorId, out var buyer))
+        {
+            return (0d, $"Purchase not executed: unknown buyer actor '{intent.BuyerActorId}'.");
+        }
+
+        var targetNode = network.Nodes.FirstOrDefault(node => StringComparer.OrdinalIgnoreCase.Equals(node.Id, intent.TargetNodeId));
+        var targetProfile = targetNode?.TrafficProfiles.FirstOrDefault(profile => StringComparer.OrdinalIgnoreCase.Equals(profile.TrafficType, intent.TrafficType));
+        if (targetNode is null || targetProfile is null)
+        {
+            return (0d, "Purchase not executed: target node or traffic profile was not found.");
+        }
+
+        remainingSupplyByTraffic.TryGetValue(intent.TrafficType, out var availableSupply);
+        var route = FindCheapestRouteWithResidualCapacity(network, intent.TargetNodeId, intent.TrafficType, remainingCapacityByEdgeId);
+        var sellerPrice = ResolveLowestSellerUnitPrice(network, intent.TrafficType);
+        var landedUnitPrice = Math.Max(0.000001d, sellerPrice + route.RouteCost);
+        targetProfile.ConsumerPremiumPerUnit = Math.Max(targetProfile.ConsumerPremiumPerUnit, route.RouteCost);
+        var affordableQuantity = buyer.Cash / landedUnitPrice;
+        var executedQuantity = Math.Min(intent.RequestedQuantity, Math.Min(availableSupply, Math.Min(route.ResidualCapacity, affordableQuantity)));
+        if (executedQuantity <= 0.000001d)
+        {
+            return (0d, $"Purchase not executed: no available supply/routable capacity at offered price. requested={intent.RequestedQuantity:0.##}; available supply={availableSupply:0.##}; feasible residual route capacity={route.ResidualCapacity:0.##}; buyer cash={buyer.Cash:0.##}; landed unit price={landedUnitPrice:0.##}.");
+        }
+
+        targetProfile.Consumption += executedQuantity;
+        targetProfile.ConsumerPremiumPerUnit = Math.Max(targetProfile.ConsumerPremiumPerUnit, intent.OfferedPremium);
+        remainingSupplyByTraffic[intent.TrafficType] = Math.Max(0d, availableSupply - executedQuantity);
+        foreach (var edgeId in route.PathEdgeIds)
+        {
+            remainingCapacityByEdgeId.TryGetValue(edgeId, out var remainingCapacity);
+            remainingCapacityByEdgeId[edgeId] = Math.Max(0d, remainingCapacity - executedQuantity);
+        }
+
+        return (executedQuantity, $"Purchase executed for {executedQuantity:0.##} of requested {intent.RequestedQuantity:0.##}; available supply={availableSupply:0.##}; feasible residual route capacity={route.ResidualCapacity:0.##}; landed unit price={landedUnitPrice:0.##}.");
+    }
+
+    private static double ResolveLowestSellerUnitPrice(NetworkModel network, string trafficType)
+    {
+        var definition = network.TrafficTypes.FirstOrDefault(definition => StringComparer.OrdinalIgnoreCase.Equals(definition.Name, trafficType));
+        return network.Nodes
+            .SelectMany(node => node.TrafficProfiles)
+            .Where(profile => StringComparer.OrdinalIgnoreCase.Equals(profile.TrafficType, trafficType) && profile.Production > 0d)
+            .Select(profile => profile.UnitPrice > 0d ? profile.UnitPrice : Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d))
+            .DefaultIfEmpty(Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d))
+            .Min();
+    }
+
+    private static (double ResidualCapacity, double RouteCost, IReadOnlyList<string> PathEdgeIds) FindCheapestRouteWithResidualCapacity(
+        NetworkModel network,
+        string targetNodeId,
+        string trafficType,
+        IDictionary<string, double> remainingCapacityByEdgeId)
+    {
+        var producers = network.Nodes
+            .Where(node => node.TrafficProfiles.Any(profile => StringComparer.OrdinalIgnoreCase.Equals(profile.TrafficType, trafficType) && profile.Production > 0d))
+            .Select(node => node.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (producers.Count == 0)
+        {
+            return (0d, 0d, []);
+        }
+
+        var resolver = new EdgeTrafficPermissionResolver();
+        var adjacency = new Dictionary<string, List<(string ToNodeId, EdgeModel Edge)>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var edge in network.Edges)
+        {
+            AddArc(edge.FromNodeId, edge.ToNodeId, edge);
+            if (edge.IsBidirectional)
+            {
+                AddArc(edge.ToNodeId, edge.FromNodeId, edge);
+            }
+        }
+
+        var distances = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var previous = new Dictionary<string, (string PreviousNodeId, EdgeModel Edge)>(StringComparer.OrdinalIgnoreCase);
+        var queue = new PriorityQueue<string, double>();
+        foreach (var producerId in producers)
+        {
+            distances[producerId] = 0d;
+            queue.Enqueue(producerId, 0d);
+        }
+
+        while (queue.Count > 0)
+        {
+            var nodeId = queue.Dequeue();
+            var cost = distances[nodeId];
+            if (StringComparer.OrdinalIgnoreCase.Equals(nodeId, targetNodeId))
+            {
+                var pathEdges = new List<string>();
+                var current = targetNodeId;
+                var residual = double.PositiveInfinity;
+                while (!producers.Contains(current) && previous.TryGetValue(current, out var step))
+                {
+                    pathEdges.Add(step.Edge.Id);
+                    remainingCapacityByEdgeId.TryGetValue(step.Edge.Id, out var stepResidualCapacity);
+                    residual = Math.Min(residual, stepResidualCapacity);
+                    current = step.PreviousNodeId;
+                }
+
+                pathEdges.Reverse();
+                return (double.IsPositiveInfinity(residual) ? double.MaxValue : residual, cost, pathEdges);
+            }
+
+            if (!adjacency.TryGetValue(nodeId, out var arcs))
+            {
+                continue;
+            }
+
+            foreach (var (toNodeId, edge) in arcs)
+            {
+                if (resolver.Resolve(network, edge, trafficType).Mode == EdgeTrafficPermissionMode.Blocked ||
+                    (!remainingCapacityByEdgeId.TryGetValue(edge.Id, out var edgeResidualCapacity) ||
+                    edgeResidualCapacity <= 0.000001d))
+                {
+                    continue;
+                }
+
+                var nextCost = cost + Math.Max(0d, edge.Cost);
+                if (distances.TryGetValue(toNodeId, out var existing) && existing <= nextCost)
+                {
+                    continue;
+                }
+
+                distances[toNodeId] = nextCost;
+                previous[toNodeId] = (nodeId, edge);
+                queue.Enqueue(toNodeId, nextCost);
+            }
+        }
+
+        return (0d, 0d, []);
+
+        void AddArc(string fromNodeId, string toNodeId, EdgeModel edge)
+        {
+            if (!adjacency.TryGetValue(fromNodeId, out var arcs))
+            {
+                arcs = [];
+                adjacency[fromNodeId] = arcs;
+            }
+
+            arcs.Add((toNodeId, edge));
+        }
     }
 
     private IReadOnlyList<SimulationActorAction> ResolveConflicts(
@@ -282,8 +487,12 @@ public sealed class SimulationActorCoordinator
 
         foreach (var node in network.Nodes.OrderBy(node => node.Id, StringComparer.OrdinalIgnoreCase))
         {
-            if (!buyerActorIdByNodeId.TryGetValue(node.Id, out var buyerActorId) ||
-                !remainingFundsByActorId.TryGetValue(buyerActorId, out var remainingFunds))
+            if (!buyerActorIdByNodeId.TryGetValue(node.Id, out var buyerActorId))
+            {
+                continue;
+            }
+
+            if (!remainingFundsByActorId.TryGetValue(buyerActorId, out var remainingFunds))
             {
                 continue;
             }

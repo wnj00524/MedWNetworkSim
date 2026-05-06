@@ -133,6 +133,17 @@ public sealed class SimulationActorAction
     public bool IsForced { get; set; }
 }
 
+public sealed class TrafficPurchaseIntent
+{
+    public string BuyerActorId { get; set; } = string.Empty;
+    public string TargetNodeId { get; set; } = string.Empty;
+    public string TrafficType { get; set; } = string.Empty;
+    public double RequestedQuantity { get; set; }
+    public double? MaxUnitPrice { get; set; }
+    public double OfferedPremium { get; set; }
+    public int Tick { get; set; }
+}
+
 public sealed class SimulationActorDecision
 {
     public string ActorId { get; set; } = string.Empty;

@@ -1,3 +1,4 @@
+using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
@@ -480,8 +481,21 @@ public static partial class MixedRoutingAllocator
             node => node.TrafficProfiles.FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, definition.Name)),
             Comparer);
         var nodesById = network.Nodes.ToDictionary(node => node.Id, node => node, Comparer);
+        var permittedSellerNodeIds = SimulationActorSellLocalPermissionResolver.BuildPermittedSellerNodeSet(network, definition.Name);
+        var enforceSellLocal = SimulationActorSellLocalPermissionResolver.IsEnforced(network);
+        var blockedLocalSupply = 0d;
         var supply = profilesByNodeId
             .Where(pair => pair.Value?.Production > Epsilon)
+            .Where(pair =>
+            {
+                if (!enforceSellLocal || permittedSellerNodeIds.Contains(pair.Key))
+                {
+                    return true;
+                }
+
+                blockedLocalSupply += pair.Value!.Production;
+                return false;
+            })
             .ToDictionary(pair => pair.Key, pair => pair.Value!.Production, Comparer);
         var supplyUnitCosts = supply.ToDictionary(
             pair => pair.Key,
@@ -510,6 +524,13 @@ public static partial class MixedRoutingAllocator
             TotalProduction = supply.Values.Sum(),
             TotalConsumption = demand.Values.Sum()
         };
+
+        if (enforceSellLocal)
+        {
+            context.Notes.Add(blockedLocalSupply > Epsilon
+                ? $"Agent mode Sell local is active: {blockedLocalSupply:0.##} unit(s) of supply were withheld because the node owner lacks explicit SellLocal permission."
+                : "Agent mode Sell local is active: only supply from actors with explicit SellLocal permission can fulfil demand.");
+        }
 
         if (applyLocalAllocations)
         {

@@ -41,6 +41,12 @@ public sealed class NetworkModel
     public bool FacilityModeEnabled { get; set; }
 
     /// <summary>
+    /// Gets or sets how actor permissions constrain supply that can fulfil node demand.
+    /// Off preserves the default unrestricted demand fulfilment behaviour.
+    /// </summary>
+    public AgentMode AgentMode { get; set; } = AgentMode.Off;
+
+    /// <summary>
     /// Gets or sets a value indicating whether graph layout should follow geographic map coordinates for geo-anchored nodes.
     /// </summary>
     public bool LockLayoutToMap { get; set; }

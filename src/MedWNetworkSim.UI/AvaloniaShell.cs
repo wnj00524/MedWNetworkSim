@@ -4642,6 +4642,19 @@ public sealed class ShellWindow : Window
         return BuildLabeledRow(label, value);
     }
 
+
+    private static Control BuildAgentModeSelector(WorkspaceViewModel viewModel)
+    {
+        var selector = new ComboBox
+        {
+            MinWidth = 160,
+            ItemsSource = viewModel.AgentModeOptions
+        };
+        selector.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.AgentMode), BindingMode.TwoWay));
+        ToolTip.SetTip(selector, "Off uses default demand fulfilment. SellLocal requires an enabled controlling actor with explicit SellLocal permission before that node's produced or purchased supply can fulfil demand.");
+        return BuildLabeledRow("Agent Mode", selector);
+    }
+
     private Control BuildDashboardStripTabs(WorkspaceViewModel viewModel)
     {
         var metrics = new ItemsControl
@@ -4652,13 +4665,16 @@ public sealed class ShellWindow : Window
 
         var playbackGrid = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,*"),
+            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,Auto,*"),
             RowDefinitions = new RowDefinitions("Auto")
         };
         playbackGrid.Children.Add(BuildButton("Run", viewModel.SimulateCommand, isPrimary: true, toolTip: "Run timeline simulation."));
         playbackGrid.Children.Add(BuildButton("Step", viewModel.StepCommand, 1, isPrimary: true, toolTip: "Advance one period."));
         playbackGrid.Children.Add(BuildButton("Reset", viewModel.ResetTimelineCommand, 2, toolTip: "Reset timeline to start."));
         playbackGrid.Children.Add(BuildButton("Fit", viewModel.FitCommand, 3, toolTip: "Fit graph on canvas."));
+        var agentModeSelector = BuildAgentModeSelector(viewModel);
+        Grid.SetColumn(agentModeSelector, 4);
+        playbackGrid.Children.Add(agentModeSelector);
 
         var slider = new Slider
         {
@@ -4668,7 +4684,7 @@ public sealed class ShellWindow : Window
             VerticalAlignment = VerticalAlignment.Center
         };
         slider.Bind(RangeBase.ValueProperty, new Binding(nameof(WorkspaceViewModel.TimelinePosition), BindingMode.TwoWay));
-        Grid.SetColumn(slider, 4);
+        Grid.SetColumn(slider, 5);
         ApplyFocusVisual(slider);
         playbackGrid.Children.Add(slider);
 
@@ -5819,13 +5835,16 @@ public sealed class ShellWindow : Window
 
         var playbackGrid = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,*"),
+            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,Auto,*"),
             RowDefinitions = new RowDefinitions("Auto")
         };
         playbackGrid.Children.Add(BuildButton("Run", viewModel.SimulateCommand, isPrimary: true, toolTip: "Run timeline simulation."));
         playbackGrid.Children.Add(BuildButton("Step", viewModel.StepCommand, 1, isPrimary: true, toolTip: "Advance one period."));
         playbackGrid.Children.Add(BuildButton("Reset", viewModel.ResetTimelineCommand, 2, toolTip: "Reset timeline to start."));
         playbackGrid.Children.Add(BuildButton("Fit", viewModel.FitCommand, 3, toolTip: "Fit graph on canvas."));
+        var agentModeSelector = BuildAgentModeSelector(viewModel);
+        Grid.SetColumn(agentModeSelector, 4);
+        playbackGrid.Children.Add(agentModeSelector);
 
         var slider = new Slider
         {
@@ -5835,7 +5854,7 @@ public sealed class ShellWindow : Window
             VerticalAlignment = VerticalAlignment.Center
         };
         slider.Bind(RangeBase.ValueProperty, new Binding(nameof(WorkspaceViewModel.TimelinePosition), BindingMode.TwoWay));
-        Grid.SetColumn(slider, 4);
+        Grid.SetColumn(slider, 5);
         ApplyFocusVisual(slider);
         playbackGrid.Children.Add(slider);
 

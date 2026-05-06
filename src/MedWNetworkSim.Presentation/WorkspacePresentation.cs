@@ -2523,6 +2523,27 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         }
     }
     public bool IsMapLayoutLockedForGraph => LockLayoutToMap && HasGeoAnchoredNodes;
+
+    public AgentMode AgentMode
+    {
+        get => network.AgentMode;
+        set
+        {
+            if (network.AgentMode == value)
+            {
+                return;
+            }
+
+            network.AgentMode = value;
+            MarkDirty();
+            Raise(nameof(AgentMode));
+            StatusText = value == AgentMode.SellLocal
+                ? "Agent mode set to Sell local. Only actors with explicit SellLocal permission can fulfil demand."
+                : "Agent mode set to Off. Node demand is fulfilled with the default rules.";
+        }
+    }
+
+    public Array AgentModeOptions => Enum.GetValues(typeof(AgentMode));
     public IReadOnlyCollection<string> HighlightedNodeIds => highlightedNodeIds;
     public IReadOnlyCollection<string> HighlightedEdgeIds => highlightedEdgeIds;
     public int SankeyVersion
@@ -4905,6 +4926,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(IsLockLayoutToMapEnabled));
         Raise(nameof(LockLayoutToMapDisabledReason));
         Raise(nameof(LockLayoutToMap));
+        Raise(nameof(AgentMode));
         Raise(nameof(IsMapLayoutLockedForGraph));
         Raise(nameof(HasAnyNodes));
         SimulationActors.Clear();
@@ -8127,6 +8149,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             TimelineLoopLength = source.TimelineLoopLength,
             DefaultAllocationMode = source.DefaultAllocationMode,
             SimulationSeed = source.SimulationSeed,
+            AgentMode = source.AgentMode,
             LockLayoutToMap = source.LockLayoutToMap,
             TrafficTypes = source.TrafficTypes.Select(definition => new TrafficTypeDefinition
             {

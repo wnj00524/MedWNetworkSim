@@ -26,6 +26,8 @@ public static class HierarchicalNetworkProjection
             TimelineLoopLength = network.TimelineLoopLength,
             DefaultAllocationMode = network.DefaultAllocationMode,
             SimulationSeed = network.SimulationSeed,
+            AgentMode = network.AgentMode,
+            Actors = network.Actors,
             TrafficTypes = MergeTrafficTypes(network),
             TimelineEvents = ProjectTimelineEvents(network, nodesById, subnetworksById),
             Nodes = [],

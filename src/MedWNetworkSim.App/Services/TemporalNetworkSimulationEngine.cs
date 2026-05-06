@@ -1,3 +1,4 @@
+using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
@@ -565,11 +566,13 @@ public sealed class TemporalNetworkSimulationEngine
             TimelineLoopLength = network.TimelineLoopLength,
             DefaultAllocationMode = network.DefaultAllocationMode,
             SimulationSeed = network.SimulationSeed,
+            AgentMode = network.AgentMode,
             TrafficTypes = network.TrafficTypes.Select(CloneTrafficTypeDefinition).ToList(),
             TimelineEvents = network.TimelineEvents,
             RouteTaxRules = network.RouteTaxRules.Select(CloneRouteTaxRule).ToList(),
             Nodes = network.Nodes.Select(CloneNode).ToList(),
-            Edges = network.Edges.Select(CloneEdge).ToList()
+            Edges = network.Edges.Select(CloneEdge).ToList(),
+            Actors = network.Actors.ToList()
         };
     }
 
@@ -778,6 +781,9 @@ public sealed class TemporalNetworkSimulationEngine
         var storeDemandNodes = new HashSet<string>(Comparer);
         var recipeInputDemandNodes = new HashSet<string>(Comparer);
 
+        var permittedSellerNodeIds = SimulationActorSellLocalPermissionResolver.BuildPermittedSellerNodeSet(network, definition.Name);
+        var enforceSellLocal = SimulationActorSellLocalPermissionResolver.IsEnforced(network);
+
         foreach (var node in network.Nodes)
         {
             var profile = profilesByNodeId[node.Id];
@@ -794,7 +800,7 @@ public sealed class TemporalNetworkSimulationEngine
                 storeSupplyNodes.Add(node.Id);
             }
 
-            if (availableSupply > Epsilon)
+            if (availableSupply > Epsilon && (!enforceSellLocal || permittedSellerNodeIds.Contains(node.Id)))
             {
                 supply[node.Id] = availableSupply;
                 var supplyUnitCost = nodeState.AvailableSupplyUnitCostPerUnit;

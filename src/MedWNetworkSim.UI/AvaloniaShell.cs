@@ -4869,7 +4869,8 @@ public sealed class ShellWindow : Window
                 new DataGridTextColumn { Header = "Delta", Binding = new Binding(nameof(SimulationActorDecisionViewModel.Delta)) },
                 new DataGridTextColumn { Header = "Cost", Binding = new Binding(nameof(SimulationActorDecisionViewModel.Cost)) },
                 new DataGridTextColumn { Header = "Reason", Binding = new Binding(nameof(SimulationActorDecisionViewModel.Reason)) },
-                new DataGridTextColumn { Header = "Expected effect", Binding = new Binding(nameof(SimulationActorDecisionViewModel.ExpectedEffect)) }
+                new DataGridTextColumn { Header = "Expected effect", Binding = new Binding(nameof(SimulationActorDecisionViewModel.ExpectedEffect)) },
+                new DataGridTextColumn { Header = "Diagnostics", Binding = new Binding(nameof(SimulationActorDecisionViewModel.Diagnostics)) }
             }
         };
 

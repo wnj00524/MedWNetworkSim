@@ -1549,6 +1549,7 @@ public sealed class SimulationActorDecisionViewModel
     public string Cost { get; init; } = string.Empty;
     public string Reason { get; init; } = string.Empty;
     public string ExpectedEffect { get; init; } = string.Empty;
+    public string Diagnostics { get; init; } = string.Empty;
 }
 
 public sealed class SimulationActorActionOutcomeViewModel
@@ -6195,7 +6196,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Delta = action.DeltaValue.ToString("0.##", CultureInfo.InvariantCulture),
         Cost = action.Cost.ToString("0.##", CultureInfo.InvariantCulture),
         Reason = action.Reason,
-        ExpectedEffect = action.ExpectedEffect
+        ExpectedEffect = action.ExpectedEffect,
+        Diagnostics = action.Kind == SimulationActorActionKind.NoOp
+            ? string.Join(" | ", new[] { decision.ReasonSummary, decision.Explanation }.Where(text => !string.IsNullOrWhiteSpace(text)).Distinct(StringComparer.OrdinalIgnoreCase))
+            : decision.ReasonSummary
     };
 
     private string ResolveActorDisplayName(string actorId)

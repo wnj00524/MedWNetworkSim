@@ -200,6 +200,87 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
+    public void LogisticsPlanner_Intervenes_WhenHighUnmetDemandHasLowUtilisation()
+    {
+        var network = BuildLowUtilisationUnmetDemandNetwork();
+        var coordinator = new SimulationActorCoordinator();
+        var actor = new SimulationActorState
+        {
+            Id = "log-low-util",
+            Name = "Planner",
+            Kind = SimulationActorKind.LogisticsPlanner,
+            Objective = SimulationActorObjective.MinimiseUnmetDemand,
+            Cash = 100,
+            Budget = 100
+        };
+
+        var beforeOutcomes = new MedWNetworkSim.App.Services.NetworkSimulationEngine().Simulate(network);
+        Assert.Equal(100d, beforeOutcomes.Sum(outcome => outcome.UnmetDemand));
+        Assert.Empty(beforeOutcomes.SelectMany(outcome => outcome.Allocations));
+
+        var decision = coordinator.PreviewActorActions(network, [actor]).Single();
+
+        Assert.Contains(decision.Actions, action => action.Kind == SimulationActorActionKind.AdjustEdgeCapacity);
+        Assert.DoesNotContain(decision.Actions, action => action.Kind == SimulationActorActionKind.NoOp);
+        Assert.Contains("unmet", decision.ReasonSummary, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void LogisticsPlanner_Intervention_DecreasesUnmetDemand()
+    {
+        var network = BuildLowUtilisationUnmetDemandNetwork();
+        var coordinator = new SimulationActorCoordinator();
+        var actor = new SimulationActorState
+        {
+            Id = "log-lower-unmet",
+            Name = "Planner",
+            Kind = SimulationActorKind.LogisticsPlanner,
+            Objective = SimulationActorObjective.MinimiseUnmetDemand,
+            Cash = 100,
+            Budget = 100
+        };
+
+        var before = new MedWNetworkSim.App.Services.NetworkSimulationEngine().Simulate(network).Sum(outcome => outcome.UnmetDemand);
+        var step = coordinator.StepActorsOnce(network, [actor]);
+        var after = new MedWNetworkSim.App.Services.NetworkSimulationEngine().Simulate(step.NetworkAfterStep).Sum(outcome => outcome.UnmetDemand);
+
+        Assert.Contains(step.ActionOutcomes, outcome =>
+            outcome.Applied &&
+            outcome.Action.Kind == SimulationActorActionKind.AdjustEdgeCapacity &&
+            outcome.Action.TargetEdgeId == "blocked-capacity");
+        Assert.True(after < before);
+    }
+
+    [Fact]
+    public void InactiveEdgeTrafficPermission_FallsBackToPermittedDefault()
+    {
+        var network = BuildNetwork();
+        network.EdgeTrafficPermissionDefaults =
+        [
+            new EdgeTrafficPermissionRule
+            {
+                TrafficType = "Food",
+                Mode = EdgeTrafficPermissionMode.Permitted,
+                IsActive = true
+            }
+        ];
+        network.Edges.Single(edge => edge.Id == "edge-a").TrafficPermissions =
+        [
+            new EdgeTrafficPermissionRule
+            {
+                TrafficType = "Food",
+                Mode = EdgeTrafficPermissionMode.Blocked,
+                IsActive = false
+            }
+        ];
+
+        var outcome = new MedWNetworkSim.App.Services.NetworkSimulationEngine().Simulate(network).Single();
+
+        Assert.True(outcome.TotalDelivered > 0d);
+        Assert.Equal(0d, outcome.NoPermittedPathDemand);
+    }
+
+    [Fact]
     public void TimelineCsv_IncludesAgentActions_WithReadableAgentNames()
     {
         var network = BuildNetwork();
@@ -1135,6 +1216,14 @@ public sealed class SimulationActorsTests
                 }
             ]
         };
+    }
+
+    private static NetworkModel BuildLowUtilisationUnmetDemandNetwork()
+    {
+        var network = BuildNetwork();
+        network.Edges.Single(edge => edge.Id == "edge-a").Id = "blocked-capacity";
+        network.Edges.Single(edge => edge.Id == "blocked-capacity").Capacity = 0d;
+        return network;
     }
 
     private static NetworkModel BuildHighThroughputNetwork()

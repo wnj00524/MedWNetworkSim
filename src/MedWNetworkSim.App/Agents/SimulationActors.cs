@@ -471,6 +471,8 @@ public sealed class GovernmentSimulationActor : SimulationActorBase
 
 public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
 {
+    private const double Epsilon = 0.000001d;
+
     public LogisticsPlannerSimulationActor(SimulationActorState state) : base(state) { }
 
     public override SimulationActorDecision Decide(SimulationActorContext context)
@@ -478,6 +480,29 @@ public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
         var actions = new List<SimulationActorAction>();
         var outcomes = context.CurrentSnapshot.TrafficOutcomes;
         var utilityBefore = EstimateUtility(State.Objective, outcomes);
+        var totalUnmetDemand = outcomes.Sum(o => Math.Max(0d, o.UnmetDemand));
+        var totalDemand = outcomes.Sum(o => Math.Max(0d, o.TotalConsumption));
+        var severeUnmetDemand = totalUnmetDemand > 0d &&
+            (totalUnmetDemand >= 10d || totalDemand <= Epsilon || totalUnmetDemand / totalDemand >= 0.1d);
+        var flowByEdgeId = outcomes
+            .SelectMany(o => o.Allocations)
+            .Where(a => a.PathEdgeIds is { Count: > 0 })
+            .SelectMany(a => a.PathEdgeIds!.Select(edgeId => new { EdgeId = edgeId, a.Quantity }))
+            .GroupBy(item => item.EdgeId, Comparer)
+            .ToDictionary(group => group.Key, group => group.Sum(item => item.Quantity), Comparer);
+
+        if (severeUnmetDemand)
+        {
+            foreach (var action in BuildUnmetDemandActions(context, outcomes, flowByEdgeId))
+            {
+                actions.Add(action);
+                if (actions.Count >= 2)
+                {
+                    break;
+                }
+            }
+        }
+
         foreach (var edge in context.CurrentNetwork.Edges.OrderBy(e => e.Cost).ThenBy(e => e.Id, Comparer))
         {
             var edgeOutcomes = outcomes
@@ -521,7 +546,33 @@ public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
             }
         }
 
-        if (actions.Count == 0)
+        if (actions.Count == 0 && severeUnmetDemand)
+        {
+            var targetEdge = context.CurrentNetwork.Edges
+                .Where(edge => IsPermittedByPermissions(SimulationActorActionKind.AdjustEdgeCapacity, edgeId: edge.Id))
+                .OrderBy(edge => edge.Capacity ?? double.PositiveInfinity)
+                .ThenByDescending(edge => edge.Cost)
+                .ThenBy(edge => edge.Id, Comparer)
+                .FirstOrDefault();
+            if (targetEdge is not null)
+            {
+                var baseline = Math.Max(1d, targetEdge.Capacity ?? 1d);
+                actions.Add(new SimulationActorAction
+                {
+                    Id = $"{State.Id}:proactive-cap:{context.Tick}:{targetEdge.Id}",
+                    ActorId = State.Id,
+                    Kind = SimulationActorActionKind.AdjustEdgeCapacity,
+                    TargetEdgeId = targetEdge.Id,
+                    DeltaValue = Math.Max(5d, baseline * 0.5d),
+                    Cost = 1d,
+                    Reason = $"Severe unmet demand ({totalUnmetDemand:0.##}) persists while routed utilisation is low; proactively expand the lowest-capacity corridor.",
+                    ExpectedEffect = "Create route headroom for unmet demand that is not visible in current edge utilisation.",
+                    IsPolicyAction = false
+                });
+            }
+        }
+
+        if (actions.Count == 0 && totalUnmetDemand <= 0d)
         {
             var targetEdge = context.CurrentNetwork.Edges
                 .Where(edge => edge.Cost > 0d && IsPermittedByPermissions(SimulationActorActionKind.PreferRoute, edgeId: edge.Id))
@@ -544,15 +595,19 @@ public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
             }
         }
 
-        if (actions.Count == 0 && outcomes.Sum(o => o.UnmetDemand) <= 0d)
+        if (actions.Count == 0)
         {
             actions.Add(new SimulationActorAction
             {
-                Id = $"{State.Id}:noop",
+                Id = $"{State.Id}:noop:{context.Tick}",
                 ActorId = State.Id,
                 Kind = SimulationActorActionKind.NoOp,
-                Reason = "Unmet demand is already minimal.",
-                ExpectedEffect = "No logistics intervention required."
+                Reason = totalUnmetDemand <= 0d
+                    ? "Unmet demand is already minimal."
+                    : $"No permitted planner action found for {totalUnmetDemand:0.##} unmet demand; check actor edge permissions, route permissions, supply, and transhipment roles.",
+                ExpectedEffect = totalUnmetDemand <= 0d
+                    ? "No logistics intervention required."
+                    : "No change until a permitted corridor, capacity, or route-cost action becomes available."
             });
         }
 
@@ -563,15 +618,217 @@ public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
             Actions = actions,
             ActionType = actions.FirstOrDefault()?.Kind.ToString() ?? SimulationActorActionKind.NoOp.ToString(),
             TargetId = actions.FirstOrDefault()?.TargetEdgeId ?? actions.FirstOrDefault()?.TargetNodeId ?? "(none)",
-            ReasonSummary = "Logistics planner targeted congestion and route-cost inefficiencies.",
+            ReasonSummary = actions.Any(action => action.Kind == SimulationActorActionKind.NoOp)
+                ? actions[0].Reason
+                : "Logistics planner targeted unmet demand, congestion, and route-cost inefficiencies.",
             Factors = actions.Select(action => action.Reason).Distinct(Comparer).ToList(),
-            Alternatives = ["No rerouting", "Maintain current capacities"],
-            ExpectedOutcome = "Lower movement costs and reduce congested-path demand.",
+            Alternatives = ["No rerouting", "Maintain current capacities", "Wait for utilisation to rise"],
+            ExpectedOutcome = totalUnmetDemand > 0d
+                ? "Reduce unmet demand by adding headroom or lowering cost on plausible unmet-demand corridors."
+                : "Lower movement costs and reduce congested-path demand.",
             Utility = utilityBefore + actions.Count(a => a.Kind != SimulationActorActionKind.NoOp),
             UtilityBefore = utilityBefore,
             ExpectedUtilityAfter = utilityBefore + actions.Count(a => a.Kind != SimulationActorActionKind.NoOp),
-            Explanation = "Logistics planner optimized for lower unmet demand and lower movement cost.",
+            Explanation = actions.Any(action => action.Kind == SimulationActorActionKind.NoOp)
+                ? actions[0].Reason
+                : "Logistics planner optimized for lower unmet demand and lower movement cost.",
             Evidence = context.CurrentInsights.Select(i => i.Summary).Take(3).ToList()
         };
+    }
+
+    private IEnumerable<SimulationActorAction> BuildUnmetDemandActions(
+        SimulationActorContext context,
+        IReadOnlyList<TrafficSimulationOutcome> outcomes,
+        IReadOnlyDictionary<string, double> flowByEdgeId)
+    {
+        var network = context.CurrentNetwork;
+        var edgesById = network.Edges.ToDictionary(edge => edge.Id, Comparer);
+        var averageCost = network.Edges.Count == 0 ? 0d : network.Edges.Average(edge => edge.Cost);
+
+        foreach (var outcome in outcomes.Where(o => o.UnmetDemand > Epsilon).OrderByDescending(o => o.UnmetDemand))
+        {
+            foreach (var path in FindUnmetDemandPaths(network, outcome.TrafficType).Take(3))
+            {
+                var pathEdges = path
+                    .Select(edgeId => edgesById.TryGetValue(edgeId, out var edge) ? edge : null)
+                    .Where(edge => edge is not null)
+                    .Cast<EdgeModel>()
+                    .ToList();
+                if (pathEdges.Count == 0)
+                {
+                    continue;
+                }
+
+                var constrainedEdge = pathEdges
+                    .Where(edge => IsPermittedByPermissions(SimulationActorActionKind.AdjustEdgeCapacity, outcome.TrafficType, edgeId: edge.Id))
+                    .OrderBy(edge => edge.Capacity ?? double.PositiveInfinity)
+                    .ThenBy(edge => flowByEdgeId.GetValueOrDefault(edge.Id))
+                    .ThenBy(edge => edge.Id, Comparer)
+                    .FirstOrDefault();
+                if (constrainedEdge is not null)
+                {
+                    var routed = flowByEdgeId.GetValueOrDefault(constrainedEdge.Id);
+                    var currentCapacity = constrainedEdge.Capacity ?? Math.Max(1d, routed);
+                    var targetHeadroom = Math.Max(outcome.UnmetDemand * 0.25d, 5d);
+                    yield return new SimulationActorAction
+                    {
+                        Id = $"{State.Id}:unmet-cap:{context.Tick}:{outcome.TrafficType}:{constrainedEdge.Id}",
+                        ActorId = State.Id,
+                        Kind = SimulationActorActionKind.AdjustEdgeCapacity,
+                        TargetEdgeId = constrainedEdge.Id,
+                        TrafficType = outcome.TrafficType,
+                        DeltaValue = Math.Max(targetHeadroom, Math.Max(1d, currentCapacity * 0.5d)),
+                        Cost = 1d,
+                        Reason = $"Severe unmet {outcome.TrafficType} demand ({outcome.UnmetDemand:0.##}) has a plausible route through a low-capacity corridor.",
+                        ExpectedEffect = "Increase corridor headroom even though current utilisation is low or zero.",
+                        IsPolicyAction = false
+                    };
+                    continue;
+                }
+
+                var expensiveEdge = pathEdges
+                    .Where(edge => edge.Cost > 0d &&
+                        edge.Cost >= Math.Max(averageCost * 1.25d, averageCost + 0.1d) &&
+                        IsPermittedByPermissions(SimulationActorActionKind.AdjustEdgeCost, outcome.TrafficType, edgeId: edge.Id))
+                    .OrderByDescending(edge => edge.Cost)
+                    .ThenBy(edge => edge.Id, Comparer)
+                    .FirstOrDefault();
+                if (expensiveEdge is not null)
+                {
+                    yield return new SimulationActorAction
+                    {
+                        Id = $"{State.Id}:unmet-cost:{context.Tick}:{outcome.TrafficType}:{expensiveEdge.Id}",
+                        ActorId = State.Id,
+                        Kind = SimulationActorActionKind.AdjustEdgeCost,
+                        TargetEdgeId = expensiveEdge.Id,
+                        TrafficType = outcome.TrafficType,
+                        DeltaValue = -Math.Min(expensiveEdge.Cost * 0.2d, Math.Max(0.1d, expensiveEdge.Cost - averageCost)),
+                        Cost = 0.5d,
+                        Reason = $"Severe unmet {outcome.TrafficType} demand persists on a costly feasible corridor.",
+                        ExpectedEffect = "Make the corridor more attractive to routing when demand remains unmet.",
+                        IsPolicyAction = false
+                    };
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<IReadOnlyList<string>> FindUnmetDemandPaths(NetworkModel network, string trafficType)
+    {
+        var profilesByNodeId = network.Nodes.ToDictionary(
+            node => node.Id,
+            node => node.TrafficProfiles.FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, trafficType)),
+            Comparer);
+        var producers = profilesByNodeId
+            .Where(pair => pair.Value?.Production > Epsilon)
+            .Select(pair => pair.Key)
+            .ToList();
+        var consumers = profilesByNodeId
+            .Where(pair => pair.Value?.Consumption > Epsilon)
+            .OrderByDescending(pair => pair.Value!.Consumption)
+            .Select(pair => pair.Key)
+            .ToList();
+
+        foreach (var consumerId in consumers)
+        {
+            foreach (var producerId in producers)
+            {
+                var path = FindPathIgnoringCapacity(network, profilesByNodeId, trafficType, producerId, consumerId);
+                if (path.Count > 0)
+                {
+                    yield return path;
+                }
+            }
+        }
+    }
+
+    private static IReadOnlyList<string> FindPathIgnoringCapacity(
+        NetworkModel network,
+        IReadOnlyDictionary<string, NodeTrafficProfile?> profilesByNodeId,
+        string trafficType,
+        string producerId,
+        string consumerId)
+    {
+        if (Comparer.Equals(producerId, consumerId))
+        {
+            return [];
+        }
+
+        var permissionResolver = new EdgeTrafficPermissionResolver();
+        var adjacency = BuildAdjacency(network);
+        var queue = new Queue<(string NodeId, List<string> EdgeIds, List<string> NodeIds)>();
+        var visited = new HashSet<string>(Comparer) { producerId };
+        queue.Enqueue((producerId, [], [producerId]));
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (!adjacency.TryGetValue(current.NodeId, out var arcs))
+            {
+                continue;
+            }
+
+            foreach (var (edge, toNodeId) in arcs)
+            {
+                if (!visited.Add(toNodeId))
+                {
+                    continue;
+                }
+
+                if (permissionResolver.Resolve(network, edge, trafficType).Mode == EdgeTrafficPermissionMode.Blocked ||
+                    !CanTraverseNode(toNodeId, producerId, consumerId, profilesByNodeId))
+                {
+                    continue;
+                }
+
+                var edgeIds = current.EdgeIds.Concat([edge.Id]).ToList();
+                if (Comparer.Equals(toNodeId, consumerId))
+                {
+                    return edgeIds;
+                }
+
+                queue.Enqueue((toNodeId, edgeIds, current.NodeIds.Concat([toNodeId]).ToList()));
+            }
+        }
+
+        return [];
+    }
+
+    private static Dictionary<string, List<(EdgeModel Edge, string ToNodeId)>> BuildAdjacency(NetworkModel network)
+    {
+        var adjacency = new Dictionary<string, List<(EdgeModel Edge, string ToNodeId)>>(Comparer);
+
+        void Add(string fromNodeId, string toNodeId, EdgeModel edge)
+        {
+            if (!adjacency.TryGetValue(fromNodeId, out var arcs))
+            {
+                arcs = [];
+                adjacency[fromNodeId] = arcs;
+            }
+
+            arcs.Add((edge, toNodeId));
+        }
+
+        foreach (var edge in network.Edges)
+        {
+            Add(edge.FromNodeId, edge.ToNodeId, edge);
+            if (edge.IsBidirectional)
+            {
+                Add(edge.ToNodeId, edge.FromNodeId, edge);
+            }
+        }
+
+        return adjacency;
+    }
+
+    private static bool CanTraverseNode(
+        string nodeId,
+        string producerId,
+        string consumerId,
+        IReadOnlyDictionary<string, NodeTrafficProfile?> profilesByNodeId)
+    {
+        return Comparer.Equals(nodeId, producerId) ||
+            Comparer.Equals(nodeId, consumerId) ||
+            (profilesByNodeId.TryGetValue(nodeId, out var profile) && profile?.CanTransship == true);
     }
 }

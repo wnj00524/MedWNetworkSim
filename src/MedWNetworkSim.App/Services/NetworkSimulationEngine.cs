@@ -70,7 +70,7 @@ public sealed class NetworkSimulationEngine
                 }
 
                 SetStaticSourceUnitCosts(context, definitionsByTraffic, sourceUnitCosts, landedUnitCosts);
-                MixedRoutingAllocator.ApplyLocalAllocations(context, period: 0);
+                MixedRoutingAllocator.ApplyLocalAllocations(context, network, period: 0);
                 MixedRoutingAllocator.Allocate(network, [context], remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId);
                 landedUnitCosts[context.TrafficType] = SummarizeLandedUnitCosts(context.Allocations);
             }
@@ -163,6 +163,7 @@ public sealed class NetworkSimulationEngine
             SimulationSeed = network.SimulationSeed,
             FacilityModeEnabled = network.FacilityModeEnabled,
             AgentMode = network.AgentMode,
+            LimitMeetingNodeDemandBySellLocalPermission = network.LimitMeetingNodeDemandBySellLocalPermission,
             FacilityCoverageThreshold = network.FacilityCoverageThreshold,
             Layers = network.Layers,
             TrafficTypes = network.TrafficTypes,

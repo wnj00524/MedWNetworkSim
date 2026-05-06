@@ -6,15 +6,14 @@ public static class SimulationActorSellLocalPermissionResolver
 {
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
 
-    public static bool IsEnforced(NetworkModel network) => network.AgentMode == AgentMode.SellLocal;
+    public static bool HasSellLocalAgentMode(NetworkModel network) => network.AgentMode == AgentMode.SellLocal;
+
+    public static bool IsEnforced(NetworkModel network) => HasSellLocalAgentMode(network);
+
+    public static bool ShouldLimitMeetingNodeDemand(NetworkModel network) => network.LimitMeetingNodeDemandBySellLocalPermission;
 
     public static bool CanSellLocal(NetworkModel network, string nodeId, string trafficType)
     {
-        if (!IsEnforced(network))
-        {
-            return true;
-        }
-
         if (string.IsNullOrWhiteSpace(nodeId) || string.IsNullOrWhiteSpace(trafficType))
         {
             return false;
@@ -28,16 +27,6 @@ public static class SimulationActorSellLocalPermissionResolver
     public static HashSet<string> BuildPermittedSellerNodeSet(NetworkModel network, string trafficType)
     {
         var permitted = new HashSet<string>(Comparer);
-        if (!IsEnforced(network))
-        {
-            foreach (var node in network.Nodes)
-            {
-                permitted.Add(node.Id);
-            }
-
-            return permitted;
-        }
-
         foreach (var actor in network.Actors.Where(actor => actor.IsEnabled))
         {
             foreach (var nodeId in actor.ControlledNodeIds.Where(nodeId => !string.IsNullOrWhiteSpace(nodeId)))

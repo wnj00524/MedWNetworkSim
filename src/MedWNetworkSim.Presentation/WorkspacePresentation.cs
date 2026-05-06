@@ -2603,9 +2603,29 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             network.AgentMode = value;
             MarkDirty();
             Raise(nameof(AgentMode));
+            Raise(nameof(LimitMeetingNodeDemandBySellLocalPermission));
             StatusText = value == AgentMode.SellLocal
                 ? "Agent mode set to Sell local. Only actors with explicit SellLocal permission can fulfil demand."
                 : "Agent mode set to Off. Node demand is fulfilled with the default rules.";
+        }
+    }
+
+    public bool LimitMeetingNodeDemandBySellLocalPermission
+    {
+        get => network.LimitMeetingNodeDemandBySellLocalPermission;
+        set
+        {
+            if (network.LimitMeetingNodeDemandBySellLocalPermission == value)
+            {
+                return;
+            }
+
+            network.LimitMeetingNodeDemandBySellLocalPermission = value;
+            MarkDirty();
+            Raise(nameof(LimitMeetingNodeDemandBySellLocalPermission));
+            StatusText = value
+                ? "Meeting-node demand now requires explicit SellLocal permission for same-node supply."
+                : "Meeting-node demand can use same-node supply without SellLocal permission.";
         }
     }
 
@@ -4402,22 +4422,38 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     public void ExportCurrentReport(string path, ReportExportFormat format)
     {
+        ExportCurrentReport(path, format, network.LimitMeetingNodeDemandBySellLocalPermission);
+    }
+
+    public void ExportCurrentReport(string path, ReportExportFormat format, bool applySellLocalMeetingDemandLimit)
+    {
         CommitTransientEditorsToModel();
-        reportExportService.SaveCurrentReport(network, lastOutcomes, lastConsumerCosts, path, format);
+        var exportNetwork = NetworkModelCloneUtility.Clone(fileService.NormalizeAndValidate(network));
+        exportNetwork.LimitMeetingNodeDemandBySellLocalPermission = applySellLocalMeetingDemandLimit;
+        var exportOutcomes = simulationEngine.Simulate(exportNetwork);
+        var exportConsumerCosts = simulationEngine.SummarizeConsumerCosts(exportOutcomes.SelectMany(outcome => outcome.Allocations));
+        reportExportService.SaveCurrentReport(exportNetwork, exportOutcomes, exportConsumerCosts, path, format);
         StatusText = $"Exported the current report to '{Path.GetFileName(path)}'.";
     }
 
     public void ExportTimelineReport(string path, int periods, ReportExportFormat format)
     {
+        ExportTimelineReport(path, periods, format, network.LimitMeetingNodeDemandBySellLocalPermission);
+    }
+
+    public void ExportTimelineReport(string path, int periods, ReportExportFormat format, bool applySellLocalMeetingDemandLimit)
+    {
         CommitTransientEditorsToModel();
-        var state = temporalEngine.Initialize(network);
+        var exportNetwork = NetworkModelCloneUtility.Clone(fileService.NormalizeAndValidate(network));
+        exportNetwork.LimitMeetingNodeDemandBySellLocalPermission = applySellLocalMeetingDemandLimit;
+        var state = temporalEngine.Initialize(exportNetwork);
         var results = new List<TemporalNetworkSimulationEngine.TemporalSimulationStepResult>();
         for (var index = 0; index < Math.Max(1, periods); index++)
         {
-            results.Add(temporalEngine.Advance(network, state));
+            results.Add(temporalEngine.Advance(exportNetwork, state));
         }
 
-        reportExportService.SaveTimelineReport(network, results, path, format);
+        reportExportService.SaveTimelineReport(exportNetwork, results, path, format);
         StatusText = $"Exported {results.Count} timeline periods to '{Path.GetFileName(path)}'.";
     }
 
@@ -5006,6 +5042,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(LockLayoutToMapDisabledReason));
         Raise(nameof(LockLayoutToMap));
         Raise(nameof(AgentMode));
+        Raise(nameof(LimitMeetingNodeDemandBySellLocalPermission));
         Raise(nameof(IsMapLayoutLockedForGraph));
         Raise(nameof(HasAnyNodes));
         SimulationActors.Clear();
@@ -8229,6 +8266,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             DefaultAllocationMode = source.DefaultAllocationMode,
             SimulationSeed = source.SimulationSeed,
             AgentMode = source.AgentMode,
+            LimitMeetingNodeDemandBySellLocalPermission = source.LimitMeetingNodeDemandBySellLocalPermission,
             LockLayoutToMap = source.LockLayoutToMap,
             TrafficTypes = source.TrafficTypes.Select(definition => new TrafficTypeDefinition
             {

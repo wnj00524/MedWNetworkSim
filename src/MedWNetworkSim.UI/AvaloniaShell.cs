@@ -5398,7 +5398,18 @@ public sealed class ShellWindow : Window
         };
         selector.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.AgentMode), BindingMode.TwoWay));
         ToolTip.SetTip(selector, "Off uses default demand fulfilment. SellLocal requires an enabled controlling actor with explicit SellLocal permission before that node's produced or purchased supply can fulfil demand.");
-        return BuildLabeledRow("Agent Mode", selector);
+        var limitCheckBox = BuildCheckBox("Limit meeting-node demand by Sell local permission");
+        limitCheckBox.Bind(ToggleButton.IsCheckedProperty, new Binding(nameof(WorkspaceViewModel.LimitMeetingNodeDemandBySellLocalPermission), BindingMode.TwoWay));
+        ToolTip.SetTip(limitCheckBox, "When enabled, same-node/local demand is satisfied only if the node is controlled by an enabled actor with explicit SellLocal permission. Otherwise the demand must be imported from a permitted seller or remains unmet.");
+        return new StackPanel
+        {
+            Spacing = 4,
+            Children =
+            {
+                BuildLabeledRow("Agent Mode", selector),
+                limitCheckBox
+            }
+        };
     }
 
     private Control BuildDashboardStripTabs(WorkspaceViewModel viewModel)
@@ -8785,6 +8796,12 @@ public sealed class ShellWindow : Window
 
     private async Task ExportCurrentReportAsync(WorkspaceViewModel viewModel, ReportExportFormat format)
     {
+        var applyMeetingDemandLimit = await PromptReportExportOptionsAsync(viewModel.LimitMeetingNodeDemandBySellLocalPermission);
+        if (!applyMeetingDemandLimit.HasValue)
+        {
+            return;
+        }
+
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = "Export current report",
@@ -8795,13 +8812,13 @@ public sealed class ShellWindow : Window
             return;
         }
 
-        viewModel.ExportCurrentReport(file.Path.LocalPath, format);
+        viewModel.ExportCurrentReport(file.Path.LocalPath, format, applyMeetingDemandLimit.Value);
     }
 
     private async Task ExportTimelineReportAsync(WorkspaceViewModel viewModel, ReportExportFormat format)
     {
-        var periods = await PromptTimelineExportPeriodsAsync(viewModel.TimelineMaximum);
-        if (!periods.HasValue)
+        var exportOptions = await PromptTimelineExportOptionsAsync(viewModel.TimelineMaximum, viewModel.LimitMeetingNodeDemandBySellLocalPermission);
+        if (exportOptions is null)
         {
             return;
         }
@@ -8816,12 +8833,106 @@ public sealed class ShellWindow : Window
             return;
         }
 
-        viewModel.ExportTimelineReport(file.Path.LocalPath, periods.Value, format);
+        viewModel.ExportTimelineReport(file.Path.LocalPath, exportOptions.Periods, format, exportOptions.ApplyMeetingDemandLimit);
     }
 
-    private async Task<int?> PromptTimelineExportPeriodsAsync(int currentPeriodCount)
+    private static Border BuildReportExportOptionsDialogContent(string title, string description, IEnumerable<Control> optionControls, Button exportButton, Button cancelButton)
     {
-        var result = (int?)null;
+        var children = new List<Control>
+        {
+            new TextBlock
+            {
+                Text = title,
+                FontSize = 20,
+                FontWeight = FontWeight.Bold,
+                Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+            },
+            new TextBlock
+            {
+                Text = description,
+                Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                TextWrapping = TextWrapping.Wrap
+            }
+        };
+        children.AddRange(optionControls);
+        children.Add(new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 8,
+            Children = { exportButton, cancelButton }
+        });
+
+        var stack = new StackPanel { Spacing = 12 };
+        stack.Children.AddRange(children);
+
+        return new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(16),
+            Padding = new Thickness(18),
+            Child = stack
+        };
+    }
+
+    private async Task<bool?> PromptReportExportOptionsAsync(bool defaultApplyMeetingDemandLimit)
+    {
+        bool? result = null;
+        var dialog = new Window
+        {
+            Width = 460,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            SystemDecorations = SystemDecorations.None,
+            ExtendClientAreaToDecorationsHint = true,
+            ExtendClientAreaChromeHints = ExtendClientAreaChromeHints.NoChrome,
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ChromeBackground),
+            Title = "Report export options"
+        };
+
+        var applyMeetingDemandLimit = BuildCheckBox("Apply Sell local meeting-demand limit in exported report");
+        applyMeetingDemandLimit.IsChecked = defaultApplyMeetingDemandLimit;
+        ToolTip.SetTip(applyMeetingDemandLimit, "Override whether exported simulations limit same-node/local demand to nodes controlled by enabled actors with explicit SellLocal permission.");
+
+        var exportButton = new Button
+        {
+            Content = "Export",
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.Accent),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            Padding = new Thickness(14, 8)
+        };
+        exportButton.Click += (_, _) =>
+        {
+            result = applyMeetingDemandLimit.IsChecked == true;
+            dialog.Close();
+        };
+        var cancelButton = new Button
+        {
+            Content = "Cancel",
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.ToolbarButtonBackground),
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            Padding = new Thickness(14, 8)
+        };
+        cancelButton.Click += (_, _) => dialog.Close();
+
+        dialog.Content = BuildReportExportOptionsDialogContent(
+            "Report Export Options",
+            "Choose whether this report should re-run simulation with the Sell local meeting-demand limit. This does not change the workspace setting.",
+            [applyMeetingDemandLimit],
+            exportButton,
+            cancelButton);
+
+        await dialog.ShowDialog(this);
+        return result;
+    }
+
+    private sealed record TimelineReportExportOptions(int Periods, bool ApplyMeetingDemandLimit);
+
+    private async Task<TimelineReportExportOptions?> PromptTimelineExportOptionsAsync(int currentPeriodCount, bool defaultApplyMeetingDemandLimit)
+    {
+        TimelineReportExportOptions? result = null;
         var defaultPeriodCount = Math.Max(1, currentPeriodCount);
         var dialog = new Window
         {
@@ -8849,13 +8960,16 @@ public sealed class ShellWindow : Window
             Foreground = new SolidColorBrush(AvaloniaDashboardTheme.Danger),
             TextWrapping = TextWrapping.Wrap
         };
+        var applyMeetingDemandLimit = BuildCheckBox("Apply Sell local meeting-demand limit in exported report");
+        applyMeetingDemandLimit.IsChecked = defaultApplyMeetingDemandLimit;
+        ToolTip.SetTip(applyMeetingDemandLimit, "Override whether exported simulations limit same-node/local demand to nodes controlled by enabled actors with explicit SellLocal permission.");
 
         void Apply()
         {
             if (int.TryParse(input.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) &&
                 parsed >= 1)
             {
-                result = parsed;
+                result = new TimelineReportExportOptions(parsed, applyMeetingDemandLimit.IsChecked == true);
                 dialog.Close();
                 return;
             }
@@ -8915,6 +9029,7 @@ public sealed class ShellWindow : Window
                         TextWrapping = TextWrapping.Wrap
                     },
                     input,
+                    applyMeetingDemandLimit,
                     validation,
                     new StackPanel
                     {

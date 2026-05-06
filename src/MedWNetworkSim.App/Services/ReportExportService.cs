@@ -80,6 +80,7 @@ public sealed class ReportExportService
                 ["Edges", network.Edges.Count.ToString(CultureInfo.InvariantCulture)],
                 ["Traffic Types", network.TrafficTypes.Count.ToString(CultureInfo.InvariantCulture)],
                 ["Agent Mode", FormatAgentMode(network.AgentMode)],
+                ["Sell local meeting-demand limit", FormatOnOff(network.LimitMeetingNodeDemandBySellLocalPermission)],
                 ["Total Routed Movements", allocations.Count.ToString(CultureInfo.InvariantCulture)],
                 ["Total Delivered", FormatNumber(outcomes.Sum(outcome => outcome.TotalDelivered))]
             ]);
@@ -195,6 +196,7 @@ public sealed class ReportExportService
             [
                 ["Periods Simulated", periods.ToString(CultureInfo.InvariantCulture)],
                 ["Loop Length", network.TimelineLoopLength.HasValue ? network.TimelineLoopLength.Value.ToString(CultureInfo.InvariantCulture) : "None"],
+                ["Sell local meeting-demand limit", FormatOnOff(network.LimitMeetingNodeDemandBySellLocalPermission)],
                 ["Allocations Planned", allAllocations.Count.ToString(CultureInfo.InvariantCulture)],
                 ["Total Quantity Planned", FormatNumber(allAllocations.Sum(allocation => allocation.Quantity))],
                 ["Periods With Movement", periodResults.Count(result => result.Allocations.Count > 0).ToString(CultureInfo.InvariantCulture)],
@@ -390,6 +392,7 @@ public sealed class ReportExportService
                 ["Edges", network.Edges.Count.ToString(CultureInfo.InvariantCulture)],
                 ["Traffic Types", network.TrafficTypes.Count.ToString(CultureInfo.InvariantCulture)],
                 ["Agent Mode", FormatAgentMode(network.AgentMode)],
+                ["Sell local meeting-demand limit", FormatOnOff(network.LimitMeetingNodeDemandBySellLocalPermission)],
                 ["Total Routed Movements", allocations.Count.ToString(CultureInfo.InvariantCulture)],
                 ["Total Delivered", FormatNumber(outcomes.Sum(outcome => outcome.TotalDelivered))]
             ]);
@@ -541,6 +544,7 @@ public sealed class ReportExportService
             [
                 ["Periods Simulated", periods.ToString(CultureInfo.InvariantCulture)],
                 ["Loop Length", network.TimelineLoopLength.HasValue ? network.TimelineLoopLength.Value.ToString(CultureInfo.InvariantCulture) : "None"],
+                ["Sell local meeting-demand limit", FormatOnOff(network.LimitMeetingNodeDemandBySellLocalPermission)],
                 ["Allocations Planned", allAllocations.Count.ToString(CultureInfo.InvariantCulture)],
                 ["Total Quantity Planned", FormatNumber(allAllocations.Sum(item => item.Quantity))],
                 ["Periods With Movement", results.Count(result => result.Allocations.Count > 0).ToString(CultureInfo.InvariantCulture)],
@@ -714,7 +718,7 @@ public sealed class ReportExportService
         var report = new
         {
             reportType = "current",
-            network = new { network.Name, network.Description, nodes = network.Nodes.Count, edges = network.Edges.Count, agentMode = FormatAgentMode(network.AgentMode) },
+            network = new { network.Name, network.Description, nodes = network.Nodes.Count, edges = network.Edges.Count, agentMode = FormatAgentMode(network.AgentMode), limitMeetingNodeDemandBySellLocalPermission = network.LimitMeetingNodeDemandBySellLocalPermission },
             edges = network.Edges.Select(edge => new
             {
                 edge_id = edge.Id,
@@ -757,6 +761,7 @@ public sealed class ReportExportService
         {
             reportType = "timeline",
             periods = results.Count,
+            network = new { network.Name, network.Description, nodes = network.Nodes.Count, edges = network.Edges.Count, agentMode = FormatAgentMode(network.AgentMode), limitMeetingNodeDemandBySellLocalPermission = network.LimitMeetingNodeDemandBySellLocalPermission },
             agentActions = network.AgentActionLogs
                 .OrderBy(entry => entry.SimulationTick)
                 .ThenBy(entry => entry.Timestamp)
@@ -1348,6 +1353,7 @@ public sealed class ReportExportService
         builder.AppendLine(BuildCsvRow(["Generated", DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss zzz")]));
         builder.AppendLine(BuildCsvRow(["Network", network.Name]));
         builder.AppendLine(BuildCsvRow(["Agent Mode", FormatAgentMode(network.AgentMode)]));
+        builder.AppendLine(BuildCsvRow(["Sell local meeting-demand limit", FormatOnOff(network.LimitMeetingNodeDemandBySellLocalPermission)]));
         if (!string.IsNullOrWhiteSpace(network.Description))
         {
             builder.AppendLine(BuildCsvRow(["Description", network.Description.Trim()]));
@@ -1377,6 +1383,8 @@ public sealed class ReportExportService
                     : string.Join("; ", entry.StateMetrics.OrderBy(pair => pair.Key, Comparer).Select(pair => $"{pair.Key}: {FormatNumber(pair.Value)}"))
             });
     }
+
+    private static string FormatOnOff(bool value) => value ? "On" : "Off";
 
     private static string FormatAgentMode(AgentMode mode) => mode switch
     {

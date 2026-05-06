@@ -534,16 +534,30 @@ public static partial class MixedRoutingAllocator
 
         if (applyLocalAllocations)
         {
-            ApplyLocalAllocations(context, period: 0);
+            ApplyLocalAllocations(context, network, period: 0);
         }
 
         return context;
     }
 
-    public static void ApplyLocalAllocations(RoutingTrafficContext context, int period)
+    public static void ApplyLocalAllocations(RoutingTrafficContext context, NetworkModel network, int period)
     {
+        var limitMeetingDemand = SimulationActorSellLocalPermissionResolver.ShouldLimitMeetingNodeDemand(network);
+        var permittedSellerNodeIds = limitMeetingDemand
+            ? SimulationActorSellLocalPermissionResolver.BuildPermittedSellerNodeSet(network, context.TrafficType)
+            : new HashSet<string>(Comparer);
+
         foreach (var nodeId in context.Supply.Keys.Intersect(context.Demand.Keys, Comparer).ToList())
         {
+            if (limitMeetingDemand &&
+                !permittedSellerNodeIds.Contains(nodeId) &&
+                !SimulationActorSellLocalPermissionResolver.CanSellLocal(network, nodeId, context.TrafficType))
+            {
+                var nodeName = context.NodesById.TryGetValue(nodeId, out var localNode) ? localNode.Name : nodeId;
+                context.Notes.Add($"Sell local meeting-demand limit is active: local demand at {nodeName} was not satisfied by same-node supply because no controlling actor has SellLocal permission.");
+                continue;
+            }
+
             var quantity = Math.Min(context.Supply[nodeId], context.Demand[nodeId]);
             if (quantity <= Epsilon)
             {

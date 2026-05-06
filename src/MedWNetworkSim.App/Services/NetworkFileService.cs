@@ -40,8 +40,14 @@ public sealed class NetworkFileService
     public NetworkModel LoadJson(string json)
     {
         var trafficTypesWithExplicitFlowSplitPolicy = ReadTrafficTypesWithExplicitFlowSplitPolicy(json);
+        var hasExplicitMeetingDemandLimit = HasExplicitProperty(json, nameof(NetworkModel.LimitMeetingNodeDemandBySellLocalPermission));
         var model = JsonSerializer.Deserialize<NetworkModel>(json, serializerOptions)
             ?? throw new InvalidOperationException("The selected JSON could not be deserialized into a network.");
+
+        if (!hasExplicitMeetingDemandLimit && model.AgentMode == AgentMode.SellLocal)
+        {
+            model.LimitMeetingNodeDemandBySellLocalPermission = true;
+        }
 
         return NormalizeAndValidate(model, forceLayoutAllNodes: false, trafficTypesWithExplicitFlowSplitPolicy);
     }
@@ -76,6 +82,21 @@ public sealed class NetworkFileService
     public NetworkModel NormalizeAndValidate(NetworkModel model)
     {
         return NormalizeAndValidate(model, forceLayoutAllNodes: false);
+    }
+
+
+    private static bool HasExplicitProperty(string json, string propertyName)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        var camelCaseName = JsonNamingPolicy.CamelCase.ConvertName(propertyName);
+        return document.RootElement.EnumerateObject().Any(property =>
+            string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(property.Name, camelCaseName, StringComparison.OrdinalIgnoreCase));
     }
 
     private NetworkModel NormalizeAndValidate(
@@ -313,6 +334,7 @@ public sealed class NetworkFileService
             DefaultAllocationMode = defaultAllocationMode,
             SimulationSeed = model.SimulationSeed,
             AgentMode = model.AgentMode,
+            LimitMeetingNodeDemandBySellLocalPermission = model.LimitMeetingNodeDemandBySellLocalPermission,
             Layers = layers,
             Nodes = normalizedNodes,
             Edges = normalizedEdges,

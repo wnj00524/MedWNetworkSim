@@ -79,6 +79,7 @@ public sealed class ReportExportService
                 ["Nodes", network.Nodes.Count.ToString(CultureInfo.InvariantCulture)],
                 ["Edges", network.Edges.Count.ToString(CultureInfo.InvariantCulture)],
                 ["Traffic Types", network.TrafficTypes.Count.ToString(CultureInfo.InvariantCulture)],
+                ["Agent Mode", FormatAgentMode(network.AgentMode)],
                 ["Total Routed Movements", allocations.Count.ToString(CultureInfo.InvariantCulture)],
                 ["Total Delivered", FormatNumber(outcomes.Sum(outcome => outcome.TotalDelivered))]
             ]);
@@ -388,6 +389,7 @@ public sealed class ReportExportService
                 ["Nodes", network.Nodes.Count.ToString(CultureInfo.InvariantCulture)],
                 ["Edges", network.Edges.Count.ToString(CultureInfo.InvariantCulture)],
                 ["Traffic Types", network.TrafficTypes.Count.ToString(CultureInfo.InvariantCulture)],
+                ["Agent Mode", FormatAgentMode(network.AgentMode)],
                 ["Total Routed Movements", allocations.Count.ToString(CultureInfo.InvariantCulture)],
                 ["Total Delivered", FormatNumber(outcomes.Sum(outcome => outcome.TotalDelivered))]
             ]);
@@ -712,7 +714,7 @@ public sealed class ReportExportService
         var report = new
         {
             reportType = "current",
-            network = new { network.Name, network.Description, nodes = network.Nodes.Count, edges = network.Edges.Count },
+            network = new { network.Name, network.Description, nodes = network.Nodes.Count, edges = network.Edges.Count, agentMode = FormatAgentMode(network.AgentMode) },
             edges = network.Edges.Select(edge => new
             {
                 edge_id = edge.Id,
@@ -1129,6 +1131,7 @@ public sealed class ReportExportService
         builder.AppendLine($"<h1>{HtmlEncode(title)}</h1>");
         builder.AppendLine($"<p class=\"meta\"><strong>Generated:</strong> {HtmlEncode(DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss zzz"))}</p>");
         builder.AppendLine($"<p class=\"meta\"><strong>Network:</strong> {HtmlEncode(network.Name)}</p>");
+        builder.AppendLine($"<p class=\"meta\"><strong>Agent Mode:</strong> {HtmlEncode(FormatAgentMode(network.AgentMode))}</p>");
 
         if (!string.IsNullOrWhiteSpace(network.Description))
         {
@@ -1344,6 +1347,7 @@ public sealed class ReportExportService
         builder.AppendLine(BuildCsvRow([title]));
         builder.AppendLine(BuildCsvRow(["Generated", DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss zzz")]));
         builder.AppendLine(BuildCsvRow(["Network", network.Name]));
+        builder.AppendLine(BuildCsvRow(["Agent Mode", FormatAgentMode(network.AgentMode)]));
         if (!string.IsNullOrWhiteSpace(network.Description))
         {
             builder.AppendLine(BuildCsvRow(["Description", network.Description.Trim()]));
@@ -1373,6 +1377,12 @@ public sealed class ReportExportService
                     : string.Join("; ", entry.StateMetrics.OrderBy(pair => pair.Key, Comparer).Select(pair => $"{pair.Key}: {FormatNumber(pair.Value)}"))
             });
     }
+
+    private static string FormatAgentMode(AgentMode mode) => mode switch
+    {
+        AgentMode.SellLocal => "Sell local (only actor-permitted local sellers can fulfil demand)",
+        _ => "Off (default demand fulfilment)"
+    };
 
     private static string FormatAgentReference(NetworkModel network, AgentActionLogEntry entry)
     {

@@ -270,6 +270,7 @@ public sealed class FacilityModeSimulationEngine
             DefaultAllocationMode = network.DefaultAllocationMode,
             SimulationSeed = network.SimulationSeed,
             FacilityModeEnabled = facilityModeEnabled,
+            AgentMode = network.AgentMode,
             FacilityCoverageThreshold = network.FacilityCoverageThreshold,
             TrafficTypes = trafficTypes,
             TimelineEvents = network.TimelineEvents.ToList(),
@@ -280,7 +281,8 @@ public sealed class FacilityModeSimulationEngine
                 .ToList(),
             Subnetworks = network.Subnetworks?.ToList(),
             Nodes = network.Nodes.Select(CloneNode).ToList(),
-            Edges = network.Edges.Select(CloneEdge).ToList()
+            Edges = network.Edges.Select(CloneEdge).ToList(),
+            Actors = network.Actors.ToList()
         };
     }
 

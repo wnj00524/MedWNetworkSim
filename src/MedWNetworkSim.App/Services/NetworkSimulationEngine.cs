@@ -162,6 +162,7 @@ public sealed class NetworkSimulationEngine
             DefaultAllocationMode = network.DefaultAllocationMode,
             SimulationSeed = network.SimulationSeed,
             FacilityModeEnabled = network.FacilityModeEnabled,
+            AgentMode = network.AgentMode,
             FacilityCoverageThreshold = network.FacilityCoverageThreshold,
             Layers = network.Layers,
             TrafficTypes = network.TrafficTypes,
@@ -172,7 +173,8 @@ public sealed class NetworkSimulationEngine
             RouteTaxRules = network.RouteTaxRules,
             Subnetworks = network.Subnetworks,
             Nodes = network.Nodes.OrderBy(node => order.GetValueOrDefault(node.LayerId, int.MaxValue)).ThenBy(node => node.Name, StringComparer.OrdinalIgnoreCase).ToList(),
-            Edges = network.Edges.OrderBy(edge => order.GetValueOrDefault(edge.LayerId, int.MaxValue)).ThenBy(edge => edge.Id, StringComparer.OrdinalIgnoreCase).ToList()
+            Edges = network.Edges.OrderBy(edge => order.GetValueOrDefault(edge.LayerId, int.MaxValue)).ThenBy(edge => edge.Id, StringComparer.OrdinalIgnoreCase).ToList(),
+            Actors = network.Actors
         };
     }
 

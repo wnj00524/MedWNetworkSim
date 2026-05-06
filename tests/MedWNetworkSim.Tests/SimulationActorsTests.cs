@@ -8,6 +8,64 @@ namespace MedWNetworkSim.Tests;
 
 public sealed class SimulationActorsTests
 {
+
+    [Fact]
+    public void SellLocalAgentMode_RequiresExplicitSellerPermission()
+    {
+        var network = new NetworkModel
+        {
+            AgentMode = AgentMode.SellLocal,
+            TrafficTypes = [new TrafficTypeDefinition { Name = "Food" }],
+            Nodes =
+            [
+                new NodeModel
+                {
+                    Id = "seller",
+                    Name = "Seller",
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Food", Production = 10d }]
+                },
+                new NodeModel
+                {
+                    Id = "buyer",
+                    Name = "Buyer",
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Food", Consumption = 10d }]
+                }
+            ],
+            Edges = [new EdgeModel { Id = "route", FromNodeId = "seller", ToNodeId = "buyer", IsBidirectional = true }]
+        };
+
+        var blocked = new NetworkSimulationEngine().Simulate(network).Single();
+        Assert.Equal(0d, blocked.TotalDelivered);
+        Assert.Equal(10d, blocked.UnmetDemand);
+
+        network.Actors.Add(new SimulationActorState
+        {
+            Id = "local-seller",
+            Name = "Local Seller",
+            Kind = SimulationActorKind.Firm,
+            IsEnabled = true,
+            ControlledNodeIds = ["seller"],
+            Capability = new SimulationActorCapability
+            {
+                ActorId = "local-seller",
+                AllowedActionKinds = [SimulationActorActionKind.SellLocal],
+                Permissions =
+                [
+                    new SimulationActorPermission
+                    {
+                        ActionKind = SimulationActorActionKind.SellLocal,
+                        TrafficType = "Food",
+                        NodeId = "seller",
+                        IsAllowed = true
+                    }
+                ]
+            }
+        });
+
+        var permitted = new NetworkSimulationEngine().Simulate(network).Single();
+        Assert.Equal(10d, permitted.TotalDelivered);
+        Assert.Equal(0d, permitted.UnmetDemand);
+    }
     [Fact]
     public void Firm_ProposesPermittedProfitAction()
     {

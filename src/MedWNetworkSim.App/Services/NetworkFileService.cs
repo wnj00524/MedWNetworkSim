@@ -312,6 +312,7 @@ public sealed class NetworkFileService
             TimelineLoopLength = timelineLoopLength,
             DefaultAllocationMode = defaultAllocationMode,
             SimulationSeed = model.SimulationSeed,
+            AgentMode = model.AgentMode,
             Layers = layers,
             Nodes = normalizedNodes,
             Edges = normalizedEdges,

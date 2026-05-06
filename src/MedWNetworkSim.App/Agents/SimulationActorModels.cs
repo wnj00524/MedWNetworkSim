@@ -44,6 +44,7 @@ public enum SimulationActorActionKind
 {
     BuyTraffic,
     SellTraffic,
+    SellLocal,
     AdjustProduction,
     AdjustConsumption,
     AdjustEdgeCapacity,
@@ -80,6 +81,7 @@ public static class SimulationActorCapabilityCatalog
             [
                 SimulationActorActionKind.BuyTraffic,
                 SimulationActorActionKind.SellTraffic,
+                SimulationActorActionKind.SellLocal,
                 SimulationActorActionKind.AdjustProduction,
                 SimulationActorActionKind.AdjustConsumption,
                 SimulationActorActionKind.AdjustTrafficPrice,

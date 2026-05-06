@@ -733,7 +733,7 @@ public sealed class TemporalNetworkSimulationEngine
 
         foreach (var context in contexts)
         {
-            ApplyLocalAllocations(context, nodeStates);
+            ApplyLocalAllocations(context, network, nodeStates);
         }
 
         var routingContexts = contexts.Select(ToRoutingContext).ToList();
@@ -875,10 +875,23 @@ public sealed class TemporalNetworkSimulationEngine
 
     private static void ApplyLocalAllocations(
         TemporalTrafficContext context,
+        NetworkModel network,
         IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates)
     {
+        var limitMeetingDemand = SimulationActorSellLocalPermissionResolver.ShouldLimitMeetingNodeDemand(network);
+        var permittedSellerNodeIds = limitMeetingDemand
+            ? SimulationActorSellLocalPermissionResolver.BuildPermittedSellerNodeSet(network, context.TrafficType)
+            : new HashSet<string>(Comparer);
+
         foreach (var nodeId in context.Supply.Keys.Intersect(context.Demand.Keys, Comparer).ToList())
         {
+            if (limitMeetingDemand &&
+                !permittedSellerNodeIds.Contains(nodeId) &&
+                !SimulationActorSellLocalPermissionResolver.CanSellLocal(network, nodeId, context.TrafficType))
+            {
+                continue;
+            }
+
             if (context.StoreSupplyNodes.Contains(nodeId) ||
                 context.StoreDemandNodes.Contains(nodeId) ||
                 context.RecipeInputDemandNodes.Contains(nodeId))

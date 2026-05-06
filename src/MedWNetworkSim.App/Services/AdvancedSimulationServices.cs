@@ -959,7 +959,7 @@ public sealed class DemandTimeSeriesImporter : IDemandTimeSeriesImporter
 {
     public IReadOnlyList<DemandTimeSeriesRow> ImportCsv(string csv, bool allowNegativeDemand = false)
     {
-        var lines = csv.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
+        var lines = csv.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
         if (lines.Length < 2)
         {
             return [];

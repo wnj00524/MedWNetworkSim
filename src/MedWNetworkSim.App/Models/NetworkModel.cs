@@ -47,6 +47,11 @@ public sealed class NetworkModel
     public AgentMode AgentMode { get; set; } = AgentMode.Off;
 
     /// <summary>
+    /// Gets or sets a value indicating whether same-node meeting demand requires explicit SellLocal permission.
+    /// </summary>
+    public bool LimitMeetingNodeDemandBySellLocalPermission { get; set; }
+
+    /// <summary>
     /// Gets or sets a value indicating whether graph layout should follow geographic map coordinates for geo-anchored nodes.
     /// </summary>
     public bool LockLayoutToMap { get; set; }

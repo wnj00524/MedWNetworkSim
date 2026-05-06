@@ -92,13 +92,14 @@ public sealed class SimulationActorCoordinator
             }
         }
 
-        var appliedSnapshot = BuildSnapshot(appliedNetwork, tick + 1);
+        var affordableNetwork = ApplyBuyerAffordabilityPolicy(appliedNetwork, actorMap);
+        var appliedSnapshot = BuildSnapshot(affordableNetwork, tick + 1);
         var settlement = economicSettlementService.Settle(appliedNetwork, appliedSnapshot.TrafficOutcomes, actorMap);
         foreach (var ledger in settlement.Ledgers.Values)
         {
             if (actorMap.TryGetValue(ledger.ActorId, out var actor))
             {
-                actor.Cash += ledger.CashDelta;
+                ApplySettlementCashDelta(actor, ledger);
             }
         }
 
@@ -113,7 +114,7 @@ public sealed class SimulationActorCoordinator
 
         return new SimulationActorStepResult
         {
-            NetworkAfterStep = appliedNetwork,
+            NetworkAfterStep = affordableNetwork,
             Decisions = decisions,
             ActionOutcomes = outcomes,
             Metrics = metrics
@@ -251,6 +252,104 @@ public sealed class SimulationActorCoordinator
         var outcomes = simulationEngine.Simulate(network);
         var costs = simulationEngine.SummarizeConsumerCosts(outcomes.SelectMany(outcome => outcome.Allocations));
         return new VisualAnalyticsSnapshot { Network = network, TrafficOutcomes = outcomes, ConsumerCosts = costs, Period = tick };
+    }
+
+    private static NetworkModel ApplyBuyerAffordabilityPolicy(
+        NetworkModel network,
+        IReadOnlyDictionary<string, SimulationActorState> actorsById)
+    {
+        if (actorsById.Count == 0)
+        {
+            return network;
+        }
+
+        var adjusted = Clone(network);
+        var definitionsByTraffic = adjusted.TrafficTypes
+            .Where(definition => !string.IsNullOrWhiteSpace(definition.Name))
+            .GroupBy(definition => definition.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var remainingFundsByActorId = actorsById.Values
+            .Where(actor => actor.IsEnabled && !string.IsNullOrWhiteSpace(actor.Id))
+            .ToDictionary(actor => actor.Id, ResolveSettlementFunds, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var node in adjusted.Nodes.OrderBy(node => node.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            var buyerActorId = ResolveActorForNode(node.Id, node, actorsById);
+            if (string.IsNullOrWhiteSpace(buyerActorId) ||
+                !remainingFundsByActorId.TryGetValue(buyerActorId, out var remainingFunds))
+            {
+                continue;
+            }
+
+            foreach (var profile in node.TrafficProfiles
+                .Where(profile => profile.Consumption > 0d)
+                .OrderBy(profile => profile.TrafficType, StringComparer.OrdinalIgnoreCase))
+            {
+                var unitPrice = ResolveExpectedUnitPurchasePrice(adjusted, definitionsByTraffic, profile.TrafficType);
+                if (unitPrice <= 0d)
+                {
+                    continue;
+                }
+
+                var affordableDemand = Math.Max(0d, remainingFunds) / unitPrice;
+                var cappedConsumption = Math.Min(profile.Consumption, affordableDemand);
+                profile.Consumption = cappedConsumption;
+                remainingFunds = Math.Max(0d, remainingFunds - cappedConsumption * unitPrice);
+            }
+
+            remainingFundsByActorId[buyerActorId] = remainingFunds;
+        }
+
+        return adjusted;
+    }
+
+    private static double ResolveSettlementFunds(SimulationActorState actor)
+    {
+        var spendLimit = actor.Budget > 0d ? actor.Budget : actor.Cash;
+        return Math.Max(0d, spendLimit);
+    }
+
+    private static double ResolveExpectedUnitPurchasePrice(
+        NetworkModel network,
+        IReadOnlyDictionary<string, TrafficTypeDefinition> definitionsByTraffic,
+        string trafficType)
+    {
+        definitionsByTraffic.TryGetValue(trafficType, out var definition);
+        var prices = network.Nodes
+            .SelectMany(node => node.TrafficProfiles)
+            .Where(profile => profile.Production > 0d && StringComparer.OrdinalIgnoreCase.Equals(profile.TrafficType, trafficType))
+            .Select(profile => profile.UnitPrice > 0d ? profile.UnitPrice : Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d))
+            .Where(price => price > 0d)
+            .ToList();
+
+        // Use the highest available seller price so a pre-routing cap cannot admit purchases
+        // that later settle above the buyer's available funds.
+        return prices.Count == 0 ? Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d) : prices.Max();
+    }
+
+    private static string? ResolveActorForNode(
+        string nodeId,
+        NodeModel node,
+        IReadOnlyDictionary<string, SimulationActorState> actorsById)
+    {
+        var controlledActor = actorsById.Values
+            .Where(actor => actor.IsEnabled && actor.ControlledNodeIds.Contains(nodeId, StringComparer.OrdinalIgnoreCase))
+            .OrderBy(actor => actor.Id, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+        if (controlledActor is not null)
+        {
+            return controlledActor.Id;
+        }
+
+        return string.IsNullOrWhiteSpace(node.ControllingActor) ? null : node.ControllingActor;
+    }
+
+    private static void ApplySettlementCashDelta(SimulationActorState actor, SimulationActorEconomicLedger ledger)
+    {
+        var updatedCash = actor.Cash + ledger.CashDelta;
+        actor.Cash = actor.Budget > 0d && ledger.PurchaseCost > 0d
+            ? Math.Max(0d, updatedCash)
+            : updatedCash;
     }
 
     private static List<ISimulationActor> BuildActors(IReadOnlyList<SimulationActorState> states)

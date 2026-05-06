@@ -8,7 +8,7 @@ namespace MedWNetworkSim.Tests;
 public sealed class TrafficEconomicSettlementTests
 {
     [Fact]
-    public void BuyTraffic_And_SellTraffic_UpdateIntent_WithoutImmediateCashTransfer()
+    public void BuyTraffic_DoesNotMutateConsumption_WhenAppliedDirectly()
     {
         var network = BuildSimpleNetwork(production: 0d, consumption: 0d);
         var actor = new SimulationActorState { Id = "firm", Kind = SimulationActorKind.Firm, Cash = 100d, Budget = 100d };
@@ -39,9 +39,12 @@ public sealed class TrafficEconomicSettlementTests
             new Dictionary<string, SimulationActorState>(StringComparer.OrdinalIgnoreCase) { ["firm"] = actor },
             new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase));
 
-        Assert.All(outcomes, outcome => Assert.True(outcome.Applied));
+        Assert.True(outcomes.Single(outcome => outcome.Action.Kind == SimulationActorActionKind.SellTraffic).Applied);
+        var buyOutcome = outcomes.Single(outcome => outcome.Action.Kind == SimulationActorActionKind.BuyTraffic);
+        Assert.False(buyOutcome.Applied);
+        Assert.Contains("does not mutate consumption", buyOutcome.Reason, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(12d, updated.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single().Production);
-        Assert.Equal(7d, updated.Nodes.Single(node => node.Id == "consumer").TrafficProfiles.Single().Consumption);
+        Assert.Equal(0d, updated.Nodes.Single(node => node.Id == "consumer").TrafficProfiles.Single().Consumption);
         Assert.Equal(100d, actor.Cash);
     }
 

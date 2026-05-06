@@ -91,6 +91,60 @@ public sealed class TrafficEconomicSettlementTests
         Assert.Equal(20d, allocation.Profit);
     }
 
+
+    [Fact]
+    public void CostPricedTraffic_AddsConsumerPremiumToDeliveredCost()
+    {
+        var network = BuildSimpleNetwork(production: 1d, consumption: 1d, salePrice: 0d, productionCost: 0d, edgeCost: 3d);
+        network.Nodes.Single(node => node.Id == "consumer").TrafficProfiles.Single().ConsumerPremiumPerUnit = 3d;
+
+        var allocation = new NetworkSimulationEngine().Simulate(network).Single().Allocations.Single();
+
+        Assert.Equal(6d, allocation.SaleUnitPrice);
+        Assert.Equal(6d, allocation.SaleRevenue);
+        Assert.Equal(3d, allocation.TotalTransportCost);
+        Assert.Equal(3d, allocation.Profit);
+    }
+
+    [Fact]
+    public void ResoldLocalTraffic_AddsConsumerPremiumToPricePaidCostBasis()
+    {
+        var network = BuildSimpleNetwork(production: 0d, consumption: 0d, salePrice: 0d);
+        network.Nodes.Single(node => node.Id == "consumer").TrafficProfiles.Single().ConsumerPremiumPerUnit = 3d;
+        var settlement = new TrafficEconomicSettlementService().Settle(
+            network,
+            [
+                new TrafficSimulationOutcome
+                {
+                    TrafficType = "Food",
+                    Allocations =
+                    [
+                        new RouteAllocation
+                        {
+                            TrafficType = "Food",
+                            ProducerNodeId = "consumer",
+                            ProducerName = "Consumer",
+                            ConsumerNodeId = "consumer",
+                            ConsumerName = "Consumer",
+                            Quantity = 1d,
+                            IsLocalSupply = true,
+                            SourceUnitCostPerUnit = 6d,
+                            DeliveredCostPerUnit = 6d,
+                            PathNodeIds = ["consumer"],
+                            PathNodeNames = ["Consumer"],
+                            PathEdgeIds = []
+                        }
+                    ]
+                }
+            ]);
+
+        var allocation = settlement.Outcomes.Single().Allocations.Single();
+        Assert.Equal(9d, allocation.SaleUnitPrice);
+        Assert.Equal(9d, allocation.SaleRevenue);
+        Assert.Equal(6d, allocation.TotalProductionCost);
+        Assert.Equal(3d, allocation.Profit);
+    }
+
     [Fact]
     public void RecipeInputCosts_AreIncludedInProductionCost()
     {

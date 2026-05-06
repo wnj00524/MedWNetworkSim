@@ -91,7 +91,6 @@ public sealed class TrafficEconomicSettlementTests
         Assert.Equal(20d, allocation.Profit);
     }
 
-
     [Fact]
     public void CostPricedTraffic_AddsConsumerPremiumToDeliveredCost()
     {
@@ -104,6 +103,20 @@ public sealed class TrafficEconomicSettlementTests
         Assert.Equal(6d, allocation.SaleRevenue);
         Assert.Equal(3d, allocation.TotalTransportCost);
         Assert.Equal(3d, allocation.Profit);
+    }
+
+    [Fact]
+    public void DeclaredPriceBelowDeliveredCost_FloorsSalePriceAtDeliveredCostPlusPremium()
+    {
+        var network = BuildSimpleNetwork(production: 1d, consumption: 1d, salePrice: 1d, productionCost: 0d, edgeCost: 2d);
+        network.Nodes.Single(node => node.Id == "consumer").TrafficProfiles.Single().ConsumerPremiumPerUnit = 0.5d;
+
+        var allocation = new NetworkSimulationEngine().Simulate(network).Single().Allocations.Single();
+
+        Assert.Equal(2.5d, allocation.SaleUnitPrice);
+        Assert.Equal(2.5d, allocation.SaleRevenue);
+        Assert.Equal(2d, allocation.TotalTransportCost);
+        Assert.Equal(0.5d, allocation.Profit);
     }
 
     [Fact]

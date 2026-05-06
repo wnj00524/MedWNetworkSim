@@ -2257,7 +2257,12 @@ public sealed class ShellWindow : Window
                     new CheckBox { Content = "Show unmet demand", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) },
                     new CheckBox { Content = "Show capacity utilisation", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowCapacityUtilisation", BindingMode.TwoWay) },
                     new CheckBox { Content = "Collapse minor flows", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.CollapseMinorFlows", BindingMode.TwoWay) },
-                    BuildLabeledRow("Period", new NumericUpDown { Minimum = 0, Maximum = 10000, [!NumericUpDown.ValueProperty] = new Binding(nameof(WorkspaceViewModel.TimelinePosition), BindingMode.TwoWay) }),
+                    BuildLabeledRow("Period", new NumericUpDown
+                    {
+                        Minimum = 0,
+                        [!NumericUpDown.MaximumProperty] = new Binding(nameof(WorkspaceViewModel.TimelineMaximum)),
+                        [!NumericUpDown.ValueProperty] = new Binding(nameof(WorkspaceViewModel.TimelinePosition), BindingMode.TwoWay)
+                    }),
                     exportCurrent,
                     exportTimeline
                 }
@@ -2295,7 +2300,7 @@ public sealed class ShellWindow : Window
         }
 
         Rebuild();
-        viewModel.PropertyChanged += (_, e) =>
+        PropertyChangedEventHandler viewModelChanged = (_, e) =>
         {
             if (e.PropertyName is nameof(WorkspaceViewModel.FlowSeries)
                 or nameof(WorkspaceViewModel.RouteReports)
@@ -2304,13 +2309,20 @@ public sealed class ShellWindow : Window
                 Rebuild();
             }
         };
-        viewModel.VisualisationState.PropertyChanged += (_, e) =>
+        PropertyChangedEventHandler visualisationStateChanged = (_, e) =>
         {
             if (e.PropertyName == nameof(VisualisationState.ActiveTrafficTypeFilter))
             {
                 Rebuild();
             }
         };
+        viewModel.PropertyChanged += viewModelChanged;
+        viewModel.VisualisationState.PropertyChanged += visualisationStateChanged;
+        UnsubscribeOnDetached(panel, () =>
+        {
+            viewModel.PropertyChanged -= viewModelChanged;
+            viewModel.VisualisationState.PropertyChanged -= visualisationStateChanged;
+        });
         return panel;
     }
 
@@ -2358,14 +2370,17 @@ public sealed class ShellWindow : Window
         }
 
         Rebuild();
-        viewModel.PropertyChanged += (_, e) =>
+        PropertyChangedEventHandler viewModelChanged = (_, e) =>
         {
             if (e.PropertyName == nameof(WorkspaceViewModel.NodePressureSeries))
             {
                 Rebuild();
             }
         };
-        return BuildDashboardPanel(content, header: "Node Pressure", padding: new Thickness(12), radius: new CornerRadius(12));
+        viewModel.PropertyChanged += viewModelChanged;
+        var panel = BuildDashboardPanel(content, header: "Node Pressure", padding: new Thickness(12), radius: new CornerRadius(12));
+        UnsubscribeOnDetached(panel, () => viewModel.PropertyChanged -= viewModelChanged);
+        return panel;
     }
 
     private static Border BuildRouteHeatmapPanel(WorkspaceViewModel viewModel)
@@ -2404,14 +2419,17 @@ public sealed class ShellWindow : Window
         }
 
         Rebuild();
-        viewModel.PropertyChanged += (_, e) =>
+        PropertyChangedEventHandler viewModelChanged = (_, e) =>
         {
             if (e.PropertyName == nameof(WorkspaceViewModel.RouteReports))
             {
                 Rebuild();
             }
         };
-        return BuildDashboardPanel(content, header: "Route Heatmap", padding: new Thickness(12), radius: new CornerRadius(12));
+        viewModel.PropertyChanged += viewModelChanged;
+        var panel = BuildDashboardPanel(content, header: "Route Heatmap", padding: new Thickness(12), radius: new CornerRadius(12));
+        UnsubscribeOnDetached(panel, () => viewModel.PropertyChanged -= viewModelChanged);
+        return panel;
     }
 
     private static Border BuildScenarioComparisonPanel(WorkspaceViewModel viewModel)
@@ -2441,10 +2459,30 @@ public sealed class ShellWindow : Window
     {
         var parsed = values
             .Select(value => value.Trim().TrimEnd('%'))
-            .Select(value => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed / 100d : 0d)
-            .Where(value => value > 0d)
+            .Select(value => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed / 100d : (double?)null)
+            .Where(value => value.HasValue && value.Value >= 0d)
+            .Select(value => value.GetValueOrDefault())
             .ToArray();
         return parsed.Length == 0 ? 0d : parsed.Average();
+    }
+
+    private static void UnsubscribeOnDetached(Control control, Action unsubscribe)
+    {
+        var unsubscribed = false;
+
+        void OnDetached(object? sender, VisualTreeAttachmentEventArgs e)
+        {
+            if (unsubscribed)
+            {
+                return;
+            }
+
+            unsubscribed = true;
+            control.DetachedFromVisualTree -= OnDetached;
+            unsubscribe();
+        }
+
+        control.DetachedFromVisualTree += OnDetached;
     }
 
     private static Color PressureColor(string pressure)
@@ -2492,20 +2530,23 @@ public sealed class ShellWindow : Window
         }
 
         Rebuild();
-        viewModel.PropertyChanged += (_, e) =>
+        PropertyChangedEventHandler viewModelChanged = (_, e) =>
         {
             if (e.PropertyName is nameof(WorkspaceViewModel.FlowSeries))
             {
                 Rebuild();
             }
         };
+        viewModel.PropertyChanged += viewModelChanged;
 
-        return new ScrollViewer
+        var panel = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Content = content
         };
+        UnsubscribeOnDetached(panel, () => viewModel.PropertyChanged -= viewModelChanged);
+        return panel;
     }
 
     private static Control BuildNodePressureChartPanel(WorkspaceViewModel viewModel)
@@ -2535,20 +2576,23 @@ public sealed class ShellWindow : Window
         }
 
         Rebuild();
-        viewModel.PropertyChanged += (_, e) =>
+        PropertyChangedEventHandler viewModelChanged = (_, e) =>
         {
             if (e.PropertyName is nameof(WorkspaceViewModel.NodePressureSeries))
             {
                 Rebuild();
             }
         };
+        viewModel.PropertyChanged += viewModelChanged;
 
-        return new ScrollViewer
+        var panel = new ScrollViewer
         {
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Content = content
         };
+        UnsubscribeOnDetached(panel, () => viewModel.PropertyChanged -= viewModelChanged);
+        return panel;
     }
 
     private static Control BuildAnalyticsMetricCard(
@@ -2882,9 +2926,9 @@ public sealed class ShellWindow : Window
         {
             Width = 220,
             Minimum = 0,
-            Maximum = 12,
             VerticalAlignment = VerticalAlignment.Center
         };
+        slider.Bind(RangeBase.MaximumProperty, new Binding(nameof(WorkspaceViewModel.TimelineMaximum)));
         slider.Bind(RangeBase.ValueProperty, new Binding(nameof(WorkspaceViewModel.TimelinePosition), BindingMode.TwoWay));
         ApplyFocusVisual(slider);
 
@@ -5381,10 +5425,10 @@ public sealed class ShellWindow : Window
         var slider = new Slider
         {
             Minimum = 0,
-            Maximum = 12,
             Margin = new Thickness(12, 6, 0, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
+        slider.Bind(RangeBase.MaximumProperty, new Binding(nameof(WorkspaceViewModel.TimelineMaximum)));
         slider.Bind(RangeBase.ValueProperty, new Binding(nameof(WorkspaceViewModel.TimelinePosition), BindingMode.TwoWay));
         Grid.SetColumn(slider, 5);
         ApplyFocusVisual(slider);
@@ -6558,10 +6602,10 @@ public sealed class ShellWindow : Window
         var slider = new Slider
         {
             Minimum = 0,
-            Maximum = 12,
             Margin = new Thickness(12, 6, 0, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
+        slider.Bind(RangeBase.MaximumProperty, new Binding(nameof(WorkspaceViewModel.TimelineMaximum)));
         slider.Bind(RangeBase.ValueProperty, new Binding(nameof(WorkspaceViewModel.TimelinePosition), BindingMode.TwoWay));
         Grid.SetColumn(slider, 5);
         ApplyFocusVisual(slider);

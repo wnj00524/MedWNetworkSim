@@ -68,6 +68,44 @@ public sealed class SimulationActorsTests
     }
 
     [Fact]
+    public void Firm_AutomaticSupplyIncrease_DoesNotExpandLossMakingProduction()
+    {
+        var network = BuildHighThroughputNetwork();
+        var producerProfile = network.Nodes.Single(node => node.Id == "producer").TrafficProfiles.Single();
+        producerProfile.UnitPrice = 0.5d;
+        producerProfile.ProductionCostPerUnit = 2d;
+        var coordinator = new SimulationActorCoordinator();
+        var actor = new SimulationActorState
+        {
+            Id = "firm-seller",
+            Name = "Seller",
+            Kind = SimulationActorKind.Firm,
+            Objective = SimulationActorObjective.MaximiseProfit,
+            ControlledNodeIds = ["producer"],
+            Cash = 100d,
+            Capability = new SimulationActorCapability
+            {
+                ActorId = "firm-seller",
+                AllowedActionKinds = [SimulationActorActionKind.SellTraffic],
+                Permissions =
+                [
+                    new SimulationActorPermission
+                    {
+                        ActionKind = SimulationActorActionKind.SellTraffic,
+                        TrafficType = "Food",
+                        NodeId = "producer",
+                        IsAllowed = true
+                    }
+                ]
+            }
+        };
+
+        var decision = coordinator.PreviewActorActions(network, [actor]).Single();
+
+        Assert.DoesNotContain(decision.Actions, action => action.Kind == SimulationActorActionKind.SellTraffic);
+    }
+
+    [Fact]
     public void Firm_AutomaticDemandIncrease_UsesBuyTrafficWhenPermitted()
     {
         var network = BuildNetwork();
@@ -101,6 +139,7 @@ public sealed class SimulationActorsTests
 
         var action = Assert.Single(decision.Actions);
         Assert.Equal(SimulationActorActionKind.BuyTraffic, action.Kind);
+        Assert.Equal(10d, action.DeltaValue);
         Assert.Equal("Buy/input traffic because it is required for profitable downstream production or unmet demand exists.", action.Reason);
     }
 

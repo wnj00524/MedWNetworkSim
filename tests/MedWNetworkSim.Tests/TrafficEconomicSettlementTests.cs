@@ -307,7 +307,53 @@ public sealed class TrafficEconomicSettlementTests
 
         Assert.Equal(2d, food.TotalTax);
         Assert.Equal(0d, tools.TotalTax);
+        Assert.Equal("gov", food.TaxAuthorityActorId);
+        Assert.Equal(2d, food.TaxesByAuthorityActorId["gov"]);
         Assert.Equal(2d, settlement.Ledgers["gov"].TaxesReceived);
+    }
+
+    [Fact]
+    public void RouteTax_WithMultipleAuthorities_ReportsPerAuthorityAllocationTaxes()
+    {
+        var network = BuildTwoTrafficTwoEdgeNetwork();
+        network.RouteTaxRules.AddRange(
+        [
+            new RouteTaxRule
+            {
+                EdgeId = "taxed",
+                TrafficType = "Food",
+                TaxRate = 0.2d,
+                TaxAuthorityActorId = "gov-a",
+                IsActive = true
+            },
+            new RouteTaxRule
+            {
+                EdgeId = "untaxed",
+                TrafficType = "Food",
+                TaxRate = 0.2d,
+                TaxAuthorityActorId = "gov-b",
+                IsActive = true
+            }
+        ]);
+        var actors = new Dictionary<string, SimulationActorState>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["seller"] = new() { Id = "seller", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["producer"] },
+            ["buyer"] = new() { Id = "buyer", Kind = SimulationActorKind.Firm, ControlledNodeIds = ["consumer"] },
+            ["gov-a"] = new() { Id = "gov-a", Kind = SimulationActorKind.Government },
+            ["gov-b"] = new() { Id = "gov-b", Kind = SimulationActorKind.Government }
+        };
+
+        var settlement = new TrafficEconomicSettlementService()
+            .Settle(network, new NetworkSimulationEngine().Simulate(network), actors);
+
+        var food = settlement.Outcomes.Single(outcome => outcome.TrafficType == "Food").Allocations.Single();
+
+        Assert.Equal(4d, food.TotalTax);
+        Assert.Null(food.TaxAuthorityActorId);
+        Assert.Equal(2d, food.TaxesByAuthorityActorId["gov-a"]);
+        Assert.Equal(2d, food.TaxesByAuthorityActorId["gov-b"]);
+        Assert.Equal(2d, settlement.Ledgers["gov-a"].TaxesReceived);
+        Assert.Equal(2d, settlement.Ledgers["gov-b"].TaxesReceived);
     }
 
     [Fact]

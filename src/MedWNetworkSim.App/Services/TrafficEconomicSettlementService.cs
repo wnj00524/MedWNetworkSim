@@ -131,7 +131,7 @@ public sealed class TrafficEconomicSettlementService
             .FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, allocation.TrafficType));
         var consumerProfile = consumer?.TrafficProfiles
             .FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, allocation.TrafficType));
-        var saleUnitPrice = ResolveSaleUnitPrice(producerProfile, consumerProfile, definition);
+        var saleUnitPrice = ResolveSaleUnitPrice(allocation, producerProfile, consumerProfile, definition);
         var baseProductionCost = ResolveBaseProductionCost(producerProfile, definition);
         var propagatedProductionCost = Math.Max(0d, allocation.SourceUnitCostPerUnit);
         var productionCostPerUnit = propagatedProductionCost > Epsilon
@@ -274,21 +274,27 @@ public sealed class TrafficEconomicSettlementService
     }
 
     private static double ResolveSaleUnitPrice(
+        RouteAllocation allocation,
         NodeTrafficProfile? producerProfile,
         NodeTrafficProfile? consumerProfile,
         TrafficTypeDefinition? definition)
     {
-        var producerPrice = 0d;
+        var consumerPremium = Math.Max(0d, consumerProfile?.ConsumerPremiumPerUnit ?? 0d);
         if (producerProfile?.UnitPrice > Epsilon)
         {
-            producerPrice = producerProfile.UnitPrice;
-        }
-        else
-        {
-            producerPrice = Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d);
+            return producerProfile.UnitPrice + consumerPremium;
         }
 
-        return producerPrice + Math.Max(0d, consumerProfile?.ConsumerPremiumPerUnit ?? 0d);
+        var defaultSalePrice = Math.Max(0d, definition?.DefaultUnitSalePrice ?? 0d);
+        if (defaultSalePrice > Epsilon)
+        {
+            return defaultSalePrice + consumerPremium;
+        }
+
+        var deliveredCost = allocation.DeliveredCostPerUnit > Epsilon
+            ? allocation.DeliveredCostPerUnit
+            : Math.Max(0d, allocation.SourceUnitCostPerUnit) + Math.Max(0d, allocation.TotalCost) + Math.Max(0d, allocation.BidCostPerUnit);
+        return deliveredCost + consumerPremium;
     }
 
     private static double ResolveBaseProductionCost(NodeTrafficProfile? producerProfile, TrafficTypeDefinition? definition)

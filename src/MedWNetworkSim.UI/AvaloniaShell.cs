@@ -5396,12 +5396,14 @@ public sealed class ShellWindow : Window
         };
         selector.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.AgentMode), BindingMode.TwoWay));
         ToolTip.SetTip(selector, "Off uses default demand fulfilment. SellLocal requires an enabled controlling actor with explicit SellLocal permission before that node's produced or purchased supply can fulfil demand.");
-        var limitCheckBox = BuildCheckBox("Limit meeting-node demand by Sell local permission");
+        var limitCheckBox = BuildCheckBox("Limit meeting-node demand");
         limitCheckBox.Bind(ToggleButton.IsCheckedProperty, new Binding(nameof(WorkspaceViewModel.LimitMeetingNodeDemandBySellLocalPermission), BindingMode.TwoWay));
-        ToolTip.SetTip(limitCheckBox, "When enabled, same-node/local demand is satisfied only if the node is controlled by an enabled actor with explicit SellLocal permission. Otherwise the demand must be imported from a permitted seller or remains unmet.");
+        ToolTip.SetTip(limitCheckBox, "Limit meeting-node demand by Sell local permission.");
         return new StackPanel
         {
-            Spacing = 4,
+            Orientation = Orientation.Horizontal,
+            Spacing = 12,
+            VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
                 BuildLabeledRow("Agent Mode", selector),

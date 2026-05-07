@@ -2222,7 +2222,6 @@ public sealed class ShellWindow : Window
                                 BuildButton("Export logs", viewModel.ExportAgentLogsCommand)
                             }
                         },
-                        BuildAgentProfitReportCard(viewModel),
                         new Expander
                         {
                             Header = "Advanced permissions and decision logs",
@@ -2285,9 +2284,10 @@ public sealed class ShellWindow : Window
         };
         ToolTip.SetTip(sankeyCanvas, "Hover a flow for details. Click a node or route flow to select it in the network.");
 
-        var visualCanvas = new AnalyticsCanvasControl
+        var visualCanvas = new GraphCanvasControl
         {
             ViewModel = viewModel,
+            RenderModeOverride = VisualisationMode.Analytics,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch
         };
@@ -3459,6 +3459,19 @@ public sealed class ShellWindow : Window
                                     VerticalAlignment = VerticalAlignment.Stretch
                                 },
                                 header: "Sankey Flow Map",
+                                padding: new Thickness(0),
+                                radius: new CornerRadius(12)),
+                            BuildAgentProfitReportCard(viewModel),
+                            BuildDashboardPanel(
+                                new GraphCanvasControl
+                                {
+                                    ViewModel = viewModel,
+                                    RenderModeOverride = VisualisationMode.Analytics,
+                                    MinHeight = 280,
+                                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                                    VerticalAlignment = VerticalAlignment.Stretch
+                                },
+                                header: "Traffic and Node Mix Graphs",
                                 padding: new Thickness(0),
                                 radius: new CornerRadius(12)),
                             BuildTrafficReportSection(),

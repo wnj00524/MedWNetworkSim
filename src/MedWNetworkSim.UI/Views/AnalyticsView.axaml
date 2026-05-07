@@ -5,7 +5,7 @@
     <WrapPanel>
       <ComboBox MinWidth="180"
                 ItemsSource="{Binding SankeyTrafficTypeNameOptions}"
-                SelectedItem="{Binding SankeyTrafficTypeFilterSelection}" />
+                SelectedItem="{Binding SankeyTrafficTypeFilterSelection, Mode=TwoWay}" />
       <CheckBox Content="Show unmet demand"
                 IsChecked="{Binding VisualisationState.ShowUnmetDemand}" />
       <CheckBox Content="Show capacity utilisation"
@@ -16,7 +16,7 @@
     <Grid Grid.Row="1" ColumnDefinitions="*,330" ColumnSpacing="12">
       <Grid RowDefinitions="1.1*,0.9*" RowSpacing="10">
         <ui:GraphCanvasControl ViewModel="{Binding}" RenderModeOverride="Sankey" />
-        <ui:AnalyticsCanvasControl Grid.Row="1" ViewModel="{Binding}" />
+        <ui:GraphCanvasControl Grid.Row="1" ViewModel="{Binding}" RenderModeOverride="Analytics" />
       </Grid>
       <ScrollViewer Grid.Column="1">
         <StackPanel Spacing="10">

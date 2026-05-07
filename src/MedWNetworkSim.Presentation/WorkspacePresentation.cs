@@ -4943,8 +4943,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     public const string AllTrafficTypesFilterLabel = "All traffic";
 
-    public IReadOnlyList<string> TrafficTypeNameOptions =>
-        network.TrafficTypes.Select(definition => definition.Name).Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(Comparer).OrderBy(name => name, Comparer).ToList();
+    public IReadOnlyList<string> TrafficTypeNameOptions => GetKnownTrafficTypeNames();
     /// <summary>
     /// Gets the collection of Sankey traffic type filter options associated with this entity.
     /// </summary>
@@ -8758,12 +8757,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         IReadOnlyList<RouteAllocation> allocations)
     {
         TrafficReports.Clear();
-        var trafficTypes = network.TrafficTypes
-            .Select(definition => definition.Name)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Distinct(Comparer)
-            .OrderBy(name => name, Comparer)
-            .ToList();
+        var trafficTypes = GetKnownTrafficTypeNames();
 
         foreach (var trafficType in trafficTypes)
         {
@@ -11414,7 +11408,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         return network.TrafficTypes
             .Select(definition => definition.Name)
+            .Concat(network.Nodes.SelectMany(node => node.TrafficProfiles).Select(profile => profile.TrafficType))
+            .Concat(lastOutcomes.Select(outcome => outcome.TrafficType))
+            .Concat(lastOutcomes.SelectMany(outcome => outcome.Allocations).Select(allocation => allocation.TrafficType))
             .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
             .Distinct(Comparer)
             .OrderBy(name => name, Comparer)
             .ToList();

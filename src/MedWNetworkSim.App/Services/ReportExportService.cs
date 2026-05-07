@@ -39,6 +39,26 @@ public sealed class ReportExportService
         File.WriteAllText(path, contents, Encoding.UTF8);
     }
 
+    public void SaveAgentReport(
+        NetworkModel network,
+        SimulationActorRunResult runResult,
+        string path,
+        ReportExportFormat format)
+    {
+        ArgumentNullException.ThrowIfNull(network);
+        ArgumentNullException.ThrowIfNull(runResult);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        var contents = format switch
+        {
+            ReportExportFormat.Csv => BuildAgentCsvReport(network, runResult),
+            ReportExportFormat.Json => BuildAgentJsonReport(network, runResult),
+            _ => BuildAgentHtmlReport(network, runResult)
+        };
+
+        File.WriteAllText(path, contents, Encoding.UTF8);
+    }
+
     public void SaveTimelineReport(
         NetworkModel network,
         IReadOnlyList<TemporalNetworkSimulationEngine.TemporalSimulationStepResult> periodResults,
@@ -751,6 +771,79 @@ public sealed class ReportExportService
         };
 
         return JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static string BuildAgentHtmlReport(NetworkModel network, SimulationActorRunResult runResult)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("<!DOCTYPE html>");
+        builder.AppendLine("<html><head><meta charset=\"utf-8\"><title>Agent Run Report</title>");
+        builder.AppendLine("<style>");
+        builder.AppendLine("body { font-family: sans-serif; line-height: 1.6; color: #333; max-width: 1200px; margin: 0 auto; padding: 20px; }");
+        builder.AppendLine("h1, h2, h3 { color: #0056b3; border-bottom: 1px solid #eee; padding-bottom: 0.3em; }");
+        builder.AppendLine("table { border-collapse: collapse; width: 100%; margin-bottom: 2em; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }");
+        builder.AppendLine("th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #ddd; }");
+        builder.AppendLine("th { background-color: #f8f9fa; font-weight: 600; }");
+        builder.AppendLine("tr:hover { background-color: #f5f5f5; }");
+        builder.AppendLine(".meta { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 2em; border-left: 4px solid #0056b3; }");
+        builder.AppendLine("</style></head><body>");
+
+        builder.AppendLine($"<h1>Agent Run Report: {HtmlEncode(network.Name)}</h1>");
+        if (!string.IsNullOrWhiteSpace(network.Description))
+        {
+            builder.AppendLine($"<p>{HtmlEncode(network.Description)}</p>");
+        }
+        builder.AppendLine($"<p class=\"meta\"><strong>Agent Mode:</strong> {HtmlEncode(FormatAgentMode(network.AgentMode))}</p>");
+
+        builder.AppendLine("<h2>Agent Actions</h2>");
+        AppendHtmlTable(
+            builder,
+            ["Simulation Tick", "Agent", "Action", "Target", "Decision Summary", "Outcome", "Utility", "Factors", "Alternatives", "State Metrics"],
+            BuildAgentActionRows(network, network.AgentActionLogs));
+
+        builder.AppendLine("</body></html>");
+        return builder.ToString();
+    }
+
+    private static string BuildAgentCsvReport(NetworkModel network, SimulationActorRunResult runResult)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine(CsvBrandHeader);
+        builder.AppendLine(BuildCsvRow(["Report Type", "Agent Run"]));
+        builder.AppendLine(BuildCsvRow(["Network Name", network.Name]));
+        builder.AppendLine(BuildCsvRow(["Agent Mode", FormatAgentMode(network.AgentMode)]));
+        builder.AppendLine();
+
+        builder.AppendLine("Agent Actions");
+        builder.AppendLine(BuildCsvRow(["Simulation Tick", "Agent", "Action", "Target", "Decision Summary", "Outcome", "Utility", "Factors", "Alternatives", "State Metrics"]));
+        foreach (var row in BuildAgentActionRows(network, network.AgentActionLogs))
+        {
+            builder.AppendLine(BuildCsvRow(row));
+        }
+
+        return builder.ToString();
+    }
+
+    private static string BuildAgentJsonReport(NetworkModel network, SimulationActorRunResult runResult)
+    {
+        var payload = new
+        {
+            reportType = "AgentRun",
+            network = new { network.Name, network.Description, nodes = network.Nodes.Count, edges = network.Edges.Count, agentMode = FormatAgentMode(network.AgentMode), limitMeetingNodeDemandBySellLocalPermission = network.LimitMeetingNodeDemandBySellLocalPermission },
+            agentActions = network.AgentActionLogs
+                .Select(entry => new
+                {
+                    tick = entry.SimulationTick,
+                    agent = FormatAgentReference(network, entry),
+                    action = entry.ActionType,
+                    target = entry.TargetId,
+                    summary = entry.DecisionSummary,
+                    outcome = entry.Outcome,
+                    utility = entry.UtilityScore,
+                    stateMetrics = entry.StateMetrics
+                })
+        };
+        return JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
     }
 
     private static string BuildTimelineJsonReport(

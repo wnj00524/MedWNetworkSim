@@ -2,6 +2,7 @@ using System.Reflection;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Data;
 using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.Presentation;
@@ -167,15 +168,20 @@ public sealed class AvaloniaRedesignTests
         });
         var analyticsView = new AnalyticsView();
         analyticsView.DataContext = workspace;
-        var selectorHost = analyticsView.FindControl<ContentControl>("TrafficTypeFilterHost");
-        Assert.NotNull(selectorHost);
-        var selector = Assert.IsType<ComboBox>(selectorHost!.Content);
+        analyticsView.ApplyTemplate();
 
-        selector.DataContext = workspace;
+        var selector = analyticsView.FindControl<ComboBox>("TrafficTypeFilterComboBox");
+        Assert.NotNull(selector);
+        selector!.ApplyTemplate();
+
         var selectorOptions = Assert.IsAssignableFrom<IEnumerable<string>>(selector.ItemsSource);
-        Assert.Contains(WorkspaceViewModel.AllTrafficTypesFilterLabel, selectorOptions);
-        Assert.Contains("Food", selectorOptions);
-        analyticsView.SelectTrafficType("Food");
+        var optionList = selectorOptions.ToList();
+        Assert.Contains(WorkspaceViewModel.AllTrafficTypesFilterLabel, optionList);
+        Assert.Contains("Food", optionList);
+        Assert.Same(workspace, selector.DataContext);
+
+        WriteSelectedItemThroughBinding(selector, optionList.Single(option => option == "Food"));
+        Assert.Equal("Food", selector.SelectedItem);
 
         Assert.Equal("Food", workspace.SankeyTrafficTypeFilterSelection);
         Assert.Equal("Food", workspace.VisualisationState.ActiveTrafficTypeFilter);
@@ -195,10 +201,9 @@ public sealed class AvaloniaRedesignTests
         analyticsView.ApplyTemplate();
         analyticsView.Measure(new Avalonia.Size(1280, 720));
         analyticsView.Arrange(new Avalonia.Rect(0, 0, 1280, 720));
-        var selectorHost = analyticsView.FindControl<ContentControl>("TrafficTypeFilterHost");
-        Assert.NotNull(selectorHost);
-        var selector = Assert.IsType<ComboBox>(selectorHost!.Content);
-        selector.DataContext = workspace;
+        var selector = analyticsView.FindControl<ComboBox>("TrafficTypeFilterComboBox");
+        Assert.NotNull(selector);
+        Assert.Same(workspace, selector!.DataContext);
         selector.ApplyTemplate();
 
         var selectorOptions = Assert.IsAssignableFrom<IEnumerable<string>>(selector.ItemsSource);
@@ -208,7 +213,8 @@ public sealed class AvaloniaRedesignTests
         Assert.Contains("Water", optionList);
 
         var baselineVersion = workspace.SankeyVersion;
-        analyticsView.SelectTrafficType("Food");
+        WriteSelectedItemThroughBinding(selector, optionList.Single(option => option == "Food"));
+        Assert.Equal("Food", selector.SelectedItem);
 
         var foodVersion = workspace.SankeyVersion;
         var foodSankey = workspace.CurrentSankey;
@@ -218,7 +224,8 @@ public sealed class AvaloniaRedesignTests
         Assert.True(foodVersion > baselineVersion);
         Assert.All(foodSankey.Links.Where(link => !link.IsUnmetDemand), link => Assert.Equal("Food", link.TrafficType));
 
-        analyticsView.SelectTrafficType("Water");
+        WriteSelectedItemThroughBinding(selector, optionList.Single(option => option == "Water"));
+        Assert.Equal("Water", selector.SelectedItem);
 
         var waterVersion = workspace.SankeyVersion;
         var waterSankey = workspace.CurrentSankey;
@@ -307,6 +314,18 @@ public sealed class AvaloniaRedesignTests
                 }
                 break;
         }
+    }
+
+    private static void WriteSelectedItemThroughBinding(ComboBox selector, string selectedItem)
+    {
+        var bindingExpression = BindingOperations.GetBindingExpressionBase(selector, SelectingItemsControl.SelectedItemProperty);
+        Assert.NotNull(bindingExpression);
+
+        var writeValueToSource = bindingExpression!.GetType().GetMethod("WriteValueToSource", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(writeValueToSource);
+
+        writeValueToSource!.Invoke(bindingExpression, [selectedItem]);
+        bindingExpression.UpdateTarget();
     }
 
     private static void LoadNetwork(WorkspaceViewModel workspace, NetworkModel model)

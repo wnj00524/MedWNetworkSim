@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Data;
 using Avalonia.VisualTree;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Services;
@@ -1719,11 +1720,13 @@ static void ScenarioAnalyticsViewTrafficTypeSelectorFiltersSankey()
     analyticsView.ApplyTemplate();
     analyticsView.Measure(new Size(1280d, 720d));
     analyticsView.Arrange(new Rect(0d, 0d, 1280d, 720d));
-    var selectorHost = analyticsView.FindControl<ContentControl>("TrafficTypeFilterHost")
-        ?? throw new InvalidOperationException("Analytics view did not expose the traffic type selector host.");
-    var selector = selectorHost.Content as ComboBox
-        ?? throw new InvalidOperationException("Analytics view did not populate the traffic type selector.");
-    selector.DataContext = workspace;
+    var selector = analyticsView.FindControl<ComboBox>("TrafficTypeFilterComboBox")
+        ?? throw new InvalidOperationException("Analytics view did not expose the traffic type selector.");
+    if (!ReferenceEquals(selector.DataContext, workspace))
+    {
+        throw new InvalidOperationException("Analytics view traffic type selector did not inherit the workspace DataContext.");
+    }
+
     selector.ApplyTemplate();
     var options = selector.ItemsSource?.Cast<string>().ToArray() ?? [];
 
@@ -1732,7 +1735,8 @@ static void ScenarioAnalyticsViewTrafficTypeSelectorFiltersSankey()
     AssertTrue(options.Contains("Water", StringComparer.Ordinal), "analytics view traffic selector includes water");
 
     var baselineVersion = workspace.SankeyVersion;
-    analyticsView.SelectTrafficType("Food");
+    WriteSelectedItemThroughBinding(selector, options.Single(option => string.Equals(option, "Food", StringComparison.Ordinal)));
+    AssertTextEqual("Food", selector.SelectedItem?.ToString() ?? string.Empty, "analytics view selection updates combo box");
 
     var foodVersion = workspace.SankeyVersion;
     var foodSankey = workspace.CurrentSankey;
@@ -1742,7 +1746,8 @@ static void ScenarioAnalyticsViewTrafficTypeSelectorFiltersSankey()
     AssertTrue(foodVersion > baselineVersion, "analytics view selection invalidates sankey version");
     AssertTrue(foodSankey.Links.Where(link => !link.IsUnmetDemand).All(link => string.Equals(link.TrafficType, "Food", StringComparison.Ordinal)), "analytics view food filter updates sankey links");
 
-    analyticsView.SelectTrafficType("Water");
+    WriteSelectedItemThroughBinding(selector, options.Single(option => string.Equals(option, "Water", StringComparison.Ordinal)));
+    AssertTextEqual("Water", selector.SelectedItem?.ToString() ?? string.Empty, "analytics view water selection updates combo box");
 
     var waterVersion = workspace.SankeyVersion;
     var waterSankey = workspace.CurrentSankey;
@@ -1890,6 +1895,17 @@ static void InvokePrivateWithArgs(object instance, string methodName, params obj
     var method = methods.FirstOrDefault(candidate => candidate.GetParameters().Length == args.Length)
         ?? throw new InvalidOperationException($"Unable to find private method '{methodName}' with {args.Length} args.");
     method.Invoke(instance, args);
+}
+
+static void WriteSelectedItemThroughBinding(ComboBox selector, string selectedItem)
+{
+    var bindingExpression = BindingOperations.GetBindingExpressionBase(selector, SelectingItemsControl.SelectedItemProperty)
+        ?? throw new InvalidOperationException("Analytics view traffic type selector is missing a SelectedItem binding expression.");
+    var writeValueToSource = bindingExpression.GetType().GetMethod("WriteValueToSource", BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new InvalidOperationException("Analytics view traffic type selector binding cannot write SelectedItem values back to the workspace.");
+
+    writeValueToSource.Invoke(bindingExpression, [selectedItem]);
+    bindingExpression.UpdateTarget();
 }
 
 static void TryDelete(string path)

@@ -5,7 +5,11 @@
              x:Class="MedWNetworkSim.UI.Views.AnalyticsView">
   <Grid RowDefinitions="Auto,*" RowSpacing="12" Margin="12">
     <WrapPanel>
-      <ContentControl x:Name="TrafficTypeFilterHost" />
+      <ComboBox x:Name="TrafficTypeFilterComboBox"
+                MinWidth="180"
+                automation:AutomationProperties.Name="Traffic type"
+                ItemsSource="{Binding SankeyTrafficTypeNameOptions}"
+                SelectedItem="{Binding SankeyTrafficTypeFilterSelection, Mode=TwoWay}" />
       <CheckBox Content="Show unmet demand"
                 IsChecked="{Binding VisualisationState.ShowUnmetDemand}" />
       <CheckBox Content="Show capacity utilisation"

@@ -131,6 +131,31 @@ public sealed class AvaloniaRedesignTests
 
 
     [Fact]
+    public void AgentProfitReportCard_BindsDataGridToProfitRows()
+    {
+        var workspace = new WorkspaceViewModel();
+        workspace.AgentProfitReportRows.Add(new AgentProfitReportRowViewModel
+        {
+            AgentName = "Producer Firm",
+            AgentCash = "100",
+            AgentBudget = "100",
+            AgentTickRevenue = "30",
+            AgentTickCosts = "9",
+            AgentTickProfit = "21"
+        });
+
+        var buildMethod = typeof(ShellWindow).GetMethod("BuildAgentProfitReportCard", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(buildMethod);
+
+        var card = Assert.IsAssignableFrom<Control>(buildMethod!.Invoke(null, [workspace]));
+        card.DataContext = workspace;
+        var grid = Assert.Single(FindControls<DataGrid>(card));
+        grid.DataContext = workspace;
+
+        Assert.Same(workspace.AgentProfitReportRows, grid.ItemsSource);
+    }
+
+    [Fact]
     public void AnalyticsCockpit_ExposesBoundSankeyTrafficTypeSelector()
     {
         var workspace = new WorkspaceViewModel();

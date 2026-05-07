@@ -2356,7 +2356,7 @@ public sealed class ShellWindow : Window
             {
                 Children =
                 {
-                    BuildLabeledComboBox("Traffic type", nameof(WorkspaceViewModel.TrafficTypeNameOptions), "VisualisationState.ActiveTrafficTypeFilter"),
+                    BuildLabeledComboBox("Traffic type", nameof(WorkspaceViewModel.SankeyTrafficTypeNameOptions), nameof(WorkspaceViewModel.SankeyTrafficTypeFilterSelection)),
                     new CheckBox { Content = "Show unmet demand", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) },
                     new CheckBox { Content = "Show capacity utilisation", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowCapacityUtilisation", BindingMode.TwoWay) },
                     new CheckBox { Content = "Collapse minor flows", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.CollapseMinorFlows", BindingMode.TwoWay) },
@@ -3077,7 +3077,7 @@ public sealed class ShellWindow : Window
                 Spacing = 8,
                 Children =
                 {
-                    BuildLabeledComboBox("Traffic", nameof(WorkspaceViewModel.TrafficTypeNameOptions), "VisualisationState.ActiveTrafficTypeFilter"),
+                    BuildLabeledComboBox("Traffic", nameof(WorkspaceViewModel.SankeyTrafficTypeNameOptions), nameof(WorkspaceViewModel.SankeyTrafficTypeFilterSelection)),
                     new CheckBox { Content = "Unmet", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) },
                     new CheckBox { Content = "Collapse minor", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.CollapseMinorFlows", BindingMode.TwoWay) }
                 }
@@ -3449,6 +3449,18 @@ public sealed class ShellWindow : Window
                         Children =
                         {
                             metrics,
+                            BuildDashboardPanel(
+                                new GraphCanvasControl
+                                {
+                                    ViewModel = viewModel,
+                                    RenderModeOverride = VisualisationMode.Sankey,
+                                    MinHeight = 320,
+                                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                                    VerticalAlignment = VerticalAlignment.Stretch
+                                },
+                                header: "Sankey Flow Map",
+                                padding: new Thickness(0),
+                                radius: new CornerRadius(12)),
                             BuildTrafficReportSection(),
                             BuildReportSection<RouteReportRowViewModel>(
                                 "Route Summary",

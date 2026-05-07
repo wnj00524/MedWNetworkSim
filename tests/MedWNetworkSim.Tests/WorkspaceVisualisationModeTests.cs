@@ -60,6 +60,36 @@ public sealed class WorkspaceVisualisationModeTests
     }
 
     [Fact]
+    public void SankeyTrafficTypeFilterSelection_RebuildsForNewTrafficType()
+    {
+        var workspace = new WorkspaceViewModel();
+        LoadNetwork(workspace, CreateTwoTrafficNetwork());
+        workspace.SimulateCommand.Execute(null);
+
+        workspace.SankeyTrafficTypeFilterSelection = "Food";
+        var food = workspace.CurrentSankey;
+        workspace.SankeyTrafficTypeFilterSelection = "Water";
+        var water = workspace.CurrentSankey;
+
+        Assert.NotSame(food, water);
+        Assert.NotEmpty(food.Links);
+        Assert.NotEmpty(water.Links);
+        Assert.All(food.Links.Where(link => !link.IsUnmetDemand), link => Assert.Equal("Food", link.TrafficType));
+        Assert.All(water.Links.Where(link => !link.IsUnmetDemand), link => Assert.Equal("Water", link.TrafficType));
+    }
+
+    [Fact]
+    public void StepCommand_PopulatesSankeyFromTimelineAllocations()
+    {
+        var workspace = new WorkspaceViewModel();
+        LoadNetwork(workspace, CreateTwoTrafficNetwork());
+
+        workspace.StepCommand.Execute(null);
+
+        Assert.Contains(workspace.CurrentSankey.Links, link => !link.IsUnmetDemand);
+    }
+
+    [Fact]
     public void Simulate_GeneratesInsights_WhenOutcomesExist()
     {
         var workspace = new WorkspaceViewModel();
@@ -147,6 +177,43 @@ public sealed class WorkspaceVisualisationModeTests
             Assert.True(profile.Production > 0d);
         });
     }
+
+    private static NetworkModel CreateTwoTrafficNetwork() => new()
+    {
+        TrafficTypes =
+        [
+            new TrafficTypeDefinition { Name = "Food" },
+            new TrafficTypeDefinition { Name = "Water" }
+        ],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "p",
+                Name = "Producer",
+                X = 10,
+                Y = 10,
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile { TrafficType = "Food", Production = 10 },
+                    new NodeTrafficProfile { TrafficType = "Water", Production = 8 }
+                ]
+            },
+            new NodeModel
+            {
+                Id = "c",
+                Name = "Consumer",
+                X = 60,
+                Y = 20,
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile { TrafficType = "Food", Consumption = 5 },
+                    new NodeTrafficProfile { TrafficType = "Water", Consumption = 4 }
+                ]
+            }
+        ],
+        Edges = [new EdgeModel { Id = "e1", FromNodeId = "p", ToNodeId = "c", Capacity = 20, Time = 1, Cost = 1 }]
+    };
 
     private static void LoadNetwork(WorkspaceViewModel workspace, NetworkModel model)
     {

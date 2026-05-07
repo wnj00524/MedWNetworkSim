@@ -6,6 +6,7 @@ using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.Presentation;
 using MedWNetworkSim.UI;
+using MedWNetworkSim.UI.Views;
 using Xunit;
 
 namespace MedWNetworkSim.Tests;
@@ -164,23 +165,69 @@ public sealed class AvaloniaRedesignTests
         {
             TrafficTypes = [new TrafficTypeDefinition { Name = "Food" }, new TrafficTypeDefinition { Name = "Water" }]
         });
-        var shell = new ShellWindow(workspace);
-        var buildMethod = typeof(ShellWindow).GetMethod("BuildAnalyticsView", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(buildMethod);
-
-        var analyticsView = Assert.IsType<AnalyticsWorkspaceView>(buildMethod!.Invoke(shell, [workspace]));
+        var analyticsView = new AnalyticsView();
         analyticsView.DataContext = workspace;
-        var selector = FindControls<ComboBox>(analyticsView)
-            .Single(comboBox => AutomationProperties.GetName(comboBox) == "Traffic type");
+        var selectorHost = analyticsView.FindControl<ContentControl>("TrafficTypeFilterHost");
+        Assert.NotNull(selectorHost);
+        var selector = Assert.IsType<ComboBox>(selectorHost!.Content);
 
         selector.DataContext = workspace;
         var selectorOptions = Assert.IsAssignableFrom<IEnumerable<string>>(selector.ItemsSource);
         Assert.Contains(WorkspaceViewModel.AllTrafficTypesFilterLabel, selectorOptions);
         Assert.Contains("Food", selectorOptions);
-        selector.SelectedItem = "Food";
+        analyticsView.SelectTrafficType("Food");
 
         Assert.Equal("Food", workspace.SankeyTrafficTypeFilterSelection);
         Assert.Equal("Food", workspace.VisualisationState.ActiveTrafficTypeFilter);
+    }
+
+    [Fact]
+    public void AnalyticsView_TrafficTypeSelector_RebuildsFilteredSankey()
+    {
+        var workspace = new WorkspaceViewModel();
+        LoadNetwork(workspace, CreateTwoTrafficNetwork());
+        workspace.SimulateCommand.Execute(null);
+
+        var analyticsView = new AnalyticsView
+        {
+            DataContext = workspace
+        };
+        analyticsView.ApplyTemplate();
+        analyticsView.Measure(new Avalonia.Size(1280, 720));
+        analyticsView.Arrange(new Avalonia.Rect(0, 0, 1280, 720));
+        var selectorHost = analyticsView.FindControl<ContentControl>("TrafficTypeFilterHost");
+        Assert.NotNull(selectorHost);
+        var selector = Assert.IsType<ComboBox>(selectorHost!.Content);
+        selector.DataContext = workspace;
+        selector.ApplyTemplate();
+
+        var selectorOptions = Assert.IsAssignableFrom<IEnumerable<string>>(selector.ItemsSource);
+        var optionList = selectorOptions.ToList();
+        Assert.Contains(WorkspaceViewModel.AllTrafficTypesFilterLabel, optionList);
+        Assert.Contains("Food", optionList);
+        Assert.Contains("Water", optionList);
+
+        var baselineVersion = workspace.SankeyVersion;
+        analyticsView.SelectTrafficType("Food");
+
+        var foodVersion = workspace.SankeyVersion;
+        var foodSankey = workspace.CurrentSankey;
+
+        Assert.Equal("Food", workspace.SankeyTrafficTypeFilterSelection);
+        Assert.Equal("Food", workspace.VisualisationState.ActiveTrafficTypeFilter);
+        Assert.True(foodVersion > baselineVersion);
+        Assert.All(foodSankey.Links.Where(link => !link.IsUnmetDemand), link => Assert.Equal("Food", link.TrafficType));
+
+        analyticsView.SelectTrafficType("Water");
+
+        var waterVersion = workspace.SankeyVersion;
+        var waterSankey = workspace.CurrentSankey;
+
+        Assert.Equal("Water", workspace.SankeyTrafficTypeFilterSelection);
+        Assert.Equal("Water", workspace.VisualisationState.ActiveTrafficTypeFilter);
+        Assert.True(waterVersion > foodVersion);
+        Assert.NotSame(foodSankey, waterSankey);
+        Assert.All(waterSankey.Links.Where(link => !link.IsUnmetDemand), link => Assert.Equal("Water", link.TrafficType));
     }
 
     [Fact]
@@ -321,4 +368,41 @@ public sealed class AvaloniaRedesignTests
             ]
         };
     }
+
+    private static NetworkModel CreateTwoTrafficNetwork() => new()
+    {
+        TrafficTypes =
+        [
+            new TrafficTypeDefinition { Name = "Food" },
+            new TrafficTypeDefinition { Name = "Water" }
+        ],
+        Nodes =
+        [
+            new NodeModel
+            {
+                Id = "p",
+                Name = "Producer",
+                X = 10,
+                Y = 10,
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile { TrafficType = "Food", Production = 10 },
+                    new NodeTrafficProfile { TrafficType = "Water", Production = 8 }
+                ]
+            },
+            new NodeModel
+            {
+                Id = "c",
+                Name = "Consumer",
+                X = 60,
+                Y = 20,
+                TrafficProfiles =
+                [
+                    new NodeTrafficProfile { TrafficType = "Food", Consumption = 5 },
+                    new NodeTrafficProfile { TrafficType = "Water", Consumption = 4 }
+                ]
+            }
+        ],
+        Edges = [new EdgeModel { Id = "e1", FromNodeId = "p", ToNodeId = "c", Capacity = 20, Time = 1, Cost = 1 }]
+    };
 }

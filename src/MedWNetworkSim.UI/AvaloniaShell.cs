@@ -3869,7 +3869,7 @@ public sealed class ShellWindow : Window
             AutoGenerateColumns = false,
             CanUserResizeColumns = true,
             CanUserSortColumns = true,
-            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.AgentProfitReportRows)),
+            [!DataGrid.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.AgentProfitReportRows)),
             Columns =
             {
                 new DataGridTextColumn { Header = "Agent Name", Binding = new Binding(nameof(AgentProfitReportRowViewModel.AgentName)) },
@@ -4042,7 +4042,7 @@ public sealed class ShellWindow : Window
             MaxHeight = 360,
             AutoGenerateColumns = false,
             CanUserResizeColumns = true,
-            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.FilteredSimulationActors)),
+            [!DataGrid.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.FilteredSimulationActors)),
             Columns =
             {
                 new DataGridTextColumn { Header = "Agent ID", Binding = new Binding(nameof(SimulationActorState.Id)) },
@@ -4341,7 +4341,7 @@ public sealed class ShellWindow : Window
         {
             AutoGenerateColumns = false,
             CanUserSortColumns = true,
-            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.FilteredSimulationActors)),
+            [!DataGrid.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.FilteredSimulationActors)),
             [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(WorkspaceViewModel.SelectedSimulationActor), BindingMode.TwoWay),
             Columns =
             {
@@ -5982,7 +5982,7 @@ public sealed class ShellWindow : Window
         {
             MinHeight = 120,
             AutoGenerateColumns = false,
-            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ActorDecisions)),
+            [!DataGrid.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ActorDecisions)),
             Columns =
             {
                 new DataGridTextColumn { Header = "Tick", Binding = new Binding(nameof(SimulationActorDecisionViewModel.Tick)) },
@@ -6002,7 +6002,7 @@ public sealed class ShellWindow : Window
         {
             MinHeight = 96,
             AutoGenerateColumns = false,
-            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ActorActionOutcomes)),
+            [!DataGrid.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ActorActionOutcomes)),
             Columns =
             {
                 new DataGridTextColumn { Header = "State", Binding = new Binding(nameof(SimulationActorActionOutcomeViewModel.AppliedState)) },

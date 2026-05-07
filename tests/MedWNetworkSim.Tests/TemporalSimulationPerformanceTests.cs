@@ -49,6 +49,27 @@ public sealed class TemporalSimulationPerformanceTests(ITestOutputHelper output)
             "The default one-tick path should improve either allocations or elapsed time versus the legacy-like clone+validation path.");
     }
 
+
+    [Fact]
+    public void Allocate_CompiledIndexedRouting_ReducesHotPathCostVersusStringFallback()
+    {
+        var network = BuildSyntheticNetwork(nodeCount: 28, trafficTypeCount: 3);
+        var compiledContext = CompiledNetworkSimulationContext.Create(network, network, revision: 20260507, effectivePeriod: 0, activeTimelineEventSignature: 0);
+        var iterations = 5;
+
+        var stringMeasurement = MeasureAllocation(network, compiledContext: null, iterations);
+        var indexedMeasurement = MeasureAllocation(network, compiledContext, iterations);
+
+        output.WriteLine(
+            $"allocation indexed-routing benchmark: stringFallback={stringMeasurement.ElapsedMilliseconds}ms/{stringMeasurement.AllocatedBytes}B, " +
+            $"indexed={indexedMeasurement.ElapsedMilliseconds}ms/{indexedMeasurement.AllocatedBytes}B");
+
+        Assert.True(
+            indexedMeasurement.AllocatedBytes <= stringMeasurement.AllocatedBytes ||
+            indexedMeasurement.ElapsedMilliseconds <= stringMeasurement.ElapsedMilliseconds,
+            "The compiled indexed allocator should reduce either allocations or elapsed time versus the string adjacency fallback.");
+    }
+
     [Fact]
     public void Advance_CopyStateBeforeAdvanceFalse_PreservesSnapshotIsolation()
     {
@@ -64,6 +85,41 @@ public sealed class TemporalSimulationPerformanceTests(ITestOutputHelper output)
         Assert.NotEmpty(first.NodeStates);
         Assert.NotEmpty(second.NodeStates);
         Assert.Equal(snapshot, first.NodeStates);
+    }
+
+
+    private static Measurement MeasureAllocation(
+        NetworkModel network,
+        CompiledNetworkSimulationContext? compiledContext,
+        int iterations)
+    {
+        RunAllocation(network, compiledContext);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        var stopwatch = Stopwatch.StartNew();
+        for (var iteration = 0; iteration < iterations; iteration++)
+        {
+            RunAllocation(network, compiledContext);
+        }
+
+        stopwatch.Stop();
+        var allocatedAfter = GC.GetAllocatedBytesForCurrentThread();
+        return new Measurement(stopwatch.ElapsedMilliseconds, allocatedAfter - allocatedBefore);
+    }
+
+    private static void RunAllocation(NetworkModel network, CompiledNetworkSimulationContext? compiledContext)
+    {
+        var contexts = MixedRoutingAllocator.BuildStaticContexts(network);
+        var remainingCapacityByEdgeId = network.Edges.ToDictionary(edge => edge.Id, edge => edge.Capacity ?? double.PositiveInfinity, StringComparer.OrdinalIgnoreCase);
+        var remainingTranshipmentCapacityByNodeId = network.Nodes.ToDictionary(node => node.Id, node => node.TranshipmentCapacity ?? double.PositiveInfinity, StringComparer.OrdinalIgnoreCase);
+        MixedRoutingAllocator.Allocate(
+            network,
+            contexts,
+            remainingCapacityByEdgeId,
+            remainingTranshipmentCapacityByNodeId,
+            compiledContext: compiledContext);
     }
 
     private static Measurement MeasureAdvance(

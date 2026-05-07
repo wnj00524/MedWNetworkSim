@@ -404,11 +404,21 @@ public static partial class MixedRoutingAllocator
         int period = 0,
         CompiledNetworkSimulationContext? compiledContext = null)
     {
+        if (compiledContext is not null)
+        {
+            return AllocateIndexed(
+                network,
+                contexts,
+                remainingCapacityByEdgeId,
+                remainingTranshipmentCapacityByNodeId,
+                occupiedEdgeTrafficByKey,
+                period,
+                compiledContext);
+        }
+
         var permissionResolver = new EdgeTrafficPermissionResolver();
-        IReadOnlyDictionary<string, EdgeModel> edgesById = compiledContext is null
-            ? network.Edges.ToDictionary(edge => edge.Id, edge => edge, Comparer)
-            : compiledContext.EdgesById;
-        var adjacency = compiledContext is null ? BuildAdjacency(network) : BuildAdjacency(compiledContext);
+        IReadOnlyDictionary<string, EdgeModel> edgesById = network.Edges.ToDictionary(edge => edge.Id, edge => edge, Comparer);
+        var adjacency = BuildAdjacency(network);
         var allocationContext = new AllocationContext(adjacency, edgesById);
         var state = new NetworkState
         {

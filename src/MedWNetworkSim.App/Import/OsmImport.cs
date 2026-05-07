@@ -515,11 +515,30 @@ public sealed class OsmToSimulationMapper
             return [];
         }
 
-        var reducibleByWay = ways
-            .OrderBy(way => way.Id.GetValueOrDefault())
-            .Select(way => (way, ids: (way.Nodes ?? []).Where(nodes.ContainsKey).Where(id => !retained.Contains(id)).ToArray()))
-            .Where(item => item.ids.Length > 0)
-            .ToList();
+        var reducibleByWay = new List<(Way way, long[] ids)>(ways.Count);
+        var validIds = new List<long>();
+        foreach (var way in ways.OrderBy(way => way.Id.GetValueOrDefault()))
+        {
+            var wayNodes = way.Nodes;
+            if (wayNodes == null || wayNodes.Length == 0)
+            {
+                continue;
+            }
+
+            validIds.Clear();
+            foreach (var id in wayNodes)
+            {
+                if (nodes.ContainsKey(id) && !retained.Contains(id))
+                {
+                    validIds.Add(id);
+                }
+            }
+
+            if (validIds.Count > 0)
+            {
+                reducibleByWay.Add((way, validIds.ToArray()));
+            }
+        }
         var totalReducible = reducibleByWay.Sum(item => item.ids.Length);
         if (totalReducible == 0)
         {

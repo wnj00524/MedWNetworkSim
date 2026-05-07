@@ -2078,7 +2078,7 @@ static void AssertStateAtMostConfiguredCapacity(NetworkModel network, TemporalNe
 
 static void AssertSequenceEqual(IReadOnlyList<int> expected, IReadOnlyList<int> actual, string label)
 {
-    if (expected.Count != actual.Count || expected.Where((item, index) => item != actual[index]).Any())
+    if (expected.Count != actual.Count || !expected.SequenceEqual(actual))
     {
         throw new InvalidOperationException($"{label}: expected [{string.Join(", ", expected)}], actual [{string.Join(", ", actual)}].");
     }
@@ -2086,7 +2086,7 @@ static void AssertSequenceEqual(IReadOnlyList<int> expected, IReadOnlyList<int> 
 
 static void AssertSequenceEqual(IReadOnlyList<string> expected, IReadOnlyList<string> actual, string label)
 {
-    if (expected.Count != actual.Count || expected.Where((item, index) => !string.Equals(item, actual[index], StringComparison.Ordinal)).Any())
+    if (expected.Count != actual.Count || !expected.SequenceEqual(actual, StringComparer.Ordinal))
     {
         throw new InvalidOperationException($"{label}: expected [{string.Join(", ", expected)}], actual [{string.Join(", ", actual)}].");
     }

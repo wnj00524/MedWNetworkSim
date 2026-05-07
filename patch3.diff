@@ -1,0 +1,142 @@
+--- src/MedWNetworkSim.App/Services/CommandLineRunService.cs
++++ src/MedWNetworkSim.App/Services/CommandLineRunService.cs
+@@ -370,6 +392,50 @@
+         return true;
+     }
+
++    private static SimulationActorKind ParseAgentKind(string value)
++    {
++        if (Enum.TryParse<SimulationActorKind>(value, true, out var result))
++        {
++            return result;
++        }
++        throw new InvalidOperationException($"'{value}' is not a valid agent kind.");
++    }
++
++    private static SimulationActorObjective ParseAgentObjective(string value)
++    {
++        if (Enum.TryParse<SimulationActorObjective>(value, true, out var result))
++        {
++            return result;
++        }
++        throw new InvalidOperationException($"'{value}' is not a valid agent objective.");
++    }
++
++    private CommandLineOptions ParseAddAgentCommand(IReadOnlyDictionary<string, string> named, IReadOnlyList<string> positional)
++    {
++        var networkPath = RequireValue(named, positional, 0, "file", "network");
++        var agentId = RequireValue(named, positional, 1, "agent", "id");
++
++        return new CommandLineOptions
++        {
++            Command = CommandLineCommand.AddAgent,
++            NetworkPath = Path.GetFullPath(networkPath),
++            AgentId = agentId,
++            AgentName = GetOptionalNamedValue(named, "agent-name"),
++            HasAgentName = HasOption(named, "agent-name"),
++            AgentKind = HasOption(named, "kind") ? ParseAgentKind(GetOptionalNamedValue(named, "kind")) : null,
++            HasAgentKind = HasOption(named, "kind"),
++            AgentObjective = HasOption(named, "objective") ? ParseAgentObjective(GetOptionalNamedValue(named, "objective")) : null,
++            HasAgentObjective = HasOption(named, "objective"),
++            AgentControlledNodes = GetOptionalNamedValues(named, "nodes").ToList(),
++            HasAgentControlledNodes = HasOption(named, "nodes"),
++            AgentControlledEdges = GetOptionalNamedValues(named, "edges").ToList(),
++            HasAgentControlledEdges = HasOption(named, "edges"),
++            AgentBudget = ParseDoubleOption(named, "budget"),
++            HasAgentBudget = HasOption(named, "budget"),
++            AgentRiskTolerance = ParseDoubleOption(named, "risk-tolerance"),
++            HasAgentRiskTolerance = HasOption(named, "risk-tolerance"),
++            AgentCooperationWeight = ParseDoubleOption(named, "cooperation-weight"),
++            HasAgentCooperationWeight = HasOption(named, "cooperation-weight")
++        };
++    }
++
++    private CommandLineOptions ParseRunAgentsCommand(IReadOnlyDictionary<string, string> named, IReadOnlyList<string> positional)
++    {
++        var networkPath = RequireValue(named, positional, 0, "file", "network");
++        var outputPath = RequireValue(named, positional, 1, "output", "report");
++        outputPath = NormalizeOutputPath(outputPath, out var format);
++        var ticksText = GetOptionalValue(named, positional, 2, "turns", "ticks");
++        var ticks = 1;
++        if (!string.IsNullOrWhiteSpace(ticksText) && (!int.TryParse(ticksText, out ticks) || ticks < 1))
++        {
++            throw new InvalidOperationException($"'{ticksText}' is not a valid number of ticks. It must be an integer >= 1.");
++        }
++
++        return new CommandLineOptions
++        {
++            Command = CommandLineCommand.RunAgents,
++            NetworkPath = Path.GetFullPath(networkPath),
++            OutputPath = outputPath,
++            ReportFormat = format,
++            AgentTicks = ticks
++        };
++    }
++
+     private CommandLineOptions ParseRunCommand(IReadOnlyDictionary<string, string> named, IReadOnlyList<string> positional)
+     {
+         var networkPath = RequireValue(named, positional, 0, "file", "network");
+@@ -825,6 +891,48 @@
+         return $"Arranged node layouts in {options.NetworkPath}";
+     }
+
++    private string ExecuteAddAgent(CommandLineOptions options)
++    {
++        var network = networkFileService.Load(options.NetworkPath);
++        var agent = network.Actors.FirstOrDefault(item => Comparer.Equals(item.Id, options.AgentId));
++
++        if (agent is null)
++        {
++            agent = new SimulationActorState
++            {
++                Id = options.AgentId,
++                Name = options.HasAgentName ? options.AgentName : options.AgentId,
++                Kind = options.HasAgentKind ? options.AgentKind!.Value : SimulationActorKind.Firm,
++                Objective = options.HasAgentObjective ? options.AgentObjective!.Value : SimulationActorObjective.MaximiseProfit
++            };
++            network.Actors.Add(agent);
++        }
++        else
++        {
++            if (options.HasAgentName) agent.Name = options.AgentName;
++            if (options.HasAgentKind) agent.Kind = options.AgentKind!.Value;
++            if (options.HasAgentObjective) agent.Objective = options.AgentObjective!.Value;
++        }
++
++        if (options.HasAgentControlledNodes) agent.ControlledNodeIds = options.AgentControlledNodes.ToList();
++        if (options.HasAgentControlledEdges) agent.ControlledEdgeIds = options.AgentControlledEdges.ToList();
++        if (options.HasAgentBudget) agent.Budget = options.AgentBudget!.Value;
++        if (options.HasAgentRiskTolerance) agent.RiskTolerance = options.AgentRiskTolerance!.Value;
++        if (options.HasAgentCooperationWeight) agent.CooperationWeight = options.AgentCooperationWeight!.Value;
++
++        SaveNetwork(network, options.NetworkPath);
++        return $"Agent '{options.AgentId}' configured in {options.NetworkPath}";
++    }
++
++    private string ExecuteRunAgents(CommandLineOptions options)
++    {
++        var network = networkFileService.Load(options.NetworkPath);
++        EnsureParentDirectory(options.OutputPath);
++
++        var results = simulationActorCoordinator.RunActorsForTicks(network, network.Actors, options.AgentTicks);
++        reportExportService.SaveAgentReport(network, results, options.OutputPath, options.ReportFormat);
++        return $"Agent run report written to {options.OutputPath}";
++    }
++
+     private static void SaveNetwork(NetworkModel network, string path)
+     {
+         var json = System.Text.Json.JsonSerializer.Serialize(network, new System.Text.Json.JsonSerializerOptions
+@@ -877,6 +985,15 @@
+   MedWNetworkSim.App.exe add-edge --file .\demo.json --id E1 --from N1 --to N2 --time 1 --cost 4 --direction bidirectional
+
+   Automatically arrange node layouts:
+   MedWNetworkSim.App.exe auto-arrange --file .\demo.json
++
++  Configure an agent:
++  MedWNetworkSim.App.exe add-agent --file .\demo.json --agent Agent1 --kind Firm --objective MaximiseProfit --budget 100
++
++  Run simulation actors:
++  MedWNetworkSim.App.exe run-agents --file .\demo.json --report report.html --ticks 5
++
+ """;
+     }

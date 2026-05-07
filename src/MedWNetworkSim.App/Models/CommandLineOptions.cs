@@ -1,3 +1,6 @@
+using System.Collections.Generic;
+using MedWNetworkSim.App.Agents;
+
 namespace MedWNetworkSim.App.Models;
 /// <summary>
 /// Represents the command line options component.
@@ -359,4 +362,32 @@ public sealed class CommandLineOptions
     /// </summary>
 
     public bool HasEdgeIsBidirectional { get; init; }
+
+    public string AgentId { get; init; } = string.Empty;
+
+    public string AgentName { get; init; } = string.Empty;
+    public bool HasAgentName { get; init; }
+
+    public SimulationActorKind? AgentKind { get; init; }
+    public bool HasAgentKind { get; init; }
+
+    public SimulationActorObjective? AgentObjective { get; init; }
+    public bool HasAgentObjective { get; init; }
+
+    public IReadOnlyList<string> AgentControlledNodes { get; init; } = [];
+    public bool HasAgentControlledNodes { get; init; }
+
+    public IReadOnlyList<string> AgentControlledEdges { get; init; } = [];
+    public bool HasAgentControlledEdges { get; init; }
+
+    public double? AgentBudget { get; init; }
+    public bool HasAgentBudget { get; init; }
+
+    public double? AgentRiskTolerance { get; init; }
+    public bool HasAgentRiskTolerance { get; init; }
+
+    public double? AgentCooperationWeight { get; init; }
+    public bool HasAgentCooperationWeight { get; init; }
+
+    public int AgentTicks { get; init; }
 }

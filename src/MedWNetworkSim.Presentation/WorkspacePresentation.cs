@@ -10056,6 +10056,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
             catch
             {
+                // Keep the last valid model state when the editor currently contains invalid values.
             }
         }
         else if (IsEditingNetwork)
@@ -10066,6 +10067,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
             catch
             {
+                // Keep the last valid model state when the editor currently contains invalid values.
             }
         }
     }

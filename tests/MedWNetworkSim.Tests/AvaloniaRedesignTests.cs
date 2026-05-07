@@ -131,7 +131,7 @@ public sealed class AvaloniaRedesignTests
 
 
     [Fact]
-    public void AgentProfitReportCard_BindsDataGridToProfitRows()
+    public void AgentProfitReportCard_BindsProfitRowsToItemsControl()
     {
         var workspace = new WorkspaceViewModel();
         workspace.AgentProfitReportRows.Add(new AgentProfitReportRowViewModel
@@ -141,7 +141,8 @@ public sealed class AvaloniaRedesignTests
             AgentBudget = "100",
             AgentTickRevenue = "30",
             AgentTickCosts = "9",
-            AgentTickProfit = "21"
+            AgentTickProfit = "21",
+            SellerAllocationProfit = "27"
         });
 
         var buildMethod = typeof(ShellWindow).GetMethod("BuildAgentProfitReportCard", BindingFlags.Static | BindingFlags.NonPublic);
@@ -149,10 +150,10 @@ public sealed class AvaloniaRedesignTests
 
         var card = Assert.IsAssignableFrom<Control>(buildMethod!.Invoke(null, [workspace]));
         card.DataContext = workspace;
-        var grid = Assert.Single(FindControls<DataGrid>(card));
-        grid.DataContext = workspace;
+        var itemsControl = Assert.Single(FindControls<ItemsControl>(card), control => ReferenceEquals(control.ItemsSource, workspace.AgentProfitReportRows));
+        itemsControl.DataContext = workspace;
 
-        Assert.Same(workspace.AgentProfitReportRows, grid.ItemsSource);
+        Assert.Same(workspace.AgentProfitReportRows, itemsControl.ItemsSource);
     }
 
     [Fact]
@@ -204,6 +205,7 @@ public sealed class AvaloniaRedesignTests
         Assert.Contains("Agent Tick Revenue", headers);
         Assert.Contains("Agent Tick Costs", headers);
         Assert.Contains("Agent Tick Profit", headers);
+        Assert.Contains("Seller Allocation Profit", headers);
 
         var rows = FindControls<ItemsControl>(table).Single();
         Assert.NotNull(rows.ItemTemplate);
@@ -221,6 +223,7 @@ public sealed class AvaloniaRedesignTests
         Assert.Contains(workspace.AgentProfitReportRows[0].AgentTickRevenue, rowValues);
         Assert.Contains(workspace.AgentProfitReportRows[0].AgentTickCosts, rowValues);
         Assert.Contains(workspace.AgentProfitReportRows[0].AgentTickProfit, rowValues);
+        Assert.Contains(workspace.AgentProfitReportRows[0].SellerAllocationProfit, rowValues);
     }
 
     private static IEnumerable<T> FindControls<T>(object? root)

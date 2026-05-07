@@ -230,6 +230,7 @@ public sealed class WorkspaceVisualisationModeTests
         Assert.Equal("0", row.AgentTickRevenue);
         Assert.Equal("0", row.AgentTickCosts);
         Assert.Equal("0", row.AgentTickProfit);
+        Assert.Equal("0", row.SellerAllocationProfit);
 
         Assert.Single(workspace.AgentProfitSeries);
         Assert.Empty(workspace.AgentProfitSeries[0].Points);
@@ -255,8 +256,13 @@ public sealed class WorkspaceVisualisationModeTests
             !string.IsNullOrWhiteSpace(row.AgentBudget) &&
             !string.IsNullOrWhiteSpace(row.AgentTickRevenue) &&
             !string.IsNullOrWhiteSpace(row.AgentTickCosts) &&
-            !string.IsNullOrWhiteSpace(row.AgentTickProfit));
-        Assert.Contains(workspace.AgentProfitReportRows, row => row.AgentName == "Producer Firm" && row.AgentTickRevenue != "0" && row.AgentTickProfit != "0");
+            !string.IsNullOrWhiteSpace(row.AgentTickProfit) &&
+            !string.IsNullOrWhiteSpace(row.SellerAllocationProfit));
+        var producerRow = Assert.Single(workspace.AgentProfitReportRows, row => row.AgentName == "Producer Firm");
+        Assert.Equal("30", producerRow.AgentTickRevenue);
+        Assert.Equal("3", producerRow.AgentTickCosts);
+        Assert.Equal("27", producerRow.AgentTickProfit);
+        Assert.Equal("27", producerRow.SellerAllocationProfit);
         Assert.Equal(workspace.SimulationActors.Count, workspace.AgentProfitSeries.Count);
         var producerSeries = Assert.Single(workspace.AgentProfitSeries, series => series.AgentName == "Producer Firm");
         Assert.True(producerSeries.Points.Count > 0);
@@ -285,13 +291,19 @@ public sealed class WorkspaceVisualisationModeTests
             !string.IsNullOrWhiteSpace(row.AgentBudget) &&
             !string.IsNullOrWhiteSpace(row.AgentTickRevenue) &&
             !string.IsNullOrWhiteSpace(row.AgentTickCosts) &&
-            !string.IsNullOrWhiteSpace(row.AgentTickProfit));
+            !string.IsNullOrWhiteSpace(row.AgentTickProfit) &&
+            !string.IsNullOrWhiteSpace(row.SellerAllocationProfit));
+        var producerRow = Assert.Single(workspace.AgentProfitReportRows, row => row.AgentName == "Producer Firm");
+        Assert.Equal("30", producerRow.AgentTickRevenue);
+        Assert.Equal("3", producerRow.AgentTickCosts);
+        Assert.Equal("27", producerRow.AgentTickProfit);
+        Assert.Equal("27", producerRow.SellerAllocationProfit);
         Assert.Equal(workspace.SimulationActors.Count, workspace.AgentProfitSeries.Count);
         Assert.Contains(workspace.AgentProfitSeries, series => series.AgentName == "Producer Firm" && series.Points.Any(point => point.Revenue > 0d && point.Costs > 0d));
     }
 
     [Fact]
-    public void LoadNetwork_UsesActorProfitMetricsInsteadOfDecisionUtilityInReportsTab()
+    public void LoadNetwork_ComputesAgentTickProfitFromRevenueMinusDisplayedCosts()
     {
         var workspace = new WorkspaceViewModel();
         var network = CreateEconomicActorNetwork();
@@ -352,6 +364,96 @@ public sealed class WorkspaceVisualisationModeTests
         Assert.Equal("-10", row.AgentTickProfit);
         Assert.Equal("15", row.AgentTickRevenue);
         Assert.Equal("25", row.AgentTickCosts);
+        Assert.Equal("-10", row.SellerAllocationProfit);
+    }
+
+    [Fact]
+    public void LoadNetwork_ShowsNegativeTickProfitWhenActorOnlyHasPurchaseCosts()
+    {
+        var workspace = new WorkspaceViewModel();
+        var network = CreateEconomicActorNetwork();
+        network.ActorMetrics =
+        [
+            new SimulationActorMetrics
+            {
+                Tick = 0,
+                ActorCashById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["producer-actor"] = 88d
+                },
+                ActorSalesRevenueById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
+                ActorPurchaseCostById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["producer-actor"] = 12d
+                },
+                ActorProductionCostById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
+                ActorTransportCostById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
+                ActorTaxesPaidById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
+                ActorTaxesReceivedById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
+                ActorProfitById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
+                ActorCashDeltaById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["producer-actor"] = -12d
+                }
+            }
+        ];
+
+        LoadNetwork(workspace, network);
+
+        var row = Assert.Single(workspace.AgentProfitReportRows);
+        Assert.Equal("0", row.AgentTickRevenue);
+        Assert.Equal("12", row.AgentTickCosts);
+        Assert.Equal("-12", row.AgentTickProfit);
+        Assert.Equal("0", row.SellerAllocationProfit);
+    }
+
+    [Fact]
+    public void LoadNetwork_ShowsNetTickProfitForRevenueProductionAndTransportCosts()
+    {
+        var workspace = new WorkspaceViewModel();
+        var network = CreateEconomicActorNetwork();
+        network.ActorMetrics =
+        [
+            new SimulationActorMetrics
+            {
+                Tick = 0,
+                ActorCashById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["producer-actor"] = 121d
+                },
+                ActorSalesRevenueById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["producer-actor"] = 30d
+                },
+                ActorPurchaseCostById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
+                ActorProductionCostById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["producer-actor"] = 6d
+                },
+                ActorTransportCostById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["producer-actor"] = 3d
+                },
+                ActorTaxesPaidById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
+                ActorTaxesReceivedById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
+                ActorProfitById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["producer-actor"] = 27d
+                },
+                ActorCashDeltaById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["producer-actor"] = 21d
+                }
+            }
+        ];
+
+        LoadNetwork(workspace, network);
+
+        var row = Assert.Single(workspace.AgentProfitReportRows);
+        Assert.Equal("30", row.AgentTickRevenue);
+        Assert.Equal("9", row.AgentTickCosts);
+        Assert.Equal("21", row.AgentTickProfit);
+        Assert.Equal("27", row.SellerAllocationProfit);
     }
 
     private static NetworkModel CreateTwoTrafficNetwork() => new()

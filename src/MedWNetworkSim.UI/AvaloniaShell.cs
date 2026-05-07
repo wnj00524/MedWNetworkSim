@@ -3893,7 +3893,7 @@ public sealed class ShellWindow : Window
                 Spacing = 10,
                 Children =
                 {
-                    BuildSectionTitle("Agent Profit Report", "Cash, budget, tick revenue, tick costs, and tick profit by agent."),
+                    BuildSectionTitle("Agent Profit Report", "Cash, budget, tick revenue, tick costs, net tick profit, and seller allocation profit by agent."),
                     table,
                     BuildSectionTitle("Revenue vs Costs Over Time", "Each card plots per-tick revenue against production, transport, and tax costs."),
                     empty,
@@ -3912,7 +3912,8 @@ public sealed class ShellWindow : Window
             ("Agent Budget", 120d, nameof(AgentProfitReportRowViewModel.AgentBudget)),
             ("Agent Tick Revenue", 140d, nameof(AgentProfitReportRowViewModel.AgentTickRevenue)),
             ("Agent Tick Costs", 130d, nameof(AgentProfitReportRowViewModel.AgentTickCosts)),
-            ("Agent Tick Profit", 130d, nameof(AgentProfitReportRowViewModel.AgentTickProfit))
+            ("Agent Tick Profit", 130d, nameof(AgentProfitReportRowViewModel.AgentTickProfit)),
+            ("Seller Allocation Profit", 160d, nameof(AgentProfitReportRowViewModel.SellerAllocationProfit))
         };
         var totalWidth = columns.Sum(column => column.Width) + ((columns.Length - 1) * 10d);
         var columnDefinitions = string.Join(",", columns.Select(column => $"{column.Width}"));

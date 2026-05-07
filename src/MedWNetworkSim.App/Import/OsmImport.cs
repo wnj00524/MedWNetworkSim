@@ -461,7 +461,8 @@ public sealed class OsmToSimulationMapper
             return [];
         }
 
-        var reducibleByWay = new List<(Way way, long[] ids)>();
+        var reducibleByWay = new List<(Way way, long[] ids)>(ways.Count);
+        var validIds = new List<long>();
         foreach (var way in ways.OrderBy(way => way.Id.GetValueOrDefault()))
         {
             var wayNodes = way.Nodes;
@@ -470,7 +471,7 @@ public sealed class OsmToSimulationMapper
                 continue;
             }
 
-            var validIds = new List<long>(wayNodes.Length);
+            validIds.Clear();
             foreach (var id in wayNodes)
             {
                 if (nodes.ContainsKey(id) && !retained.Contains(id))

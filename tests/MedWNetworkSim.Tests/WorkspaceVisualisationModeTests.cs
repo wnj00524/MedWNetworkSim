@@ -178,6 +178,42 @@ public sealed class WorkspaceVisualisationModeTests
         });
     }
 
+    [Fact]
+    public void UndeclaredProfileTraffic_PopulatesSankeyOptionsAndReports()
+    {
+        var workspace = new WorkspaceViewModel();
+        LoadNetwork(workspace, new NetworkModel
+        {
+            Nodes =
+            [
+                new NodeModel
+                {
+                    Id = "p",
+                    Name = "Producer",
+                    X = 10,
+                    Y = 10,
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Medicine", Production = 12 }]
+                },
+                new NodeModel
+                {
+                    Id = "c",
+                    Name = "Consumer",
+                    X = 60,
+                    Y = 20,
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Medicine", Consumption = 7 }]
+                }
+            ],
+            Edges = [new EdgeModel { Id = "e1", FromNodeId = "p", ToNodeId = "c", Capacity = 20, Time = 1, Cost = 1 }]
+        });
+
+        workspace.SimulateCommand.Execute(null);
+
+        Assert.Contains("Medicine", workspace.SankeyTrafficTypeNameOptions);
+        Assert.Contains(workspace.TrafficReports, row => row.TrafficType == "Medicine" && row.DeliveredQuantity != "0");
+        workspace.SankeyTrafficTypeFilterSelection = "Medicine";
+        Assert.All(workspace.CurrentSankey.Links.Where(link => !link.IsUnmetDemand), link => Assert.Equal("Medicine", link.TrafficType));
+    }
+
     private static NetworkModel CreateTwoTrafficNetwork() => new()
     {
         TrafficTypes =

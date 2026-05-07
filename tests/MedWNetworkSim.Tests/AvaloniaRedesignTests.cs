@@ -2,6 +2,7 @@ using System.Reflection;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.Presentation;
 using MedWNetworkSim.UI;
@@ -181,6 +182,47 @@ public sealed class AvaloniaRedesignTests
         Assert.Equal("Food", workspace.VisualisationState.ActiveTrafficTypeFilter);
     }
 
+    [Fact]
+    public void AgentProfitReportTable_RendersHeadersAndRowValues()
+    {
+        var workspace = new WorkspaceViewModel();
+        LoadNetwork(workspace, CreateEconomicActorNetwork());
+        workspace.StepCommand.Execute(null);
+
+        var buildMethod = typeof(ShellWindow).GetMethod("BuildAgentProfitReportTable", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(buildMethod);
+
+        var table = Assert.IsAssignableFrom<Control>(buildMethod!.Invoke(null, null));
+        var headers = FindControls<TextBlock>(table)
+            .Select(text => text.Text)
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .ToList();
+
+        Assert.Contains("Agent Name", headers);
+        Assert.Contains("Agent Cash", headers);
+        Assert.Contains("Agent Budget", headers);
+        Assert.Contains("Agent Tick Revenue", headers);
+        Assert.Contains("Agent Tick Costs", headers);
+        Assert.Contains("Agent Tick Profit", headers);
+
+        var rows = FindControls<ItemsControl>(table).Single();
+        Assert.NotNull(rows.ItemTemplate);
+
+        var firstRow = Assert.IsAssignableFrom<Control>(rows.ItemTemplate!.Build(workspace.AgentProfitReportRows[0]));
+        firstRow.DataContext = workspace.AgentProfitReportRows[0];
+        var rowValues = FindControls<TextBlock>(firstRow)
+            .Select(text => text.Text)
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .ToList();
+
+        Assert.Contains(workspace.AgentProfitReportRows[0].AgentName, rowValues);
+        Assert.Contains(workspace.AgentProfitReportRows[0].AgentCash, rowValues);
+        Assert.Contains(workspace.AgentProfitReportRows[0].AgentBudget, rowValues);
+        Assert.Contains(workspace.AgentProfitReportRows[0].AgentTickRevenue, rowValues);
+        Assert.Contains(workspace.AgentProfitReportRows[0].AgentTickCosts, rowValues);
+        Assert.Contains(workspace.AgentProfitReportRows[0].AgentTickProfit, rowValues);
+    }
+
     private static IEnumerable<T> FindControls<T>(object? root)
         where T : Control
     {
@@ -222,5 +264,58 @@ public sealed class AvaloniaRedesignTests
         var loadMethod = typeof(WorkspaceViewModel).GetMethod("LoadNetwork", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(loadMethod);
         loadMethod!.Invoke(workspace, [model, "Loaded test network", null]);
+    }
+
+    private static NetworkModel CreateEconomicActorNetwork()
+    {
+        var layerId = Guid.NewGuid();
+        return new NetworkModel
+        {
+            Name = "Economic actor network",
+            Layers = [new NetworkLayerModel { Id = layerId, Name = "Physical", Type = NetworkLayerType.Physical, Order = 0 }],
+            TrafficTypes =
+            [
+                new TrafficTypeDefinition
+                {
+                    Name = "Food",
+                    RoutingPreference = RoutingPreference.Cost,
+                    AllocationMode = AllocationMode.GreedyBestRoute,
+                    DefaultUnitSalePrice = 10d,
+                    DefaultUnitProductionCost = 2d
+                }
+            ],
+            Nodes =
+            [
+                new NodeModel
+                {
+                    Id = "producer",
+                    Name = "Producer",
+                    LayerId = layerId,
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Food", Production = 3d, UnitPrice = 10d, ProductionCostPerUnit = 2d }]
+                },
+                new NodeModel
+                {
+                    Id = "consumer",
+                    Name = "Consumer",
+                    LayerId = layerId,
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Food", Consumption = 3d }]
+                }
+            ],
+            Edges = [new EdgeModel { Id = "edge", FromNodeId = "producer", ToNodeId = "consumer", LayerId = layerId, Capacity = 10d, Time = 1d, Cost = 1d }],
+            Actors =
+            [
+                new SimulationActorState
+                {
+                    Id = "producer-actor",
+                    Name = "Producer Firm",
+                    Kind = SimulationActorKind.Firm,
+                    Objective = SimulationActorObjective.MaximiseProfit,
+                    IsEnabled = true,
+                    Cash = 100d,
+                    Budget = 100d,
+                    ControlledNodeIds = ["producer"]
+                }
+            ]
+        };
     }
 }

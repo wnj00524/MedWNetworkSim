@@ -217,6 +217,25 @@ public sealed class WorkspaceVisualisationModeTests
 
 
     [Fact]
+    public void LoadNetwork_PopulatesAgentProfitRowsEvenBeforeMetricsExist()
+    {
+        var workspace = new WorkspaceViewModel();
+        LoadNetwork(workspace, CreateEconomicActorNetwork());
+
+        Assert.NotEmpty(workspace.AgentProfitReportRows);
+        var row = Assert.Single(workspace.AgentProfitReportRows);
+        Assert.Equal("Producer Firm", row.AgentName);
+        Assert.Equal("100", row.AgentCash);
+        Assert.Equal("100", row.AgentBudget);
+        Assert.Equal("0", row.AgentTickRevenue);
+        Assert.Equal("0", row.AgentTickCosts);
+        Assert.Equal("0", row.AgentTickProfit);
+
+        Assert.Single(workspace.AgentProfitSeries);
+        Assert.Empty(workspace.AgentProfitSeries[0].Points);
+    }
+
+    [Fact]
     public void SimulateCommand_PopulatesSettledEconomicsAgentReportAndRevenueCostSeries()
     {
         var workspace = new WorkspaceViewModel();
@@ -228,16 +247,25 @@ public sealed class WorkspaceVisualisationModeTests
         var food = Assert.Single(outcomes, outcome => outcome.TrafficType == "Food");
         Assert.True(food.TotalSalesRevenue > 0d);
         Assert.True(food.TotalProductionCost > 0d || food.TotalTransportCost > 0d);
-        Assert.Equal(21d, food.TotalProfit, 6);
-        Assert.NotEmpty(workspace.AgentProfitReportRows);
+        Assert.Equal(27d, food.TotalProfit, 6);
+        Assert.True(workspace.AgentProfitReportRows.Count > 0);
+        Assert.Contains(workspace.AgentProfitReportRows, row =>
+            !string.IsNullOrWhiteSpace(row.AgentName) &&
+            !string.IsNullOrWhiteSpace(row.AgentCash) &&
+            !string.IsNullOrWhiteSpace(row.AgentBudget) &&
+            !string.IsNullOrWhiteSpace(row.AgentTickRevenue) &&
+            !string.IsNullOrWhiteSpace(row.AgentTickCosts) &&
+            !string.IsNullOrWhiteSpace(row.AgentTickProfit));
         Assert.Contains(workspace.AgentProfitReportRows, row => row.AgentName == "Producer Firm" && row.AgentTickRevenue != "0" && row.AgentTickProfit != "0");
+        Assert.Equal(workspace.SimulationActors.Count, workspace.AgentProfitSeries.Count);
         var producerSeries = Assert.Single(workspace.AgentProfitSeries, series => series.AgentName == "Producer Firm");
+        Assert.True(producerSeries.Points.Count > 0);
         Assert.Contains(producerSeries.Points, point => point.Revenue > 0d && point.Costs > 0d);
 
         var network = GetNetwork(workspace);
         var latestMetric = Assert.Single(network.ActorMetrics);
         Assert.Equal(30d, latestMetric.ActorSalesRevenueById["producer-actor"]);
-        Assert.Equal(21d, latestMetric.ActorProfitById["producer-actor"], 6);
+        Assert.Equal(27d, latestMetric.ActorProfitById["producer-actor"], 6);
     }
 
     [Fact]
@@ -251,6 +279,14 @@ public sealed class WorkspaceVisualisationModeTests
         var outcomes = GetLastOutcomes(workspace);
         Assert.Contains(outcomes, outcome => outcome.TrafficType == "Food" && outcome.TotalSalesRevenue > 0d && outcome.TotalProfit != 0d);
         Assert.NotEmpty(workspace.AgentProfitReportRows);
+        Assert.Contains(workspace.AgentProfitReportRows, row =>
+            !string.IsNullOrWhiteSpace(row.AgentName) &&
+            !string.IsNullOrWhiteSpace(row.AgentCash) &&
+            !string.IsNullOrWhiteSpace(row.AgentBudget) &&
+            !string.IsNullOrWhiteSpace(row.AgentTickRevenue) &&
+            !string.IsNullOrWhiteSpace(row.AgentTickCosts) &&
+            !string.IsNullOrWhiteSpace(row.AgentTickProfit));
+        Assert.Equal(workspace.SimulationActors.Count, workspace.AgentProfitSeries.Count);
         Assert.Contains(workspace.AgentProfitSeries, series => series.AgentName == "Producer Firm" && series.Points.Any(point => point.Revenue > 0d && point.Costs > 0d));
     }
 

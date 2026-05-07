@@ -30,70 +30,96 @@ public sealed class IsochroneService
         out Dictionary<string, double> distances)
     {
         distances = new Dictionary<string, double>(Comparer);
-        var nodesById = nodes
-            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
-            .ToDictionary(node => node.Id, node => node, Comparer);
-        var adjacency = BuildAdjacency(edges, metric);
+        var nodeIndexById = new Dictionary<string, int>(nodes.Count, Comparer);
+        var nodeIdsByIndex = new string[nodes.Count];
+        for (var index = 0; index < nodes.Count; index++)
+        {
+            var nodeId = nodes[index].Id;
+            if (!string.IsNullOrWhiteSpace(nodeId) && !nodeIndexById.ContainsKey(nodeId))
+            {
+                nodeIndexById[nodeId] = index;
+                nodeIdsByIndex[index] = nodeId;
+            }
+        }
 
-        var visited = new HashSet<string>(Comparer);
-        var queue = new PriorityQueue<string, double>();
-
-        if (string.IsNullOrWhiteSpace(origin.Id) || !nodesById.ContainsKey(origin.Id))
+        if (string.IsNullOrWhiteSpace(origin.Id) || !nodeIndexById.TryGetValue(origin.Id, out var originIndex))
         {
             return [];
         }
 
-        distances[origin.Id] = 0d;
-        queue.Enqueue(origin.Id, 0d);
+        var adjacency = BuildAdjacency(edges, metric, nodeIndexById);
+        var distanceByIndex = new double[nodes.Count];
+        var visited = new bool[nodes.Count];
+        Array.Fill(distanceByIndex, double.PositiveInfinity);
+        var queue = new PriorityQueue<int, double>();
+        distanceByIndex[originIndex] = 0d;
+        queue.Enqueue(originIndex, 0d);
 
         while (queue.Count > 0)
         {
             var current = queue.Dequeue();
-            if (!visited.Add(current))
+            if (visited[current])
             {
                 continue;
             }
 
-            if (!adjacency.TryGetValue(current, out var outgoing))
+            visited[current] = true;
+
+            var outgoing = adjacency[current];
+            if (outgoing.Length == 0)
             {
                 continue;
             }
 
-            foreach (var segment in outgoing)
+            for (var segmentIndex = 0; segmentIndex < outgoing.Length; segmentIndex++)
             {
-                var next = segment.Target;
-                if (!nodesById.ContainsKey(next))
-                {
-                    continue;
-                }
-
-                var newCost = distances[current] + segment.TravelTime;
+                var segment = outgoing[segmentIndex];
+                var next = segment.TargetNodeIndex;
+                var newCost = distanceByIndex[current] + segment.TravelTime;
                 if (newCost > maxCost)
                 {
                     continue;
                 }
 
-                if (!distances.ContainsKey(next) || newCost < distances[next])
+                if (newCost < distanceByIndex[next])
                 {
-                    distances[next] = newCost;
+                    distanceByIndex[next] = newCost;
                     queue.Enqueue(next, newCost);
                 }
             }
         }
 
-        return visited
-            .Where(nodesById.ContainsKey)
-            .Select(nodeId => nodesById[nodeId])
-            .ToHashSet();
+        var reachable = new HashSet<NodeModel>();
+        for (var index = 0; index < visited.Length; index++)
+        {
+            if (!visited[index])
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(nodeIdsByIndex[index]))
+            {
+                distances[nodeIdsByIndex[index]] = distanceByIndex[index];
+                reachable.Add(nodes[index]);
+            }
+        }
+
+        return reachable;
     }
 
-    private static Dictionary<string, List<Segment>> BuildAdjacency(IReadOnlyList<EdgeModel> edges, CostMetric metric)
+    private static Segment[][] BuildAdjacency(
+        IReadOnlyList<EdgeModel> edges,
+        CostMetric metric,
+        IReadOnlyDictionary<string, int> nodeIndexById)
     {
-        var result = new Dictionary<string, List<Segment>>(Comparer);
+        var result = new List<Segment>[nodeIndexById.Count];
 
         foreach (var edge in edges)
         {
-            if (string.IsNullOrWhiteSpace(edge.FromNodeId) || string.IsNullOrWhiteSpace(edge.ToNodeId))
+            if (string.IsNullOrWhiteSpace(edge.FromNodeId) ||
+                string.IsNullOrWhiteSpace(edge.ToNodeId) ||
+                !nodeIndexById.TryGetValue(edge.FromNodeId, out var fromIndex) ||
+                !nodeIndexById.TryGetValue(edge.ToNodeId, out var toIndex))
             {
                 continue;
             }
@@ -103,29 +129,36 @@ public sealed class IsochroneService
                 CostMetric.Time => Math.Max(0d, edge.Time),
                 _ => Math.Max(0d, edge.Time)
             };
-            AddArc(edge.FromNodeId, edge.ToNodeId, cost, result);
+            AddArc(fromIndex, toIndex, cost, result);
             if (edge.IsBidirectional)
             {
-                AddArc(edge.ToNodeId, edge.FromNodeId, cost, result);
+                AddArc(toIndex, fromIndex, cost, result);
             }
         }
 
-        return result;
-    }
-
-    private static void AddArc(string from, string to, double travelTime, IDictionary<string, List<Segment>> adjacency)
-    {
-        if (!adjacency.TryGetValue(from, out var edges))
+        var adjacency = new Segment[nodeIndexById.Count][];
+        for (var index = 0; index < adjacency.Length; index++)
         {
-            edges = [];
-            adjacency[from] = edges;
+            adjacency[index] = result[index] is { Count: > 0 } outgoing ? [.. outgoing] : [];
         }
 
-        edges.Add(new Segment(to, travelTime));
+        return adjacency;
+    }
+
+    private static void AddArc(int fromIndex, int toIndex, double travelTime, IList<Segment>[] adjacency)
+    {
+        var edges = adjacency[fromIndex];
+        if (edges is null)
+        {
+            edges = [];
+            adjacency[fromIndex] = edges;
+        }
+
+        edges.Add(new Segment(toIndex, travelTime));
     }
     /// <summary>
     /// Represents the segment component.
     /// </summary>
 
-    private sealed record Segment(string Target, double TravelTime);
+    private readonly record struct Segment(int TargetNodeIndex, double TravelTime);
 }

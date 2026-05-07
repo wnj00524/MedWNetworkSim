@@ -5,6 +5,7 @@
              RequestedThemeVariant="Dark">
   <Application.Styles>
     <themes:FluentTheme DensityStyle="Compact" />
+    <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
     <Style Selector="Button.toolbar-button">
       <Setter Property="MinHeight" Value="42" />
       <Setter Property="Padding" Value="12,9" />

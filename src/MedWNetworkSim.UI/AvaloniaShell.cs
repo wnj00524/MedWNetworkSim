@@ -3862,24 +3862,7 @@ public sealed class ShellWindow : Window
 
     private static Control BuildAgentProfitReportCard(WorkspaceViewModel viewModel)
     {
-        var table = new DataGrid
-        {
-            MinHeight = 170,
-            MaxHeight = 260,
-            AutoGenerateColumns = false,
-            CanUserResizeColumns = true,
-            CanUserSortColumns = true,
-            [!DataGrid.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.AgentProfitReportRows)),
-            Columns =
-            {
-                new DataGridTextColumn { Header = "Agent Name", Binding = new Binding(nameof(AgentProfitReportRowViewModel.AgentName)) },
-                new DataGridTextColumn { Header = "Agent Cash", Binding = new Binding(nameof(AgentProfitReportRowViewModel.AgentCash)) },
-                new DataGridTextColumn { Header = "Agent Budget", Binding = new Binding(nameof(AgentProfitReportRowViewModel.AgentBudget)) },
-                new DataGridTextColumn { Header = "Agent Tick Revenue", Binding = new Binding(nameof(AgentProfitReportRowViewModel.AgentTickRevenue)) },
-                new DataGridTextColumn { Header = "Agent Tick Costs", Binding = new Binding(nameof(AgentProfitReportRowViewModel.AgentTickCosts)) },
-                new DataGridTextColumn { Header = "Agent Tick Profit", Binding = new Binding(nameof(AgentProfitReportRowViewModel.AgentTickProfit)) }
-            }
-        };
+        var table = BuildAgentProfitReportTable();
 
         var chartList = new ItemsControl
         {
@@ -3915,6 +3898,101 @@ public sealed class ShellWindow : Window
                     BuildSectionTitle("Revenue vs Costs Over Time", "Each card plots per-tick revenue against production, transport, and tax costs."),
                     empty,
                     chartList
+                }
+            }
+        };
+    }
+
+    private static Control BuildAgentProfitReportTable()
+    {
+        var columns = new (string Header, double Width, string PropertyName)[]
+        {
+            ("Agent Name", 180d, nameof(AgentProfitReportRowViewModel.AgentName)),
+            ("Agent Cash", 110d, nameof(AgentProfitReportRowViewModel.AgentCash)),
+            ("Agent Budget", 120d, nameof(AgentProfitReportRowViewModel.AgentBudget)),
+            ("Agent Tick Revenue", 140d, nameof(AgentProfitReportRowViewModel.AgentTickRevenue)),
+            ("Agent Tick Costs", 130d, nameof(AgentProfitReportRowViewModel.AgentTickCosts)),
+            ("Agent Tick Profit", 130d, nameof(AgentProfitReportRowViewModel.AgentTickProfit))
+        };
+        var totalWidth = columns.Sum(column => column.Width) + ((columns.Length - 1) * 10d);
+        var columnDefinitions = string.Join(",", columns.Select(column => $"{column.Width}"));
+
+        var headerGrid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions(columnDefinitions),
+            ColumnSpacing = 10,
+            MinWidth = totalWidth
+        };
+
+        for (var index = 0; index < columns.Length; index++)
+        {
+            headerGrid.Children.Add(new TextBlock
+            {
+                Text = columns[index].Header,
+                FontSize = 11,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = new SolidColorBrush(AvaloniaDashboardTheme.MutedText),
+                TextWrapping = TextWrapping.Wrap,
+                [Grid.ColumnProperty] = index
+            });
+        }
+
+        var rows = new ItemsControl
+        {
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.AgentProfitReportRows)),
+            ItemTemplate = new FuncDataTemplate<AgentProfitReportRowViewModel>((row, _) =>
+            {
+                var rowGrid = new Grid
+                {
+                    ColumnDefinitions = new ColumnDefinitions(columnDefinitions),
+                    ColumnSpacing = 10,
+                    MinWidth = totalWidth
+                };
+
+                for (var index = 0; index < columns.Length; index++)
+                {
+                    var cell = new TextBlock
+                    {
+                        Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+                        TextWrapping = TextWrapping.Wrap,
+                        [Grid.ColumnProperty] = index
+                    };
+                    cell.Bind(TextBlock.TextProperty, new Binding(columns[index].PropertyName));
+                    rowGrid.Children.Add(cell);
+                }
+
+                return new Border
+                {
+                    Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+                    BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(10),
+                    Padding = new Thickness(10, 8),
+                    Child = rowGrid
+                };
+            })
+        };
+
+        return new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(12),
+            Child = new ScrollViewer
+            {
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                MaxHeight = 260,
+                Content = new StackPanel
+                {
+                    Spacing = 8,
+                    Children =
+                    {
+                        headerGrid,
+                        rows
+                    }
                 }
             }
         };

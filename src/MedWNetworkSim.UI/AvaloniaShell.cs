@@ -277,6 +277,7 @@ public sealed class GraphCanvasControl : Control, IDisposable
     private bool isDraggingOsmSelection;
     private bool didMapDrag;
     private bool isDisposed;
+    private WorkspaceViewModel? subscribedViewModel;
 
     public GraphCanvasControl()
     {
@@ -300,6 +301,38 @@ public sealed class GraphCanvasControl : Control, IDisposable
             Dispose();
         };
         osmTileProvider.TilesChanged += HandleTilesChanged;
+    }
+
+    private void AttachViewModelInvalidation(WorkspaceViewModel? nextViewModel)
+    {
+        if (ReferenceEquals(subscribedViewModel, nextViewModel))
+        {
+            return;
+        }
+
+        if (subscribedViewModel is not null)
+        {
+            subscribedViewModel.PropertyChanged -= HandleWorkspaceViewModelChanged;
+        }
+
+        subscribedViewModel = nextViewModel;
+        if (subscribedViewModel is not null)
+        {
+            subscribedViewModel.PropertyChanged += HandleWorkspaceViewModelChanged;
+        }
+
+        InvalidateVisual();
+    }
+
+    private void HandleWorkspaceViewModelChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(WorkspaceViewModel.SankeyVersion)
+            or nameof(WorkspaceViewModel.CurrentSankey)
+            or nameof(WorkspaceViewModel.FlowSeries)
+            or nameof(WorkspaceViewModel.NodePressureSeries))
+        {
+            Dispatcher.UIThread.Post(InvalidateVisual, DispatcherPriority.Background);
+        }
     }
 
     private void HandleTilesChanged(object? sender, EventArgs args)
@@ -344,6 +377,15 @@ public sealed class GraphCanvasControl : Control, IDisposable
         };
     }
 
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == ViewModelProperty)
+        {
+            AttachViewModelInvalidation(change.GetNewValue<WorkspaceViewModel?>());
+        }
+    }
+
     public void Dispose()
     {
         if (isDisposed)
@@ -355,6 +397,12 @@ public sealed class GraphCanvasControl : Control, IDisposable
         animationTimer.Stop();
         bitmap?.Dispose();
         bitmap = null;
+        if (subscribedViewModel is not null)
+        {
+            subscribedViewModel.PropertyChanged -= HandleWorkspaceViewModelChanged;
+            subscribedViewModel = null;
+        }
+
         osmTileProvider.TilesChanged -= HandleTilesChanged;
         osmTileProvider.Dispose();
     }
@@ -8067,6 +8115,7 @@ public sealed class ShellWindow : Window
     private static Control BuildLabeledComboBox(string label, string itemsPropertyName, string selectedPropertyName)
     {
         var comboBox = BuildComboBox();
+        AutomationProperties.SetName(comboBox, label);
         comboBox.Bind(ItemsControl.ItemsSourceProperty, new Binding(itemsPropertyName));
         comboBox.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(selectedPropertyName, BindingMode.TwoWay));
         return BuildLabeledRow(label, comboBox);

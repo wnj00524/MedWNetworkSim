@@ -1,0 +1,10 @@
+--- src/MedWNetworkSim.App/Services/CommandLineRunService.cs
++++ src/MedWNetworkSim.App/Services/CommandLineRunService.cs
+@@ -58,6 +58,7 @@
+     private readonly ReportExportService reportExportService = new();
+     private readonly NetworkSimulationEngine networkSimulationEngine = new();
+     private readonly TemporalNetworkSimulationEngine temporalNetworkSimulationEngine = new();
++    private readonly SimulationActorCoordinator simulationActorCoordinator = new();
+
+     public bool ShouldRunFromCommandLine(string[] args)
+     {

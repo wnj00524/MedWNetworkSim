@@ -1,6 +1,7 @@
 using System.Reflection;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.Presentation;
 using MedWNetworkSim.UI;
@@ -125,6 +126,70 @@ public sealed class AvaloniaRedesignTests
         Assert.Equal("Test network", workspace.NetworkNameText);
         Assert.Equal("Notes", workspace.NetworkDescriptionText);
         Assert.Equal("4", workspace.NetworkTimelineLoopLengthText);
+    }
+
+
+    [Fact]
+    public void AnalyticsCockpit_ExposesBoundSankeyTrafficTypeSelector()
+    {
+        var workspace = new WorkspaceViewModel();
+        LoadNetwork(workspace, new NetworkModel
+        {
+            TrafficTypes = [new TrafficTypeDefinition { Name = "Food" }, new TrafficTypeDefinition { Name = "Water" }]
+        });
+        var shell = new ShellWindow(workspace);
+        var buildMethod = typeof(ShellWindow).GetMethod("BuildAnalyticsView", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(buildMethod);
+
+        var analyticsView = Assert.IsType<AnalyticsWorkspaceView>(buildMethod!.Invoke(shell, [workspace]));
+        analyticsView.DataContext = workspace;
+        var selector = FindControls<ComboBox>(analyticsView)
+            .Single(comboBox => AutomationProperties.GetName(comboBox) == "Traffic type");
+
+        selector.DataContext = workspace;
+        var selectorOptions = Assert.IsAssignableFrom<IEnumerable<string>>(selector.ItemsSource);
+        Assert.Contains(WorkspaceViewModel.AllTrafficTypesFilterLabel, selectorOptions);
+        Assert.Contains("Food", selectorOptions);
+        selector.SelectedItem = "Food";
+
+        Assert.Equal("Food", workspace.SankeyTrafficTypeFilterSelection);
+        Assert.Equal("Food", workspace.VisualisationState.ActiveTrafficTypeFilter);
+    }
+
+    private static IEnumerable<T> FindControls<T>(object? root)
+        where T : Control
+    {
+        if (root is null)
+        {
+            yield break;
+        }
+
+        if (root is T match)
+        {
+            yield return match;
+        }
+
+        switch (root)
+        {
+            case Panel panel:
+                foreach (var child in panel.Children.SelectMany(FindControls<T>))
+                {
+                    yield return child;
+                }
+                break;
+            case Decorator decorator:
+                foreach (var child in FindControls<T>(decorator.Child))
+                {
+                    yield return child;
+                }
+                break;
+            case ContentControl contentControl:
+                foreach (var child in FindControls<T>(contentControl.Content))
+                {
+                    yield return child;
+                }
+                break;
+        }
     }
 
     private static void LoadNetwork(WorkspaceViewModel workspace, NetworkModel model)

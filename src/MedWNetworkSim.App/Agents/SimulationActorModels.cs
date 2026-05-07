@@ -404,6 +404,10 @@ public sealed class SimulationActorMetrics
     /// </summary>
     public Dictionary<string, double> ActorSalesRevenueById { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>
+    /// Gets or sets the actor purchase cost by id.
+    /// </summary>
+    public Dictionary<string, double> ActorPurchaseCostById { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
     /// Gets or sets the actor production cost by id.
     /// </summary>
     public Dictionary<string, double> ActorProductionCostById { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -423,6 +427,10 @@ public sealed class SimulationActorMetrics
     /// Gets or sets the actor profit by id.
     /// </summary>
     public Dictionary<string, double> ActorProfitById { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets or sets the actor cash delta by id.
+    /// </summary>
+    public Dictionary<string, double> ActorCashDeltaById { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>
     /// Gets or sets the policy restriction count.
     /// </summary>

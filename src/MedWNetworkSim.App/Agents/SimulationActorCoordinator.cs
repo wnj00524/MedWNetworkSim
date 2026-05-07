@@ -433,11 +433,13 @@ public sealed class SimulationActorCoordinator
             ActorCashById = actors.ToDictionary(a => a.Id, a => a.Cash, StringComparer.OrdinalIgnoreCase),
             ActorUtilityById = decisions.ToDictionary(d => d.ActorId, d => d.ExpectedUtilityAfter, StringComparer.OrdinalIgnoreCase),
             ActorSalesRevenueById = actors.ToDictionary(a => a.Id, a => ledgers.GetValueOrDefault(a.Id)?.SalesRevenue ?? 0d, StringComparer.OrdinalIgnoreCase),
+            ActorPurchaseCostById = actors.ToDictionary(a => a.Id, a => ledgers.GetValueOrDefault(a.Id)?.PurchaseCost ?? 0d, StringComparer.OrdinalIgnoreCase),
             ActorProductionCostById = actors.ToDictionary(a => a.Id, a => ledgers.GetValueOrDefault(a.Id)?.ProductionCost ?? 0d, StringComparer.OrdinalIgnoreCase),
             ActorTransportCostById = actors.ToDictionary(a => a.Id, a => ledgers.GetValueOrDefault(a.Id)?.TransportCost ?? 0d, StringComparer.OrdinalIgnoreCase),
             ActorTaxesPaidById = actors.ToDictionary(a => a.Id, a => ledgers.GetValueOrDefault(a.Id)?.TaxesPaid ?? 0d, StringComparer.OrdinalIgnoreCase),
             ActorTaxesReceivedById = actors.ToDictionary(a => a.Id, a => ledgers.GetValueOrDefault(a.Id)?.TaxesReceived ?? 0d, StringComparer.OrdinalIgnoreCase),
             ActorProfitById = actors.ToDictionary(a => a.Id, a => ledgers.GetValueOrDefault(a.Id)?.Profit ?? 0d, StringComparer.OrdinalIgnoreCase),
+            ActorCashDeltaById = actors.ToDictionary(a => a.Id, a => ledgers.GetValueOrDefault(a.Id)?.CashDelta ?? 0d, StringComparer.OrdinalIgnoreCase),
             PolicyRestrictionCount = snapshot.Network.Edges.Sum(edge => edge.TrafficPermissions.Count(p => p.IsActive && p.Mode == EdgeTrafficPermissionMode.Blocked)),
             CooperationIndex = actors.Count == 0 ? 0d : actors.Average(a => Math.Clamp(a.CooperationWeight, 0d, 1d))
         };

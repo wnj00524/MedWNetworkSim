@@ -1,4 +1,5 @@
 using System.Reflection;
+using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.VisualAnalytics;
 using MedWNetworkSim.Presentation;
@@ -214,6 +215,45 @@ public sealed class WorkspaceVisualisationModeTests
         Assert.All(workspace.CurrentSankey.Links.Where(link => !link.IsUnmetDemand), link => Assert.Equal("Medicine", link.TrafficType));
     }
 
+
+    [Fact]
+    public void SimulateCommand_PopulatesSettledEconomicsAgentReportAndRevenueCostSeries()
+    {
+        var workspace = new WorkspaceViewModel();
+        LoadNetwork(workspace, CreateEconomicActorNetwork());
+
+        workspace.SimulateCommand.Execute(null);
+
+        var outcomes = GetLastOutcomes(workspace);
+        var food = Assert.Single(outcomes, outcome => outcome.TrafficType == "Food");
+        Assert.True(food.TotalSalesRevenue > 0d);
+        Assert.True(food.TotalProductionCost > 0d || food.TotalTransportCost > 0d);
+        Assert.Equal(21d, food.TotalProfit, 6);
+        Assert.NotEmpty(workspace.AgentProfitReportRows);
+        Assert.Contains(workspace.AgentProfitReportRows, row => row.AgentName == "Producer Firm" && row.AgentTickRevenue != "0" && row.AgentTickProfit != "0");
+        var producerSeries = Assert.Single(workspace.AgentProfitSeries, series => series.AgentName == "Producer Firm");
+        Assert.Contains(producerSeries.Points, point => point.Revenue > 0d && point.Costs > 0d);
+
+        var network = GetNetwork(workspace);
+        var latestMetric = Assert.Single(network.ActorMetrics);
+        Assert.Equal(30d, latestMetric.ActorSalesRevenueById["producer-actor"]);
+        Assert.Equal(21d, latestMetric.ActorProfitById["producer-actor"], 6);
+    }
+
+    [Fact]
+    public void StepCommand_PopulatesTemporalSettledEconomicsAndRevenueCostSeries()
+    {
+        var workspace = new WorkspaceViewModel();
+        LoadNetwork(workspace, CreateEconomicActorNetwork());
+
+        workspace.StepCommand.Execute(null);
+
+        var outcomes = GetLastOutcomes(workspace);
+        Assert.Contains(outcomes, outcome => outcome.TrafficType == "Food" && outcome.TotalSalesRevenue > 0d && outcome.TotalProfit != 0d);
+        Assert.NotEmpty(workspace.AgentProfitReportRows);
+        Assert.Contains(workspace.AgentProfitSeries, series => series.AgentName == "Producer Firm" && series.Points.Any(point => point.Revenue > 0d && point.Costs > 0d));
+    }
+
     private static NetworkModel CreateTwoTrafficNetwork() => new()
     {
         TrafficTypes =
@@ -251,11 +291,72 @@ public sealed class WorkspaceVisualisationModeTests
         Edges = [new EdgeModel { Id = "e1", FromNodeId = "p", ToNodeId = "c", Capacity = 20, Time = 1, Cost = 1 }]
     };
 
+
+    private static NetworkModel CreateEconomicActorNetwork()
+    {
+        var layerId = Guid.NewGuid();
+        return new NetworkModel
+        {
+            Name = "Economic actor network",
+            Layers = [new NetworkLayerModel { Id = layerId, Name = "Physical", Type = NetworkLayerType.Physical, Order = 0 }],
+            TrafficTypes =
+            [
+                new TrafficTypeDefinition
+                {
+                    Name = "Food",
+                    RoutingPreference = RoutingPreference.Cost,
+                    AllocationMode = AllocationMode.GreedyBestRoute,
+                    DefaultUnitSalePrice = 10d,
+                    DefaultUnitProductionCost = 2d
+                }
+            ],
+            Nodes =
+            [
+                new NodeModel
+                {
+                    Id = "producer",
+                    Name = "Producer",
+                    LayerId = layerId,
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Food", Production = 3d, UnitPrice = 10d, ProductionCostPerUnit = 2d }]
+                },
+                new NodeModel
+                {
+                    Id = "consumer",
+                    Name = "Consumer",
+                    LayerId = layerId,
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Food", Consumption = 3d }]
+                }
+            ],
+            Edges = [new EdgeModel { Id = "edge", FromNodeId = "producer", ToNodeId = "consumer", LayerId = layerId, Capacity = 10d, Time = 1d, Cost = 1d }],
+            Actors =
+            [
+                new SimulationActorState
+                {
+                    Id = "producer-actor",
+                    Name = "Producer Firm",
+                    Kind = SimulationActorKind.Firm,
+                    Objective = SimulationActorObjective.MaximiseProfit,
+                    IsEnabled = true,
+                    Cash = 100d,
+                    Budget = 100d,
+                    ControlledNodeIds = ["producer"]
+                }
+            ]
+        };
+    }
+
     private static void LoadNetwork(WorkspaceViewModel workspace, NetworkModel model)
     {
         var loadMethod = typeof(WorkspaceViewModel).GetMethod("LoadNetwork", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(loadMethod);
         loadMethod!.Invoke(workspace, [model, "Loaded test network", null]);
+    }
+
+    private static IReadOnlyList<MedWNetworkSim.App.Services.TrafficSimulationOutcome> GetLastOutcomes(WorkspaceViewModel workspace)
+    {
+        var field = typeof(WorkspaceViewModel).GetField("lastOutcomes", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        return Assert.IsAssignableFrom<IReadOnlyList<MedWNetworkSim.App.Services.TrafficSimulationOutcome>>(field!.GetValue(workspace));
     }
 
     private static NetworkModel GetNetwork(WorkspaceViewModel workspace)

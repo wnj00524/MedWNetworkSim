@@ -2731,6 +2731,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private readonly GraphMlFileService graphMlFileService = new();
     private readonly ReportExportService reportExportService = new();
     private readonly NetworkSimulationEngine simulationEngine = new();
+    private readonly TrafficEconomicSettlementService economicSettlementService = new();
     private readonly TemporalNetworkSimulationEngine temporalEngine = new();
     private readonly EdgeTrafficPermissionResolver edgeTrafficPermissionResolver = new();
     private readonly GraphInteractionController interactionController = new();
@@ -7011,17 +7012,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ActorMetrics.Clear();
         foreach (var metric in network.ActorMetrics)
         {
-            ActorMetrics.Add(new SimulationActorMetricsViewModel
-            {
-                Tick = metric.Tick,
-                TotalDelivered = metric.TotalDelivered.ToString("0.##", CultureInfo.InvariantCulture),
-                TotalUnmetDemand = metric.TotalUnmetDemand.ToString("0.##", CultureInfo.InvariantCulture),
-                TotalMovementCost = metric.TotalMovementCost.ToString("0.##", CultureInfo.InvariantCulture),
-                AverageEdgeUtilisation = metric.AverageEdgeUtilisation.ToString("0.##", CultureInfo.InvariantCulture),
-                BottleneckEdgeCount = metric.BottleneckEdgeCount.ToString(CultureInfo.InvariantCulture),
-                PolicyRestrictionCount = metric.PolicyRestrictionCount.ToString(CultureInfo.InvariantCulture),
-                CooperationIndex = metric.CooperationIndex.ToString("0.##", CultureInfo.InvariantCulture)
-            });
+            ActorMetrics.Add(ToActorMetricsViewModel(metric));
         }
         RefreshAgentProfitReport();
         agentActionLogger.Clear();
@@ -7681,15 +7672,19 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private void RunSimulation()
     {
         CommitTransientEditorsToModel();
-        var outcomes = simulationEngine.Simulate(fileService.NormalizeAndValidate(network));
-        lastOutcomes = outcomes;
-        lastConsumerCosts = simulationEngine.SummarizeConsumerCosts(outcomes.SelectMany(outcome => outcome.Allocations));
+        SyncNetworkActorsFromView();
+        var validatedNetwork = fileService.NormalizeAndValidate(network);
+        var outcomes = simulationEngine.Simulate(validatedNetwork);
+        var settlement = economicSettlementService.Settle(validatedNetwork, outcomes, BuildSimulationActorMap());
+        lastOutcomes = settlement.Outcomes;
+        lastConsumerCosts = simulationEngine.SummarizeConsumerCosts(lastOutcomes.SelectMany(outcome => outcome.Allocations));
         visualAnalyticsSnapshot = new VisualAnalyticsSnapshot { Network = network, TrafficOutcomes = lastOutcomes, ConsumerCosts = lastConsumerCosts, Period = CurrentPeriod };
+        RecordEconomicMetrics(settlement);
         RefreshInsights();
         lastTimelineStepResult = null;
         Raise(nameof(TrafficDeliveredColumnLabel));
-        ApplySimulationOutcomes(outcomes.SelectMany(outcome => outcome.Allocations), null);
-        PopulateTopIssues(new BottleneckDetectionService().DetectIssues(network, new SimulationResult { Outcomes = outcomes }));
+        ApplySimulationOutcomes(lastOutcomes.SelectMany(outcome => outcome.Allocations), null);
+        PopulateTopIssues(new BottleneckDetectionService().DetectIssues(network, new SimulationResult { Outcomes = lastOutcomes }));
         RebuildAnalytics();
         StatusText = "Simulation finished.";
     }
@@ -7773,6 +7768,89 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshAgentProfitReport();
     }
 
+    private IReadOnlyDictionary<string, SimulationActorState> BuildSimulationActorMap() => SimulationActors
+        .Where(actor => !string.IsNullOrWhiteSpace(actor.Id))
+        .GroupBy(actor => actor.Id, Comparer)
+        .ToDictionary(group => group.Key, group => group.First(), Comparer);
+
+    private void RecordEconomicMetrics(TrafficEconomicSettlementResult settlement)
+    {
+        if (SimulationActors.Count == 0)
+        {
+            RefreshAgentProfitReport();
+            Raise(nameof(FlowSeries));
+            Raise(nameof(NodePressureSeries));
+            return;
+        }
+
+        var metric = CreateEconomicMetrics(settlement);
+        network.ActorMetrics.RemoveAll(existing => existing.Tick == metric.Tick);
+        network.ActorMetrics.Add(metric);
+        ReplaceActorMetricsViewModel(metric);
+        RefreshAgentProfitReport();
+        Raise(nameof(FlowSeries));
+        Raise(nameof(NodePressureSeries));
+    }
+
+    private SimulationActorMetrics CreateEconomicMetrics(TrafficEconomicSettlementResult settlement)
+    {
+        var allocations = settlement.Outcomes.SelectMany(outcome => outcome.Allocations).ToList();
+        var flowByEdge = allocations
+            .SelectMany(allocation => allocation.PathEdgeIds.Distinct(Comparer).Select(edgeId => (edgeId, allocation.Quantity)))
+            .GroupBy(item => item.edgeId, Comparer)
+            .ToDictionary(group => group.Key, group => group.Sum(item => item.Quantity), Comparer);
+        var utilisation = network.Edges
+            .Where(edge => edge.Capacity.HasValue && edge.Capacity.Value > 0d)
+            .Select(edge => flowByEdge.GetValueOrDefault(edge.Id) / edge.Capacity!.Value)
+            .ToList();
+
+        return new SimulationActorMetrics
+        {
+            Tick = Math.Max(ActorTick, CurrentPeriod),
+            TotalDelivered = settlement.Outcomes.Sum(outcome => outcome.TotalDelivered),
+            TotalUnmetDemand = settlement.Outcomes.Sum(outcome => outcome.UnmetDemand),
+            TotalMovementCost = allocations.Sum(allocation => allocation.TotalMovementCost),
+            AverageEdgeUtilisation = utilisation.Count == 0 ? 0d : utilisation.Average(),
+            BottleneckEdgeCount = utilisation.Count(value => value >= 0.9d),
+            ActorCashById = SimulationActors.ToDictionary(actor => actor.Id, actor => actor.Cash, Comparer),
+            ActorSalesRevenueById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.SalesRevenue ?? 0d, Comparer),
+            ActorPurchaseCostById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.PurchaseCost ?? 0d, Comparer),
+            ActorProductionCostById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.ProductionCost ?? 0d, Comparer),
+            ActorTransportCostById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.TransportCost ?? 0d, Comparer),
+            ActorTaxesPaidById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.TaxesPaid ?? 0d, Comparer),
+            ActorTaxesReceivedById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.TaxesReceived ?? 0d, Comparer),
+            ActorCashDeltaById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.CashDelta ?? 0d, Comparer),
+            ActorProfitById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.Profit ?? 0d, Comparer),
+            PolicyRestrictionCount = network.Edges.Sum(edge => edge.TrafficPermissions.Count(permission => permission.IsActive && permission.Mode == EdgeTrafficPermissionMode.Blocked)),
+            CooperationIndex = SimulationActors.Count == 0 ? 0d : SimulationActors.Average(actor => Math.Clamp(actor.CooperationWeight, 0d, 1d))
+        };
+    }
+
+    private void ReplaceActorMetricsViewModel(SimulationActorMetrics metric)
+    {
+        for (var i = ActorMetrics.Count - 1; i >= 0; i--)
+        {
+            if (ActorMetrics[i].Tick == metric.Tick)
+            {
+                ActorMetrics.RemoveAt(i);
+            }
+        }
+
+        ActorMetrics.Add(ToActorMetricsViewModel(metric));
+    }
+
+    private static SimulationActorMetricsViewModel ToActorMetricsViewModel(SimulationActorMetrics metric) => new()
+    {
+        Tick = metric.Tick,
+        TotalDelivered = metric.TotalDelivered.ToString("0.##", CultureInfo.InvariantCulture),
+        TotalUnmetDemand = metric.TotalUnmetDemand.ToString("0.##", CultureInfo.InvariantCulture),
+        TotalMovementCost = metric.TotalMovementCost.ToString("0.##", CultureInfo.InvariantCulture),
+        AverageEdgeUtilisation = metric.AverageEdgeUtilisation.ToString("0.##", CultureInfo.InvariantCulture),
+        BottleneckEdgeCount = metric.BottleneckEdgeCount.ToString(CultureInfo.InvariantCulture),
+        PolicyRestrictionCount = metric.PolicyRestrictionCount.ToString(CultureInfo.InvariantCulture),
+        CooperationIndex = metric.CooperationIndex.ToString("0.##", CultureInfo.InvariantCulture)
+    };
+
     private void RefreshAgentProfitReport()
     {
         AgentProfitReportRows.Clear();
@@ -7817,7 +7895,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return 0d;
         }
 
-        return metric.ActorProductionCostById.GetValueOrDefault(actorId) +
+        return metric.ActorPurchaseCostById.GetValueOrDefault(actorId) +
+            metric.ActorProductionCostById.GetValueOrDefault(actorId) +
             metric.ActorTransportCostById.GetValueOrDefault(actorId) +
             metric.ActorTaxesPaidById.GetValueOrDefault(actorId);
     }
@@ -8289,17 +8368,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             });
         }
         AgentLog.SetEntries(agentActionLogger.GetAll());
-        ActorMetrics.Add(new SimulationActorMetricsViewModel
-        {
-            Tick = step.Metrics.Tick,
-            TotalDelivered = step.Metrics.TotalDelivered.ToString("0.##", CultureInfo.InvariantCulture),
-            TotalUnmetDemand = step.Metrics.TotalUnmetDemand.ToString("0.##", CultureInfo.InvariantCulture),
-            TotalMovementCost = step.Metrics.TotalMovementCost.ToString("0.##", CultureInfo.InvariantCulture),
-            AverageEdgeUtilisation = step.Metrics.AverageEdgeUtilisation.ToString("0.##", CultureInfo.InvariantCulture),
-            BottleneckEdgeCount = step.Metrics.BottleneckEdgeCount.ToString(CultureInfo.InvariantCulture),
-            PolicyRestrictionCount = step.Metrics.PolicyRestrictionCount.ToString(CultureInfo.InvariantCulture),
-            CooperationIndex = step.Metrics.CooperationIndex.ToString("0.##", CultureInfo.InvariantCulture)
-        });
+        ActorMetrics.Add(ToActorMetricsViewModel(step.Metrics));
         RefreshAgentProfitReport();
         highlightedNodeIds.Clear();
         highlightedEdgeIds.Clear();
@@ -8379,10 +8448,13 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var result = temporalEngine.Advance(validatedNetwork, temporalState);
         lastTimelineStepResult = result;
         Raise(nameof(TrafficDeliveredColumnLabel));
-        lastOutcomes = BuildTimelineOutcomes(validatedNetwork, result);
-        lastConsumerCosts = simulationEngine.SummarizeConsumerCosts(result.Allocations);
+        var timelineOutcomes = BuildTimelineOutcomes(validatedNetwork, result);
+        var settlement = economicSettlementService.Settle(validatedNetwork, timelineOutcomes, BuildSimulationActorMap());
+        lastOutcomes = settlement.Outcomes;
+        lastConsumerCosts = simulationEngine.SummarizeConsumerCosts(lastOutcomes.SelectMany(outcome => outcome.Allocations));
         CurrentPeriod = result.Period;
         visualAnalyticsSnapshot = new VisualAnalyticsSnapshot { Network = network, TrafficOutcomes = lastOutcomes, ConsumerCosts = lastConsumerCosts, Period = CurrentPeriod };
+        RecordEconomicMetrics(settlement);
         InvalidateSankeyCache();
         RefreshInsights();
         TimelinePosition = result.EffectivePeriod;
@@ -8432,6 +8504,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 TotalDelivered = allocations.Sum(allocation => allocation.Quantity),
                 UnusedSupply = nodeStates.Sum(state => state.AvailableSupply),
                 UnmetDemand = nodeStates.Sum(state => state.DemandBacklog),
+                TotalSalesRevenue = allocations.Sum(allocation => allocation.SaleRevenue),
+                TotalTransportCost = allocations.Sum(allocation => allocation.TotalTransportCost),
+                TotalProductionCost = allocations.Sum(allocation => allocation.TotalProductionCost),
+                TotalTax = allocations.Sum(allocation => allocation.TotalTax),
+                TotalProfit = allocations.Sum(allocation => allocation.Profit),
                 Allocations = allocations
             };
         }).ToList();

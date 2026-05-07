@@ -419,6 +419,7 @@ public sealed class AgentProfitReportRowViewModel
     public required string AgentTickRevenue { get; init; }
     public required string AgentTickCosts { get; init; }
     public required string AgentTickProfit { get; init; }
+    public required string SellerAllocationProfit { get; init; }
 }
 /// <summary>
 /// Represents a revenue-versus-cost time series for an agent.
@@ -7862,7 +7863,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         {
             var revenue = latestMetric?.ActorSalesRevenueById.GetValueOrDefault(actor.Id) ?? 0d;
             var costs = CalculateAgentTickCosts(latestMetric, actor.Id);
-            var profit = latestMetric?.ActorProfitById.GetValueOrDefault(actor.Id) ?? 0d;
+            var profit = revenue - costs;
+            var sellerAllocationProfit = latestMetric?.ActorProfitById.GetValueOrDefault(actor.Id) ?? 0d;
             AgentProfitReportRows.Add(new AgentProfitReportRowViewModel
             {
                 AgentName = ResolveActorDisplayName(actor.Id),
@@ -7870,7 +7872,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 AgentBudget = FormatAgentEconomicsValue(actor.Budget),
                 AgentTickRevenue = FormatAgentEconomicsValue(revenue),
                 AgentTickCosts = FormatAgentEconomicsValue(costs),
-                AgentTickProfit = FormatAgentEconomicsValue(profit)
+                AgentTickProfit = FormatAgentEconomicsValue(profit),
+                SellerAllocationProfit = FormatAgentEconomicsValue(sellerAllocationProfit)
             });
         }
 

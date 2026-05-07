@@ -6,7 +6,7 @@ The current solution is centred on an Avalonia desktop application. Shared prese
 
 ## Current status
 
-The repository currently targets .NET 8 and uses Avalonia 11.3.12 for the desktop UI. The primary application project is `src/MedWNetworkSim.App.Avalonia`, which is configured as a Windows desktop executable, version `2.0.2`, published as a self-contained `win-x64` single-file app.
+The repository currently targets .NET 8 and uses Avalonia 11.3.12 for the desktop UI. The primary application project is `src/MedWNetworkSim.App.Avalonia`, which is configured as a Windows desktop executable, version `2.0.3`, published as a self-contained `win-x64` single-file app.
 
 The active solution file is `MedWNetworkSim.slnx`. It includes the Avalonia app plus shared projects for UI, presentation, interaction, rendering, and verification. The older `src/MedWNetworkSim.App` code is not listed as an active solution project, but parts of it are compiled into the presentation layer through linked source files.
 
@@ -107,7 +107,7 @@ SelfContained = true
 PublishSingleFile = true
 IncludeNativeLibrariesForSelfExtract = true
 PublishTrimmed = false
-Version = 2.0.2
+Version = 2.0.3
 ```
 
 ## Testing

@@ -4,8 +4,8 @@
   <Grid RowDefinitions="Auto,*" RowSpacing="12" Margin="12">
     <WrapPanel>
       <ComboBox MinWidth="180"
-                ItemsSource="{Binding TrafficTypeNameOptions}"
-                SelectedItem="{Binding VisualisationState.ActiveTrafficTypeFilter}" />
+                ItemsSource="{Binding SankeyTrafficTypeNameOptions}"
+                SelectedItem="{Binding SankeyTrafficTypeFilterSelection}" />
       <CheckBox Content="Show unmet demand"
                 IsChecked="{Binding VisualisationState.ShowUnmetDemand}" />
       <CheckBox Content="Show capacity utilisation"

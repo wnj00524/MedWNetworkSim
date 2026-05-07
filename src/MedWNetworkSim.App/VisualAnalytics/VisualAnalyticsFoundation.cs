@@ -62,7 +62,13 @@ public sealed class VisualisationState : ObservableObject
     public string? ActiveTrafficTypeFilter
     {
         get => activeTrafficTypeFilter;
-        set => SetProperty(ref activeTrafficTypeFilter, value);
+        set
+        {
+            var normalized = string.IsNullOrWhiteSpace(value)
+                ? null
+                : value.Trim();
+            SetProperty(ref activeTrafficTypeFilter, normalized);
+        }
     }
 
     public bool ShowInsights

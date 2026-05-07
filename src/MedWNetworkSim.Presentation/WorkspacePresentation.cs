@@ -4941,8 +4941,28 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     /// Gets the collection of traffic type name options associated with this entity.
     /// </summary>
 
+    public const string AllTrafficTypesFilterLabel = "All traffic";
+
     public IReadOnlyList<string> TrafficTypeNameOptions =>
         network.TrafficTypes.Select(definition => definition.Name).Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(Comparer).OrderBy(name => name, Comparer).ToList();
+    /// <summary>
+    /// Gets the collection of Sankey traffic type filter options associated with this entity.
+    /// </summary>
+    public IReadOnlyList<string> SankeyTrafficTypeNameOptions => [AllTrafficTypesFilterLabel, .. TrafficTypeNameOptions];
+
+    public string SankeyTrafficTypeFilterSelection
+    {
+        get => string.IsNullOrWhiteSpace(VisualisationState.ActiveTrafficTypeFilter) ? AllTrafficTypesFilterLabel : VisualisationState.ActiveTrafficTypeFilter!;
+        set
+        {
+            var normalized = string.IsNullOrWhiteSpace(value) || Comparer.Equals(value, AllTrafficTypesFilterLabel)
+                ? null
+                : value.Trim();
+            VisualisationState.ActiveTrafficTypeFilter = normalized;
+            Raise(nameof(SankeyTrafficTypeFilterSelection));
+        }
+    }
+
     /// <summary>
     /// Gets the collection of traffic type options associated with this entity.
     /// </summary>
@@ -6070,6 +6090,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             or nameof(VisualisationState.ShowUnmetDemand)
             or nameof(VisualisationState.CollapseMinorFlows))
         {
+            Raise(nameof(SankeyTrafficTypeFilterSelection));
             InvalidateSankeyCache();
         }
 
@@ -8359,15 +8380,62 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var result = temporalEngine.Advance(validatedNetwork, temporalState);
         lastTimelineStepResult = result;
         Raise(nameof(TrafficDeliveredColumnLabel));
+        lastOutcomes = BuildTimelineOutcomes(validatedNetwork, result);
         lastConsumerCosts = simulationEngine.SummarizeConsumerCosts(result.Allocations);
-        visualAnalyticsSnapshot = new VisualAnalyticsSnapshot { Network = network, TrafficOutcomes = lastOutcomes, ConsumerCosts = lastConsumerCosts, Period = CurrentPeriod };
-        RefreshInsights();
         CurrentPeriod = result.Period;
+        visualAnalyticsSnapshot = new VisualAnalyticsSnapshot { Network = network, TrafficOutcomes = lastOutcomes, ConsumerCosts = lastConsumerCosts, Period = CurrentPeriod };
+        InvalidateSankeyCache();
+        RefreshInsights();
         TimelinePosition = result.EffectivePeriod;
         ApplySimulationOutcomes(result.Allocations, result);
         StatusText = agentsRan
             ? $"Advanced to period {result.Period} after applying agent actions."
             : $"Advanced to period {result.Period}.";
+    }
+
+    private static IReadOnlyList<TrafficSimulationOutcome> BuildTimelineOutcomes(
+        NetworkModel network,
+        TemporalNetworkSimulationEngine.TemporalSimulationStepResult result)
+    {
+        var definitionsByName = network.TrafficTypes
+            .Where(definition => !string.IsNullOrWhiteSpace(definition.Name))
+            .ToDictionary(definition => definition.Name, definition => definition, Comparer);
+
+        var deliveredByTraffic = result.Allocations
+            .Where(allocation => !string.IsNullOrWhiteSpace(allocation.TrafficType))
+            .GroupBy(allocation => allocation.TrafficType, Comparer)
+            .ToDictionary(group => group.Key, group => group.ToList(), Comparer);
+
+        var trafficNames = definitionsByName.Keys
+            .Concat(deliveredByTraffic.Keys)
+            .Concat(result.NodeStates.Keys.Select(key => key.TrafficType).Where(name => !string.IsNullOrWhiteSpace(name)))
+            .Distinct(Comparer)
+            .OrderBy(name => name, Comparer)
+            .ToList();
+
+        return trafficNames.Select(trafficType =>
+        {
+            deliveredByTraffic.TryGetValue(trafficType, out var allocations);
+            allocations ??= [];
+            definitionsByName.TryGetValue(trafficType, out var definition);
+            var nodeStates = result.NodeStates
+                .Where(pair => Comparer.Equals(pair.Key.TrafficType, trafficType))
+                .Select(pair => pair.Value)
+                .ToList();
+
+            return new TrafficSimulationOutcome
+            {
+                TrafficType = trafficType,
+                RoutingPreference = definition?.RoutingPreference ?? allocations.FirstOrDefault()?.RoutingPreference ?? RoutingPreference.TotalCost,
+                AllocationMode = definition?.AllocationMode ?? allocations.FirstOrDefault()?.AllocationMode ?? AllocationMode.GreedyBestRoute,
+                TotalProduction = nodeStates.Sum(state => state.AvailableSupply) + allocations.Sum(allocation => allocation.Quantity),
+                TotalConsumption = nodeStates.Sum(state => state.DemandBacklog) + allocations.Sum(allocation => allocation.Quantity),
+                TotalDelivered = allocations.Sum(allocation => allocation.Quantity),
+                UnusedSupply = nodeStates.Sum(state => state.AvailableSupply),
+                UnmetDemand = nodeStates.Sum(state => state.DemandBacklog),
+                Allocations = allocations
+            };
+        }).ToList();
     }
 
     private bool RunActorsBeforeTimelineAdvance()
@@ -11270,6 +11338,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private void RaiseAutoCompleteOptionsChanged()
     {
         Raise(nameof(TrafficTypeNameOptions));
+        Raise(nameof(SankeyTrafficTypeNameOptions));
+        Raise(nameof(SankeyTrafficTypeFilterSelection));
         Raise(nameof(SubnetworkIdSuggestions));
         Raise(nameof(InterfaceNameSuggestions));
     }

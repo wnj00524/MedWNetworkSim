@@ -56,7 +56,17 @@ public sealed class CommandLineRunService
         "capacity",
         "direction",
         "one-way",
-        "bidirectional"
+        "bidirectional",
+        "agent",
+        "agent-name",
+        "kind",
+        "objective",
+        "nodes",
+        "edges",
+        "budget",
+        "risk-tolerance",
+        "cooperation-weight",
+        "ticks"
     };
 
     private readonly NetworkFileService networkFileService = new();
@@ -170,6 +180,8 @@ Examples:
                 CommandLineCommand.SetProfile => ParseSetProfileCommand(named, positional),
                 CommandLineCommand.AddEdge => ParseAddEdgeCommand(named, positional),
                 CommandLineCommand.AutoArrange => ParseAutoArrangeCommand(named, positional),
+                CommandLineCommand.AddAgent => ParseAddAgentCommand(named, positional),
+                CommandLineCommand.RunAgents => ParseRunAgentsCommand(named, positional),
                 _ => new CommandLineOptions { Command = CommandLineCommand.Help }
             };
         }
@@ -194,6 +206,8 @@ Examples:
             CommandLineCommand.SetProfile => ExecuteSetProfile(options),
             CommandLineCommand.AddEdge => ExecuteAddEdge(options),
             CommandLineCommand.AutoArrange => ExecuteAutoArrange(options),
+            CommandLineCommand.AddAgent => ExecuteAddAgent(options),
+            CommandLineCommand.RunAgents => ExecuteRunAgents(options),
             _ => throw new InvalidOperationException("Unknown CLI command.")
         };
     }
@@ -242,6 +256,14 @@ Examples:
             case "auto-arrange":
             case "arrange":
                 command = CommandLineCommand.AutoArrange;
+                return true;
+            case "add-agent":
+            case "agent":
+                command = CommandLineCommand.AddAgent;
+                return true;
+            case "run-agents":
+            case "agents":
+                command = CommandLineCommand.RunAgents;
                 return true;
             default:
                 command = default;

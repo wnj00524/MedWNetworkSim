@@ -1,39 +1,105 @@
 using SkiaSharp;
 
 namespace MedWNetworkSim.Rendering.VisualAnalytics.Sankey;
+/// <summary>
+/// Represents the sankey render node component.
+/// </summary>
 
 public sealed class SankeyRenderNode
 {
+    /// <summary>
+    /// Gets or sets the unique identifier for this instance.
+    /// </summary>
     public required string Id { get; init; }
+    /// <summary>
+    /// Gets or sets the label.
+    /// </summary>
     public required string Label { get; init; }
+    /// <summary>
+    /// Gets or sets the kind.
+    /// </summary>
     public required string Kind { get; init; }
 }
+/// <summary>
+/// Represents the sankey render link component.
+/// </summary>
 
 public sealed class SankeyRenderLink
 {
+    /// <summary>
+    /// Gets or sets the unique identifier for this instance.
+    /// </summary>
     public required string Id { get; init; }
+    /// <summary>
+    /// Gets or sets the source node id.
+    /// </summary>
     public required string SourceNodeId { get; init; }
+    /// <summary>
+    /// Gets or sets the target node id.
+    /// </summary>
     public required string TargetNodeId { get; init; }
+    /// <summary>
+    /// Gets or sets the traffic type.
+    /// </summary>
     public required string TrafficType { get; init; }
+    /// <summary>
+    /// Gets or sets the value.
+    /// </summary>
     public required double Value { get; init; }
+    /// <summary>
+    /// Gets or sets the route signature.
+    /// </summary>
     public string? RouteSignature { get; init; }
+    /// <summary>
+    /// Gets the collection of route edge ids associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> RouteEdgeIds { get; init; } = [];
+    /// <summary>
+    /// Gets a value indicating whether is unmet demand is enabled or active.
+    /// </summary>
     public bool IsUnmetDemand { get; init; }
 }
+/// <summary>
+/// Represents the sankey render diagram component.
+/// </summary>
 
 public sealed class SankeyRenderDiagram
 {
+    /// <summary>
+    /// Gets the collection of nodes associated with this entity.
+    /// </summary>
     public IReadOnlyList<SankeyRenderNode> Nodes { get; init; } = [];
+    /// <summary>
+    /// Gets the collection of links associated with this entity.
+    /// </summary>
     public IReadOnlyList<SankeyRenderLink> Links { get; init; } = [];
+    /// <summary>
+    /// Gets or sets the empty state message.
+    /// </summary>
     public string EmptyStateMessage { get; init; } = string.Empty;
 }
+/// <summary>
+/// Represents the sankey layout node component.
+/// </summary>
 
 public sealed class SankeyLayoutNode { public required SankeyRenderNode Node { get; init; } public required SKRect Bounds { get; init; } }
+/// <summary>
+/// Represents the sankey layout link component.
+/// </summary>
 public sealed class SankeyLayoutLink { public required SankeyRenderLink Link { get; init; } public required SKPoint Start { get; init; } public required SKPoint End { get; init; } public required float Thickness { get; init; } public required SKPath Path { get; init; } }
+/// <summary>
+/// Represents the sankey layout result component.
+/// </summary>
 public sealed class SankeyLayoutResult { public IReadOnlyList<SankeyLayoutNode> Nodes { get; init; } = []; public IReadOnlyList<SankeyLayoutLink> Links { get; init; } = []; public string? EmptyStateMessage { get; init; } }
+/// <summary>
+/// Represents the sankey layout engine component.
+/// </summary>
 
 public sealed class SankeyLayoutEngine
 {
+    /// <summary>
+    /// Executes the layout operation.
+    /// </summary>
     public SankeyLayoutResult Layout(SankeyRenderDiagram model, GraphSize viewport)
     {
         if (model.Nodes.Count == 0 || model.Links.Count == 0)
@@ -90,8 +156,14 @@ public sealed class SankeyLayoutEngine
         return new SankeyLayoutResult { Nodes = nodes, Links = links };
     }
 }
+/// <summary>
+/// Represents the sankey hit region component.
+/// </summary>
 
 public readonly record struct SankeyHitRegion(string? NodeId, string? LinkId, SKRect Bounds);
+/// <summary>
+/// Represents the sankey renderer component.
+/// </summary>
 
 public sealed class SankeyRenderer
 {
@@ -108,7 +180,13 @@ public sealed class SankeyRenderer
 
     private readonly SankeyLayoutEngine layoutEngine = new();
     private readonly List<SankeyHitRegion> lastHitRegions = [];
+    /// <summary>
+    /// Gets the collection of last hit regions associated with this entity.
+    /// </summary>
     public IReadOnlyList<SankeyHitRegion> LastHitRegions => lastHitRegions;
+    /// <summary>
+    /// Executes the render operation.
+    /// </summary>
 
     public SankeyLayoutResult Render(SKCanvas canvas, SankeyRenderDiagram model, GraphSize viewport, string? focusedNodeId = null, string? focusedLinkId = null)
     {
@@ -204,6 +282,9 @@ public sealed class SankeyRenderer
 
         return layout;
     }
+    /// <summary>
+    /// Executes the hit test operation.
+    /// </summary>
 
     public SankeyHitRegion? HitTest(GraphPoint point) => lastHitRegions.LastOrDefault(r => r.Bounds.Contains((float)point.X, (float)point.Y));
 

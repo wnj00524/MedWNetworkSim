@@ -3,6 +3,9 @@ using System.Text.Json.Serialization;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
+/// <summary>
+/// Represents a data model for network clone utility entities within the simulation.
+/// </summary>
 
 public static class NetworkModelCloneUtility
 {
@@ -11,6 +14,9 @@ public static class NetworkModelCloneUtility
         PropertyNamingPolicy = null,
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
     };
+    /// <summary>
+    /// Executes the clone operation.
+    /// </summary>
 
     public static NetworkModel Clone(NetworkModel network)
     {

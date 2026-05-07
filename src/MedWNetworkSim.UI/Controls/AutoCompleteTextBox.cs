@@ -11,6 +11,9 @@ using Avalonia.Threading;
 using System.Windows.Input;
 
 namespace MedWNetworkSim.UI.Controls;
+/// <summary>
+/// Represents the auto complete text box component.
+/// </summary>
 
 public sealed class AutoCompleteTextBox : UserControl
 {
@@ -129,6 +132,9 @@ public sealed class AutoCompleteTextBox : UserControl
         get => GetValue(RestoreTextOnEscapeProperty);
         set => SetValue(RestoreTextOnEscapeProperty, value);
     }
+    /// <summary>
+    /// Executes the on property changed operation.
+    /// </summary>
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
@@ -144,6 +150,9 @@ public sealed class AutoCompleteTextBox : UserControl
             AttachSuggestionsSource(change.GetNewValue<IEnumerable<string>?>());
         }
     }
+    /// <summary>
+    /// Executes the on detached from visual tree operation.
+    /// </summary>
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {

@@ -1,14 +1,26 @@
 namespace MedWNetworkSim.App.Geo;
+/// <summary>
+/// Represents the geo coordinate component.
+/// </summary>
 
 public readonly record struct GeoCoordinate(double Latitude, double Longitude);
+/// <summary>
+/// Represents the geo projection viewport component.
+/// </summary>
 
 public readonly record struct GeoProjectionViewport(double Width, double Height, double CenterLatitude, double CenterLongitude, double Zoom);
+/// <summary>
+/// Provides business logic and operations related to igeo projection.
+/// </summary>
 
 public interface IGeoProjectionService
 {
     (double X, double Y) Project(GeoCoordinate coordinate, GeoProjectionViewport viewport);
     GeoCoordinate Unproject(double x, double y, GeoProjectionViewport viewport);
 }
+/// <summary>
+/// Provides business logic and operations related to web mercator projection.
+/// </summary>
 
 public sealed class WebMercatorProjectionService : IGeoProjectionService
 {
@@ -30,6 +42,9 @@ public sealed class WebMercatorProjectionService : IGeoProjectionService
 
         return ((xMeters - center.X) * scale + (viewport.Width / 2d), (center.Y - yMeters) * scale + (viewport.Height / 2d));
     }
+    /// <summary>
+    /// Executes the unproject operation.
+    /// </summary>
 
     public GeoCoordinate Unproject(double x, double y, GeoProjectionViewport viewport)
     {

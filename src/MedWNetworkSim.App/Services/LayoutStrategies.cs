@@ -1,20 +1,38 @@
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
+/// <summary>
+/// Represents the graph layout options component.
+/// </summary>
 
 public sealed class GraphLayoutOptions
 {
+    /// <summary>
+    /// Gets or sets the node spacing.
+    /// </summary>
     public double NodeSpacing { get; set; } = 80;
+    /// <summary>
+    /// Gets a value indicating whether preserve pinned nodes is enabled or active.
+    /// </summary>
 
     public bool PreservePinnedNodes { get; set; } = true;
+    /// <summary>
+    /// Gets a value indicating whether fit to viewport is enabled or active.
+    /// </summary>
 
     public bool FitToViewport { get; set; } = true;
 }
+/// <summary>
+/// Represents the graph layout result component.
+/// </summary>
 
 public sealed class GraphLayoutResult
 {
     public Dictionary<string, (double X, double Y)> Positions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
+/// <summary>
+/// Defines the contract and required members for ilayout strategy implementations.
+/// </summary>
 
 public interface ILayoutStrategy
 {
@@ -22,10 +40,19 @@ public interface ILayoutStrategy
 
     GraphLayoutResult Layout(NetworkModel network, GraphLayoutOptions options);
 }
+/// <summary>
+/// Represents the force directed layout strategy component.
+/// </summary>
 
 public sealed class ForceDirectedLayoutStrategy : ILayoutStrategy
 {
+    /// <summary>
+    /// Gets or sets the name.
+    /// </summary>
     public string Name => "Force Directed";
+    /// <summary>
+    /// Executes the layout operation.
+    /// </summary>
 
     public GraphLayoutResult Layout(NetworkModel network, GraphLayoutOptions options)
     {
@@ -40,10 +67,19 @@ public sealed class ForceDirectedLayoutStrategy : ILayoutStrategy
         return result;
     }
 }
+/// <summary>
+/// Represents the hierarchical supply chain layout strategy component.
+/// </summary>
 
 public sealed class HierarchicalSupplyChainLayoutStrategy : ILayoutStrategy
 {
+    /// <summary>
+    /// Gets or sets the name.
+    /// </summary>
     public string Name => "Hierarchical Supply Chain";
+    /// <summary>
+    /// Executes the layout operation.
+    /// </summary>
 
     public GraphLayoutResult Layout(NetworkModel network, GraphLayoutOptions options)
     {
@@ -57,10 +93,19 @@ public sealed class HierarchicalSupplyChainLayoutStrategy : ILayoutStrategy
         return result;
     }
 }
+/// <summary>
+/// Represents the geographic layout strategy component.
+/// </summary>
 
 public sealed class GeographicLayoutStrategy : ILayoutStrategy
 {
+    /// <summary>
+    /// Gets or sets the name.
+    /// </summary>
     public string Name => "Geographic";
+    /// <summary>
+    /// Executes the layout operation.
+    /// </summary>
 
     public GraphLayoutResult Layout(NetworkModel network, GraphLayoutOptions options)
     {

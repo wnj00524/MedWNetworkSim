@@ -2820,6 +2820,9 @@ static void ScenarioBX_DemandCsvImporterValidatesRows()
 
     AssertTrue(failed, "BX negative demand is rejected");
 }
+/// <summary>
+/// Represents the equivalent osm fixture component.
+/// </summary>
 
 sealed class EquivalentOsmFixture : IDisposable
 {
@@ -2829,10 +2832,19 @@ sealed class EquivalentOsmFixture : IDisposable
         OsmPath = osmPath;
         PbfPath = pbfPath;
     }
+    /// <summary>
+    /// Gets or sets the directory path.
+    /// </summary>
 
     public string DirectoryPath { get; }
+    /// <summary>
+    /// Gets or sets the osm path.
+    /// </summary>
 
     public string OsmPath { get; }
+    /// <summary>
+    /// Gets or sets the pbf path.
+    /// </summary>
 
     public string PbfPath { get; }
 
@@ -2847,9 +2859,18 @@ sealed class EquivalentOsmFixture : IDisposable
 
 file sealed class CallbackScheduledEvent(double time, Action callback) : ISimulationScheduledEvent
 {
+    /// <summary>
+    /// Gets or sets the time.
+    /// </summary>
     public double Time => time;
+    /// <summary>
+    /// Gets or sets the name.
+    /// </summary>
 
     public string Name => "callback";
+    /// <summary>
+    /// Executes the primary operation of this component.
+    /// </summary>
 
     public void Execute(SimulationContext context)
     {

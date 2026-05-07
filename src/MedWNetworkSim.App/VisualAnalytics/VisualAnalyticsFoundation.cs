@@ -3,6 +3,9 @@ using MedWNetworkSim.App.Services;
 using MedWNetworkSim.Presentation;
 
 namespace MedWNetworkSim.App.VisualAnalytics;
+/// <summary>
+/// Specifies the visualisation mode.
+/// </summary>
 
 public enum VisualisationMode
 {
@@ -12,14 +15,32 @@ public enum VisualisationMode
     Map,
     ScenarioDiff
 }
+/// <summary>
+/// Represents the visual analytics snapshot component.
+/// </summary>
 
 public sealed class VisualAnalyticsSnapshot
 {
+    /// <summary>
+    /// Gets or sets the network.
+    /// </summary>
     public required NetworkModel Network { get; init; }
+    /// <summary>
+    /// Gets the collection of traffic outcomes associated with this entity.
+    /// </summary>
     public required IReadOnlyList<TrafficSimulationOutcome> TrafficOutcomes { get; init; }
+    /// <summary>
+    /// Gets the collection of consumer costs associated with this entity.
+    /// </summary>
     public required IReadOnlyList<ConsumerCostSummary> ConsumerCosts { get; init; }
+    /// <summary>
+    /// Gets or sets the period.
+    /// </summary>
     public required int Period { get; init; }
 }
+/// <summary>
+/// Represents the visualisation state component.
+/// </summary>
 
 public sealed class VisualisationState : ObservableObject
 {

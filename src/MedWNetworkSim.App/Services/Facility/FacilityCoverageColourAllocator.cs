@@ -1,6 +1,9 @@
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services.Facility;
+/// <summary>
+/// Represents the facility coverage colour allocator component.
+/// </summary>
 
 public sealed class FacilityCoverageColourAllocator
 {
@@ -17,6 +20,9 @@ public sealed class FacilityCoverageColourAllocator
         new("#BE123C", "#FFE4E6", "dash"),
         new("#4D7C0F", "#ECFCCB", "grid")
     ];
+    /// <summary>
+    /// Executes the allocate operation.
+    /// </summary>
 
     public IReadOnlyDictionary<string, FacilityCoverageStyle> Allocate(
         NetworkModel network,
@@ -109,12 +115,21 @@ public sealed class FacilityCoverageColourAllocator
     private static string GetNodeName(NetworkModel network, string nodeId) =>
         network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, nodeId))?.Name ?? nodeId;
 }
+/// <summary>
+/// Represents the facility coverage style component.
+/// </summary>
 
 public sealed record FacilityCoverageStyle(
     string FillColorHex,
     string StrokeColorHex,
     string PatternName)
 {
+    /// <summary>
+    /// Gets or sets the facility node id.
+    /// </summary>
     public string FacilityNodeId { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the legend label.
+    /// </summary>
     public string LegendLabel { get; init; } = string.Empty;
 }

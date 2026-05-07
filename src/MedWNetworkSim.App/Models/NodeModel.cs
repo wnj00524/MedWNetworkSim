@@ -5,7 +5,10 @@ using System.Text.Json.Serialization;
 namespace MedWNetworkSim.App.Models;
 
 /// <summary>
-/// Represents a node in the network graph.
+/// Represents a discrete physical or logical point within the network simulation graph.
+/// Nodes serve as origins, destinations, or intermediate transfer points for moving traffic flows.
+/// They encapsulate the fundamental spatial definitions (X, Y) and operational logic such as capacities,
+/// production, and consumption parameters for various simulation models.
 /// </summary>
 public sealed class NodeModel
 {
@@ -134,6 +137,9 @@ public sealed class NodeModel
     /// Gets or sets the per-traffic roles and quantities for this node.
     /// </summary>
     public List<NodeTrafficProfile> TrafficProfiles { get; set; } = [];
+    /// <summary>
+    /// Gets a value indicating whether is composite subnetwork is enabled or active.
+    /// </summary>
 
     [JsonIgnore]
     public bool IsCompositeSubnetwork => NodeKind == NodeKind.CompositeSubnetwork;

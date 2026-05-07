@@ -3,17 +3,32 @@ using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
 
+/// <summary>
+/// An advanced simulation engine orchestrating dynamic, multi-period network operations over time.
+/// While the standard <see cref="NetworkSimulationEngine"/> resolves immediate routing, this temporal engine manages chronological events,
+/// long-running processes (in-flight movements), storage backlogs, scenario progression across multiple time windows,
+/// and adaptive routing strategies.
+/// </summary>
 public sealed class TemporalNetworkSimulationEngine
 {
     private readonly SimulationClock clock = new();
     private readonly ISimulationEventQueue eventQueue = new SimulationEventQueue();
+    /// <summary>
+    /// Gets or sets the clock.
+    /// </summary>
 
     public SimulationClock Clock => clock;
+    /// <summary>
+    /// Gets or sets the event queue.
+    /// </summary>
 
     public ISimulationEventQueue EventQueue => eventQueue;
     private const double Epsilon = 0.000001d;
     private const double PerishabilityPriorityBidFactor = 100d;
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+    /// <summary>
+    /// Executes the initialize operation.
+    /// </summary>
 
     public TemporalSimulationState Initialize(NetworkModel network)
     {
@@ -31,11 +46,17 @@ public sealed class TemporalNetworkSimulationEngine
 
         return state;
     }
+    /// <summary>
+    /// Executes the advance operation.
+    /// </summary>
 
     public TemporalSimulationStepResult Advance(NetworkModel network, TemporalSimulationState? currentState)
     {
         return Advance(network, currentState, new SimulationRunOptions());
     }
+    /// <summary>
+    /// Executes the advance operation.
+    /// </summary>
 
     public TemporalSimulationStepResult Advance(NetworkModel network, TemporalSimulationState? currentState, SimulationRunOptions options)
     {
@@ -99,7 +120,7 @@ public sealed class TemporalNetworkSimulationEngine
         var edgeFlowById = new Dictionary<string, EdgeFlowVisualSummary>(Comparer);
         var nodeFlowById = new Dictionary<string, NodeFlowVisualSummary>(Comparer);
 
-          var newlyStartedMovements = new List<TemporalInFlightMovement>();
+        var newlyStartedMovements = new List<TemporalInFlightMovement>();
 
         foreach (var allocation in plannedAllocations)
         {
@@ -123,7 +144,7 @@ public sealed class TemporalNetworkSimulationEngine
             newlyStartedMovements.Add(movement);
         }
 
-        
+
 
         foreach (var movement in movements.ToList())
         {
@@ -1795,6 +1816,9 @@ public sealed class TemporalNetworkSimulationEngine
         accumulator.Add(cause, quantity, weight);
         pressureEvents.Add(new PressureEvent(period, edgeId, IsEdge: true, trafficType, cause, quantity, quantity * weight, string.Empty));
     }
+    /// <summary>
+    /// Retrieves the effective period based on the provided parameters.
+    /// </summary>
 
     public static int GetEffectivePeriod(int absolutePeriod, int? loopLength)
     {
@@ -2231,20 +2255,44 @@ public sealed class TemporalNetworkSimulationEngine
             _ => time + cost
         };
     }
+    /// <summary>
+    /// Represents the temporal simulation state component.
+    /// </summary>
 
     public sealed class TemporalSimulationState
     {
+        /// <summary>
+        /// Gets or sets the current period.
+        /// </summary>
         public int CurrentPeriod { get; set; }
+        /// <summary>
+        /// Gets or sets the node states.
+        /// </summary>
 
         public Dictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> NodeStates { get; } = new(TemporalNodeTrafficKey.Comparer);
+        /// <summary>
+        /// Gets the collection of in flight movements associated with this entity.
+        /// </summary>
 
         public List<TemporalInFlightMovement> InFlightMovements { get; } = [];
+        /// <summary>
+        /// Gets or sets the occupied edge capacity.
+        /// </summary>
 
         public Dictionary<string, double> OccupiedEdgeCapacity { get; } = new(Comparer);
+        /// <summary>
+        /// Gets or sets the occupied edge traffic capacity.
+        /// </summary>
 
         public Dictionary<EdgeTrafficResourceKey, double> OccupiedEdgeTrafficCapacity { get; } = new(EdgeTrafficResourceKey.Comparer);
+        /// <summary>
+        /// Gets or sets the occupied transhipment capacity.
+        /// </summary>
 
         public Dictionary<string, double> OccupiedTranshipmentCapacity { get; } = new(Comparer);
+        /// <summary>
+        /// Retrieves the or create node traffic state based on the provided parameters.
+        /// </summary>
 
         public TemporalNodeTrafficState GetOrCreateNodeTrafficState(string nodeId, string trafficType)
         {
@@ -2258,6 +2306,9 @@ public sealed class TemporalNetworkSimulationEngine
             return state;
         }
     }
+    /// <summary>
+    /// Represents the temporal simulation step result component.
+    /// </summary>
 
     public sealed record TemporalSimulationStepResult(
         int Period,
@@ -2272,12 +2323,24 @@ public sealed class TemporalNetworkSimulationEngine
         IReadOnlyDictionary<string, NodePressureSnapshot> NodePressureById,
         IReadOnlyDictionary<string, EdgePressureSnapshot> EdgePressureById,
         IReadOnlyList<PressureEvent> PressureEvents);
+    /// <summary>
+    /// Represents the temporal node state snapshot component.
+    /// </summary>
 
     public readonly record struct TemporalNodeStateSnapshot(double AvailableSupply, double DemandBacklog, double StoreInventory);
+    /// <summary>
+    /// Represents the temporal node traffic key component.
+    /// </summary>
 
     public readonly record struct TemporalNodeTrafficKey(string NodeId, string TrafficType)
     {
+        /// <summary>
+        /// Gets or sets the comparer.
+        /// </summary>
         public static IEqualityComparer<TemporalNodeTrafficKey> Comparer { get; } = new TemporalNodeTrafficKeyComparer();
+        /// <summary>
+        /// Represents the temporal node traffic key comparer component.
+        /// </summary>
 
         private sealed class TemporalNodeTrafficKeyComparer : IEqualityComparer<TemporalNodeTrafficKey>
         {
@@ -2295,43 +2358,79 @@ public sealed class TemporalNetworkSimulationEngine
             }
         }
     }
+    /// <summary>
+    /// Represents the temporal node traffic state component.
+    /// </summary>
 
     public sealed class TemporalNodeTrafficState
     {
         private readonly List<TemporalQuantityBatch> availableSupplyBatches = [];
         private readonly List<TemporalQuantityBatch> storeInventoryBatches = [];
+        /// <summary>
+        /// Gets or sets the available supply.
+        /// </summary>
 
         public double AvailableSupply => availableSupplyBatches.Sum(batch => batch.Quantity);
+        /// <summary>
+        /// Gets or sets the available supply unit cost per unit.
+        /// </summary>
 
         public double AvailableSupplyUnitCostPerUnit => GetWeightedUnitCost(availableSupplyBatches);
+        /// <summary>
+        /// Gets or sets the demand backlog.
+        /// </summary>
 
         public double DemandBacklog { get; set; }
+        /// <summary>
+        /// Gets or sets the store inventory.
+        /// </summary>
 
         public double StoreInventory => storeInventoryBatches.Sum(batch => batch.Quantity);
+        /// <summary>
+        /// Gets or sets the store inventory unit cost per unit.
+        /// </summary>
 
         public double StoreInventoryUnitCostPerUnit => GetWeightedUnitCost(storeInventoryBatches);
+        /// <summary>
+        /// Gets or sets the reserved store receipts.
+        /// </summary>
 
         public double ReservedStoreReceipts { get; set; }
+        /// <summary>
+        /// Executes the blend available supply operation.
+        /// </summary>
 
         public void BlendAvailableSupply(double quantity, double unitCost, int? remainingLifePeriods = null)
         {
             AddBatch(availableSupplyBatches, quantity, unitCost, remainingLifePeriods);
         }
+        /// <summary>
+        /// Executes the blend store inventory operation.
+        /// </summary>
 
         public void BlendStoreInventory(double quantity, double unitCost, int? remainingLifePeriods = null)
         {
             AddBatch(storeInventoryBatches, quantity, unitCost, remainingLifePeriods);
         }
+        /// <summary>
+        /// Executes the consume available supply operation.
+        /// </summary>
 
         public double ConsumeAvailableSupply(double quantity)
         {
             return ConsumeFromBatches(availableSupplyBatches, quantity);
         }
+        /// <summary>
+        /// Executes the consume store inventory operation.
+        /// </summary>
 
         public double ConsumeStoreInventory(double quantity)
         {
             return ConsumeFromBatches(storeInventoryBatches, quantity);
         }
+        /// <summary>
+        /// Executes the advance perishability operation.
+        /// </summary>
 
         public TemporalPerishabilityDelta AdvancePerishability()
         {
@@ -2340,6 +2439,9 @@ public sealed class TemporalNetworkSimulationEngine
             ReservedStoreReceipts = Math.Max(0d, Math.Min(ReservedStoreReceipts, StoreInventory));
             return new TemporalPerishabilityDelta(expiredAvailable, expiredStore);
         }
+        /// <summary>
+        /// Executes the clone operation.
+        /// </summary>
 
         public TemporalNodeTrafficState Clone()
         {
@@ -2461,6 +2563,9 @@ public sealed class TemporalNetworkSimulationEngine
             return quantity <= Epsilon ? 0d : cost / quantity;
         }
     }
+    /// <summary>
+    /// Represents the temporal quantity batch component.
+    /// </summary>
 
     private sealed class TemporalQuantityBatch
     {
@@ -2470,14 +2575,29 @@ public sealed class TemporalNetworkSimulationEngine
         {
             Sequence = Interlocked.Increment(ref nextSequence);
         }
+        /// <summary>
+        /// Gets or sets the sequence.
+        /// </summary>
 
         public long Sequence { get; }
+        /// <summary>
+        /// Gets or sets the quantity.
+        /// </summary>
 
         public double Quantity { get; set; }
+        /// <summary>
+        /// Gets or sets the unit cost.
+        /// </summary>
 
         public double UnitCost { get; set; }
+        /// <summary>
+        /// Gets or sets the remaining life periods.
+        /// </summary>
 
         public int? RemainingLifePeriods { get; set; }
+        /// <summary>
+        /// Executes the clone operation.
+        /// </summary>
 
         public TemporalQuantityBatch Clone()
         {
@@ -2489,30 +2609,69 @@ public sealed class TemporalNetworkSimulationEngine
             };
         }
     }
+    /// <summary>
+    /// Represents the temporal in flight movement component.
+    /// </summary>
 
     public sealed class TemporalInFlightMovement
     {
+        /// <summary>
+        /// Gets or sets the traffic type.
+        /// </summary>
         public string TrafficType { get; init; } = string.Empty;
+        /// <summary>
+        /// Gets or sets the quantity.
+        /// </summary>
 
         public double Quantity { get; init; }
+        /// <summary>
+        /// Gets or sets the source unit cost per unit.
+        /// </summary>
 
         public double SourceUnitCostPerUnit { get; init; }
+        /// <summary>
+        /// Gets or sets the landed unit cost per unit.
+        /// </summary>
 
         public double LandedUnitCostPerUnit { get; init; }
+        /// <summary>
+        /// Gets the collection of path node ids associated with this entity.
+        /// </summary>
 
         public List<string> PathNodeIds { get; init; } = [];
+        /// <summary>
+        /// Gets the collection of path node names associated with this entity.
+        /// </summary>
 
         public List<string> PathNodeNames { get; init; } = [];
+        /// <summary>
+        /// Gets the collection of path edge ids associated with this entity.
+        /// </summary>
 
         public List<string> PathEdgeIds { get; init; } = [];
+        /// <summary>
+        /// Gets or sets the current edge index.
+        /// </summary>
 
         public int CurrentEdgeIndex { get; set; }
+        /// <summary>
+        /// Gets or sets the remaining periods on current edge.
+        /// </summary>
 
         public int RemainingPeriodsOnCurrentEdge { get; set; }
+        /// <summary>
+        /// Gets a value indicating whether is waiting between edges is enabled or active.
+        /// </summary>
 
         public bool IsWaitingBetweenEdges { get; set; }
+        /// <summary>
+        /// Gets or sets the remaining shelf life periods.
+        /// </summary>
 
         public int? RemainingShelfLifePeriods { get; set; }
+        /// <summary>
+        /// Executes the clone operation.
+        /// </summary>
 
         public TemporalInFlightMovement Clone()
         {
@@ -2532,16 +2691,31 @@ public sealed class TemporalNetworkSimulationEngine
             };
         }
     }
+    /// <summary>
+    /// Represents the edge flow visual summary component.
+    /// </summary>
 
     public readonly record struct EdgeFlowVisualSummary(double ForwardQuantity, double ReverseQuantity)
     {
+        /// <summary>
+        /// Gets or sets the empty.
+        /// </summary>
         public static EdgeFlowVisualSummary Empty => new(0d, 0d);
     }
+    /// <summary>
+    /// Represents the node flow visual summary component.
+    /// </summary>
 
     public readonly record struct NodeFlowVisualSummary(double OutboundQuantity, double InboundQuantity)
     {
+        /// <summary>
+        /// Gets or sets the empty.
+        /// </summary>
         public static NodeFlowVisualSummary Empty => new(0d, 0d);
     }
+    /// <summary>
+    /// Specifies the pressure cause kind.
+    /// </summary>
 
     public enum PressureCauseKind
     {
@@ -2555,6 +2729,9 @@ public sealed class TemporalNetworkSimulationEngine
         PerishedInTransit,
         TimelineShock
     }
+    /// <summary>
+    /// Represents the pressure event component.
+    /// </summary>
 
     public readonly record struct PressureEvent(
         int Period,
@@ -2565,6 +2742,9 @@ public sealed class TemporalNetworkSimulationEngine
         double Quantity,
         double WeightedImpact,
         string Detail);
+    /// <summary>
+    /// Represents the node pressure snapshot component.
+    /// </summary>
 
     public readonly record struct NodePressureSnapshot(
         double Score,
@@ -2572,6 +2752,9 @@ public sealed class TemporalNetworkSimulationEngine
         double ExpiredQuantity,
         IReadOnlyDictionary<PressureCauseKind, double> CauseWeights,
         string TopCause);
+    /// <summary>
+    /// Represents the edge pressure snapshot component.
+    /// </summary>
 
     public readonly record struct EdgePressureSnapshot(
         double Score,
@@ -2580,12 +2763,21 @@ public sealed class TemporalNetworkSimulationEngine
         double Utilization,
         IReadOnlyDictionary<PressureCauseKind, double> CauseWeights,
         string TopCause);
+    /// <summary>
+    /// Represents the temporal perishability delta component.
+    /// </summary>
 
     public readonly record struct TemporalPerishabilityDelta(double ExpiredAvailableSupply, double ExpiredStoreInventory);
+    /// <summary>
+    /// Represents the pressure accumulator component.
+    /// </summary>
 
     private sealed class PressureAccumulator
     {
         private readonly Dictionary<PressureCauseKind, double> weightedByCause = [];
+        /// <summary>
+        /// Executes the add operation.
+        /// </summary>
 
         public void Add(PressureCauseKind cause, double quantity, double weight)
         {
@@ -2596,6 +2788,9 @@ public sealed class TemporalNetworkSimulationEngine
 
             weightedByCause[cause] = weightedByCause.GetValueOrDefault(cause, 0d) + (quantity * weight);
         }
+        /// <summary>
+        /// Executes the to node snapshot operation.
+        /// </summary>
 
         public NodePressureSnapshot ToNodeSnapshot()
         {
@@ -2609,6 +2804,9 @@ public sealed class TemporalNetworkSimulationEngine
                 : weightedByCause.MaxBy(pair => pair.Value).Key.ToString();
             return new NodePressureSnapshot(score, backlogQuantity, expiredQuantity, weightedByCause, topCause);
         }
+        /// <summary>
+        /// Executes the to edge snapshot operation.
+        /// </summary>
 
         public EdgePressureSnapshot ToEdgeSnapshot()
         {
@@ -2621,16 +2819,31 @@ public sealed class TemporalNetworkSimulationEngine
             return new EdgePressureSnapshot(score, blockedQuantity, expiredInTransitQuantity, Utilization: 0d, weightedByCause, topCause);
         }
     }
+    /// <summary>
+    /// Represents the graph arc component.
+    /// </summary>
 
     private sealed record GraphArc(string EdgeId, string FromNodeId, string ToNodeId, double Time, double Cost);
+    /// <summary>
+    /// Represents the previous step component.
+    /// </summary>
 
     private sealed record PreviousStep(string PreviousNodeId, GraphArc Arc);
+    /// <summary>
+    /// Represents the available resource capacity component.
+    /// </summary>
 
     private sealed record AvailableResourceCapacity(
         IReadOnlyDictionary<string, double> EdgeCapacityById,
         IReadOnlyDictionary<string, double> TranshipmentCapacityByNodeId);
+    /// <summary>
+    /// Represents the production result component.
+    /// </summary>
 
     private readonly record struct ProductionResult(double OutputQuantity, double InheritedUnitCost);
+    /// <summary>
+    /// Represents the route candidate component.
+    /// </summary>
 
     private sealed record RouteCandidate(
         TemporalTrafficContext Context,
@@ -2643,6 +2856,9 @@ public sealed class TemporalNetworkSimulationEngine
         double TransitCostPerUnit,
         double TotalScore,
         double CapacityBidPerUnit);
+    /// <summary>
+    /// Represents the temporal traffic context component.
+    /// </summary>
 
     private sealed record TemporalTrafficContext(
         string TrafficType,

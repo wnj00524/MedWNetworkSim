@@ -2,31 +2,70 @@ using SkiaSharp;
 using System.Globalization;
 
 namespace MedWNetworkSim.Rendering;
+/// <summary>
+/// Represents the graph point component.
+/// </summary>
 
 public readonly record struct GraphPoint(double X, double Y)
 {
     public static GraphPoint operator +(GraphPoint left, GraphVector right) => new(left.X + right.X, left.Y + right.Y);
     public static GraphVector operator -(GraphPoint left, GraphPoint right) => new(left.X - right.X, left.Y - right.Y);
 }
+/// <summary>
+/// Represents the graph vector component.
+/// </summary>
 
 public readonly record struct GraphVector(double X, double Y)
 {
+    /// <summary>
+    /// Gets or sets the length.
+    /// </summary>
     public double Length => Math.Sqrt((X * X) + (Y * Y));
 }
+/// <summary>
+/// Represents the graph size component.
+/// </summary>
 
 public readonly record struct GraphSize(double Width, double Height);
+/// <summary>
+/// Represents the graph rect component.
+/// </summary>
 
 public readonly record struct GraphRect(double X, double Y, double Width, double Height)
 {
+    /// <summary>
+    /// Gets or sets the left.
+    /// </summary>
     public double Left => X;
+    /// <summary>
+    /// Gets or sets the top.
+    /// </summary>
     public double Top => Y;
+    /// <summary>
+    /// Gets or sets the right.
+    /// </summary>
     public double Right => X + Width;
+    /// <summary>
+    /// Gets or sets the bottom.
+    /// </summary>
     public double Bottom => Y + Height;
+    /// <summary>
+    /// Gets or sets the center x.
+    /// </summary>
     public double CenterX => X + (Width / 2d);
+    /// <summary>
+    /// Gets or sets the center y.
+    /// </summary>
     public double CenterY => Y + (Height / 2d);
+    /// <summary>
+    /// Executes the contains operation.
+    /// </summary>
 
     public bool Contains(GraphPoint point) =>
         point.X >= Left && point.X <= Right && point.Y >= Top && point.Y <= Bottom;
+    /// <summary>
+    /// Executes the from points operation.
+    /// </summary>
 
     public static GraphRect FromPoints(GraphPoint a, GraphPoint b)
     {
@@ -36,17 +75,32 @@ public readonly record struct GraphRect(double X, double Y, double Width, double
         var bottom = Math.Max(a.Y, b.Y);
         return new GraphRect(left, top, right - left, bottom - top);
     }
+    /// <summary>
+    /// Gets or sets the empty.
+    /// </summary>
 
     public static GraphRect Empty => new(0d, 0d, 0d, 0d);
 }
+/// <summary>
+/// Represents the graph viewport component.
+/// </summary>
 
 public sealed class GraphViewport
 {
     public const double MinimumZoom = 0.18d;
     public const double MaximumZoom = 3.75d;
+    /// <summary>
+    /// Gets or sets the center.
+    /// </summary>
 
     public GraphPoint Center { get; private set; } = new(0d, 0d);
+    /// <summary>
+    /// Gets or sets the zoom.
+    /// </summary>
     public double Zoom { get; private set; } = 1d;
+    /// <summary>
+    /// Executes the screen to world operation.
+    /// </summary>
 
     public GraphPoint ScreenToWorld(GraphPoint screenPoint, GraphSize viewportSize)
     {
@@ -54,6 +108,9 @@ public sealed class GraphViewport
         var worldTop = Center.Y - (viewportSize.Height / (2d * Zoom));
         return new GraphPoint(worldLeft + (screenPoint.X / Zoom), worldTop + (screenPoint.Y / Zoom));
     }
+    /// <summary>
+    /// Executes the world to screen operation.
+    /// </summary>
 
     public GraphPoint WorldToScreen(GraphPoint worldPoint, GraphSize viewportSize)
     {
@@ -61,11 +118,17 @@ public sealed class GraphViewport
         var worldTop = Center.Y - (viewportSize.Height / (2d * Zoom));
         return new GraphPoint((worldPoint.X - worldLeft) * Zoom, (worldPoint.Y - worldTop) * Zoom);
     }
+    /// <summary>
+    /// Executes the pan operation.
+    /// </summary>
 
     public void Pan(GraphVector worldDelta)
     {
         Center = new GraphPoint(Center.X - worldDelta.X, Center.Y - worldDelta.Y);
     }
+    /// <summary>
+    /// Executes the zoom at operation.
+    /// </summary>
 
     public void ZoomAt(GraphPoint anchorScreen, GraphSize viewportSize, double zoomFactor)
     {
@@ -74,6 +137,9 @@ public sealed class GraphViewport
         var after = ScreenToWorld(anchorScreen, viewportSize);
         Center = new GraphPoint(Center.X + (before.X - after.X), Center.Y + (before.Y - after.Y));
     }
+    /// <summary>
+    /// Executes the reset operation.
+    /// </summary>
 
     public void Reset(GraphRect contentBounds, GraphSize viewportSize, double padding = 140d)
     {
@@ -85,6 +151,9 @@ public sealed class GraphViewport
         Center = new GraphPoint(contentBounds.CenterX, contentBounds.CenterY);
     }
 }
+/// <summary>
+/// Specifies the zoom tier.
+/// </summary>
 
 public enum ZoomTier
 {
@@ -92,101 +161,326 @@ public enum ZoomTier
     Medium,
     Near
 }
+/// <summary>
+/// Represents the graph node text line component.
+/// </summary>
 
 public readonly record struct GraphNodeTextLine(string Text, bool IsEmphasized, bool IsWarning);
+/// <summary>
+/// Represents the facility coverage info component.
+/// </summary>
 
 public sealed class FacilityCoverageInfo
 {
+    /// <summary>
+    /// Gets or sets the facility node id.
+    /// </summary>
     public required string FacilityNodeId { get; init; }
+    /// <summary>
+    /// Gets or sets the facility display name.
+    /// </summary>
     public required string FacilityDisplayName { get; init; }
+    /// <summary>
+    /// Gets or sets the travel time.
+    /// </summary>
     public required double TravelTime { get; init; }
+    /// <summary>
+    /// Gets a value indicating whether is primary facility is enabled or active.
+    /// </summary>
     public required bool IsPrimaryFacility { get; init; }
 }
+/// <summary>
+/// Represents the graph node scene item component.
+/// </summary>
 
 public sealed class GraphNodeSceneItem
 {
+    /// <summary>
+    /// Gets or sets the unique identifier for this instance.
+    /// </summary>
     public required string Id { get; init; }
+    /// <summary>
+    /// Gets or sets the name.
+    /// </summary>
     public required string Name { get; set; }
+    /// <summary>
+    /// Gets or sets the type label.
+    /// </summary>
     public required string TypeLabel { get; set; }
+    /// <summary>
+    /// Gets or sets the metrics label.
+    /// </summary>
     public required string MetricsLabel { get; set; }
+    /// <summary>
+    /// Gets the collection of detail lines associated with this entity.
+    /// </summary>
     public required IReadOnlyList<GraphNodeTextLine> DetailLines { get; set; }
+    /// <summary>
+    /// Gets or sets the bounds.
+    /// </summary>
     public required GraphRect Bounds { get; set; }
+    /// <summary>
+    /// Gets or sets the fill color.
+    /// </summary>
     public required SKColor FillColor { get; set; }
+    /// <summary>
+    /// Gets or sets the stroke color.
+    /// </summary>
     public required SKColor StrokeColor { get; set; }
+    /// <summary>
+    /// Gets the collection of badges associated with this entity.
+    /// </summary>
     public required IReadOnlyList<string> Badges { get; set; }
+    /// <summary>
+    /// Gets or sets the tool tip text.
+    /// </summary>
     public string ToolTipText { get; set; } = string.Empty;
+    /// <summary>
+    /// Gets a value indicating whether has warning is enabled or active.
+    /// </summary>
     public required bool HasWarning { get; set; }
+    /// <summary>
+    /// Gets or sets the visual opacity.
+    /// </summary>
     public double VisualOpacity { get; set; } = 1d;
+    /// <summary>
+    /// Gets the collection of covering facilities associated with this entity.
+    /// </summary>
     public IReadOnlyList<FacilityCoverageInfo> CoveringFacilities { get; set; } = [];
+    /// <summary>
+    /// Gets a value indicating whether is facility covered is enabled or active.
+    /// </summary>
     public bool IsFacilityCovered { get; set; }
+    /// <summary>
+    /// Gets a value indicating whether is multi facility covered is enabled or active.
+    /// </summary>
     public bool IsMultiFacilityCovered { get; set; }
+    /// <summary>
+    /// Gets or sets the primary facility id.
+    /// </summary>
     public string? PrimaryFacilityId { get; set; }
+    /// <summary>
+    /// Gets or sets the primary facility travel time.
+    /// </summary>
     public double? PrimaryFacilityTravelTime { get; set; }
+    /// <summary>
+    /// Gets or sets the layout content key.
+    /// </summary>
     public string? LayoutContentKey { get; set; }
+    /// <summary>
+    /// Gets or sets the layout zoom tier.
+    /// </summary>
     public ZoomTier? LayoutZoomTier { get; set; }
+    /// <summary>
+    /// Gets or sets the cached layout.
+    /// </summary>
     public GraphNodeTextLayoutResult? CachedLayout { get; set; }
+    /// <summary>
+    /// Gets or sets the cached layout width.
+    /// </summary>
     public double CachedLayoutWidth { get; set; }
+    /// <summary>
+    /// Gets or sets the cached layout height.
+    /// </summary>
     public double CachedLayoutHeight { get; set; }
+    /// <summary>
+    /// Gets a value indicating whether is actor controlled is enabled or active.
+    /// </summary>
     public bool IsActorControlled { get; set; }
 }
+/// <summary>
+/// Represents the graph edge scene item component.
+/// </summary>
 
 public sealed class GraphEdgeSceneItem
 {
+    /// <summary>
+    /// Gets or sets the unique identifier for this instance.
+    /// </summary>
     public required string Id { get; init; }
+    /// <summary>
+    /// Gets or sets the from node id.
+    /// </summary>
     public required string FromNodeId { get; init; }
+    /// <summary>
+    /// Gets or sets the to node id.
+    /// </summary>
     public required string ToNodeId { get; init; }
+    /// <summary>
+    /// Gets or sets the label.
+    /// </summary>
     public required string Label { get; set; }
+    /// <summary>
+    /// Gets a value indicating whether is bidirectional is enabled or active.
+    /// </summary>
     public required bool IsBidirectional { get; set; }
+    /// <summary>
+    /// Gets or sets the capacity.
+    /// </summary>
     public required double Capacity { get; set; }
+    /// <summary>
+    /// Gets or sets the cost.
+    /// </summary>
     public required double Cost { get; set; }
+    /// <summary>
+    /// Gets or sets the time.
+    /// </summary>
     public required double Time { get; set; }
+    /// <summary>
+    /// Gets or sets the load ratio.
+    /// </summary>
     public required double LoadRatio { get; set; }
+    /// <summary>
+    /// Gets or sets the flow rate.
+    /// </summary>
     public required double FlowRate { get; set; }
+    /// <summary>
+    /// Gets or sets the tool tip text.
+    /// </summary>
     public string ToolTipText { get; set; } = string.Empty;
+    /// <summary>
+    /// Gets a value indicating whether has warning is enabled or active.
+    /// </summary>
     public required bool HasWarning { get; set; }
+    /// <summary>
+    /// Gets or sets the visual opacity.
+    /// </summary>
     public double VisualOpacity { get; set; } = 1d;
+    /// <summary>
+    /// Gets a value indicating whether is actor controlled is enabled or active.
+    /// </summary>
     public bool IsActorControlled { get; set; }
 }
+/// <summary>
+/// Represents the graph transient state component.
+/// </summary>
 
 public sealed class GraphTransientState
 {
+    /// <summary>
+    /// Gets or sets the drag start world.
+    /// </summary>
     public GraphPoint? DragStartWorld { get; set; }
+    /// <summary>
+    /// Gets or sets the drag current world.
+    /// </summary>
     public GraphPoint? DragCurrentWorld { get; set; }
+    /// <summary>
+    /// Gets or sets the connection source node id.
+    /// </summary>
     public string? ConnectionSourceNodeId { get; set; }
+    /// <summary>
+    /// Gets or sets the connection world.
+    /// </summary>
     public GraphPoint? ConnectionWorld { get; set; }
 }
+/// <summary>
+/// Represents the graph selection state component.
+/// </summary>
 
 public sealed class GraphSelectionState
 {
+    /// <summary>
+    /// Gets or sets the selected node ids.
+    /// </summary>
     public HashSet<string> SelectedNodeIds { get; } = [];
+    /// <summary>
+    /// Gets or sets the selected edge ids.
+    /// </summary>
     public HashSet<string> SelectedEdgeIds { get; } = [];
+    /// <summary>
+    /// Gets or sets the highlighted node ids.
+    /// </summary>
     public HashSet<string> HighlightedNodeIds { get; } = [];
+    /// <summary>
+    /// Gets or sets the highlighted edge ids.
+    /// </summary>
     public HashSet<string> HighlightedEdgeIds { get; } = [];
+    /// <summary>
+    /// Gets or sets the hover node id.
+    /// </summary>
     public string? HoverNodeId { get; set; }
+    /// <summary>
+    /// Gets or sets the hover edge id.
+    /// </summary>
     public string? HoverEdgeId { get; set; }
+    /// <summary>
+    /// Gets or sets the keyboard node id.
+    /// </summary>
     public string? KeyboardNodeId { get; set; }
+    /// <summary>
+    /// Gets or sets the keyboard edge id.
+    /// </summary>
     public string? KeyboardEdgeId { get; set; }
+    /// <summary>
+    /// Gets or sets the pulse node id.
+    /// </summary>
     public string? PulseNodeId { get; set; }
+    /// <summary>
+    /// Gets or sets the pulse edge id.
+    /// </summary>
     public string? PulseEdgeId { get; set; }
+    /// <summary>
+    /// Gets or sets the pulse progress.
+    /// </summary>
     public double PulseProgress { get; set; }
 }
+/// <summary>
+/// Represents the graph simulation scene state component.
+/// </summary>
 
 public sealed class GraphSimulationSceneState
 {
+    /// <summary>
+    /// Gets a value indicating whether show animated flows is enabled or active.
+    /// </summary>
     public bool ShowAnimatedFlows { get; set; } = true;
+    /// <summary>
+    /// Gets a value indicating whether reduced motion is enabled or active.
+    /// </summary>
     public bool ReducedMotion { get; set; }
+    /// <summary>
+    /// Gets a value indicating whether show depth layer is enabled or active.
+    /// </summary>
     public bool ShowDepthLayer { get; set; } = true;
+    /// <summary>
+    /// Gets or sets the animation time.
+    /// </summary>
     public double AnimationTime { get; set; }
+    /// <summary>
+    /// Gets a value indicating whether show agent overlays is enabled or active.
+    /// </summary>
     public bool ShowAgentOverlays { get; set; }
 }
+/// <summary>
+/// Represents the graph scene component.
+/// </summary>
 
 public sealed class GraphScene
 {
+    /// <summary>
+    /// Gets the collection of nodes associated with this entity.
+    /// </summary>
     public IList<GraphNodeSceneItem> Nodes { get; } = [];
+    /// <summary>
+    /// Gets the collection of edges associated with this entity.
+    /// </summary>
     public IList<GraphEdgeSceneItem> Edges { get; } = [];
+    /// <summary>
+    /// Gets or sets the selection.
+    /// </summary>
     public GraphSelectionState Selection { get; } = new();
+    /// <summary>
+    /// Gets or sets the transient.
+    /// </summary>
     public GraphTransientState Transient { get; } = new();
+    /// <summary>
+    /// Gets or sets the simulation.
+    /// </summary>
     public GraphSimulationSceneState Simulation { get; } = new();
+    /// <summary>
+    /// Retrieves the content bounds based on the provided parameters.
+    /// </summary>
 
     public GraphRect GetContentBounds()
     {
@@ -201,23 +495,47 @@ public sealed class GraphScene
         var bottom = Nodes.Max(node => node.Bounds.Bottom);
         return new GraphRect(left, top, right - left, bottom - top);
     }
+    /// <summary>
+    /// Executes the find node operation.
+    /// </summary>
 
     public GraphNodeSceneItem? FindNode(string? id) =>
         string.IsNullOrWhiteSpace(id) ? null : Nodes.FirstOrDefault(node => string.Equals(node.Id, id, StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// Executes the find edge operation.
+    /// </summary>
 
     public GraphEdgeSceneItem? FindEdge(string? id) =>
         string.IsNullOrWhiteSpace(id) ? null : Edges.FirstOrDefault(edge => string.Equals(edge.Id, id, StringComparison.OrdinalIgnoreCase));
 }
+/// <summary>
+/// Represents the graph hit result component.
+/// </summary>
 
 public readonly record struct GraphHitResult(string? NodeId, string? EdgeId);
+/// <summary>
+/// Represents the graph hit tester component.
+/// </summary>
 
 public sealed class GraphHitTester
 {
     public const double CompactNodeRadius = 7d;
+    /// <summary>
+    /// Gets or sets the node hit padding.
+    /// </summary>
 
     public double NodeHitPadding { get; set; } = 6d;
+    /// <summary>
+    /// Gets or sets the edge hit radius.
+    /// </summary>
     public double EdgeHitRadius { get; set; } = 10d;
+    /// <summary>
+    /// Gets or sets the edge handle radius.
+    /// </summary>
     public double EdgeHandleRadius { get; set; } = 10d;
+    /// <summary>
+    /// Executes the hit test operation.
+    /// </summary>
 
     public GraphHitResult HitTest(GraphScene scene, GraphPoint worldPoint, double zoom = 1d, bool showNodeLabels = true)
     {
@@ -264,6 +582,9 @@ public sealed class GraphHitTester
 
         return edge is null ? default : new GraphHitResult(null, edge.Edge.Id);
     }
+    /// <summary>
+    /// Retrieves the edge midpoint based on the provided parameters.
+    /// </summary>
 
     public static GraphPoint GetEdgeMidpoint(GraphScene scene, GraphEdgeSceneItem edge)
     {
@@ -271,6 +592,9 @@ public sealed class GraphHitTester
         var end = GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels: true);
         return new GraphPoint((start.X + end.X) / 2d, (start.Y + end.Y) / 2d);
     }
+    /// <summary>
+    /// Retrieves the edge midpoint based on the provided parameters.
+    /// </summary>
 
     public static GraphPoint GetEdgeMidpoint(GraphScene scene, GraphEdgeSceneItem edge, bool showNodeLabels)
     {
@@ -298,8 +622,14 @@ public sealed class GraphHitTester
         var nearest = new GraphPoint(start.X + (segment.X * projection), start.Y + (segment.Y * projection));
         return (worldPoint - nearest).Length;
     }
+    /// <summary>
+    /// Retrieves the node center based on the provided parameters.
+    /// </summary>
 
     public static GraphPoint GetNodeCenter(GraphNodeSceneItem node) => new(node.Bounds.CenterX, node.Bounds.CenterY);
+    /// <summary>
+    /// Retrieves the edge anchor based on the provided parameters.
+    /// </summary>
 
     public static GraphPoint GetEdgeAnchor(GraphScene scene, string sourceId, string targetId, bool showNodeLabels = true)
     {
@@ -348,6 +678,9 @@ public sealed class GraphHitTester
         return new GraphPoint(sourceCenter.X + (dx * scale), sourceCenter.Y + (dy * scale));
     }
 }
+/// <summary>
+/// Represents the graph renderer component.
+/// </summary>
 
 public sealed class GraphRenderer
 {
@@ -364,6 +697,9 @@ public sealed class GraphRenderer
     private static readonly SKColor WarningColor = SKColor.Parse("#F39B68");
     private static readonly SKColor PulseColor = SKColor.Parse("#FFF1B8");
     private static readonly SKColor MinimapBackground = new(6, 13, 22, 220);
+    /// <summary>
+    /// Executes the render operation.
+    /// </summary>
 
     public void Render(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize, bool showNodeLabels = true)
     {
@@ -392,6 +728,9 @@ public sealed class GraphRenderer
         DrawTransientInteraction(canvas, scene, viewport, viewportSize);
         DrawMinimap(canvas, scene, viewport, viewportSize, showNodeLabels);
     }
+    /// <summary>
+    /// Retrieves the zoom tier based on the provided parameters.
+    /// </summary>
 
     public ZoomTier GetZoomTier(double zoom) =>
         zoom < 0.45d ? ZoomTier.Far : zoom < 1.15d ? ZoomTier.Medium : ZoomTier.Near;
@@ -432,6 +771,9 @@ public sealed class GraphRenderer
             new GraphPoint(baseCenter.X + (perpendicularX * halfWidth), baseCenter.Y + (perpendicularY * halfWidth)),
             new GraphPoint(baseCenter.X - (perpendicularX * halfWidth), baseCenter.Y - (perpendicularY * halfWidth)));
     }
+    /// <summary>
+    /// Retrieves the or build node layout based on the provided parameters.
+    /// </summary>
 
     public static GraphNodeTextLayoutResult GetOrBuildNodeLayout(GraphNodeSceneItem node, ZoomTier zoomTier)
     {
@@ -458,6 +800,9 @@ public sealed class GraphRenderer
         node.CachedLayoutHeight = layout.Height;
         return layout;
     }
+    /// <summary>
+    /// Executes the apply layout bounds keeping center operation.
+    /// </summary>
 
     public static void ApplyLayoutBoundsKeepingCenter(GraphNodeSceneItem node, GraphNodeTextLayoutResult layout)
     {
@@ -469,6 +814,9 @@ public sealed class GraphRenderer
             layout.Width,
             layout.Height);
     }
+    /// <summary>
+    /// Executes the build node layout content key operation.
+    /// </summary>
 
     public static string BuildNodeLayoutContentKey(GraphNodeSceneItem node, string effectiveTypeLabel, int visibleDetailLines)
     {

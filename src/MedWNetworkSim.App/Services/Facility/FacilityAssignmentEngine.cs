@@ -1,11 +1,17 @@
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services.Facility;
+/// <summary>
+/// Represents the facility assignment engine component.
+/// </summary>
 
 public sealed class FacilityAssignmentEngine
 {
     private const double Epsilon = 0.000001d;
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+    /// <summary>
+    /// Executes the assign operation.
+    /// </summary>
 
     public FacilityAssignmentResult Assign(NetworkModel network, string trafficType)
     {
@@ -181,9 +187,15 @@ public sealed class FacilityAssignmentEngine
 
         segments.Add(new Segment(to, travelTime));
     }
+    /// <summary>
+    /// Represents the segment component.
+    /// </summary>
 
     private sealed record Segment(string Target, double TravelTime);
 }
+/// <summary>
+/// Represents the facility assignment result component.
+/// </summary>
 
 public sealed record FacilityAssignmentResult(
     string TrafficType,

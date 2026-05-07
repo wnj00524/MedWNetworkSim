@@ -1,4 +1,7 @@
 namespace MedWNetworkSim.Presentation;
+/// <summary>
+/// Specifies the app view.
+/// </summary>
 
 public enum AppView
 {

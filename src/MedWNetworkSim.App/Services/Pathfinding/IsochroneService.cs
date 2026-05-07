@@ -3,16 +3,23 @@ using MedWNetworkSim.App.Models;
 namespace MedWNetworkSim.App.Services.Pathfinding;
 
 /// <summary>
-/// Computes nodes reachable from an origin within a maximum travel-time threshold.
+/// Provides pathfinding services to calculate isochrones (reachable areas from a point within a certain time or cost threshold).
+/// Useful for determining coverage, accessibility, and potential bottlenecks radiating from key nodes in the network graph.
 /// </summary>
 public sealed class IsochroneService
 {
+    /// <summary>
+    /// Specifies the cost metric.
+    /// </summary>
     public enum CostMetric
     {
         Time
     }
 
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+    /// <summary>
+    /// Executes the compute isochrone operation.
+    /// </summary>
 
     public HashSet<NodeModel> ComputeIsochrone(
         NodeModel origin,
@@ -116,6 +123,9 @@ public sealed class IsochroneService
 
         edges.Add(new Segment(to, travelTime));
     }
+    /// <summary>
+    /// Represents the segment component.
+    /// </summary>
 
     private sealed record Segment(string Target, double TravelTime);
 }

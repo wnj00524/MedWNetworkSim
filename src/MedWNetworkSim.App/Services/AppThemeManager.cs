@@ -4,6 +4,9 @@ using Microsoft.Win32;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
+/// <summary>
+/// Represents the app theme manager component.
+/// </summary>
 
 public static class AppThemeManager
 {
@@ -13,8 +16,14 @@ public static class AppThemeManager
     {
         SystemEvents.UserPreferenceChanged += HandleUserPreferenceChanged;
     }
+    /// <summary>
+    /// Gets or sets the current theme.
+    /// </summary>
 
     public static AppTheme CurrentTheme => currentTheme;
+    /// <summary>
+    /// Executes the apply theme operation.
+    /// </summary>
 
     public static void ApplyTheme(AppTheme theme)
     {
@@ -181,6 +190,9 @@ public static class AppThemeManager
     {
         return (Color)ColorConverter.ConvertFromString(hex)!;
     }
+    /// <summary>
+    /// Represents the theme palette component.
+    /// </summary>
 
     private readonly record struct ThemePalette(
         Color Window,

@@ -1,6 +1,9 @@
 using MedWNetworkSim.Presentation;
 
 namespace MedWNetworkSim.UI.Controls;
+/// <summary>
+/// Represents a data model for auto complete text box view entities within the simulation.
+/// </summary>
 
 public sealed class AutoCompleteTextBoxViewModel : ObservableObject
 {
@@ -50,10 +53,16 @@ public sealed class AutoCompleteTextBoxViewModel : ObservableObject
         get => isDropDownOpen;
         set => SetProperty(ref isDropDownOpen, value);
     }
+    /// <summary>
+    /// Gets a value indicating whether has active suggestion is enabled or active.
+    /// </summary>
 
     public bool HasActiveSuggestion =>
         !string.IsNullOrWhiteSpace(SelectedSuggestion) &&
         FilteredSuggestions.Any(item => Comparer.Equals(item, SelectedSuggestion));
+    /// <summary>
+    /// Assigns or updates the suggestions.
+    /// </summary>
 
     public void SetSuggestions(IEnumerable<string>? suggestions)
     {
@@ -66,6 +75,9 @@ public sealed class AutoCompleteTextBoxViewModel : ObservableObject
 
         UpdateFilter();
     }
+    /// <summary>
+    /// Executes the open drop down if available operation.
+    /// </summary>
 
     public void OpenDropDownIfAvailable()
     {
@@ -78,8 +90,14 @@ public sealed class AutoCompleteTextBoxViewModel : ObservableObject
         EnsureSelection();
         IsDropDownOpen = true;
     }
+    /// <summary>
+    /// Executes the close drop down operation.
+    /// </summary>
 
     public void CloseDropDown() => IsDropDownOpen = false;
+    /// <summary>
+    /// Executes the move selection operation.
+    /// </summary>
 
     public void MoveSelection(int offset)
     {
@@ -104,6 +122,9 @@ public sealed class AutoCompleteTextBoxViewModel : ObservableObject
         SelectedSuggestion = FilteredSuggestions[nextIndex];
         IsDropDownOpen = true;
     }
+    /// <summary>
+    /// Executes the accept selection operation.
+    /// </summary>
 
     public bool AcceptSelection()
     {

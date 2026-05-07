@@ -4,6 +4,11 @@ using MedWNetworkSim.App.Services;
 
 namespace MedWNetworkSim.App.Agents;
 
+/// <summary>
+/// The base implementation for an autonomous or semi-autonomous entity participating in the network simulation.
+/// Actors (agents) observe the network state, evaluate their specific objectives, and execute actions to influence flows,
+/// costs, or capacities in pursuit of their defined goals.
+/// </summary>
 public abstract class SimulationActorBase : ISimulationActor
 {
     protected static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
@@ -12,10 +17,19 @@ public abstract class SimulationActorBase : ISimulationActor
     {
         State = state ?? throw new ArgumentNullException(nameof(state));
     }
+    /// <summary>
+    /// Gets or sets the state.
+    /// </summary>
 
     public SimulationActorState State { get; }
+    /// <summary>
+    /// Executes the decide operation.
+    /// </summary>
 
     public abstract SimulationActorDecision Decide(SimulationActorContext context);
+    /// <summary>
+    /// Executes the estimate utility operation.
+    /// </summary>
 
     protected static double EstimateUtility(SimulationActorObjective objective, IReadOnlyList<TrafficSimulationOutcome> outcomes)
     {
@@ -31,9 +45,15 @@ public abstract class SimulationActorBase : ISimulationActor
             _ => 0d
         };
     }
+    /// <summary>
+    /// Executes the insights for edge operation.
+    /// </summary>
 
     protected static IEnumerable<NetworkInsight> InsightsForEdge(IReadOnlyList<NetworkInsight> insights, string edgeId) =>
         insights.Where(i => string.Equals(i.TargetEdgeId, edgeId, StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// Executes the resolve buyer premiums operation.
+    /// </summary>
 
     protected static IReadOnlyDictionary<string, double> ResolveBuyerPremiums(NetworkModel network)
     {
@@ -46,6 +66,9 @@ public abstract class SimulationActorBase : ISimulationActor
                 group => group.Max(profile => Math.Max(0d, profile.ConsumerPremiumPerUnit)),
                 Comparer);
     }
+    /// <summary>
+    /// Determines whether permitted by permissions.
+    /// </summary>
 
     protected bool IsPermittedByPermissions(
         SimulationActorActionKind actionKind,
@@ -74,13 +97,22 @@ public abstract class SimulationActorBase : ISimulationActor
             ? !hasExplicitAllows
             : matching.Any(permission => permission.IsAllowed) && !matching.Any(permission => !permission.IsAllowed);
     }
+    /// <summary>
+    /// Gets a value indicating whether has spending capacity is enabled or active.
+    /// </summary>
 
     protected bool HasSpendingCapacity => State.Budget > 0d || State.Cash > 0d;
 }
+/// <summary>
+/// Represents the firm simulation actor component.
+/// </summary>
 
 public sealed class FirmSimulationActor : SimulationActorBase
 {
     public FirmSimulationActor(SimulationActorState state) : base(state) { }
+    /// <summary>
+    /// Executes the decide operation.
+    /// </summary>
 
     public override SimulationActorDecision Decide(SimulationActorContext context)
     {
@@ -591,10 +623,16 @@ public sealed class FirmSimulationActor : SimulationActorBase
         ExpectedEffect = "No changes applied."
     };
 }
+/// <summary>
+/// Represents the government simulation actor component.
+/// </summary>
 
 public sealed class GovernmentSimulationActor : SimulationActorBase
 {
     public GovernmentSimulationActor(SimulationActorState state) : base(state) { }
+    /// <summary>
+    /// Executes the decide operation.
+    /// </summary>
 
     public override SimulationActorDecision Decide(SimulationActorContext context)
     {
@@ -722,12 +760,18 @@ public sealed class GovernmentSimulationActor : SimulationActorBase
         };
     }
 }
+/// <summary>
+/// Represents the logistics planner simulation actor component.
+/// </summary>
 
 public sealed class LogisticsPlannerSimulationActor : SimulationActorBase
 {
     private const double Epsilon = 0.000001d;
 
     public LogisticsPlannerSimulationActor(SimulationActorState state) : base(state) { }
+    /// <summary>
+    /// Executes the decide operation.
+    /// </summary>
 
     public override SimulationActorDecision Decide(SimulationActorContext context)
     {

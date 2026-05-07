@@ -5,7 +5,9 @@ using System.Text.Json;
 namespace MedWNetworkSim.App.Services;
 
 /// <summary>
-/// Simulates movement through a network, including route scoring, capacity sharing, and bid competition.
+/// The foundational engine for resolving immediate network constraints and executing static, steady-state multi-commodity flow routing.
+/// It coordinates paths across complex networks consisting of <see cref="NodeModel"/>s and <see cref="EdgeModel"/>s,
+/// respecting capacity, routing costs, traffic permissions, and policy rules.
 /// </summary>
 public sealed class NetworkSimulationEngine
 {
@@ -1319,6 +1321,9 @@ public sealed class NetworkSimulationEngine
             _ => time + cost
         };
     }
+    /// <summary>
+    /// Represents the graph arc component.
+    /// </summary>
 
     private sealed record GraphArc(
         string EdgeId,
@@ -1326,8 +1331,14 @@ public sealed class NetworkSimulationEngine
         string ToNodeId,
         double Time,
         double Cost);
+    /// <summary>
+    /// Represents the previous step component.
+    /// </summary>
 
     private sealed record PreviousStep(string PreviousNodeId, GraphArc Arc);
+    /// <summary>
+    /// Represents the route candidate component.
+    /// </summary>
 
     private sealed record RouteCandidate(
         TrafficContext Context,
@@ -1340,6 +1351,9 @@ public sealed class NetworkSimulationEngine
         double TransitCostPerUnit,
         double TotalScore,
         double CapacityBidPerUnit);
+    /// <summary>
+    /// Represents the traffic context component.
+    /// </summary>
 
     private sealed record TrafficContext(
         string TrafficType,
@@ -1354,6 +1368,9 @@ public sealed class NetworkSimulationEngine
         double TotalConsumption,
         List<RouteAllocation> Allocations,
         List<string> Notes);
+    /// <summary>
+    /// Represents the branch demand component.
+    /// </summary>
 
     private sealed class BranchDemand(
         string edgeId,
@@ -1362,28 +1379,64 @@ public sealed class NetworkSimulationEngine
         double cost,
         double firstHopCapacity)
     {
+        /// <summary>
+        /// Gets or sets the edge id.
+        /// </summary>
         public string EdgeId { get; } = edgeId;
+        /// <summary>
+        /// Gets or sets the to node id.
+        /// </summary>
 
         public string ToNodeId { get; } = toNodeId;
+        /// <summary>
+        /// Gets or sets the time.
+        /// </summary>
 
         public double Time { get; } = time;
+        /// <summary>
+        /// Gets or sets the cost.
+        /// </summary>
 
         public double Cost { get; } = cost;
+        /// <summary>
+        /// Gets or sets the first hop capacity.
+        /// </summary>
 
         public double FirstHopCapacity { get; set; } = firstHopCapacity;
+        /// <summary>
+        /// Gets or sets the downstream demand.
+        /// </summary>
 
         public double DownstreamDemand { get; set; }
     }
+    /// <summary>
+    /// Represents the branch share component.
+    /// </summary>
 
     private sealed record BranchShare(BranchDemand Branch, double Quantity);
+    /// <summary>
+    /// Represents the branch share state component.
+    /// </summary>
 
     private sealed class BranchShareState(BranchDemand branch, double remainingDemand, double remainingCapacity)
     {
+        /// <summary>
+        /// Gets or sets the branch.
+        /// </summary>
         public BranchDemand Branch { get; } = branch;
+        /// <summary>
+        /// Gets or sets the remaining demand.
+        /// </summary>
 
         public double RemainingDemand { get; set; } = remainingDemand;
+        /// <summary>
+        /// Gets or sets the remaining capacity.
+        /// </summary>
 
         public double RemainingCapacity { get; set; } = remainingCapacity;
+        /// <summary>
+        /// Gets or sets the quantity.
+        /// </summary>
 
         public double Quantity { get; set; }
     }

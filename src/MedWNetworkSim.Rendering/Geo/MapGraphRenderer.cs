@@ -4,21 +4,39 @@ using System.Net.Http;
 using SkiaSharp;
 
 namespace MedWNetworkSim.Rendering.Geo;
+/// <summary>
+/// Represents the map geo coordinate component.
+/// </summary>
 
 public readonly record struct MapGeoCoordinate(double Latitude, double Longitude);
+/// <summary>
+/// Represents the map projection viewport component.
+/// </summary>
 public readonly record struct MapProjectionViewport(double Width, double Height, double CenterLatitude, double CenterLongitude, double Zoom);
+/// <summary>
+/// Represents the map camera state component.
+/// </summary>
 public sealed record MapCameraState(double CenterLatitude, double CenterLongitude, double Zoom, bool IsLockedToNetworkBounds);
+/// <summary>
+/// Represents the map selection overlay component.
+/// </summary>
 public sealed record MapSelectionOverlay(
     MapGeoCoordinate? Start,
     MapGeoCoordinate? End,
     IReadOnlyList<(MapGeoCoordinate SouthWest, MapGeoCoordinate NorthEast)> Tiles,
     string? Label);
+/// <summary>
+/// Provides business logic and operations related to imap projection.
+/// </summary>
 
 public interface IMapProjectionService
 {
     (double X, double Y) Project(MapGeoCoordinate coordinate, MapProjectionViewport viewport);
     MapGeoCoordinate Unproject(double x, double y, MapProjectionViewport viewport);
 }
+/// <summary>
+/// Provides business logic and operations related to map web mercator projection.
+/// </summary>
 
 public sealed class MapWebMercatorProjectionService : IMapProjectionService
 {
@@ -34,6 +52,9 @@ public sealed class MapWebMercatorProjectionService : IMapProjectionService
         var scale = Math.Max(0.0001d, v.Zoom);
         return ((x - cx) * scale + (v.Width / 2d), (cy - y) * scale + (v.Height / 2d));
     }
+    /// <summary>
+    /// Executes the unproject operation.
+    /// </summary>
 
     public MapGeoCoordinate Unproject(double x, double y, MapProjectionViewport v)
     {
@@ -53,8 +74,14 @@ public sealed class MapWebMercatorProjectionService : IMapProjectionService
         return normalized == -180d && longitude > 0d ? 180d : normalized;
     }
 }
+/// <summary>
+/// Represents the osm tile component.
+/// </summary>
 
 public readonly record struct OsmTile(int Zoom, int X, int Y);
+/// <summary>
+/// Defines the contract and required members for imap tile provider implementations.
+/// </summary>
 
 public interface IMapTileProvider
 {
@@ -64,25 +91,49 @@ public interface IMapTileProvider
     bool TryGetTile(OsmTile tile, out SKBitmap? bitmap);
     void RequestTile(OsmTile tile);
 }
+/// <summary>
+/// Represents the no tile provider component.
+/// </summary>
 
 public sealed class NoTileProvider : IMapTileProvider
 {
+    /// <summary>
+    /// Gets a value indicating whether has tiles is enabled or active.
+    /// </summary>
     public bool HasTiles => false;
+    /// <summary>
+    /// Gets or sets the status message.
+    /// </summary>
     public string? StatusMessage => "OSM tiles are unavailable. You can still drag to select an import area.";
+    /// <summary>
+    /// Gets or sets the tiles changed.
+    /// </summary>
     public event EventHandler? TilesChanged { add { } remove { } }
+    /// <summary>
+    /// Executes the try get tile operation.
+    /// </summary>
     public bool TryGetTile(OsmTile tile, out SKBitmap? bitmap)
     {
         bitmap = null;
         return false;
     }
+    /// <summary>
+    /// Executes the request tile operation.
+    /// </summary>
 
     public void RequestTile(OsmTile tile)
     {
     }
 }
+/// <summary>
+/// Represents the osm raster tile provider component.
+/// </summary>
 
 public sealed class OsmRasterTileProvider : IMapTileProvider, IDisposable
 {
+    /// <summary>
+    /// Represents the tile cache entry component.
+    /// </summary>
     private sealed record TileCacheEntry(SKBitmap? Bitmap, bool IsLoading, DateTimeOffset LastFailureAt, bool HasFailure);
 
     private const int MaxCachedTiles = 256;
@@ -107,12 +158,21 @@ public sealed class OsmRasterTileProvider : IMapTileProvider, IDisposable
             this.httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("MedWNetworkSim/2.0 (Avalonia OSM map renderer)");
         }
     }
+    /// <summary>
+    /// Gets a value indicating whether has tiles is enabled or active.
+    /// </summary>
 
     public bool HasTiles => true;
+    /// <summary>
+    /// Gets or sets the status message.
+    /// </summary>
     public string? StatusMessage => Volatile.Read(ref failedTileCount) > 0
         ? "Could not load some map tiles. Check your connection and continue selecting an area."
         : null;
     public event EventHandler? TilesChanged;
+    /// <summary>
+    /// Executes the try get tile operation.
+    /// </summary>
 
     public bool TryGetTile(OsmTile tile, out SKBitmap? bitmap)
     {
@@ -126,6 +186,9 @@ public sealed class OsmRasterTileProvider : IMapTileProvider, IDisposable
         bitmap = null;
         return false;
     }
+    /// <summary>
+    /// Executes the request tile operation.
+    /// </summary>
 
     public void RequestTile(OsmTile tile)
     {
@@ -306,6 +369,9 @@ public sealed class OsmRasterTileProvider : IMapTileProvider, IDisposable
         }
     }
 }
+/// <summary>
+/// Represents the map graph renderer component.
+/// </summary>
 
 public sealed class MapGraphRenderer
 {
@@ -318,6 +384,9 @@ public sealed class MapGraphRenderer
         this.projectionService = projectionService ?? new MapWebMercatorProjectionService();
         this.tileProvider = tileProvider ?? new NoTileProvider();
     }
+    /// <summary>
+    /// Executes the render operation.
+    /// </summary>
 
     public void Render(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize, IReadOnlyDictionary<string, MapGeoCoordinate> geoNodes, bool showBackground, out string? fallbackMessage)
     {
@@ -331,6 +400,9 @@ public sealed class MapGraphRenderer
                 viewportSize);
         Render(canvas, scene, viewport, viewportSize, geoNodes, showBackground, camera, null, out fallbackMessage);
     }
+    /// <summary>
+    /// Executes the render operation.
+    /// </summary>
 
     public void Render(SKCanvas canvas, GraphScene scene, GraphViewport viewport, GraphSize viewportSize, IReadOnlyDictionary<string, MapGeoCoordinate> geoNodes, bool showBackground, MapCameraState camera, MapSelectionOverlay? overlay, out string? fallbackMessage)
     {
@@ -411,6 +483,9 @@ public sealed class MapGraphRenderer
         canvas.DrawLine((float)viewportSize.Width - 28f, 34f, (float)viewportSize.Width - 28f, 62f, scale);
         DrawOverlay(canvas, mapViewport, overlay);
     }
+    /// <summary>
+    /// Executes the fit camera to bounding box operation.
+    /// </summary>
 
     public static MapCameraState FitCameraToBoundingBox(double minLatitude, double minLongitude, double maxLatitude, double maxLongitude, GraphSize viewportSize)
     {

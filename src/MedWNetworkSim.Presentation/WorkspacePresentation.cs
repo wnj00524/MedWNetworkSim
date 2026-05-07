@@ -21,6 +21,9 @@ using MedWNetworkSim.Rendering.Geo;
 using SkiaSharp;
 
 namespace MedWNetworkSim.Presentation;
+/// <summary>
+/// Represents the observable object component.
+/// </summary>
 
 public abstract class ObservableObject : INotifyPropertyChanged
 {
@@ -37,15 +40,24 @@ public abstract class ObservableObject : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         return true;
     }
+    /// <summary>
+    /// Executes the raise operation.
+    /// </summary>
 
     protected void Raise([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
+/// <summary>
+/// Defines the contract and required members for iui exception sink implementations.
+/// </summary>
 
 public interface IUiExceptionSink
 {
     void ReportUiException(string safeMessage, Exception exception);
 }
+/// <summary>
+/// Represents the ui exception boundary component.
+/// </summary>
 
 public static class UiExceptionBoundary
 {
@@ -67,9 +79,15 @@ public static class UiExceptionBoundary
             sinkReference = value is null ? null : new WeakReference<IUiExceptionSink>(value);
         }
     }
+    /// <summary>
+    /// Executes the build actionable message operation.
+    /// </summary>
 
     public static string BuildActionableMessage(string operation, string suggestion) =>
         $"{operation} failed. {suggestion}";
+    /// <summary>
+    /// Executes the report operation.
+    /// </summary>
 
     public static void Report(Exception exception, string safeMessage, string source)
     {
@@ -77,6 +95,9 @@ public static class UiExceptionBoundary
         Sink?.ReportUiException(safeMessage, exception);
     }
 }
+/// <summary>
+/// Represents the relay command component.
+/// </summary>
 
 public sealed class RelayCommand : ICommand
 {
@@ -90,7 +111,13 @@ public sealed class RelayCommand : ICommand
     }
 
     public event EventHandler? CanExecuteChanged;
+    /// <summary>
+    /// Executes the can execute operation.
+    /// </summary>
     public bool CanExecute(object? parameter) => canExecute?.Invoke() ?? true;
+    /// <summary>
+    /// Executes the primary operation of this component.
+    /// </summary>
     public void Execute(object? parameter)
     {
         try
@@ -105,9 +132,15 @@ public sealed class RelayCommand : ICommand
             UiExceptionBoundary.Report(ex, safeMessage, nameof(RelayCommand));
         }
     }
+    /// <summary>
+    /// Executes the notify can execute changed operation.
+    /// </summary>
 
     public void NotifyCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 }
+/// <summary>
+/// Represents the relay command component.
+/// </summary>
 
 public sealed class RelayCommand<T> : ICommand
 {
@@ -121,6 +154,9 @@ public sealed class RelayCommand<T> : ICommand
     }
 
     public event EventHandler? CanExecuteChanged;
+    /// <summary>
+    /// Executes the can execute operation.
+    /// </summary>
 
     public bool CanExecute(object? parameter)
     {
@@ -131,6 +167,9 @@ public sealed class RelayCommand<T> : ICommand
 
         return canExecute?.Invoke(typedParameter) ?? true;
     }
+    /// <summary>
+    /// Executes the primary operation of this component.
+    /// </summary>
 
     public void Execute(object? parameter)
     {
@@ -151,6 +190,9 @@ public sealed class RelayCommand<T> : ICommand
             UiExceptionBoundary.Report(ex, safeMessage, nameof(RelayCommand<T>));
         }
     }
+    /// <summary>
+    /// Executes the notify can execute changed operation.
+    /// </summary>
 
     public void NotifyCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 
@@ -172,17 +214,32 @@ public sealed class RelayCommand<T> : ICommand
         return false;
     }
 }
+/// <summary>
+/// Represents the inspector section component.
+/// </summary>
 
 public sealed class InspectorSection : ObservableObject
 {
     private string headline = "Nothing selected";
     private string summary = "Select a node, route, or traffic type to edit it.";
     private IReadOnlyList<string> details = [];
+    /// <summary>
+    /// Gets or sets the headline.
+    /// </summary>
 
     public string Headline { get => headline; set => SetProperty(ref headline, value); }
+    /// <summary>
+    /// Gets or sets the summary.
+    /// </summary>
     public string Summary { get => summary; set => SetProperty(ref summary, value); }
+    /// <summary>
+    /// Gets the collection of details associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> Details { get => details; set => SetProperty(ref details, value); }
 }
+/// <summary>
+/// Specifies the inspector edit mode.
+/// </summary>
 
 public enum InspectorEditMode
 {
@@ -191,12 +248,18 @@ public enum InspectorEditMode
     Edge,
     Selection
 }
+/// <summary>
+/// Specifies the inspector tab target.
+/// </summary>
 
 public enum InspectorTabTarget
 {
     Selection,
     TrafficTypes
 }
+/// <summary>
+/// Specifies the workspace mode.
+/// </summary>
 
 public enum WorkspaceMode
 {
@@ -205,6 +268,9 @@ public enum WorkspaceMode
     ScenarioEditor,
     OsmImport
 }
+/// <summary>
+/// Specifies the inspector section target.
+/// </summary>
 
 public enum InspectorSectionTarget
 {
@@ -213,48 +279,132 @@ public enum InspectorSectionTarget
     Route,
     TrafficRoles
 }
+/// <summary>
+/// Represents a data model for report metric view entities within the simulation.
+/// </summary>
 
 public sealed class ReportMetricViewModel
 {
+    /// <summary>
+    /// Gets or sets the label.
+    /// </summary>
     public required string Label { get; init; }
+    /// <summary>
+    /// Gets or sets the value.
+    /// </summary>
     public required string Value { get; init; }
+    /// <summary>
+    /// Gets or sets the activate.
+    /// </summary>
     public required Action Activate { get; init; }
 }
+/// <summary>
+/// Represents a data model for traffic report row view entities within the simulation.
+/// </summary>
 
 public sealed class TrafficReportRowViewModel
 {
+    /// <summary>
+    /// Gets or sets the traffic type.
+    /// </summary>
     public required string TrafficType { get; init; }
+    /// <summary>
+    /// Gets or sets the price summary.
+    /// </summary>
     public required string PriceSummary { get; init; }
+    /// <summary>
+    /// Gets or sets the planned quantity.
+    /// </summary>
     public required string PlannedQuantity { get; init; }
+    /// <summary>
+    /// Gets or sets the delivered quantity.
+    /// </summary>
     public required string DeliveredQuantity { get; init; }
+    /// <summary>
+    /// Gets or sets the unmet demand.
+    /// </summary>
     public required string UnmetDemand { get; init; }
+    /// <summary>
+    /// Gets or sets the backlog.
+    /// </summary>
     public required string Backlog { get; init; }
 }
+/// <summary>
+/// Represents a data model for route report row view entities within the simulation.
+/// </summary>
 
 public sealed class RouteReportRowViewModel
 {
+    /// <summary>
+    /// Gets or sets the route id.
+    /// </summary>
     public required string RouteId { get; init; }
+    /// <summary>
+    /// Gets or sets the from to.
+    /// </summary>
     public required string FromTo { get; init; }
+    /// <summary>
+    /// Gets or sets the current flow.
+    /// </summary>
     public required string CurrentFlow { get; init; }
+    /// <summary>
+    /// Gets or sets the capacity.
+    /// </summary>
     public required string Capacity { get; init; }
+    /// <summary>
+    /// Gets or sets the utilisation.
+    /// </summary>
     public required string Utilisation { get; init; }
+    /// <summary>
+    /// Gets or sets the pressure.
+    /// </summary>
     public required string Pressure { get; init; }
 }
+/// <summary>
+/// Represents a data model for node pressure report row view entities within the simulation.
+/// </summary>
 
 public sealed class NodePressureReportRowViewModel
 {
+    /// <summary>
+    /// Gets or sets the node.
+    /// </summary>
     public required string Node { get; init; }
+    /// <summary>
+    /// Gets or sets the commodity prices.
+    /// </summary>
     public required string CommodityPrices { get; init; }
+    /// <summary>
+    /// Gets or sets the pressure score.
+    /// </summary>
     public required string PressureScore { get; init; }
+    /// <summary>
+    /// Gets or sets the top cause.
+    /// </summary>
     public required string TopCause { get; init; }
+    /// <summary>
+    /// Gets or sets the unmet need.
+    /// </summary>
     public required string UnmetNeed { get; init; }
 }
+/// <summary>
+/// Represents a data model for pie chart segment view entities within the simulation.
+/// </summary>
 
 public sealed record PieChartSegmentViewModel(string Label, double Value);
+/// <summary>
+/// Represents the flow data point component.
+/// </summary>
 
 public sealed record FlowDataPoint(string Label, double Planned, double Delivered, double UnmetDemand, double Backlog);
+/// <summary>
+/// Represents the node pressure point component.
+/// </summary>
 
 public sealed record NodePressurePoint(string Node, double Pressure, string TopCause, string UnmetNeed);
+/// <summary>
+/// Represents a data model for agent view entities within the simulation.
+/// </summary>
 
 public sealed class AgentViewModel : ObservableObject
 {
@@ -263,41 +413,113 @@ public sealed class AgentViewModel : ObservableObject
     private double budget;
     private string allowedTrafficTypes = string.Empty;
     private string allowedActions = string.Empty;
+    /// <summary>
+    /// Gets or sets the name.
+    /// </summary>
 
     public string Name { get => name; set => SetProperty(ref name, value); }
+    /// <summary>
+    /// Gets or sets the type.
+    /// </summary>
     public string Type { get => type; set => SetProperty(ref type, value); }
+    /// <summary>
+    /// Gets or sets the budget.
+    /// </summary>
     public double Budget { get => budget; set => SetProperty(ref budget, value); }
+    /// <summary>
+    /// Gets or sets the allowed traffic types.
+    /// </summary>
     public string AllowedTrafficTypes { get => allowedTrafficTypes; set => SetProperty(ref allowedTrafficTypes, value); }
+    /// <summary>
+    /// Gets or sets the allowed actions.
+    /// </summary>
     public string AllowedActions { get => allowedActions; set => SetProperty(ref allowedActions, value); }
 }
+/// <summary>
+/// Represents the uncovered node planning item component.
+/// </summary>
 
 public sealed class UncoveredNodePlanningItem
 {
+    /// <summary>
+    /// Gets or sets the node name.
+    /// </summary>
     public required string NodeName { get; init; }
+    /// <summary>
+    /// Gets or sets the nearest facility.
+    /// </summary>
     public required string NearestFacility { get; init; }
+    /// <summary>
+    /// Gets or sets the extra budget needed.
+    /// </summary>
     public required string ExtraBudgetNeeded { get; init; }
 }
+/// <summary>
+/// Represents a data model for facility comparison row view entities within the simulation.
+/// </summary>
 
 public sealed class FacilityComparisonRowViewModel
 {
+    /// <summary>
+    /// Gets or sets the facility.
+    /// </summary>
     public required string Facility { get; init; }
+    /// <summary>
+    /// Gets or sets the nodes covered.
+    /// </summary>
     public required string NodesCovered { get; init; }
+    /// <summary>
+    /// Gets or sets the unique nodes covered.
+    /// </summary>
     public required string UniqueNodesCovered { get; init; }
+    /// <summary>
+    /// Gets or sets the average cost.
+    /// </summary>
     public required string AverageCost { get; init; }
+    /// <summary>
+    /// Gets or sets the max cost.
+    /// </summary>
     public required string MaxCost { get; init; }
 }
+/// <summary>
+/// Represents the scenario event list item component.
+/// </summary>
 
 public sealed class ScenarioEventListItem(ScenarioEventModel model)
 {
+    /// <summary>
+    /// Gets or sets the model.
+    /// </summary>
     public ScenarioEventModel Model { get; } = model;
+    /// <summary>
+    /// Gets or sets the name.
+    /// </summary>
     public string Name => string.IsNullOrWhiteSpace(Model.Name) ? "(unnamed event)" : Model.Name;
+    /// <summary>
+    /// Gets or sets the kind text.
+    /// </summary>
     public string KindText => Model.Kind.ToString();
+    /// <summary>
+    /// Gets or sets the target text.
+    /// </summary>
     public string TargetText => string.IsNullOrWhiteSpace(Model.TargetId) ? "No target" : $"{Model.TargetKind}: {Model.TargetId}";
+    /// <summary>
+    /// Gets or sets the timing text.
+    /// </summary>
     public string TimingText => Model.EndTime.HasValue ? $"{Model.Time:0.##} to {Model.EndTime.Value:0.##}" : $"{Model.Time:0.##}";
+    /// <summary>
+    /// Gets or sets the value status text.
+    /// </summary>
     public string ValueStatusText => $"{Model.Value:0.##} | {(Model.IsEnabled ? "Enabled" : "Disabled")}";
+    /// <summary>
+    /// Gets or sets the summary text.
+    /// </summary>
     public string SummaryText => $"{KindText} | {TargetText} | {TimingText} | {ValueStatusText}";
     public override string ToString() => Name;
 }
+/// <summary>
+/// Represents a data model for scenario editor view entities within the simulation.
+/// </summary>
 
 public sealed class ScenarioEditorViewModel : ObservableObject
 {
@@ -349,20 +571,62 @@ public sealed class ScenarioEditorViewModel : ObservableObject
         DeleteScenarioEventCommand = new RelayCommand(DeleteEvent, () => SelectedScenarioDefinition is not null && SelectedEventItem is not null);
         Open();
     }
+    /// <summary>
+    /// Gets or sets the event items.
+    /// </summary>
 
     public ObservableCollection<ScenarioEventListItem> EventItems { get; }
+    /// <summary>
+    /// Gets or sets the scenario event kind options.
+    /// </summary>
     public Array ScenarioEventKindOptions { get; } = Enum.GetValues(typeof(ScenarioEventKind));
+    /// <summary>
+    /// Gets or sets the scenario target kind options.
+    /// </summary>
     public Array ScenarioTargetKindOptions { get; } = Enum.GetValues(typeof(ScenarioTargetKind));
+    /// <summary>
+    /// Gets the collection of scenario definitions associated with this entity.
+    /// </summary>
     public IReadOnlyList<ScenarioDefinitionModel> ScenarioDefinitions => network.ScenarioDefinitions;
+    /// <summary>
+    /// Gets the collection of node id options associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> NodeIdOptions => network.Nodes.Select(node => node.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+    /// <summary>
+    /// Gets the collection of edge id options associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> EdgeIdOptions => network.Edges.Select(edge => edge.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+    /// <summary>
+    /// Gets the collection of traffic type options associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> TrafficTypeOptions => network.TrafficTypes.Select(type => type.Name).OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList();
+    /// <summary>
+    /// Gets or sets the create scenario command.
+    /// </summary>
     public RelayCommand CreateScenarioCommand { get; }
+    /// <summary>
+    /// Gets or sets the save scenario command.
+    /// </summary>
     public RelayCommand SaveScenarioCommand { get; }
+    /// <summary>
+    /// Gets or sets the delete scenario command.
+    /// </summary>
     public RelayCommand DeleteScenarioCommand { get; }
+    /// <summary>
+    /// Gets or sets the add scenario event command.
+    /// </summary>
     public RelayCommand AddScenarioEventCommand { get; }
+    /// <summary>
+    /// Gets or sets the edit scenario event command.
+    /// </summary>
     public RelayCommand EditScenarioEventCommand { get; }
+    /// <summary>
+    /// Gets or sets the duplicate scenario event command.
+    /// </summary>
     public RelayCommand DuplicateScenarioEventCommand { get; }
+    /// <summary>
+    /// Gets or sets the delete scenario event command.
+    /// </summary>
     public RelayCommand DeleteScenarioEventCommand { get; }
 
     public ScenarioDefinitionModel? SelectedScenarioDefinition
@@ -390,18 +654,54 @@ public sealed class ScenarioEditorViewModel : ObservableObject
             }
         }
     }
+    /// <summary>
+    /// Gets a value indicating whether is dirty is enabled or active.
+    /// </summary>
 
     public bool IsDirty { get => isDirty; private set => SetProperty(ref isDirty, value); }
+    /// <summary>
+    /// Gets a value indicating whether has scenarios is enabled or active.
+    /// </summary>
     public bool HasScenarios => network.ScenarioDefinitions.Count > 0;
+    /// <summary>
+    /// Gets a value indicating whether has selected scenario is enabled or active.
+    /// </summary>
     public bool HasSelectedScenario => SelectedScenarioDefinition is not null;
+    /// <summary>
+    /// Gets a value indicating whether has selected event is enabled or active.
+    /// </summary>
     public bool HasSelectedEvent => SelectedEventItem is not null;
+    /// <summary>
+    /// Gets a value indicating whether event uses node target is enabled or active.
+    /// </summary>
     public bool EventUsesNodeTarget => EventKind is ScenarioEventKind.NodeFailure or ScenarioEventKind.DemandSpike or ScenarioEventKind.ProductionMultiplier or ScenarioEventKind.ConsumptionMultiplier;
+    /// <summary>
+    /// Gets a value indicating whether event uses edge target is enabled or active.
+    /// </summary>
     public bool EventUsesEdgeTarget => EventKind is ScenarioEventKind.EdgeClosure or ScenarioEventKind.EdgeCostChange or ScenarioEventKind.RouteCostMultiplier;
+    /// <summary>
+    /// Gets a value indicating whether event uses traffic type is enabled or active.
+    /// </summary>
     public bool EventUsesTrafficType => EventKind is ScenarioEventKind.DemandSpike or ScenarioEventKind.ProductionMultiplier or ScenarioEventKind.ConsumptionMultiplier or ScenarioEventKind.RouteCostMultiplier;
+    /// <summary>
+    /// Gets a value indicating whether event uses value is enabled or active.
+    /// </summary>
     public bool EventUsesValue => EventKind is ScenarioEventKind.DemandSpike or ScenarioEventKind.EdgeCostChange or ScenarioEventKind.ProductionMultiplier or ScenarioEventKind.ConsumptionMultiplier or ScenarioEventKind.RouteCostMultiplier;
+    /// <summary>
+    /// Gets or sets the target field label.
+    /// </summary>
     public string TargetFieldLabel => EventUsesNodeTarget ? "Target node" : "Target route";
+    /// <summary>
+    /// Gets or sets the target helper text.
+    /// </summary>
     public string TargetHelperText => EventUsesNodeTarget ? "Choose a node id that exists in this network." : "Choose a route id that exists in this network.";
+    /// <summary>
+    /// Gets the collection of target id options associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> TargetIdOptions => EventUsesNodeTarget ? NodeIdOptions : EdgeIdOptions;
+    /// <summary>
+    /// Gets or sets the event value label.
+    /// </summary>
     public string EventValueLabel => EventKind switch
     {
         ScenarioEventKind.DemandSpike => "Demand value",
@@ -411,16 +711,40 @@ public sealed class ScenarioEditorViewModel : ObservableObject
         ScenarioEventKind.RouteCostMultiplier => "Route cost multiplier",
         _ => "Value"
     };
+    /// <summary>
+    /// Gets or sets the event value helper text.
+    /// </summary>
     public string EventValueHelperText => EventKind == ScenarioEventKind.DemandSpike
         ? "Enter a demand value greater than or equal to 0."
         : "Enter a value greater than 0.";
+    /// <summary>
+    /// Gets or sets the name text.
+    /// </summary>
 
     public string NameText { get => nameText; set => SetDraftProperty(ref nameText, value, nameof(NameText)); }
+    /// <summary>
+    /// Gets or sets the description text.
+    /// </summary>
     public string DescriptionText { get => descriptionText; set => SetDraftProperty(ref descriptionText, value, nameof(DescriptionText)); }
+    /// <summary>
+    /// Gets or sets the start time text.
+    /// </summary>
     public string StartTimeText { get => startTimeText; set => SetDraftProperty(ref startTimeText, value, nameof(StartTimeText)); }
+    /// <summary>
+    /// Gets or sets the end time text.
+    /// </summary>
     public string EndTimeText { get => endTimeText; set => SetDraftProperty(ref endTimeText, value, nameof(EndTimeText)); }
+    /// <summary>
+    /// Gets or sets the delta time text.
+    /// </summary>
     public string DeltaTimeText { get => deltaTimeText; set => SetDraftProperty(ref deltaTimeText, value, nameof(DeltaTimeText)); }
+    /// <summary>
+    /// Gets a value indicating whether enable adaptive routing is enabled or active.
+    /// </summary>
     public bool EnableAdaptiveRouting { get => enableAdaptiveRouting; set => SetDraftProperty(ref enableAdaptiveRouting, value, nameof(EnableAdaptiveRouting)); }
+    /// <summary>
+    /// Gets or sets the event name text.
+    /// </summary>
     public string EventNameText { get => eventNameText; set => SetDraftProperty(ref eventNameText, value, nameof(EventNameText)); }
     public ScenarioEventKind EventKind
     {
@@ -434,25 +758,85 @@ public sealed class ScenarioEditorViewModel : ObservableObject
             }
         }
     }
+    /// <summary>
+    /// Gets or sets the event target kind.
+    /// </summary>
     public ScenarioTargetKind EventTargetKind { get => eventTargetKind; set => SetDraftProperty(ref eventTargetKind, value, nameof(EventTargetKind)); }
+    /// <summary>
+    /// Gets or sets the event target id text.
+    /// </summary>
     public string EventTargetIdText { get => eventTargetIdText; set => SetDraftProperty(ref eventTargetIdText, value, nameof(EventTargetIdText)); }
+    /// <summary>
+    /// Gets or sets the event traffic type text.
+    /// </summary>
     public string EventTrafficTypeText { get => eventTrafficTypeText; set => SetDraftProperty(ref eventTrafficTypeText, value, nameof(EventTrafficTypeText)); }
+    /// <summary>
+    /// Gets or sets the event start time text.
+    /// </summary>
     public string EventStartTimeText { get => eventStartTimeText; set => SetDraftProperty(ref eventStartTimeText, value, nameof(EventStartTimeText)); }
+    /// <summary>
+    /// Gets or sets the event end time text.
+    /// </summary>
     public string EventEndTimeText { get => eventEndTimeText; set => SetDraftProperty(ref eventEndTimeText, value, nameof(EventEndTimeText)); }
+    /// <summary>
+    /// Gets or sets the event value text.
+    /// </summary>
     public string EventValueText { get => eventValueText; set => SetDraftProperty(ref eventValueText, value, nameof(EventValueText)); }
+    /// <summary>
+    /// Gets or sets the event notes text.
+    /// </summary>
     public string EventNotesText { get => eventNotesText; set => SetDraftProperty(ref eventNotesText, value, nameof(EventNotesText)); }
+    /// <summary>
+    /// Gets a value indicating whether event is enabled is enabled or active.
+    /// </summary>
     public bool EventIsEnabled { get => eventIsEnabled; set => SetDraftProperty(ref eventIsEnabled, value, nameof(EventIsEnabled)); }
+    /// <summary>
+    /// Gets or sets the scenario name error.
+    /// </summary>
     public string ScenarioNameError { get => scenarioNameError; private set => SetProperty(ref scenarioNameError, value); }
+    /// <summary>
+    /// Gets or sets the scenario start time error.
+    /// </summary>
     public string ScenarioStartTimeError { get => scenarioStartTimeError; private set => SetProperty(ref scenarioStartTimeError, value); }
+    /// <summary>
+    /// Gets or sets the scenario end time error.
+    /// </summary>
     public string ScenarioEndTimeError { get => scenarioEndTimeError; private set => SetProperty(ref scenarioEndTimeError, value); }
+    /// <summary>
+    /// Gets or sets the scenario delta time error.
+    /// </summary>
     public string ScenarioDeltaTimeError { get => scenarioDeltaTimeError; private set => SetProperty(ref scenarioDeltaTimeError, value); }
+    /// <summary>
+    /// Gets or sets the event name error.
+    /// </summary>
     public string EventNameError { get => eventNameError; private set => SetProperty(ref eventNameError, value); }
+    /// <summary>
+    /// Gets or sets the event target error.
+    /// </summary>
     public string EventTargetError { get => eventTargetError; private set => SetProperty(ref eventTargetError, value); }
+    /// <summary>
+    /// Gets or sets the event traffic type error.
+    /// </summary>
     public string EventTrafficTypeError { get => eventTrafficTypeError; private set => SetProperty(ref eventTrafficTypeError, value); }
+    /// <summary>
+    /// Gets or sets the event start time error.
+    /// </summary>
     public string EventStartTimeError { get => eventStartTimeError; private set => SetProperty(ref eventStartTimeError, value); }
+    /// <summary>
+    /// Gets or sets the event end time error.
+    /// </summary>
     public string EventEndTimeError { get => eventEndTimeError; private set => SetProperty(ref eventEndTimeError, value); }
+    /// <summary>
+    /// Gets or sets the event value error.
+    /// </summary>
     public string EventValueError { get => eventValueError; private set => SetProperty(ref eventValueError, value); }
+    /// <summary>
+    /// Gets or sets the validation summary.
+    /// </summary>
     public string ValidationSummary { get => validationSummary; private set => SetProperty(ref validationSummary, value); }
+    /// <summary>
+    /// Executes the attach network operation.
+    /// </summary>
 
     public void AttachNetwork(NetworkModel model)
     {
@@ -460,6 +844,9 @@ public sealed class ScenarioEditorViewModel : ObservableObject
         Open();
         RaiseReferenceDataChanged();
     }
+    /// <summary>
+    /// Executes the open operation.
+    /// </summary>
 
     public void Open()
     {
@@ -474,6 +861,9 @@ public sealed class ScenarioEditorViewModel : ObservableObject
         Raise(nameof(HasScenarios));
         Raise(nameof(ScenarioDefinitions));
     }
+    /// <summary>
+    /// Executes the discard changes operation.
+    /// </summary>
 
     public void DiscardChanges()
     {
@@ -936,6 +1326,9 @@ public sealed class ScenarioEditorViewModel : ObservableObject
     private static double ParseDouble(string text) => TryParseDouble(text, out var value) ? value : 0d;
     private static double ParseDoubleOrDefault(string text, double fallback) => TryParseDouble(text, out var value) ? value : fallback;
 }
+/// <summary>
+/// Represents the facility origin item component.
+/// </summary>
 
 public sealed class FacilityOriginItem : ObservableObject
 {
@@ -946,8 +1339,14 @@ public sealed class FacilityOriginItem : ObservableObject
         Node = node;
         maxTravelTimeText = Math.Max(0d, maxTravelTime).ToString("0.##", CultureInfo.InvariantCulture);
     }
+    /// <summary>
+    /// Gets or sets the node.
+    /// </summary>
 
     public NodeModel Node { get; }
+    /// <summary>
+    /// Gets or sets the display name.
+    /// </summary>
     public string DisplayName => string.IsNullOrWhiteSpace(Node.Name) ? Node.Id : Node.Name;
 
     public string MaxTravelTimeText
@@ -961,8 +1360,14 @@ public sealed class FacilityOriginItem : ObservableObject
             }
         }
     }
+    /// <summary>
+    /// Gets or sets the display summary.
+    /// </summary>
 
     public string DisplaySummary => $"{DisplayName} | Max {MaxTravelTimeText}";
+    /// <summary>
+    /// Executes the try get max travel time operation.
+    /// </summary>
 
     public bool TryGetMaxTravelTime(out double maxTravelTime)
     {
@@ -977,12 +1382,27 @@ public sealed class FacilityOriginItem : ObservableObject
         return false;
     }
 }
+/// <summary>
+/// Represents the traffic definition list item component.
+/// </summary>
 
 public sealed class TrafficDefinitionListItem(TrafficTypeDefinition model)
 {
+    /// <summary>
+    /// Gets or sets the model.
+    /// </summary>
     public TrafficTypeDefinition Model { get; } = model;
+    /// <summary>
+    /// Gets or sets the name.
+    /// </summary>
     public string Name => string.IsNullOrWhiteSpace(Model.Name) ? "(unnamed)" : Model.Name;
+    /// <summary>
+    /// Gets or sets the routing preference text.
+    /// </summary>
     public string RoutingPreferenceText => Model.RoutingPreference.ToString();
+    /// <summary>
+    /// Gets or sets the allocation mode text.
+    /// </summary>
     public string AllocationModeText => Model.AllocationMode.ToString();
     public string SummaryBadgeText
     {
@@ -1005,10 +1425,19 @@ public sealed class TrafficDefinitionListItem(TrafficTypeDefinition model)
 
     public override string ToString() => Name;
 }
+/// <summary>
+/// Represents the node traffic profile list item component.
+/// </summary>
 
 public sealed class NodeTrafficProfileListItem(int index, NodeTrafficProfile model)
 {
+    /// <summary>
+    /// Gets or sets the index.
+    /// </summary>
     public int Index { get; } = index;
+    /// <summary>
+    /// Gets or sets the model.
+    /// </summary>
     public NodeTrafficProfile Model { get; } = model;
 
     public string DisplayLabel
@@ -1022,6 +1451,9 @@ public sealed class NodeTrafficProfileListItem(int index, NodeTrafficProfile mod
 
     public override string ToString() => DisplayLabel;
 }
+/// <summary>
+/// Represents the period window editor row component.
+/// </summary>
 
 public sealed class PeriodWindowEditorRow : ObservableObject
 {
@@ -1050,6 +1482,9 @@ public sealed class PeriodWindowEditorRow : ObservableObject
         set => SetProperty(ref endText, value);
     }
 }
+/// <summary>
+/// Represents the input requirement editor row component.
+/// </summary>
 
 public sealed class InputRequirementEditorRow : ObservableObject
 {
@@ -1088,6 +1523,9 @@ public sealed class InputRequirementEditorRow : ObservableObject
         set => SetProperty(ref outputQuantityText, value);
     }
 }
+/// <summary>
+/// Represents the permission rule editor row component.
+/// </summary>
 
 public sealed class PermissionRuleEditorRow : ObservableObject
 {
@@ -1128,6 +1566,9 @@ public sealed class PermissionRuleEditorRow : ObservableObject
             }
         }
     }
+    /// <summary>
+    /// Gets a value indicating whether supports override toggle is enabled or active.
+    /// </summary>
 
     public bool SupportsOverrideToggle { get; }
 
@@ -1190,6 +1631,9 @@ public sealed class PermissionRuleEditorRow : ObservableObject
         get => validationMessage;
         private set => SetProperty(ref validationMessage, value);
     }
+    /// <summary>
+    /// Executes the to model operation.
+    /// </summary>
 
     public EdgeTrafficPermissionRule ToModel(double? edgeCapacity)
     {
@@ -1210,6 +1654,9 @@ public sealed class PermissionRuleEditorRow : ObservableObject
                 : null
         };
     }
+    /// <summary>
+    /// Executes the refresh validation operation.
+    /// </summary>
 
     public void RefreshValidation(double? edgeCapacity, IReadOnlyCollection<string>? knownTrafficTypes = null, bool hasDuplicateTrafficType = false) =>
         Validate(edgeCapacity, knownTrafficTypes, hasDuplicateTrafficType);
@@ -1284,6 +1731,9 @@ public sealed class PermissionRuleEditorRow : ObservableObject
             : null;
     }
 }
+/// <summary>
+/// Represents the node inspector draft component.
+/// </summary>
 
 public sealed class NodeInspectorDraft : ObservableObject
 {
@@ -1308,24 +1758,78 @@ public sealed class NodeInspectorDraft : ObservableObject
     {
         PlaceTypeSuggestions = [];
     }
+    /// <summary>
+    /// Gets or sets the target node id.
+    /// </summary>
 
     public string? TargetNodeId { get => targetNodeId; set => SetProperty(ref targetNodeId, value); }
+    /// <summary>
+    /// Gets or sets the node id text.
+    /// </summary>
     public string NodeIdText { get => nodeIdText; set => SetProperty(ref nodeIdText, value); }
+    /// <summary>
+    /// Gets or sets the node name text.
+    /// </summary>
     public string NodeNameText { get => nodeNameText; set => SetProperty(ref nodeNameText, value); }
+    /// <summary>
+    /// Gets or sets the node xtext.
+    /// </summary>
     public string NodeXText { get => nodeXText; set => SetProperty(ref nodeXText, value); }
+    /// <summary>
+    /// Gets or sets the node ytext.
+    /// </summary>
     public string NodeYText { get => nodeYText; set => SetProperty(ref nodeYText, value); }
+    /// <summary>
+    /// Gets or sets the place type text.
+    /// </summary>
     public string PlaceTypeText { get => placeTypeText; set => SetProperty(ref placeTypeText, value); }
+    /// <summary>
+    /// Gets or sets the description text.
+    /// </summary>
     public string DescriptionText { get => descriptionText; set => SetProperty(ref descriptionText, value); }
+    /// <summary>
+    /// Gets or sets the transhipment capacity text.
+    /// </summary>
     public string TranshipmentCapacityText { get => transhipmentCapacityText; set => SetProperty(ref transhipmentCapacityText, value); }
+    /// <summary>
+    /// Gets or sets the shape.
+    /// </summary>
     public NodeVisualShape Shape { get => shape; set => SetProperty(ref shape, value); }
+    /// <summary>
+    /// Gets or sets the node kind.
+    /// </summary>
     public NodeKind NodeKind { get => nodeKind; set => SetProperty(ref nodeKind, value); }
+    /// <summary>
+    /// Gets or sets the referenced subnetwork id text.
+    /// </summary>
     public string ReferencedSubnetworkIdText { get => referencedSubnetworkIdText; set => SetProperty(ref referencedSubnetworkIdText, value); }
+    /// <summary>
+    /// Gets a value indicating whether is external interface is enabled or active.
+    /// </summary>
     public bool IsExternalInterface { get => isExternalInterface; set => SetProperty(ref isExternalInterface, value); }
+    /// <summary>
+    /// Gets or sets the interface name text.
+    /// </summary>
     public string InterfaceNameText { get => interfaceNameText; set => SetProperty(ref interfaceNameText, value); }
+    /// <summary>
+    /// Gets or sets the controlling actor text.
+    /// </summary>
     public string ControllingActorText { get => controllingActorText; set => SetProperty(ref controllingActorText, value); }
+    /// <summary>
+    /// Gets or sets the tags text.
+    /// </summary>
     public string TagsText { get => tagsText; set => SetProperty(ref tagsText, value); }
+    /// <summary>
+    /// Gets or sets the template id text.
+    /// </summary>
     public string TemplateIdText { get => templateIdText; set => SetProperty(ref templateIdText, value); }
+    /// <summary>
+    /// Gets or sets the place type suggestions.
+    /// </summary>
     public ObservableCollection<string> PlaceTypeSuggestions { get; }
+    /// <summary>
+    /// Executes the clear operation.
+    /// </summary>
 
     public void Clear()
     {
@@ -1346,6 +1850,9 @@ public sealed class NodeInspectorDraft : ObservableObject
         TagsText = string.Empty;
         TemplateIdText = string.Empty;
     }
+    /// <summary>
+    /// Executes the load from operation.
+    /// </summary>
 
     public void LoadFrom(NodeModel node)
     {
@@ -1366,6 +1873,9 @@ public sealed class NodeInspectorDraft : ObservableObject
         TagsText = string.Join(", ", node.Tags);
         TemplateIdText = node.TemplateId ?? string.Empty;
     }
+    /// <summary>
+    /// Executes the update suggestions operation.
+    /// </summary>
 
     public void UpdateSuggestions(IEnumerable<string> suggestions)
     {
@@ -1376,6 +1886,9 @@ public sealed class NodeInspectorDraft : ObservableObject
         }
     }
 }
+/// <summary>
+/// Represents the edge inspector draft component.
+/// </summary>
 
 public sealed class EdgeInspectorDraft : ObservableObject
 {
@@ -1390,14 +1903,38 @@ public sealed class EdgeInspectorDraft : ObservableObject
     {
         RouteTypeSuggestions = [];
     }
+    /// <summary>
+    /// Gets or sets the target edge id.
+    /// </summary>
 
     public string? TargetEdgeId { get => targetEdgeId; set => SetProperty(ref targetEdgeId, value); }
+    /// <summary>
+    /// Gets or sets the route type text.
+    /// </summary>
     public string RouteTypeText { get => routeTypeText; set => SetProperty(ref routeTypeText, value); }
+    /// <summary>
+    /// Gets or sets the time text.
+    /// </summary>
     public string TimeText { get => timeText; set => SetProperty(ref timeText, value); }
+    /// <summary>
+    /// Gets or sets the cost text.
+    /// </summary>
     public string CostText { get => costText; set => SetProperty(ref costText, value); }
+    /// <summary>
+    /// Gets or sets the capacity text.
+    /// </summary>
     public string CapacityText { get => capacityText; set => SetProperty(ref capacityText, value); }
+    /// <summary>
+    /// Gets a value indicating whether is bidirectional is enabled or active.
+    /// </summary>
     public bool IsBidirectional { get => isBidirectional; set => SetProperty(ref isBidirectional, value); }
+    /// <summary>
+    /// Gets or sets the route type suggestions.
+    /// </summary>
     public ObservableCollection<string> RouteTypeSuggestions { get; }
+    /// <summary>
+    /// Executes the clear operation.
+    /// </summary>
 
     public void Clear()
     {
@@ -1408,6 +1945,9 @@ public sealed class EdgeInspectorDraft : ObservableObject
         CapacityText = string.Empty;
         IsBidirectional = true;
     }
+    /// <summary>
+    /// Executes the load from operation.
+    /// </summary>
 
     public void LoadFrom(EdgeModel edge)
     {
@@ -1418,6 +1958,9 @@ public sealed class EdgeInspectorDraft : ObservableObject
         CapacityText = edge.Capacity?.ToString("0.##", CultureInfo.InvariantCulture) ?? string.Empty;
         IsBidirectional = edge.IsBidirectional;
     }
+    /// <summary>
+    /// Executes the update suggestions operation.
+    /// </summary>
 
     public void UpdateSuggestions(IEnumerable<string> suggestions)
     {
@@ -1428,6 +1971,9 @@ public sealed class EdgeInspectorDraft : ObservableObject
         }
     }
 }
+/// <summary>
+/// Represents the bulk selection inspector draft component.
+/// </summary>
 
 public sealed class BulkSelectionInspectorDraft : ObservableObject
 {
@@ -1439,11 +1985,26 @@ public sealed class BulkSelectionInspectorDraft : ObservableObject
     {
         PlaceTypeSuggestions = [];
     }
+    /// <summary>
+    /// Gets the collection of target node ids associated with this entity.
+    /// </summary>
 
     public IReadOnlyList<string> TargetNodeIds { get => targetNodeIds; set => SetProperty(ref targetNodeIds, value); }
+    /// <summary>
+    /// Gets or sets the place type text.
+    /// </summary>
     public string PlaceTypeText { get => placeTypeText; set => SetProperty(ref placeTypeText, value); }
+    /// <summary>
+    /// Gets or sets the transhipment capacity text.
+    /// </summary>
     public string TranshipmentCapacityText { get => transhipmentCapacityText; set => SetProperty(ref transhipmentCapacityText, value); }
+    /// <summary>
+    /// Gets or sets the place type suggestions.
+    /// </summary>
     public ObservableCollection<string> PlaceTypeSuggestions { get; }
+    /// <summary>
+    /// Executes the clear operation.
+    /// </summary>
 
     public void Clear()
     {
@@ -1451,6 +2012,9 @@ public sealed class BulkSelectionInspectorDraft : ObservableObject
         PlaceTypeText = string.Empty;
         TranshipmentCapacityText = string.Empty;
     }
+    /// <summary>
+    /// Executes the load from operation.
+    /// </summary>
 
     public void LoadFrom(IReadOnlyList<string> nodeIds, IReadOnlyList<NodeModel> nodes)
     {
@@ -1462,6 +2026,9 @@ public sealed class BulkSelectionInspectorDraft : ObservableObject
             ? nodes.FirstOrDefault()?.TranshipmentCapacity?.ToString("0.##", CultureInfo.InvariantCulture) ?? string.Empty
             : string.Empty;
     }
+    /// <summary>
+    /// Executes the update suggestions operation.
+    /// </summary>
 
     public void UpdateSuggestions(IEnumerable<string> suggestions)
     {
@@ -1472,16 +2039,43 @@ public sealed class BulkSelectionInspectorDraft : ObservableObject
         }
     }
 }
+/// <summary>
+/// Represents a data model for layer list item view entities within the simulation.
+/// </summary>
 
 public sealed class LayerListItemViewModel : ObservableObject
 {
+    /// <summary>
+    /// Gets or sets the layer.
+    /// </summary>
     public required NetworkLayerModel Layer { get; init; }
+    /// <summary>
+    /// Gets or sets the on state changed.
+    /// </summary>
     public Action? OnStateChanged { get; init; }
+    /// <summary>
+    /// Gets or sets the name.
+    /// </summary>
     public string Name => Layer.Name;
+    /// <summary>
+    /// Gets or sets the type label.
+    /// </summary>
     public string TypeLabel => Layer.Type.ToString();
+    /// <summary>
+    /// Gets or sets the visibility label.
+    /// </summary>
     public string VisibilityLabel => Layer.IsVisible ? "Visible" : "Hidden";
+    /// <summary>
+    /// Gets or sets the lock label.
+    /// </summary>
     public string LockLabel => Layer.IsLocked ? "Locked" : "Unlocked";
+    /// <summary>
+    /// Gets or sets the node count.
+    /// </summary>
     public int NodeCount { get; set; }
+    /// <summary>
+    /// Gets or sets the edge count.
+    /// </summary>
     public int EdgeCount { get; set; }
     public bool IsVisible
     {
@@ -1517,6 +2111,9 @@ public sealed class LayerListItemViewModel : ObservableObject
         }
     }
 }
+/// <summary>
+/// Specifies the top issue target kind.
+/// </summary>
 
 public enum TopIssueTargetKind
 {
@@ -1524,54 +2121,165 @@ public enum TopIssueTargetKind
     Node,
     Edge
 }
+/// <summary>
+/// Represents a data model for top issue view entities within the simulation.
+/// </summary>
 
 public sealed class TopIssueViewModel
 {
+    /// <summary>
+    /// Gets or sets the title.
+    /// </summary>
     public required string Title { get; init; }
+    /// <summary>
+    /// Gets or sets the detail.
+    /// </summary>
     public required string Detail { get; init; }
+    /// <summary>
+    /// Gets or sets the target kind.
+    /// </summary>
     public required TopIssueTargetKind TargetKind { get; init; }
+    /// <summary>
+    /// Gets or sets the node id.
+    /// </summary>
     public string? NodeId { get; init; }
+    /// <summary>
+    /// Gets or sets the node display name.
+    /// </summary>
     public string? NodeDisplayName { get; init; }
+    /// <summary>
+    /// Gets or sets the edge id.
+    /// </summary>
     public string? EdgeId { get; init; }
+    /// <summary>
+    /// Gets or sets the from node name.
+    /// </summary>
     public string? FromNodeName { get; init; }
+    /// <summary>
+    /// Gets or sets the to node name.
+    /// </summary>
     public string? ToNodeName { get; init; }
+    /// <summary>
+    /// Gets or sets the breadcrumb.
+    /// </summary>
     public required string Breadcrumb { get; init; }
 }
+/// <summary>
+/// Represents a data model for simulation actor decision view entities within the simulation.
+/// </summary>
 
 public sealed class SimulationActorDecisionViewModel
 {
+    /// <summary>
+    /// Gets or sets the tick.
+    /// </summary>
     public int Tick { get; init; }
+    /// <summary>
+    /// Gets or sets the actor.
+    /// </summary>
     public string Actor { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the action.
+    /// </summary>
     public string Action { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the target.
+    /// </summary>
     public string Target { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the traffic.
+    /// </summary>
     public string Traffic { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the delta.
+    /// </summary>
     public string Delta { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the cost.
+    /// </summary>
     public string Cost { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the reason.
+    /// </summary>
     public string Reason { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the expected effect.
+    /// </summary>
     public string ExpectedEffect { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the diagnostics.
+    /// </summary>
     public string Diagnostics { get; init; } = string.Empty;
 }
+/// <summary>
+/// Represents a data model for simulation actor action outcome view entities within the simulation.
+/// </summary>
 
 public sealed class SimulationActorActionOutcomeViewModel
 {
+    /// <summary>
+    /// Gets or sets the applied state.
+    /// </summary>
     public string AppliedState { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the reason.
+    /// </summary>
     public string Reason { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the target.
+    /// </summary>
     public string Target { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the action kind.
+    /// </summary>
     public string ActionKind { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the actor.
+    /// </summary>
     public string Actor { get; init; } = string.Empty;
 }
+/// <summary>
+/// Represents a data model for simulation actor metrics view entities within the simulation.
+/// </summary>
 
 public sealed class SimulationActorMetricsViewModel
 {
+    /// <summary>
+    /// Gets or sets the tick.
+    /// </summary>
     public int Tick { get; init; }
+    /// <summary>
+    /// Gets or sets the total delivered.
+    /// </summary>
     public string TotalDelivered { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the total unmet demand.
+    /// </summary>
     public string TotalUnmetDemand { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the total movement cost.
+    /// </summary>
     public string TotalMovementCost { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the average edge utilisation.
+    /// </summary>
     public string AverageEdgeUtilisation { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the bottleneck edge count.
+    /// </summary>
     public string BottleneckEdgeCount { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the policy restriction count.
+    /// </summary>
     public string PolicyRestrictionCount { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the cooperation index.
+    /// </summary>
     public string CooperationIndex { get; init; } = string.Empty;
 }
+/// <summary>
+/// Represents the agent log agent filter item component.
+/// </summary>
 
 public sealed class AgentLogAgentFilterItem
 {
@@ -1580,12 +2288,21 @@ public sealed class AgentLogAgentFilterItem
         AgentId = agentId;
         Name = string.IsNullOrWhiteSpace(name) ? "Unnamed agent" : name.Trim();
     }
+    /// <summary>
+    /// Gets or sets the agent id.
+    /// </summary>
 
     public Guid? AgentId { get; }
+    /// <summary>
+    /// Gets or sets the name.
+    /// </summary>
     public string Name { get; }
 
     public override string ToString() => Name;
 }
+/// <summary>
+/// Represents a data model for agent log view entities within the simulation.
+/// </summary>
 
 public sealed class AgentLogViewModel : ObservableObject
 {
@@ -1602,8 +2319,14 @@ public sealed class AgentLogViewModel : ObservableObject
         this.resolveAgentName = resolveAgentName ?? ResolveDefaultAgentName;
         SelectedAgent = new AgentLogAgentFilterItem(null, "All agents");
     }
+    /// <summary>
+    /// Gets or sets the entries.
+    /// </summary>
 
     public ObservableCollection<AgentActionLogEntry> Entries { get; } = [];
+    /// <summary>
+    /// Gets or sets the available agents.
+    /// </summary>
     public ObservableCollection<AgentLogAgentFilterItem> AvailableAgents => availableAgents;
 
     public AgentLogAgentFilterItem? SelectedAgent
@@ -1657,6 +2380,9 @@ public sealed class AgentLogViewModel : ObservableObject
             }
         }
     }
+    /// <summary>
+    /// Assigns or updates the entries.
+    /// </summary>
 
     public void SetEntries(IEnumerable<AgentActionLogEntry> entries)
     {
@@ -1709,6 +2435,9 @@ public sealed class AgentLogViewModel : ObservableObject
         return !string.IsNullOrWhiteSpace(entry.ActorId) ? entry.ActorId : entry.AgentId.ToString();
     }
 }
+/// <summary>
+/// Represents the actor traffic type selection row component.
+/// </summary>
 
 public sealed class ActorTrafficTypeSelectionRow : ObservableObject
 {
@@ -1723,6 +2452,9 @@ public sealed class ActorTrafficTypeSelectionRow : ObservableObject
         this.onChanged = onChanged;
         ToggleCommand = new RelayCommand(() => IsAllowed = !IsAllowed);
     }
+    /// <summary>
+    /// Gets or sets the traffic type.
+    /// </summary>
 
     public string TrafficType { get; }
 
@@ -1737,8 +2469,14 @@ public sealed class ActorTrafficTypeSelectionRow : ObservableObject
             }
         }
     }
+    /// <summary>
+    /// Gets or sets the toggle command.
+    /// </summary>
 
     public ICommand ToggleCommand { get; }
+    /// <summary>
+    /// Assigns or updates the allowed silently.
+    /// </summary>
 
     public void SetAllowedSilently(bool value)
     {
@@ -1753,6 +2491,9 @@ public sealed class ActorTrafficTypeSelectionRow : ObservableObject
         }
     }
 }
+/// <summary>
+/// Specifies the actor permission scope.
+/// </summary>
 
 public enum ActorPermissionScope
 {
@@ -1760,6 +2501,9 @@ public enum ActorPermissionScope
     Node,
     Edge
 }
+/// <summary>
+/// Represents the actor permission row component.
+/// </summary>
 
 public sealed class ActorPermissionRow : ObservableObject
 {
@@ -1799,11 +2543,26 @@ public sealed class ActorPermissionRow : ObservableObject
         };
         isAllowed = permission.IsAllowed;
     }
+    /// <summary>
+    /// Gets or sets the permission.
+    /// </summary>
 
     public SimulationActorPermission Permission => permission;
+    /// <summary>
+    /// Gets the collection of traffic type options associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> TrafficTypeOptions { get; }
+    /// <summary>
+    /// Gets the collection of node id options associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> NodeIdOptions { get; }
+    /// <summary>
+    /// Gets the collection of edge id options associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> EdgeIdOptions { get; }
+    /// <summary>
+    /// Gets the collection of target options associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> TargetOptions => Scope == ActorPermissionScope.Node ? NodeIdOptions : Scope == ActorPermissionScope.Edge ? EdgeIdOptions : [];
 
     public SimulationActorActionKind ActionKind
@@ -1874,6 +2633,9 @@ public sealed class ActorPermissionRow : ObservableObject
             }
         }
     }
+    /// <summary>
+    /// Gets a value indicating whether has target selector is enabled or active.
+    /// </summary>
 
     public bool HasTargetSelector => Scope != ActorPermissionScope.Global;
 
@@ -1883,30 +2645,51 @@ public sealed class ActorPermissionRow : ObservableObject
         onChanged?.Invoke(this);
     }
 }
+/// <summary>
+/// Specifies the selection source.
+/// </summary>
 
 public enum SelectionSource
 {
     User,
     TopIssue
 }
+/// <summary>
+/// Provides business logic and operations related to icanvas selection.
+/// </summary>
 
 public interface ICanvasSelectionService
 {
     void SelectNode(string nodeId, SelectionSource source = SelectionSource.User);
     void SelectEdge(string edgeId, SelectionSource source = SelectionSource.User);
 }
+/// <summary>
+/// Defines the contract and required members for ielement editor coordinator implementations.
+/// </summary>
 
 public interface IElementEditorCoordinator
 {
     void OpenNodeEditor(string nodeId);
     void OpenEdgeEditor(string edgeId);
 }
+/// <summary>
+/// Represents a data model for workspace view entities within the simulation.
+/// </summary>
 
 public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICanvasSelectionService, IElementEditorCoordinator
 {
+    /// <summary>
+    /// Represents the edge editor session component.
+    /// </summary>
     private sealed class EdgeEditorSession
     {
+        /// <summary>
+        /// Gets or sets the edge id.
+        /// </summary>
         public required string EdgeId { get; init; }
+        /// <summary>
+        /// Gets or sets the snapshot.
+        /// </summary>
         public required EdgeModel Snapshot { get; init; }
     }
 
@@ -2290,95 +3073,356 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         CreateBlankNetwork();
         SetActiveTool(GraphToolMode.Select);
     }
+    /// <summary>
+    /// Gets or sets the scene.
+    /// </summary>
 
     public GraphScene Scene { get; }
+    /// <summary>
+    /// Gets or sets the viewport.
+    /// </summary>
     public GraphViewport Viewport { get; }
+    /// <summary>
+    /// Gets or sets the map camera.
+    /// </summary>
     public MapCameraState MapCamera { get => mapCamera; private set => SetProperty(ref mapCamera, value); }
+    /// <summary>
+    /// Gets or sets the last viewport size.
+    /// </summary>
     public GraphSize LastViewportSize { get; private set; } = new(1440d, 860d);
+    /// <summary>
+    /// Gets or sets the viewport version.
+    /// </summary>
     public int ViewportVersion { get; private set; }
+    /// <summary>
+    /// Gets or sets the inspector.
+    /// </summary>
     public InspectorSection Inspector { get; }
+    /// <summary>
+    /// Gets or sets the report metrics.
+    /// </summary>
     public ObservableCollection<ReportMetricViewModel> ReportMetrics { get; }
+    /// <summary>
+    /// Gets or sets the traffic reports.
+    /// </summary>
     public ObservableCollection<TrafficReportRowViewModel> TrafficReports { get; }
+    /// <summary>
+    /// Gets or sets the route reports.
+    /// </summary>
     public ObservableCollection<RouteReportRowViewModel> RouteReports { get; }
+    /// <summary>
+    /// Gets or sets the node pressure reports.
+    /// </summary>
     public ObservableCollection<NodePressureReportRowViewModel> NodePressureReports { get; }
+    /// <summary>
+    /// Gets or sets the uncovered planning items.
+    /// </summary>
     public ObservableCollection<UncoveredNodePlanningItem> UncoveredPlanningItems { get; }
+    /// <summary>
+    /// Gets or sets the facility comparison rows.
+    /// </summary>
     public ObservableCollection<FacilityComparisonRowViewModel> FacilityComparisonRows { get; }
+    /// <summary>
+    /// Gets or sets the selected node traffic profiles.
+    /// </summary>
     public ObservableCollection<NodeTrafficProfileListItem> SelectedNodeTrafficProfiles { get; }
+    /// <summary>
+    /// Gets or sets the selected node production windows.
+    /// </summary>
     public ObservableCollection<PeriodWindowEditorRow> SelectedNodeProductionWindows { get; }
+    /// <summary>
+    /// Gets or sets the selected node consumption windows.
+    /// </summary>
     public ObservableCollection<PeriodWindowEditorRow> SelectedNodeConsumptionWindows { get; }
+    /// <summary>
+    /// Gets or sets the selected node input requirements.
+    /// </summary>
     public ObservableCollection<InputRequirementEditorRow> SelectedNodeInputRequirements { get; }
+    /// <summary>
+    /// Gets or sets the selected edge permission rows.
+    /// </summary>
     public ObservableCollection<PermissionRuleEditorRow> SelectedEdgePermissionRows { get; }
+    /// <summary>
+    /// Gets or sets the traffic definitions.
+    /// </summary>
     public ObservableCollection<TrafficDefinitionListItem> TrafficDefinitions { get; }
+    /// <summary>
+    /// Gets or sets the default traffic permission rows.
+    /// </summary>
     public ObservableCollection<PermissionRuleEditorRow> DefaultTrafficPermissionRows { get; }
+    /// <summary>
+    /// Gets or sets the selected facility nodes.
+    /// </summary>
     public ObservableCollection<FacilityOriginItem> SelectedFacilityNodes { get; }
+    /// <summary>
+    /// Gets or sets the layer items.
+    /// </summary>
     public ObservableCollection<LayerListItemViewModel> LayerItems { get; }
+    /// <summary>
+    /// Gets or sets the top issues.
+    /// </summary>
     public ObservableCollection<TopIssueViewModel> TopIssues { get; }
+    /// <summary>
+    /// Gets or sets the top issue advisories.
+    /// </summary>
     public ObservableCollection<string> TopIssueAdvisories { get; }
+    /// <summary>
+    /// Gets or sets the scenario warnings.
+    /// </summary>
     public ObservableCollection<string> ScenarioWarnings { get; }
+    /// <summary>
+    /// Gets or sets the node draft.
+    /// </summary>
     public NodeInspectorDraft NodeDraft { get; }
+    /// <summary>
+    /// Gets or sets the edge draft.
+    /// </summary>
     public EdgeInspectorDraft EdgeDraft { get; }
+    /// <summary>
+    /// Gets or sets the bulk draft.
+    /// </summary>
     public BulkSelectionInspectorDraft BulkDraft { get; }
+    /// <summary>
+    /// Gets or sets the scenario editor.
+    /// </summary>
     public ScenarioEditorViewModel ScenarioEditor { get; }
+    /// <summary>
+    /// Gets or sets the visualisation state.
+    /// </summary>
     public VisualisationState VisualisationState { get; }
+    /// <summary>
+    /// Gets or sets the network insights.
+    /// </summary>
     public ObservableCollection<NetworkInsight> NetworkInsights { get; }
+    /// <summary>
+    /// Gets or sets the simulation actors.
+    /// </summary>
     public ObservableCollection<SimulationActorState> SimulationActors { get; }
+    /// <summary>
+    /// Gets or sets the agents.
+    /// </summary>
     public ObservableCollection<AgentViewModel> Agents { get; }
+    /// <summary>
+    /// Gets or sets the filtered simulation actors.
+    /// </summary>
     public ObservableCollection<SimulationActorState> FilteredSimulationActors { get; }
+    /// <summary>
+    /// Gets or sets the actor traffic type rows.
+    /// </summary>
     public ObservableCollection<ActorTrafficTypeSelectionRow> ActorTrafficTypeRows { get; }
+    /// <summary>
+    /// Gets or sets the actor permission rows.
+    /// </summary>
     public ObservableCollection<ActorPermissionRow> ActorPermissionRows { get; }
+    /// <summary>
+    /// Gets or sets the actor decisions.
+    /// </summary>
     public ObservableCollection<SimulationActorDecisionViewModel> ActorDecisions { get; }
+    /// <summary>
+    /// Gets or sets the actor action outcomes.
+    /// </summary>
     public ObservableCollection<SimulationActorActionOutcomeViewModel> ActorActionOutcomes { get; }
+    /// <summary>
+    /// Gets or sets the actor metrics.
+    /// </summary>
     public ObservableCollection<SimulationActorMetricsViewModel> ActorMetrics { get; }
+    /// <summary>
+    /// Gets or sets the agent log.
+    /// </summary>
     public AgentLogViewModel AgentLog { get; }
+    /// <summary>
+    /// Gets or sets the traffic by type chart.
+    /// </summary>
     public PieChartModel TrafficByTypeChart { get; } = new();
+    /// <summary>
+    /// Gets or sets the node role chart.
+    /// </summary>
     public PieChartModel NodeRoleChart { get; } = new();
+    /// <summary>
+    /// Gets or sets the node shape options.
+    /// </summary>
 
     public Array NodeShapeOptions { get; } = Enum.GetValues(typeof(NodeVisualShape));
+    /// <summary>
+    /// Gets or sets the node kind options.
+    /// </summary>
     public Array NodeKindOptions { get; } = Enum.GetValues(typeof(NodeKind));
+    /// <summary>
+    /// Gets the collection of node role options associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> NodeRoleOptions { get; } = NodeTrafficRoleCatalog.RoleOptions;
+    /// <summary>
+    /// Gets or sets the routing preference options.
+    /// </summary>
     public Array RoutingPreferenceOptions { get; } = Enum.GetValues(typeof(RoutingPreference));
+    /// <summary>
+    /// Gets or sets the allocation mode options.
+    /// </summary>
     public Array AllocationModeOptions { get; } = Enum.GetValues(typeof(AllocationMode));
+    /// <summary>
+    /// Gets or sets the route choice model options.
+    /// </summary>
     public Array RouteChoiceModelOptions { get; } = Enum.GetValues(typeof(RouteChoiceModel));
+    /// <summary>
+    /// Gets or sets the flow split policy options.
+    /// </summary>
     public Array FlowSplitPolicyOptions { get; } = Enum.GetValues(typeof(FlowSplitPolicy));
+    /// <summary>
+    /// Gets or sets the permission mode options.
+    /// </summary>
     public Array PermissionModeOptions { get; } = Enum.GetValues(typeof(EdgeTrafficPermissionMode));
+    /// <summary>
+    /// Gets or sets the permission limit kind options.
+    /// </summary>
     public Array PermissionLimitKindOptions { get; } = Enum.GetValues(typeof(EdgeTrafficLimitKind));
+    /// <summary>
+    /// Gets or sets the scenario event kind options.
+    /// </summary>
     public Array ScenarioEventKindOptions { get; } = Enum.GetValues(typeof(ScenarioEventKind));
+    /// <summary>
+    /// Gets or sets the scenario target kind options.
+    /// </summary>
     public Array ScenarioTargetKindOptions { get; } = Enum.GetValues(typeof(ScenarioTargetKind));
+    /// <summary>
+    /// Gets or sets the actor action kind options.
+    /// </summary>
     public Array ActorActionKindOptions { get; } = Enum.GetValues(typeof(SimulationActorActionKind));
+    /// <summary>
+    /// Gets or sets the actor permission scope options.
+    /// </summary>
     public Array ActorPermissionScopeOptions { get; } = Enum.GetValues(typeof(ActorPermissionScope));
+    /// <summary>
+    /// Gets or sets the new command.
+    /// </summary>
 
     public RelayCommand NewCommand { get; }
+    /// <summary>
+    /// Gets or sets the simulate command.
+    /// </summary>
     public RelayCommand SimulateCommand { get; }
+    /// <summary>
+    /// Gets or sets the step command.
+    /// </summary>
     public RelayCommand StepCommand { get; }
+    /// <summary>
+    /// Gets or sets the reset timeline command.
+    /// </summary>
     public RelayCommand ResetTimelineCommand { get; }
+    /// <summary>
+    /// Gets or sets the fit command.
+    /// </summary>
     public RelayCommand FitCommand { get; }
+    /// <summary>
+    /// Gets or sets the toggle motion command.
+    /// </summary>
     public RelayCommand ToggleMotionCommand { get; }
+    /// <summary>
+    /// Gets or sets the open about command.
+    /// </summary>
     public RelayCommand OpenAboutCommand { get; }
+    /// <summary>
+    /// Gets or sets the select tool command.
+    /// </summary>
     public RelayCommand SelectToolCommand { get; }
+    /// <summary>
+    /// Gets or sets the add node tool command.
+    /// </summary>
     public RelayCommand AddNodeToolCommand { get; }
+    /// <summary>
+    /// Gets or sets the connect tool command.
+    /// </summary>
     public RelayCommand ConnectToolCommand { get; }
+    /// <summary>
+    /// Gets or sets the agent tool command.
+    /// </summary>
     public RelayCommand AgentToolCommand { get; }
+    /// <summary>
+    /// Gets or sets the toggle agent tools command.
+    /// </summary>
     public RelayCommand ToggleAgentToolsCommand { get; }
+    /// <summary>
+    /// Gets or sets the set network view command.
+    /// </summary>
     public ICommand SetNetworkViewCommand { get; }
+    /// <summary>
+    /// Gets or sets the set map view command.
+    /// </summary>
     public ICommand SetMapViewCommand { get; }
+    /// <summary>
+    /// Gets or sets the set sankey view command.
+    /// </summary>
     public ICommand SetSankeyViewCommand { get; }
+    /// <summary>
+    /// Gets or sets the set osm import view command.
+    /// </summary>
     public ICommand SetOsmImportViewCommand { get; }
+    /// <summary>
+    /// Gets or sets the set agents view command.
+    /// </summary>
     public ICommand SetAgentsViewCommand { get; }
+    /// <summary>
+    /// Gets or sets the set analytics view command.
+    /// </summary>
     public ICommand SetAnalyticsViewCommand { get; }
+    /// <summary>
+    /// Gets or sets the set facilities view command.
+    /// </summary>
     public ICommand SetFacilitiesViewCommand { get; }
+    /// <summary>
+    /// Gets or sets the set reports view command.
+    /// </summary>
     public ICommand SetReportsViewCommand { get; }
+    /// <summary>
+    /// Gets or sets the set graph visualisation command.
+    /// </summary>
     public RelayCommand SetGraphVisualisationCommand { get; }
+    /// <summary>
+    /// Gets or sets the set sankey visualisation command.
+    /// </summary>
     public RelayCommand SetSankeyVisualisationCommand { get; }
+    /// <summary>
+    /// Gets or sets the set map visualisation command.
+    /// </summary>
     public RelayCommand SetMapVisualisationCommand { get; }
+    /// <summary>
+    /// Gets or sets the toggle graph labels command.
+    /// </summary>
     public RelayCommand ToggleGraphLabelsCommand { get; }
+    /// <summary>
+    /// Gets or sets the show graph mode command.
+    /// </summary>
     public RelayCommand ShowGraphModeCommand { get; }
+    /// <summary>
+    /// Gets or sets the show sankey mode command.
+    /// </summary>
     public RelayCommand ShowSankeyModeCommand { get; }
+    /// <summary>
+    /// Gets or sets the show map mode command.
+    /// </summary>
     public RelayCommand ShowMapModeCommand { get; }
+    /// <summary>
+    /// Gets or sets the start osm area selection command.
+    /// </summary>
     public RelayCommand StartOsmAreaSelectionCommand { get; }
+    /// <summary>
+    /// Gets or sets the toggle osm area selection command.
+    /// </summary>
     public RelayCommand ToggleOsmAreaSelectionCommand { get; }
+    /// <summary>
+    /// Gets or sets the clear osm selection command.
+    /// </summary>
     public RelayCommand ClearOsmSelectionCommand { get; }
+    /// <summary>
+    /// Gets or sets the import osm selection command.
+    /// </summary>
     public RelayCommand ImportOsmSelectionCommand { get; }
+    /// <summary>
+    /// Gets or sets the cancel osm import command.
+    /// </summary>
     public RelayCommand CancelOsmImportCommand { get; }
+    /// <summary>
+    /// Gets or sets the fit map to network command.
+    /// </summary>
     public RelayCommand FitMapToNetworkCommand { get; }
     public bool IsOsmAreaSelectionEnabled
     {
@@ -2392,11 +3436,26 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
         }
     }
+    /// <summary>
+    /// Gets a value indicating whether is osm download in progress is enabled or active.
+    /// </summary>
 
     public bool IsOsmDownloadInProgress { get => isOsmDownloadInProgress; private set => SetProperty(ref isOsmDownloadInProgress, value); }
+    /// <summary>
+    /// Gets or sets the osm west text.
+    /// </summary>
     public string OsmWestText { get => osmWestText; set => SetOsmCoordinateText(ref osmWestText, value, nameof(OsmWestText)); }
+    /// <summary>
+    /// Gets or sets the osm south text.
+    /// </summary>
     public string OsmSouthText { get => osmSouthText; set => SetOsmCoordinateText(ref osmSouthText, value, nameof(OsmSouthText)); }
+    /// <summary>
+    /// Gets or sets the osm east text.
+    /// </summary>
     public string OsmEastText { get => osmEastText; set => SetOsmCoordinateText(ref osmEastText, value, nameof(OsmEastText)); }
+    /// <summary>
+    /// Gets or sets the osm north text.
+    /// </summary>
     public string OsmNorthText { get => osmNorthText; set => SetOsmCoordinateText(ref osmNorthText, value, nameof(OsmNorthText)); }
     public int OsmNodeImportPercentage
     {
@@ -2415,10 +3474,22 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
         }
     }
+    /// <summary>
+    /// Gets the collection of osm node import percentage presets associated with this entity.
+    /// </summary>
 
     public IReadOnlyList<int> OsmNodeImportPercentagePresets { get; } = [1, 2, 5, 10, 25, 50, 100];
+    /// <summary>
+    /// Gets or sets the osm validation message.
+    /// </summary>
     public string OsmValidationMessage { get => osmValidationMessage; private set => SetProperty(ref osmValidationMessage, value); }
+    /// <summary>
+    /// Gets or sets the osm selected area text.
+    /// </summary>
     public string OsmSelectedAreaText => osmSelection is null ? "No area selected" : $"{osmSelection.AreaDegrees:0.####} square degrees";
+    /// <summary>
+    /// Gets a value indicating whether can import osm selection is enabled or active.
+    /// </summary>
     public bool CanImportOsmSelection => osmSelection is not null && !IsOsmDownloadInProgress && IsOsmSelectionValid();
     public string OsmTileCountText
     {
@@ -2440,74 +3511,275 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
         }
     }
+    /// <summary>
+    /// Gets or sets the osm selection.
+    /// </summary>
     public OsmBoundingBox? OsmSelection => osmSelection;
+    /// <summary>
+    /// Gets or sets the toggle isochrone mode command.
+    /// </summary>
     public RelayCommand ToggleIsochroneModeCommand { get; }
+    /// <summary>
+    /// Gets or sets the toggle facility planning mode command.
+    /// </summary>
     public RelayCommand ToggleFacilityPlanningModeCommand { get; }
+    /// <summary>
+    /// Gets or sets the add facility origin command.
+    /// </summary>
     public RelayCommand AddFacilityOriginCommand { get; }
+    /// <summary>
+    /// Gets or sets the remove facility origin command.
+    /// </summary>
     public RelayCommand RemoveFacilityOriginCommand { get; }
+    /// <summary>
+    /// Gets or sets the clear facility origins command.
+    /// </summary>
     public RelayCommand ClearFacilityOriginsCommand { get; }
+    /// <summary>
+    /// Gets or sets the run multi origin isochrone command.
+    /// </summary>
     public RelayCommand RunMultiOriginIsochroneCommand { get; }
+    /// <summary>
+    /// Gets or sets the delete selection command.
+    /// </summary>
     public RelayCommand DeleteSelectionCommand { get; }
+    /// <summary>
+    /// Gets or sets the apply inspector command.
+    /// </summary>
     public RelayCommand ApplyInspectorCommand { get; }
+    /// <summary>
+    /// Gets or sets the open selected edge editor command.
+    /// </summary>
     public RelayCommand OpenSelectedEdgeEditorCommand { get; }
+    /// <summary>
+    /// Gets or sets the save edge editor command.
+    /// </summary>
     public RelayCommand SaveEdgeEditorCommand { get; }
+    /// <summary>
+    /// Gets or sets the cancel edge editor command.
+    /// </summary>
     public RelayCommand CancelEdgeEditorCommand { get; }
+    /// <summary>
+    /// Gets or sets the delete selected edge editor command.
+    /// </summary>
     public RelayCommand DeleteSelectedEdgeEditorCommand { get; }
+    /// <summary>
+    /// Gets or sets the add edge permission rule command.
+    /// </summary>
     public RelayCommand AddEdgePermissionRuleCommand { get; }
+    /// <summary>
+    /// Gets or sets the add node traffic profile command.
+    /// </summary>
     public RelayCommand AddNodeTrafficProfileCommand { get; }
+    /// <summary>
+    /// Gets or sets the duplicate selected node traffic profile command.
+    /// </summary>
     public RelayCommand DuplicateSelectedNodeTrafficProfileCommand { get; }
+    /// <summary>
+    /// Gets or sets the remove selected node traffic profile command.
+    /// </summary>
     public RelayCommand RemoveSelectedNodeTrafficProfileCommand { get; }
+    /// <summary>
+    /// Gets or sets the add node production window command.
+    /// </summary>
     public RelayCommand AddNodeProductionWindowCommand { get; }
+    /// <summary>
+    /// Gets or sets the remove selected node production window command.
+    /// </summary>
     public RelayCommand RemoveSelectedNodeProductionWindowCommand { get; }
+    /// <summary>
+    /// Gets or sets the add node consumption window command.
+    /// </summary>
     public RelayCommand AddNodeConsumptionWindowCommand { get; }
+    /// <summary>
+    /// Gets or sets the remove selected node consumption window command.
+    /// </summary>
     public RelayCommand RemoveSelectedNodeConsumptionWindowCommand { get; }
+    /// <summary>
+    /// Gets or sets the add node input requirement command.
+    /// </summary>
     public RelayCommand AddNodeInputRequirementCommand { get; }
+    /// <summary>
+    /// Gets or sets the remove selected node input requirement command.
+    /// </summary>
     public RelayCommand RemoveSelectedNodeInputRequirementCommand { get; }
+    /// <summary>
+    /// Gets or sets the add traffic definition command.
+    /// </summary>
     public RelayCommand AddTrafficDefinitionCommand { get; }
+    /// <summary>
+    /// Gets or sets the remove selected traffic definition command.
+    /// </summary>
     public RelayCommand RemoveSelectedTrafficDefinitionCommand { get; }
+    /// <summary>
+    /// Gets or sets the apply traffic definition command.
+    /// </summary>
     public RelayCommand ApplyTrafficDefinitionCommand { get; }
+    /// <summary>
+    /// Gets or sets the add layer command.
+    /// </summary>
     public RelayCommand AddLayerCommand { get; }
+    /// <summary>
+    /// Gets or sets the add physical layer command.
+    /// </summary>
     public RelayCommand AddPhysicalLayerCommand { get; }
+    /// <summary>
+    /// Gets or sets the add logical layer command.
+    /// </summary>
     public RelayCommand AddLogicalLayerCommand { get; }
+    /// <summary>
+    /// Gets or sets the add policy layer command.
+    /// </summary>
     public RelayCommand AddPolicyLayerCommand { get; }
+    /// <summary>
+    /// Gets or sets the rename layer command.
+    /// </summary>
     public RelayCommand RenameLayerCommand { get; }
+    /// <summary>
+    /// Gets or sets the delete layer command.
+    /// </summary>
     public RelayCommand DeleteLayerCommand { get; }
+    /// <summary>
+    /// Gets or sets the toggle layer visibility command.
+    /// </summary>
     public RelayCommand ToggleLayerVisibilityCommand { get; }
+    /// <summary>
+    /// Gets or sets the toggle layer lock command.
+    /// </summary>
     public RelayCommand ToggleLayerLockCommand { get; }
+    /// <summary>
+    /// Gets or sets the show all layers command.
+    /// </summary>
     public RelayCommand ShowAllLayersCommand { get; }
+    /// <summary>
+    /// Gets or sets the hide non selected layers command.
+    /// </summary>
     public RelayCommand HideNonSelectedLayersCommand { get; }
+    /// <summary>
+    /// Gets or sets the lock non selected layers command.
+    /// </summary>
     public RelayCommand LockNonSelectedLayersCommand { get; }
+    /// <summary>
+    /// Gets or sets the unlock all layers command.
+    /// </summary>
     public RelayCommand UnlockAllLayersCommand { get; }
+    /// <summary>
+    /// Gets or sets the assign selected nodes to layer command.
+    /// </summary>
     public RelayCommand AssignSelectedNodesToLayerCommand { get; }
+    /// <summary>
+    /// Gets or sets the assign selected edges to layer command.
+    /// </summary>
     public RelayCommand AssignSelectedEdgesToLayerCommand { get; }
+    /// <summary>
+    /// Gets or sets the add firm actor command.
+    /// </summary>
     public RelayCommand AddFirmActorCommand { get; }
+    /// <summary>
+    /// Gets or sets the add government actor command.
+    /// </summary>
     public RelayCommand AddGovernmentActorCommand { get; }
+    /// <summary>
+    /// Gets or sets the add logistics planner actor command.
+    /// </summary>
     public RelayCommand AddLogisticsPlannerActorCommand { get; }
+    /// <summary>
+    /// Gets or sets the remove selected actor command.
+    /// </summary>
     public RelayCommand RemoveSelectedActorCommand { get; }
+    /// <summary>
+    /// Gets or sets the duplicate selected actor command.
+    /// </summary>
     public RelayCommand DuplicateSelectedActorCommand { get; }
+    /// <summary>
+    /// Gets or sets the preview actor actions command.
+    /// </summary>
     public RelayCommand PreviewActorActionsCommand { get; }
+    /// <summary>
+    /// Gets or sets the run actor step command.
+    /// </summary>
     public RelayCommand RunActorStepCommand { get; }
+    /// <summary>
+    /// Gets or sets the run actor ticks command.
+    /// </summary>
     public RelayCommand RunActorTicksCommand { get; }
+    /// <summary>
+    /// Gets or sets the apply previewed actor actions command.
+    /// </summary>
     public RelayCommand ApplyPreviewedActorActionsCommand { get; }
+    /// <summary>
+    /// Gets or sets the reset actor history command.
+    /// </summary>
     public RelayCommand ResetActorHistoryCommand { get; }
+    /// <summary>
+    /// Gets or sets the export agent logs command.
+    /// </summary>
     public RelayCommand ExportAgentLogsCommand { get; }
+    /// <summary>
+    /// Gets or sets the add permission rule command.
+    /// </summary>
     public RelayCommand AddPermissionRuleCommand { get; }
+    /// <summary>
+    /// Gets or sets the remove permission rule command.
+    /// </summary>
     public RelayCommand<ActorPermissionRow> RemovePermissionRuleCommand { get; }
+    /// <summary>
+    /// Gets or sets the apply selected actor command.
+    /// </summary>
     public RelayCommand ApplySelectedActorCommand { get; }
+    /// <summary>
+    /// Gets or sets the open scenario editor command.
+    /// </summary>
     public RelayCommand OpenScenarioEditorCommand { get; }
+    /// <summary>
+    /// Gets or sets the close scenario editor command.
+    /// </summary>
     public RelayCommand CloseScenarioEditorCommand { get; }
+    /// <summary>
+    /// Gets or sets the create scenario command.
+    /// </summary>
     public RelayCommand CreateScenarioCommand { get; }
+    /// <summary>
+    /// Gets or sets the rename scenario command.
+    /// </summary>
     public RelayCommand RenameScenarioCommand { get; }
+    /// <summary>
+    /// Gets or sets the duplicate scenario command.
+    /// </summary>
     public RelayCommand DuplicateScenarioCommand { get; }
+    /// <summary>
+    /// Gets or sets the delete scenario command.
+    /// </summary>
     public RelayCommand DeleteScenarioCommand { get; }
+    /// <summary>
+    /// Gets or sets the add scenario event command.
+    /// </summary>
     public RelayCommand AddScenarioEventCommand { get; }
+    /// <summary>
+    /// Gets or sets the edit scenario event command.
+    /// </summary>
     public RelayCommand EditScenarioEventCommand { get; }
+    /// <summary>
+    /// Gets or sets the duplicate scenario event command.
+    /// </summary>
     public RelayCommand DuplicateScenarioEventCommand { get; }
+    /// <summary>
+    /// Gets or sets the delete scenario event command.
+    /// </summary>
     public RelayCommand DeleteScenarioEventCommand { get; }
+    /// <summary>
+    /// Gets or sets the run scenario command.
+    /// </summary>
     public RelayCommand RunScenarioCommand { get; }
+    /// <summary>
+    /// Gets or sets the select top issue command.
+    /// </summary>
     public ICommand SelectTopIssueCommand { get; }
     public event EventHandler? AboutRequested;
     public event EventHandler? ExportAgentLogsRequested;
+    /// <summary>
+    /// Gets or sets the interaction controller.
+    /// </summary>
 
     public GraphInteractionController InteractionController => interactionController;
     public bool HasUnsavedChanges
@@ -2537,24 +3809,63 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
         }
     }
+    /// <summary>
+    /// Gets or sets the last saved display name.
+    /// </summary>
 
     public string LastSavedDisplayName => string.IsNullOrWhiteSpace(CurrentFilePath) ? "Untitled Network.json" : Path.GetFileName(CurrentFilePath);
+    /// <summary>
+    /// Gets or sets the suggested file name.
+    /// </summary>
     public string SuggestedFileName => string.IsNullOrWhiteSpace(CurrentFilePath) ? BuildSuggestedFileName() : Path.GetFileName(CurrentFilePath);
+    /// <summary>
+    /// Gets or sets the window title.
+    /// </summary>
     public string WindowTitle => $"{(HasUnsavedChanges ? "*" : string.Empty)}MedW Network Sim | Avalonia Workstation | {network.Name}";
+    /// <summary>
+    /// Gets or sets the session subtitle.
+    /// </summary>
     public string SessionSubtitle => $"Active network: {network.Name} · {SimulationSummary}";
+    /// <summary>
+    /// Gets or sets the status text.
+    /// </summary>
     public string StatusText { get => statusText; set => SetProperty(ref statusText, value); }
     public string ActiveModeLabel
     {
         get => activeModeLabel ?? "Graph view";
         private set => SetProperty(ref activeModeLabel, value);
     }
+    /// <summary>
+    /// Gets a value indicating whether is graph mode is enabled or active.
+    /// </summary>
     public bool IsGraphMode => VisualisationState.ActiveMode == VisualisationMode.Graph;
+    /// <summary>
+    /// Gets a value indicating whether is sankey mode is enabled or active.
+    /// </summary>
     public bool IsSankeyMode => VisualisationState.ActiveMode == VisualisationMode.Sankey;
+    /// <summary>
+    /// Gets a value indicating whether is analytics mode is enabled or active.
+    /// </summary>
     public bool IsAnalyticsMode => VisualisationState.ActiveMode == VisualisationMode.Analytics;
+    /// <summary>
+    /// Gets a value indicating whether is map mode is enabled or active.
+    /// </summary>
     public bool IsMapMode => VisualisationState.ActiveMode == VisualisationMode.Map;
+    /// <summary>
+    /// Gets a value indicating whether has any nodes is enabled or active.
+    /// </summary>
     public bool HasAnyNodes => network.Nodes.Count > 0;
+    /// <summary>
+    /// Gets a value indicating whether has geo anchored nodes is enabled or active.
+    /// </summary>
     public bool HasGeoAnchoredNodes => network.Nodes.Any(node => node.Latitude.HasValue && node.Longitude.HasValue);
+    /// <summary>
+    /// Gets a value indicating whether is lock layout to map enabled is enabled or active.
+    /// </summary>
     public bool IsLockLayoutToMapEnabled => HasGeoAnchoredNodes;
+    /// <summary>
+    /// Gets or sets the lock layout to map disabled reason.
+    /// </summary>
     public string LockLayoutToMapDisabledReason => HasGeoAnchoredNodes
         ? string.Empty
         : "Import OSM data with coordinates to use map-locked layout.";
@@ -2588,6 +3899,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 : "Map layout unlocked. Graph positions can now be edited.";
         }
     }
+    /// <summary>
+    /// Gets a value indicating whether is map layout locked for graph is enabled or active.
+    /// </summary>
     public bool IsMapLayoutLockedForGraph => LockLayoutToMap && HasGeoAnchoredNodes;
 
     public AgentMode AgentMode
@@ -2628,30 +3942,72 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 : "Meeting-node demand can use same-node supply without SellLocal permission.";
         }
     }
+    /// <summary>
+    /// Gets or sets the agent mode options.
+    /// </summary>
 
     public Array AgentModeOptions => Enum.GetValues(typeof(AgentMode));
+    /// <summary>
+    /// Gets or sets the highlighted node ids.
+    /// </summary>
     public IReadOnlyCollection<string> HighlightedNodeIds => highlightedNodeIds;
+    /// <summary>
+    /// Gets or sets the highlighted edge ids.
+    /// </summary>
     public IReadOnlyCollection<string> HighlightedEdgeIds => highlightedEdgeIds;
     public int SankeyVersion
     {
         get => sankeyVersion;
         private set => SetProperty(ref sankeyVersion, value);
     }
+    /// <summary>
+    /// Gets or sets the current sankey.
+    /// </summary>
     public SankeyDiagramModel CurrentSankey => BuildSankeyDiagram();
+    /// <summary>
+    /// Gets the collection of flow series associated with this entity.
+    /// </summary>
     public IEnumerable<FlowDataPoint> FlowSeries => GetFlowSeries();
+    /// <summary>
+    /// Gets the collection of node pressure series associated with this entity.
+    /// </summary>
     public IEnumerable<NodePressurePoint> NodePressureSeries => GetNodePressure();
+    /// <summary>
+    /// Executes the report ui exception operation.
+    /// </summary>
     public void ReportUiException(string safeMessage, Exception exception)
     {
         _ = exception;
         StatusText = safeMessage;
     }
+    /// <summary>
+    /// Gets or sets the tool status text.
+    /// </summary>
 
     public string ToolStatusText { get => toolStatusText; private set => SetProperty(ref toolStatusText, value); }
+    /// <summary>
+    /// Gets or sets the tool instruction text.
+    /// </summary>
     public string ToolInstructionText { get => toolInstructionText; private set => SetProperty(ref toolInstructionText, value); }
+    /// <summary>
+    /// Gets or sets the active tool mode.
+    /// </summary>
     public GraphToolMode ActiveToolMode { get => activeToolMode; private set => SetProperty(ref activeToolMode, value); }
+    /// <summary>
+    /// Gets a value indicating whether is select tool active is enabled or active.
+    /// </summary>
     public bool IsSelectToolActive => ActiveToolMode == GraphToolMode.Select;
+    /// <summary>
+    /// Gets a value indicating whether is add node tool active is enabled or active.
+    /// </summary>
     public bool IsAddNodeToolActive => ActiveToolMode == GraphToolMode.AddNode;
+    /// <summary>
+    /// Gets a value indicating whether is connect tool active is enabled or active.
+    /// </summary>
     public bool IsConnectToolActive => ActiveToolMode == GraphToolMode.Connect;
+    /// <summary>
+    /// Gets a value indicating whether is agent tool active is enabled or active.
+    /// </summary>
     public bool IsAgentToolActive => ActiveToolMode == GraphToolMode.Agent;
     public bool ShowAgentTools
     {
@@ -2671,7 +4027,13 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
         }
     }
+    /// <summary>
+    /// Gets a value indicating whether is isochrone mode enabled is enabled or active.
+    /// </summary>
     public bool IsIsochroneModeEnabled => isIsochroneModeEnabled;
+    /// <summary>
+    /// Gets a value indicating whether is facility planning mode is enabled or active.
+    /// </summary>
     public bool IsFacilityPlanningMode => isFacilityPlanningMode;
     public double IsochroneBudget
     {
@@ -2718,9 +4080,21 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         get => facilityPlanningValidationText;
         private set => SetProperty(ref facilityPlanningValidationText, value);
     }
+    /// <summary>
+    /// Gets or sets the facility selection count text.
+    /// </summary>
     public string FacilitySelectionCountText => $"{SelectedFacilityNodes.Count} selected";
+    /// <summary>
+    /// Gets or sets the reachable node count text.
+    /// </summary>
     public string ReachableNodeCountText => (CurrentMultiOriginIsochrone?.ReachableNodes.Count ?? 0).ToString(CultureInfo.InvariantCulture);
+    /// <summary>
+    /// Gets or sets the uncovered node count text.
+    /// </summary>
     public string UncoveredNodeCountText => (CurrentMultiOriginIsochrone?.UncoveredNodes.Count ?? network.Nodes.Count).ToString(CultureInfo.InvariantCulture);
+    /// <summary>
+    /// Gets or sets the overlap node count text.
+    /// </summary>
     public string OverlapNodeCountText => (CurrentMultiOriginIsochrone?.OverlapNodes.Count ?? 0).ToString(CultureInfo.InvariantCulture);
     public string CoveragePercentageText
     {
@@ -2747,9 +4121,15 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return CurrentMultiOriginIsochrone.BestCostByNode.Values.Average().ToString("0.##", CultureInfo.InvariantCulture);
         }
     }
+    /// <summary>
+    /// Gets or sets the selected facility display names.
+    /// </summary>
     public string SelectedFacilityDisplayNames => SelectedFacilityNodes.Count == 0
         ? "None selected"
         : string.Join(", ", SelectedFacilityNodes.Select(facility => facility.DisplayName));
+    /// <summary>
+    /// Gets or sets the facility selection summary.
+    /// </summary>
     public string FacilitySelectionSummary => CurrentMultiOriginIsochrone is null
         ? "Pick facilities, set max times, then run analysis."
         : $"Reachable nodes {ReachableNodeCountText}, uncovered {UncoveredNodeCountText}, overlap {OverlapNodeCountText}.";
@@ -2758,11 +4138,23 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         get => isochroneNodes;
         set => SetProperty(ref isochroneNodes, value);
     }
+    /// <summary>
+    /// Gets or sets the isochrone legend title.
+    /// </summary>
     public string IsochroneLegendTitle => IsochroneNodes.Count == 0
         ? "Isochrone mode: select an origin node."
         : $"Reachable within {IsochroneThresholdMinutes:0.##} minutes";
+    /// <summary>
+    /// Gets or sets the isochrone legend strong label.
+    /// </summary>
     public string IsochroneLegendStrongLabel => "0–25% of threshold (strong highlight)";
+    /// <summary>
+    /// Gets or sets the isochrone legend medium label.
+    /// </summary>
     public string IsochroneLegendMediumLabel => "25–50% of threshold (medium highlight)";
+    /// <summary>
+    /// Gets or sets the isochrone legend light label.
+    /// </summary>
     public string IsochroneLegendLightLabel => "50–100% of threshold (light highlight)";
     public double IsochroneThresholdMinutes
     {
@@ -2776,16 +4168,49 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
         }
     }
+    /// <summary>
+    /// Gets a value indicating whether reduced motion is enabled or active.
+    /// </summary>
     public bool ReducedMotion { get => reducedMotion; set => SetProperty(ref reducedMotion, value); }
+    /// <summary>
+    /// Gets or sets the current period.
+    /// </summary>
     public int CurrentPeriod { get => currentPeriod; private set => SetProperty(ref currentPeriod, value); }
+    /// <summary>
+    /// Gets or sets the timeline maximum.
+    /// </summary>
     public int TimelineMaximum { get => timelineMaximum; private set => SetProperty(ref timelineMaximum, value); }
+    /// <summary>
+    /// Gets or sets the timeline position.
+    /// </summary>
     public int TimelinePosition { get => timelinePosition; set => SetProperty(ref timelinePosition, value); }
+    /// <summary>
+    /// Gets or sets the simulation summary.
+    /// </summary>
     public string SimulationSummary => temporalState is null ? "Static mode" : $"Timeline period {CurrentPeriod}";
+    /// <summary>
+    /// Gets or sets the traffic delivered column label.
+    /// </summary>
     public string TrafficDeliveredColumnLabel => lastTimelineStepResult is null ? "Delivered" : "Started this period";
+    /// <summary>
+    /// Gets or sets the selection summary.
+    /// </summary>
     public string SelectionSummary => BuildSelectionSummary();
+    /// <summary>
+    /// Gets or sets the selected node id text.
+    /// </summary>
     public string SelectedNodeIdText => BuildSelectedNodeIdText();
+    /// <summary>
+    /// Gets or sets the selected node role summary text.
+    /// </summary>
     public string SelectedNodeRoleSummaryText => BuildSelectedNodeRoleSummaryText();
+    /// <summary>
+    /// Gets or sets the graph labels toggle text.
+    /// </summary>
     public string GraphLabelsToggleText => VisualisationState.ShowGraphLabels ? "Labels On" : "Labels Off";
+    /// <summary>
+    /// Gets a value indicating whether can delete selection is enabled or active.
+    /// </summary>
     public bool CanDeleteSelection => Scene.Selection.SelectedNodeIds.Count > 0 || Scene.Selection.SelectedEdgeIds.Count > 0;
     public SimulationActorState? SelectedSimulationActor
     {
@@ -2809,9 +4234,21 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
         }
     }
+    /// <summary>
+    /// Gets or sets the actor tick.
+    /// </summary>
     public int ActorTick { get => actorTick; private set => SetProperty(ref actorTick, value); }
+    /// <summary>
+    /// Gets or sets the actor run ticks.
+    /// </summary>
     public int ActorRunTicks { get => actorRunTicks; set => SetProperty(ref actorRunTicks, Math.Max(1, value)); }
+    /// <summary>
+    /// Gets a value indicating whether has actor preview is enabled or active.
+    /// </summary>
     public bool HasActorPreview { get => hasActorPreview; private set => SetProperty(ref hasActorPreview, value); }
+    /// <summary>
+    /// Gets or sets the actor status message.
+    /// </summary>
     public string ActorStatusMessage { get => actorStatusMessage; private set => SetProperty(ref actorStatusMessage, value); }
     public string AgentSearchText
     {
@@ -2824,12 +4261,33 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
         }
     }
+    /// <summary>
+    /// Gets or sets the actor name text.
+    /// </summary>
     public string ActorNameText { get => actorNameText; set => SetProperty(ref actorNameText, value); }
+    /// <summary>
+    /// Gets or sets the actor budget text.
+    /// </summary>
     public string ActorBudgetText { get => actorBudgetText; set => SetProperty(ref actorBudgetText, value); }
+    /// <summary>
+    /// Gets or sets the actor cash text.
+    /// </summary>
     public string ActorCashText { get => actorCashText; set => SetProperty(ref actorCashText, value); }
+    /// <summary>
+    /// Gets or sets the actor risk tolerance text.
+    /// </summary>
     public string ActorRiskToleranceText { get => actorRiskToleranceText; set => SetProperty(ref actorRiskToleranceText, value); }
+    /// <summary>
+    /// Gets or sets the actor cooperation weight text.
+    /// </summary>
     public string ActorCooperationWeightText { get => actorCooperationWeightText; set => SetProperty(ref actorCooperationWeightText, value); }
+    /// <summary>
+    /// Gets or sets the actor notes text.
+    /// </summary>
     public string ActorNotesText { get => actorNotesText; set => SetProperty(ref actorNotesText, value); }
+    /// <summary>
+    /// Gets a value indicating whether actor is enabled is enabled or active.
+    /// </summary>
     public bool ActorIsEnabled { get => actorIsEnabled; set => SetProperty(ref actorIsEnabled, value); }
     public bool ActorAllowAllTrafficTypes
     {
@@ -2848,6 +4306,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
         }
     }
+    /// <summary>
+    /// Gets or sets the actor validation text.
+    /// </summary>
     public string ActorValidationText { get => actorValidationText; private set => SetProperty(ref actorValidationText, value); }
     public IReadOnlyList<PieChartSegmentViewModel> AgentStatusDistributionData
     {
@@ -2879,6 +4340,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return allowed.Count == 0 ? "Traffic scope: no traffic types selected" : $"Traffic scope: {string.Join(", ", allowed)}";
         }
     }
+    /// <summary>
+    /// Gets a value indicating whether show actor traffic type checklist is enabled or active.
+    /// </summary>
     public bool ShowActorTrafficTypeChecklist => !ActorAllowAllTrafficTypes;
     public LayerListItemViewModel? SelectedLayerItem
     {
@@ -2904,7 +4368,13 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         get => selectedLayerNameText;
         set => SetProperty(ref selectedLayerNameText, value);
     }
+    /// <summary>
+    /// Gets or sets the selected layer helper text.
+    /// </summary>
     public string SelectedLayerHelperText => "Layers separate real routes, supply flows, and policy rules.";
+    /// <summary>
+    /// Gets the collection of scenario definitions associated with this entity.
+    /// </summary>
     public IReadOnlyList<ScenarioDefinitionModel> ScenarioDefinitions => network.ScenarioDefinitions;
     public ScenarioDefinitionModel? SelectedScenarioDefinition
     {
@@ -2949,26 +4419,83 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
         }
     }
+    /// <summary>
+    /// Gets or sets the selected issue breadcrumb.
+    /// </summary>
     public string SelectedIssueBreadcrumb { get => selectedIssueBreadcrumb; private set => SetProperty(ref selectedIssueBreadcrumb, value); }
+    /// <summary>
+    /// Gets a value indicating whether has top issue advisories is enabled or active.
+    /// </summary>
     public bool HasTopIssueAdvisories => TopIssueAdvisories.Count > 0;
+    /// <summary>
+    /// Gets or sets the top issue unmapped summary.
+    /// </summary>
     public string TopIssueUnmappedSummary { get => topIssueUnmappedSummary; private set => SetProperty(ref topIssueUnmappedSummary, value); }
+    /// <summary>
+    /// Gets or sets the top issue empty state text.
+    /// </summary>
     public string TopIssueEmptyStateText => TopIssues.Count == 0
         ? "No node or route issues found. Run a simulation or check network-wide advisories."
         : string.Empty;
+    /// <summary>
+    /// Gets or sets the pulse node id.
+    /// </summary>
     public string? PulseNodeId { get => pulseNodeId; private set => SetProperty(ref pulseNodeId, value); }
+    /// <summary>
+    /// Gets or sets the pulse edge id.
+    /// </summary>
     public string? PulseEdgeId { get => pulseEdgeId; private set => SetProperty(ref pulseEdgeId, value); }
+    /// <summary>
+    /// Gets or sets the pulse progress.
+    /// </summary>
     public double PulseProgress { get => pulseProgress; private set => SetProperty(ref pulseProgress, value); }
+    /// <summary>
+    /// Gets or sets the scenario result summary.
+    /// </summary>
     public string ScenarioResultSummary { get => scenarioResultSummary; private set => SetProperty(ref scenarioResultSummary, value); }
+    /// <summary>
+    /// Gets or sets the explanation title.
+    /// </summary>
     public string ExplanationTitle { get => explanationTitle; private set => SetProperty(ref explanationTitle, value); }
+    /// <summary>
+    /// Gets or sets the insights empty state text.
+    /// </summary>
     public string InsightsEmptyStateText => lastOutcomes.Count == 0 ? "Run a simulation to generate insights." : string.Empty;
+    /// <summary>
+    /// Gets or sets the explanation summary.
+    /// </summary>
     public string ExplanationSummary { get => explanationSummary; private set => SetProperty(ref explanationSummary, value); }
+    /// <summary>
+    /// Gets the collection of explanation causes associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> ExplanationCauses { get => explanationCauses; private set => SetProperty(ref explanationCauses, value); }
+    /// <summary>
+    /// Gets the collection of explanation actions associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> ExplanationActions { get => explanationActions; private set => SetProperty(ref explanationActions, value); }
+    /// <summary>
+    /// Gets the collection of explanation related issues associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> ExplanationRelatedIssues { get => explanationRelatedIssues; private set => SetProperty(ref explanationRelatedIssues, value); }
+    /// <summary>
+    /// Gets or sets the current inspector edit mode.
+    /// </summary>
     public InspectorEditMode CurrentInspectorEditMode => currentInspectorEditMode;
+    /// <summary>
+    /// Gets a value indicating whether is editing network is enabled or active.
+    /// </summary>
     public bool IsEditingNetwork => CurrentInspectorEditMode == InspectorEditMode.Network;
+    /// <summary>
+    /// Gets a value indicating whether is editing node is enabled or active.
+    /// </summary>
     public bool IsEditingNode => CurrentInspectorEditMode == InspectorEditMode.Node;
+    /// <summary>
+    /// Gets a value indicating whether is editing edge is enabled or active.
+    /// </summary>
     public bool IsEditingEdge => CurrentInspectorEditMode == InspectorEditMode.Edge;
+    /// <summary>
+    /// Gets a value indicating whether is editing selection is enabled or active.
+    /// </summary>
     public bool IsEditingSelection => CurrentInspectorEditMode == InspectorEditMode.Selection;
     public AppView ActiveView
     {
@@ -3008,16 +4535,43 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             NotifyVisualChanged();
         }
     }
+    /// <summary>
+    /// Gets or sets the selected actor allowed actions text.
+    /// </summary>
     public string SelectedActorAllowedActionsText => SelectedSimulationActor?.Capability?.AllowedActionKinds is { Count: > 0 } actions
         ? string.Join(", ", actions)
         : "Allowed actions: none";
+    /// <summary>
+    /// Gets a value indicating whether is network view is enabled or active.
+    /// </summary>
     public bool IsNetworkView => ActiveView == AppView.Network;
+    /// <summary>
+    /// Gets a value indicating whether is map view is enabled or active.
+    /// </summary>
     public bool IsMapView => ActiveView == AppView.Map;
+    /// <summary>
+    /// Gets a value indicating whether is sankey view is enabled or active.
+    /// </summary>
     public bool IsSankeyView => ActiveView == AppView.Sankey;
+    /// <summary>
+    /// Gets a value indicating whether is osm import view is enabled or active.
+    /// </summary>
     public bool IsOsmImportView => ActiveView == AppView.OSMImport;
+    /// <summary>
+    /// Gets a value indicating whether is agents view is enabled or active.
+    /// </summary>
     public bool IsAgentsView => ActiveView == AppView.Agents;
+    /// <summary>
+    /// Gets a value indicating whether is analytics view is enabled or active.
+    /// </summary>
     public bool IsAnalyticsView => ActiveView == AppView.Analytics;
+    /// <summary>
+    /// Gets a value indicating whether is facilities view is enabled or active.
+    /// </summary>
     public bool IsFacilitiesView => ActiveView == AppView.Facilities;
+    /// <summary>
+    /// Gets a value indicating whether is reports view is enabled or active.
+    /// </summary>
     public bool IsReportsView => ActiveView == AppView.Reports;
     public WorkspaceMode CurrentWorkspaceMode
     {
@@ -3044,9 +4598,21 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
         }
     }
+    /// <summary>
+    /// Gets a value indicating whether is normal workspace mode is enabled or active.
+    /// </summary>
     public bool IsNormalWorkspaceMode => CurrentWorkspaceMode == WorkspaceMode.Normal;
+    /// <summary>
+    /// Gets a value indicating whether is edge editor workspace mode is enabled or active.
+    /// </summary>
     public bool IsEdgeEditorWorkspaceMode => CurrentWorkspaceMode == WorkspaceMode.EdgeEditor;
+    /// <summary>
+    /// Gets a value indicating whether is scenario editor workspace mode is enabled or active.
+    /// </summary>
     public bool IsScenarioEditorWorkspaceMode => CurrentWorkspaceMode == WorkspaceMode.ScenarioEditor;
+    /// <summary>
+    /// Gets a value indicating whether is osm import workspace mode is enabled or active.
+    /// </summary>
     public bool IsOsmImportWorkspaceMode => CurrentWorkspaceMode == WorkspaceMode.OsmImport;
     public InspectorTabTarget SelectedInspectorTab
     {
@@ -3071,21 +4637,57 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
         }
     }
+    /// <summary>
+    /// Gets or sets the selected inspector section.
+    /// </summary>
     public InspectorSectionTarget SelectedInspectorSection { get => selectedInspectorSection; set => SetProperty(ref selectedInspectorSection, value); }
+    /// <summary>
+    /// Gets or sets the apply inspector label.
+    /// </summary>
     public string ApplyInspectorLabel => CurrentInspectorEditMode == InspectorEditMode.Node ? "Apply Node Changes" : "Apply Changes";
+    /// <summary>
+    /// Gets a value indicating whether is node traffic role selected is enabled or active.
+    /// </summary>
     public bool IsNodeTrafficRoleSelected => SelectedNodeTrafficProfileItem is not null;
+    /// <summary>
+    /// Gets a value indicating whether is node store capacity enabled is enabled or active.
+    /// </summary>
     public bool IsNodeStoreCapacityEnabled => IsNodeTrafficRoleSelected && NodeStoreEnabled;
+    /// <summary>
+    /// Gets or sets the node traffic role validation text.
+    /// </summary>
     public string NodeTrafficRoleValidationText => BuildNodeTrafficRoleValidationText();
+    /// <summary>
+    /// Gets or sets the selected traffic type summary text.
+    /// </summary>
     public string SelectedTrafficTypeSummaryText => BuildSelectedTrafficTypeSummaryText();
+    /// <summary>
+    /// Gets or sets the selected traffic type status text.
+    /// </summary>
     public string SelectedTrafficTypeStatusText => SelectedTrafficDefinitionItem is null
         ? "Select a traffic type to edit"
         : string.IsNullOrWhiteSpace(TrafficValidationText)
             ? "Ready to apply"
             : "Fix the issue below before applying";
+    /// <summary>
+    /// Gets or sets the selected traffic type issue count text.
+    /// </summary>
     public string SelectedTrafficTypeIssueCountText => SelectedTrafficTypeStatusText;
+    /// <summary>
+    /// Gets or sets the selected traffic type default access summary text.
+    /// </summary>
     public string SelectedTrafficTypeDefaultAccessSummaryText => BuildSelectedTrafficTypeDefaultAccessSummaryText();
+    /// <summary>
+    /// Gets a value indicating whether can apply inspector edits is enabled or active.
+    /// </summary>
     public bool CanApplyInspectorEdits => string.IsNullOrWhiteSpace(NodeTrafficRoleValidationText);
+    /// <summary>
+    /// Gets a value indicating whether can open selected edge editor is enabled or active.
+    /// </summary>
     public bool CanOpenSelectedEdgeEditor => GetSelectedEdgeModel() is not null && !IsEdgeEditorWorkspaceMode;
+    /// <summary>
+    /// Gets a value indicating whether can save edge editor is enabled or active.
+    /// </summary>
     public bool CanSaveEdgeEditor =>
         IsEdgeEditorWorkspaceMode &&
         GetSelectedEdgeModel() is not null &&
@@ -3093,16 +4695,49 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         string.IsNullOrWhiteSpace(EdgeCostValidationText) &&
         string.IsNullOrWhiteSpace(EdgeCapacityValidationText) &&
         SelectedEdgePermissionRows.All(row => string.IsNullOrWhiteSpace(row.ValidationMessage));
+    /// <summary>
+    /// Gets a value indicating whether can delete selected edge editor is enabled or active.
+    /// </summary>
     public bool CanDeleteSelectedEdgeEditor => IsEdgeEditorWorkspaceMode && GetSelectedEdgeModel() is not null;
+    /// <summary>
+    /// Gets a value indicating whether can add edge permission rule is enabled or active.
+    /// </summary>
     public bool CanAddEdgePermissionRule => IsEdgeEditorWorkspaceMode && AvailableEdgeRuleTrafficTypes.Count > 0;
+    /// <summary>
+    /// Gets or sets the edge time validation text.
+    /// </summary>
     public string EdgeTimeValidationText { get => edgeTimeValidationText; private set => SetProperty(ref edgeTimeValidationText, value); }
+    /// <summary>
+    /// Gets or sets the edge cost validation text.
+    /// </summary>
     public string EdgeCostValidationText { get => edgeCostValidationText; private set => SetProperty(ref edgeCostValidationText, value); }
+    /// <summary>
+    /// Gets or sets the edge capacity validation text.
+    /// </summary>
     public string EdgeCapacityValidationText { get => edgeCapacityValidationText; private set => SetProperty(ref edgeCapacityValidationText, value); }
+    /// <summary>
+    /// Gets or sets the edge editor validation text.
+    /// </summary>
     public string EdgeEditorValidationText { get => edgeEditorValidationText; private set => SetProperty(ref edgeEditorValidationText, value); }
+    /// <summary>
+    /// Gets or sets the selected edge id text.
+    /// </summary>
     public string SelectedEdgeIdText => GetEdgeSummaryContext()?.Id ?? "No route selected";
+    /// <summary>
+    /// Gets or sets the selected node latitude text.
+    /// </summary>
     public string SelectedNodeLatitudeText => GetNodeSummaryContext()?.Latitude?.ToString("0.######", CultureInfo.InvariantCulture) ?? "Not set";
+    /// <summary>
+    /// Gets or sets the selected node longitude text.
+    /// </summary>
     public string SelectedNodeLongitudeText => GetNodeSummaryContext()?.Longitude?.ToString("0.######", CultureInfo.InvariantCulture) ?? "Not set";
+    /// <summary>
+    /// Gets or sets the selected edge source node text.
+    /// </summary>
     public string SelectedEdgeSourceNodeText => GetEdgeSummaryContext()?.FromNodeId ?? "No route selected";
+    /// <summary>
+    /// Gets or sets the selected edge target node text.
+    /// </summary>
     public string SelectedEdgeTargetNodeText => GetEdgeSummaryContext()?.ToNodeId ?? "No route selected";
     public string SelectedEdgeDirectionSummaryText
     {
@@ -3131,6 +4766,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 : $"{activeRules} route rules, {issueCount} need attention";
         }
     }
+    /// <summary>
+    /// Gets or sets the selected edge validation status text.
+    /// </summary>
 
     public string SelectedEdgeValidationStatusText => CanSaveEdgeEditor || !IsEdgeEditorWorkspaceMode
         ? "Ready to save"
@@ -3149,11 +4787,20 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return string.IsNullOrWhiteSpace(routeLabel) ? edge.Id : routeLabel.Trim();
         }
     }
+    /// <summary>
+    /// Gets or sets the selected edge preview travel text.
+    /// </summary>
 
     public string SelectedEdgePreviewTravelText => $"Time {EdgeDraft.TimeText} | Cost {EdgeDraft.CostText}";
+    /// <summary>
+    /// Gets or sets the selected edge preview capacity text.
+    /// </summary>
     public string SelectedEdgePreviewCapacityText => string.IsNullOrWhiteSpace(EdgeDraft.CapacityText)
         ? "Capacity unlimited"
         : $"Capacity {EdgeDraft.CapacityText}";
+    /// <summary>
+    /// Gets the collection of available edge rule traffic types associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> AvailableEdgeRuleTrafficTypes =>
         SelectedEdgePermissionRows
             .Where(row => row.SupportsOverrideToggle && !row.IsActive)
@@ -3161,14 +4808,32 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .OrderBy(name => name, Comparer)
             .ToList();
+    /// <summary>
+    /// Gets the collection of visible edge permission rows associated with this entity.
+    /// </summary>
     public IReadOnlyList<PermissionRuleEditorRow> VisibleEdgePermissionRows =>
         SelectedEdgePermissionRows
             .Where(row => !row.SupportsOverrideToggle || row.IsActive)
             .ToList();
+    /// <summary>
+    /// Gets or sets the network name text.
+    /// </summary>
     public string NetworkNameText { get => networkNameText; set => SetProperty(ref networkNameText, value); }
+    /// <summary>
+    /// Gets or sets the network description text.
+    /// </summary>
     public string NetworkDescriptionText { get => networkDescriptionText; set => SetProperty(ref networkDescriptionText, value); }
+    /// <summary>
+    /// Gets or sets the network timeline loop length text.
+    /// </summary>
     public string NetworkTimelineLoopLengthText { get => networkTimelineLoopLengthText; set => SetProperty(ref networkTimelineLoopLengthText, value); }
+    /// <summary>
+    /// Gets or sets the inspector node target id.
+    /// </summary>
     public string? InspectorNodeTargetId => NodeDraft.TargetNodeId;
+    /// <summary>
+    /// Gets the collection of inspector bulk target node ids associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> InspectorBulkTargetNodeIds => BulkDraft.TargetNodeIds;
 
     public NodeTrafficProfileListItem? SelectedNodeTrafficProfileItem
@@ -3231,15 +4896,24 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
         }
     }
+    /// <summary>
+    /// Gets the collection of traffic type name options associated with this entity.
+    /// </summary>
 
     public IReadOnlyList<string> TrafficTypeNameOptions =>
         network.TrafficTypes.Select(definition => definition.Name).Where(name => !string.IsNullOrWhiteSpace(name)).Distinct(Comparer).OrderBy(name => name, Comparer).ToList();
+    /// <summary>
+    /// Gets the collection of traffic type options associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> TrafficTypeOptions => TrafficTypeNameOptions;
     public string SelectedTrafficType
     {
         get => NodeTrafficTypeText;
         set => NodeTrafficTypeText = value;
     }
+    /// <summary>
+    /// Gets the collection of subnetwork id suggestions associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> SubnetworkIdSuggestions =>
         (network.Subnetworks ?? [])
             .Select(subnetwork => subnetwork.Id)
@@ -3247,6 +4921,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             .Distinct(Comparer)
             .OrderBy(id => id, Comparer)
             .ToList();
+    /// <summary>
+    /// Gets the collection of interface name suggestions associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> InterfaceNameSuggestions =>
         network.Nodes
             .Select(node => node.InterfaceName)
@@ -3398,6 +5075,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
         }
     }
+    /// <summary>
+    /// Gets or sets the inspector validation text.
+    /// </summary>
     public string InspectorValidationText { get => inspectorValidationText; set => SetProperty(ref inspectorValidationText, value); }
 
     public TrafficDefinitionListItem? SelectedTrafficDefinitionItem
@@ -3522,29 +5202,98 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
         }
     }
+    /// <summary>
+    /// Gets or sets the bulk place type text.
+    /// </summary>
 
     private string BulkPlaceTypeText { get => BulkDraft.PlaceTypeText; set => BulkDraft.PlaceTypeText = value; }
+    /// <summary>
+    /// Gets or sets the bulk transhipment capacity text.
+    /// </summary>
     private string BulkTranshipmentCapacityText { get => BulkDraft.TranshipmentCapacityText; set => BulkDraft.TranshipmentCapacityText = value; }
+    /// <summary>
+    /// Gets or sets the node id text.
+    /// </summary>
     private string NodeIdText { get => NodeDraft.NodeIdText; set => NodeDraft.NodeIdText = value; }
+    /// <summary>
+    /// Gets or sets the node name text.
+    /// </summary>
     private string NodeNameText { get => NodeDraft.NodeNameText; set => NodeDraft.NodeNameText = value; }
+    /// <summary>
+    /// Gets or sets the node xtext.
+    /// </summary>
     private string NodeXText { get => NodeDraft.NodeXText; set => NodeDraft.NodeXText = value; }
+    /// <summary>
+    /// Gets or sets the node ytext.
+    /// </summary>
     private string NodeYText { get => NodeDraft.NodeYText; set => NodeDraft.NodeYText = value; }
+    /// <summary>
+    /// Gets or sets the node place type text.
+    /// </summary>
     private string NodePlaceTypeText { get => NodeDraft.PlaceTypeText; set => NodeDraft.PlaceTypeText = value; }
+    /// <summary>
+    /// Gets or sets the node description text.
+    /// </summary>
     private string NodeDescriptionText { get => NodeDraft.DescriptionText; set => NodeDraft.DescriptionText = value; }
+    /// <summary>
+    /// Gets or sets the node transhipment capacity text.
+    /// </summary>
     private string NodeTranshipmentCapacityText { get => NodeDraft.TranshipmentCapacityText; set => NodeDraft.TranshipmentCapacityText = value; }
+    /// <summary>
+    /// Gets or sets the node shape.
+    /// </summary>
     private NodeVisualShape NodeShape { get => NodeDraft.Shape; set => NodeDraft.Shape = value; }
+    /// <summary>
+    /// Gets or sets the node kind.
+    /// </summary>
     private NodeKind NodeKind { get => NodeDraft.NodeKind; set => NodeDraft.NodeKind = value; }
+    /// <summary>
+    /// Gets or sets the node referenced subnetwork id text.
+    /// </summary>
     private string NodeReferencedSubnetworkIdText { get => NodeDraft.ReferencedSubnetworkIdText; set => NodeDraft.ReferencedSubnetworkIdText = value; }
+    /// <summary>
+    /// Gets a value indicating whether node is external interface is enabled or active.
+    /// </summary>
     private bool NodeIsExternalInterface { get => NodeDraft.IsExternalInterface; set => NodeDraft.IsExternalInterface = value; }
+    /// <summary>
+    /// Gets or sets the node interface name text.
+    /// </summary>
     private string NodeInterfaceNameText { get => NodeDraft.InterfaceNameText; set => NodeDraft.InterfaceNameText = value; }
+    /// <summary>
+    /// Gets or sets the node controlling actor text.
+    /// </summary>
     private string NodeControllingActorText { get => NodeDraft.ControllingActorText; set => NodeDraft.ControllingActorText = value; }
+    /// <summary>
+    /// Gets or sets the node tags text.
+    /// </summary>
     private string NodeTagsText { get => NodeDraft.TagsText; set => NodeDraft.TagsText = value; }
+    /// <summary>
+    /// Gets or sets the node template id text.
+    /// </summary>
     private string NodeTemplateIdText { get => NodeDraft.TemplateIdText; set => NodeDraft.TemplateIdText = value; }
+    /// <summary>
+    /// Gets or sets the edge route type text.
+    /// </summary>
     private string EdgeRouteTypeText { get => EdgeDraft.RouteTypeText; set => EdgeDraft.RouteTypeText = value; }
+    /// <summary>
+    /// Gets or sets the edge time text.
+    /// </summary>
     private string EdgeTimeText { get => EdgeDraft.TimeText; set => EdgeDraft.TimeText = value; }
+    /// <summary>
+    /// Gets or sets the edge cost text.
+    /// </summary>
     private string EdgeCostText { get => EdgeDraft.CostText; set => EdgeDraft.CostText = value; }
+    /// <summary>
+    /// Gets or sets the edge capacity text.
+    /// </summary>
     private string EdgeCapacityText { get => EdgeDraft.CapacityText; set => EdgeDraft.CapacityText = value; }
+    /// <summary>
+    /// Gets a value indicating whether edge is bidirectional is enabled or active.
+    /// </summary>
     private bool EdgeIsBidirectional { get => EdgeDraft.IsBidirectional; set => EdgeDraft.IsBidirectional = value; }
+    /// <summary>
+    /// Executes the create interaction context operation.
+    /// </summary>
 
     public GraphInteractionContext CreateInteractionContext(GraphSize viewportSize)
     {
@@ -3568,6 +5317,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             GetNodeDragBlockedMessage = _ => "Map-locked nodes cannot be moved. Turn off Lock layout to map to edit positions."
         };
     }
+    /// <summary>
+    /// Executes the create visual analytics snapshot operation.
+    /// </summary>
 
     public VisualAnalyticsSnapshot CreateVisualAnalyticsSnapshot() => visualAnalyticsSnapshot ?? new VisualAnalyticsSnapshot
     {
@@ -3602,6 +5354,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         RefreshInspector();
     }
+    /// <summary>
+    /// Executes the build sankey diagram operation.
+    /// </summary>
 
     public SankeyDiagramModel BuildSankeyDiagram()
     {
@@ -3632,6 +5387,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         SankeyVersion++;
         return cachedSankeyDiagram;
     }
+    /// <summary>
+    /// Retrieves the flow series based on the provided parameters.
+    /// </summary>
 
     public IEnumerable<FlowDataPoint> GetFlowSeries()
     {
@@ -3666,6 +5424,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 0d))
             .ToList();
     }
+    /// <summary>
+    /// Retrieves the node pressure based on the provided parameters.
+    /// </summary>
 
     public IEnumerable<NodePressurePoint> GetNodePressure()
     {
@@ -3703,6 +5464,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             .Where(node => node.Latitude.HasValue && node.Longitude.HasValue)
             .ToDictionary(node => node.Id, node => (node.Latitude!.Value, node.Longitude!.Value), StringComparer.OrdinalIgnoreCase);
     }
+    /// <summary>
+    /// Executes the build map projection viewport operation.
+    /// </summary>
 
     public MapProjectionViewport BuildMapProjectionViewport(GraphSize viewportSize)
     {
@@ -3778,6 +5542,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         bounds = new GraphRect(minX, minY, Math.Max(1d, maxX - minX), Math.Max(1d, maxY - minY));
         return true;
     }
+    /// <summary>
+    /// Executes the begin osm selection operation.
+    /// </summary>
 
     public void BeginOsmSelection(MapGeoCoordinate coordinate)
     {
@@ -3790,6 +5557,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ApplyOsmSelectionFromCoordinates(coordinate, coordinate);
         OsmValidationMessage = "Drag to select an area.";
     }
+    /// <summary>
+    /// Executes the update osm selection operation.
+    /// </summary>
 
     public void UpdateOsmSelection(MapGeoCoordinate coordinate)
     {
@@ -3800,6 +5570,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         ApplyOsmSelectionFromCoordinates(osmSelectionStartCoordinate.Value, coordinate);
     }
+    /// <summary>
+    /// Executes the end osm selection operation.
+    /// </summary>
 
     public void EndOsmSelection(MapGeoCoordinate coordinate)
     {
@@ -3820,6 +5593,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         osmSelectionStartCoordinate = null;
         RefreshOsmSelectionMetrics();
     }
+    /// <summary>
+    /// Executes the pan map operation.
+    /// </summary>
 
     public void PanMap(double screenDeltaX, double screenDeltaY)
     {
@@ -3831,6 +5607,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         hasUserMovedMapCamera = true;
         NotifyVisualChanged();
     }
+    /// <summary>
+    /// Executes the zoom map at operation.
+    /// </summary>
 
     public void ZoomMapAt(GraphPoint anchorScreen, double factor)
     {
@@ -3845,6 +5624,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         hasUserMovedMapCamera = true;
         NotifyVisualChanged();
     }
+    /// <summary>
+    /// Executes the build map selection overlay operation.
+    /// </summary>
 
     public MapSelectionOverlay? BuildMapSelectionOverlay()
     {
@@ -3869,6 +5651,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             tiles.Select(tile => (new MapGeoCoordinate(tile.MinLat, tile.MinLon), new MapGeoCoordinate(tile.MaxLat, tile.MaxLon))).ToList(),
             $"{OsmSelectedAreaText}, {OsmTileCountText}");
     }
+    /// <summary>
+    /// Executes the import osm selection async operation.
+    /// </summary>
 
     public async Task ImportOsmSelectionAsync(CancellationToken ct = default)
     {
@@ -3922,8 +5707,14 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             ImportOsmSelectionCommand.NotifyCanExecuteChanged();
         }
     }
+    /// <summary>
+    /// Executes the import selected osm area operation.
+    /// </summary>
 
     public void ImportSelectedOsmArea() => ImportOsmSelectionCommand.Execute(null);
+    /// <summary>
+    /// Executes the clear osm selection operation.
+    /// </summary>
 
     public void ClearOsmSelection()
     {
@@ -3938,6 +5729,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshOsmSelectionMetrics();
         NotifyVisualChanged();
     }
+    /// <summary>
+    /// Executes the enter osm import workspace operation.
+    /// </summary>
 
     public void EnterOsmImportWorkspace()
     {
@@ -3977,6 +5771,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         NotifyVisualChanged();
         StatusText = "OSM import view ready. Map centered on London by default.";
     }
+    /// <summary>
+    /// Executes the cancel osm import operation.
+    /// </summary>
 
     public void CancelOsmImport()
     {
@@ -3988,6 +5785,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         }
         ToolStatusText = "OSM import canceled.";
     }
+    /// <summary>
+    /// Executes the fit map to network operation.
+    /// </summary>
 
     public void FitMapToNetwork()
     {
@@ -4134,6 +5934,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                     ? "This may create a large network. Reduce area or node percentage."
                     : "Selected area ready. Choose Import selected area.";
     }
+    /// <summary>
+    /// Executes the try create bounding box from coordinates operation.
+    /// </summary>
 
     public static bool TryCreateBoundingBoxFromCoordinates(MapGeoCoordinate start, MapGeoCoordinate end, out OsmBoundingBox bbox, out string? error, bool enforceMinimumSize = false)
     {
@@ -4173,6 +5976,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return false;
         }
     }
+    /// <summary>
+    /// Executes the select insight operation.
+    /// </summary>
 
     public void SelectInsight(NetworkInsight insight)
     {
@@ -4196,6 +6002,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             Raise(nameof(HighlightedEdgeIds));
         }
     }
+    /// <summary>
+    /// Executes the highlight route edges operation.
+    /// </summary>
 
     public void HighlightRouteEdges(IEnumerable<string> edgeIds)
     {
@@ -4313,6 +6122,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             RefreshEdgeEditorState();
         }
     }
+    /// <summary>
+    /// Executes the tick animation operation.
+    /// </summary>
 
     public void TickAnimation(double elapsedSeconds)
     {
@@ -4334,6 +6146,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             Scene.Selection.PulseProgress = 0d;
         }
     }
+    /// <summary>
+    /// Executes the notify visual changed operation.
+    /// </summary>
 
     public void NotifyVisualChanged()
     {
@@ -4390,12 +6205,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         return sanitized.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? sanitized : $"{sanitized}.json";
     }
+    /// <summary>
+    /// Executes the open network operation.
+    /// </summary>
 
     public void OpenNetwork(string path)
     {
         LoadNetwork(fileService.Load(path), $"Opened '{Path.GetFileName(path)}'.", path);
         RebuildAnalytics();
     }
+    /// <summary>
+    /// Executes the save network operation.
+    /// </summary>
 
     public void SaveNetwork(string path)
     {
@@ -4408,11 +6229,17 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(WindowTitle));
         Raise(nameof(SessionSubtitle));
     }
+    /// <summary>
+    /// Executes the import graph ml operation.
+    /// </summary>
 
     public void ImportGraphMl(string path)
     {
         LoadNetwork(graphMlFileService.Load(path, new GraphMlTransferOptions(default, "transship", 25d)), $"Imported '{Path.GetFileName(path)}'.", currentFilePath: null);
     }
+    /// <summary>
+    /// Executes the export graph ml operation.
+    /// </summary>
 
     public void ExportGraphMl(string path)
     {
@@ -4420,11 +6247,17 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         graphMlFileService.Save(network, path, new GraphMlTransferOptions(network.TrafficTypes.FirstOrDefault()?.Name, "transship", 25d));
         StatusText = $"Exported GraphML to '{Path.GetFileName(path)}'.";
     }
+    /// <summary>
+    /// Executes the export current report operation.
+    /// </summary>
 
     public void ExportCurrentReport(string path, ReportExportFormat format)
     {
         ExportCurrentReport(path, format, network.LimitMeetingNodeDemandBySellLocalPermission);
     }
+    /// <summary>
+    /// Executes the export current report operation.
+    /// </summary>
 
     public void ExportCurrentReport(string path, ReportExportFormat format, bool applySellLocalMeetingDemandLimit)
     {
@@ -4436,11 +6269,17 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         reportExportService.SaveCurrentReport(exportNetwork, exportOutcomes, exportConsumerCosts, path, format);
         StatusText = $"Exported the current report to '{Path.GetFileName(path)}'.";
     }
+    /// <summary>
+    /// Executes the export timeline report operation.
+    /// </summary>
 
     public void ExportTimelineReport(string path, int periods, ReportExportFormat format)
     {
         ExportTimelineReport(path, periods, format, network.LimitMeetingNodeDemandBySellLocalPermission);
     }
+    /// <summary>
+    /// Executes the export timeline report operation.
+    /// </summary>
 
     public void ExportTimelineReport(string path, int periods, ReportExportFormat format, bool applySellLocalMeetingDemandLimit)
     {
@@ -4457,6 +6296,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         reportExportService.SaveTimelineReport(exportNetwork, results, path, format);
         StatusText = $"Exported {results.Count} timeline periods to '{Path.GetFileName(path)}'.";
     }
+    /// <summary>
+    /// Executes the export agent logs json operation.
+    /// </summary>
 
     public void ExportAgentLogsJson(string path)
     {
@@ -4482,6 +6324,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         File.WriteAllText(path, JsonSerializer.Serialize(readableEntries, options));
         StatusText = $"Exported {entries.Count} agent action logs to '{Path.GetFileName(path)}'.";
     }
+    /// <summary>
+    /// Executes the resolve agent log agent name operation.
+    /// </summary>
 
     public string ResolveAgentLogAgentName(AgentActionLogEntry? entry)
     {
@@ -4536,6 +6381,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Array.Copy(bytes, guidBytes, guidBytes.Length);
         return new Guid(guidBytes);
     }
+    /// <summary>
+    /// Assigns or updates the active tool.
+    /// </summary>
 
     public void SetActiveTool(GraphToolMode toolMode)
     {
@@ -4562,6 +6410,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(IsFacilityPlanningMode));
         RunMultiOriginIsochroneCommand.NotifyCanExecuteChanged();
     }
+    /// <summary>
+    /// Assigns or updates the isochrone mode.
+    /// </summary>
 
     public void SetIsochroneMode(bool enabled)
     {
@@ -4590,6 +6441,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(IsIsochroneModeEnabled));
         Raise(nameof(IsochroneLegendTitle));
     }
+    /// <summary>
+    /// Assigns or updates the facility planning mode.
+    /// </summary>
 
     public void SetFacilityPlanningMode(bool enabled)
     {
@@ -4617,16 +6471,25 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         Raise(nameof(IsFacilityPlanningMode));
     }
+    /// <summary>
+    /// Determines whether facility origin selected.
+    /// </summary>
 
     public bool IsFacilityOriginSelected(string nodeId) =>
         !string.IsNullOrWhiteSpace(nodeId) &&
         SelectedFacilityNodes.Any(candidate => Comparer.Equals(candidate.Node.Id, nodeId));
+    /// <summary>
+    /// Retrieves the facility node display name based on the provided parameters.
+    /// </summary>
 
     public string GetFacilityNodeDisplayName(string nodeId)
     {
         var node = network.Nodes.FirstOrDefault(candidate => Comparer.Equals(candidate.Id, nodeId));
         return node is null || string.IsNullOrWhiteSpace(node.Name) ? nodeId : node.Name;
     }
+    /// <summary>
+    /// Executes the toggle facility origin by id operation.
+    /// </summary>
 
     public bool ToggleFacilityOriginById(string nodeId, double? maxTravelTime = null)
     {
@@ -4661,11 +6524,17 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshFacilityCoverageIfActive(updateStatusText: false);
         return true;
     }
+    /// <summary>
+    /// Executes the run multi origin isochrone operation.
+    /// </summary>
 
     public void RunMultiOriginIsochrone()
     {
         RefreshFacilityCoverageIfActive(updateStatusText: true);
     }
+    /// <summary>
+    /// Executes the clear facility origins operation.
+    /// </summary>
 
     public void ClearFacilityOrigins()
     {
@@ -4681,6 +6550,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         NotifyVisualChanged();
         StatusText = "Cleared selected facilities.";
     }
+    /// <summary>
+    /// Executes the remove selected facility origin operation.
+    /// </summary>
 
     public void RemoveSelectedFacilityOrigin()
     {
@@ -4888,6 +6760,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             OverlapNodes = overlapNodes
         };
     }
+    /// <summary>
+    /// Executes the compute isochrone operation.
+    /// </summary>
 
     public bool ComputeIsochrone(string originNodeId, double thresholdMinutes)
     {
@@ -5341,6 +7216,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         CurrentWorkspaceMode = WorkspaceMode.ScenarioEditor;
         StatusText = "Scenario editor opened.";
     }
+    /// <summary>
+    /// Executes the close scenario editor operation.
+    /// </summary>
 
     public void CloseScenarioEditor()
     {
@@ -7595,6 +9473,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         CommitDefaultPermissionRows();
         StatusText = "Updated network settings.";
     }
+    /// <summary>
+    /// Executes the apply network details operation.
+    /// </summary>
 
     public void ApplyNetworkDetails(string name, string notes, bool loops, int loopLength, bool limitMeetingNodeDemandBySellLocalPermission)
     {
@@ -7771,6 +9652,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         StatusText = "Applied bulk node changes.";
     }
+    /// <summary>
+    /// Executes the would bulk apply traffic role overwrite operation.
+    /// </summary>
 
     public bool WouldBulkApplyTrafficRoleOverwrite(bool applyToAllNodes, string trafficType)
     {
@@ -7790,6 +9674,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         return false;
     }
+    /// <summary>
+    /// Executes the try bulk apply traffic role operation.
+    /// </summary>
 
     public bool TryBulkApplyTrafficRole(string roleName, string trafficType, bool applyToAllNodes, out string statusMessage)
     {
@@ -8575,12 +10462,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RaiseTrafficTypeOptionsChanged();
         StatusText = "Created default traffic type 'general'.";
     }
+    /// <summary>
+    /// Executes the select node for edit operation.
+    /// </summary>
 
     public void SelectNodeForEdit(string nodeId, bool focusTrafficRoles = false)
     {
         SelectNode(nodeId);
         FocusInspectorSection(InspectorTabTarget.Selection, focusTrafficRoles ? InspectorSectionTarget.TrafficRoles : InspectorSectionTarget.Node);
     }
+    /// <summary>
+    /// Executes the select route for edit operation.
+    /// </summary>
 
     public void SelectRouteForEdit(string edgeId)
     {
@@ -8611,12 +10504,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         return edgeLoads;
     }
+    /// <summary>
+    /// Executes the open route editor operation.
+    /// </summary>
 
     public void OpenRouteEditor(string edgeId)
     {
         SelectRouteForEdit(edgeId);
         EnterEdgeEditor();
     }
+    /// <summary>
+    /// Executes the enter edge editor operation.
+    /// </summary>
 
     public void EnterEdgeEditor()
     {
@@ -8637,6 +10536,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshEdgeEditorState();
         StatusText = $"Editing route '{edge.Id}'.";
     }
+    /// <summary>
+    /// Executes the add node at position operation.
+    /// </summary>
 
     public string AddNodeAtPosition(GraphPoint position)
     {
@@ -8644,6 +10546,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         SelectNodeForEdit(nodeId);
         return nodeId;
     }
+    /// <summary>
+    /// Executes the clear selection operation.
+    /// </summary>
 
     public void ClearSelection()
     {
@@ -8654,6 +10559,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         NotifyVisualChanged();
         StatusText = "Selection cleared.";
     }
+    /// <summary>
+    /// Executes the delete node by id operation.
+    /// </summary>
 
     public void DeleteNodeById(string nodeId)
     {
@@ -8667,6 +10575,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Scene.Selection.SelectedNodeIds.Add(nodeId);
         DeleteSelection();
     }
+    /// <summary>
+    /// Executes the delete route by id operation.
+    /// </summary>
 
     public void DeleteRouteById(string edgeId)
     {
@@ -8680,6 +10591,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Scene.Selection.SelectedEdgeIds.Add(edgeId);
         DeleteSelection();
     }
+    /// <summary>
+    /// Executes the delete selected edge from editor operation.
+    /// </summary>
 
     public void DeleteSelectedEdgeFromEditor()
     {
@@ -8693,6 +10607,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         edgeEditorSession = null;
         DeleteRouteById(edgeId);
     }
+    /// <summary>
+    /// Executes the add edge permission rule operation.
+    /// </summary>
 
     public void AddEdgePermissionRule()
     {
@@ -8710,6 +10627,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshEdgeEditorState();
         StatusText = $"Added route rule for '{row.TrafficType}'.";
     }
+    /// <summary>
+    /// Executes the remove edge permission rule operation.
+    /// </summary>
 
     public void RemoveEdgePermissionRule(PermissionRuleEditorRow row)
     {
@@ -8722,6 +10642,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshEdgeEditorState();
         StatusText = $"Removed route rule for '{row.TrafficType}'.";
     }
+    /// <summary>
+    /// Executes the start edge from node operation.
+    /// </summary>
 
     public bool StartEdgeFromNode(string nodeId)
     {
@@ -8743,12 +10666,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         StatusText = "Start edge: click another node to connect.";
         return true;
     }
+    /// <summary>
+    /// Executes the focus inspector section operation.
+    /// </summary>
 
     public void FocusInspectorSection(InspectorTabTarget tab, InspectorSectionTarget section)
     {
         SelectedInspectorTab = tab;
         SelectedInspectorSection = section;
     }
+    /// <summary>
+    /// Executes the select node operation.
+    /// </summary>
 
     public void SelectNode(string nodeId, SelectionSource source = SelectionSource.User)
     {
@@ -8763,6 +10692,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshInspector();
         NotifyVisualChanged();
     }
+    /// <summary>
+    /// Executes the select edge operation.
+    /// </summary>
 
     public void SelectEdge(string edgeId, SelectionSource source = SelectionSource.User)
     {
@@ -8777,12 +10709,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshInspector();
         NotifyVisualChanged();
     }
+    /// <summary>
+    /// Executes the open node editor operation.
+    /// </summary>
 
     public void OpenNodeEditor(string nodeId)
     {
         FocusInspectorSection(InspectorTabTarget.Selection, InspectorSectionTarget.Node);
         CurrentWorkspaceMode = WorkspaceMode.Normal;
     }
+    /// <summary>
+    /// Executes the open edge editor operation.
+    /// </summary>
 
     public void OpenEdgeEditor(string edgeId)
     {
@@ -8846,6 +10784,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         NotifyVisualChanged();
     }
+    /// <summary>
+    /// Executes the focus element from issue operation.
+    /// </summary>
 
     public void FocusElementFromIssue(string? nodeId, string? edgeId)
     {
@@ -9029,41 +10970,41 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         isRefreshingEdgeEditorState = true;
         try
         {
-        var hasEdgeContext = GetEdgeSummaryContext() is not null || SelectedEdgePermissionRows.Count > 0;
-        var capacityParse = TryParseOptionalNonNegativeDouble(
-            EdgeCapacityText,
-            "Enter route capacity as 0 or more, or leave it blank.");
-        var timeParse = TryParseNonNegativeDouble(EdgeTimeText, "Enter travel time as 0 or more.");
-        var costParse = TryParseNonNegativeDouble(EdgeCostText, "Enter travel cost as 0 or more.");
+            var hasEdgeContext = GetEdgeSummaryContext() is not null || SelectedEdgePermissionRows.Count > 0;
+            var capacityParse = TryParseOptionalNonNegativeDouble(
+                EdgeCapacityText,
+                "Enter route capacity as 0 or more, or leave it blank.");
+            var timeParse = TryParseNonNegativeDouble(EdgeTimeText, "Enter travel time as 0 or more.");
+            var costParse = TryParseNonNegativeDouble(EdgeCostText, "Enter travel cost as 0 or more.");
 
-        EdgeTimeValidationText = hasEdgeContext ? timeParse.ValidationMessage : string.Empty;
-        EdgeCostValidationText = hasEdgeContext ? costParse.ValidationMessage : string.Empty;
-        EdgeCapacityValidationText = hasEdgeContext ? capacityParse.ValidationMessage : string.Empty;
+            EdgeTimeValidationText = hasEdgeContext ? timeParse.ValidationMessage : string.Empty;
+            EdgeCostValidationText = hasEdgeContext ? costParse.ValidationMessage : string.Empty;
+            EdgeCapacityValidationText = hasEdgeContext ? capacityParse.ValidationMessage : string.Empty;
 
-        var knownTrafficTypes = GetKnownTrafficTypeNames();
-        var duplicateTrafficTypes = SelectedEdgePermissionRows
-            .Select(row => string.IsNullOrWhiteSpace(row.TrafficType) ? string.Empty : row.TrafficType.Trim())
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .GroupBy(name => name, Comparer)
-            .Where(group => group.Count() > 1)
-            .Select(group => group.Key)
-            .ToHashSet(Comparer);
-        var edgeCapacity = string.IsNullOrWhiteSpace(capacityParse.ValidationMessage) ? capacityParse.Value : null;
-        foreach (var row in SelectedEdgePermissionRows)
-        {
-            var normalizedTrafficType = string.IsNullOrWhiteSpace(row.TrafficType) ? string.Empty : row.TrafficType.Trim();
-            row.RefreshValidation(
-                edgeCapacity,
-                knownTrafficTypes,
-                hasDuplicateTrafficType: !string.IsNullOrWhiteSpace(normalizedTrafficType) && duplicateTrafficTypes.Contains(normalizedTrafficType));
-        }
+            var knownTrafficTypes = GetKnownTrafficTypeNames();
+            var duplicateTrafficTypes = SelectedEdgePermissionRows
+                .Select(row => string.IsNullOrWhiteSpace(row.TrafficType) ? string.Empty : row.TrafficType.Trim())
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .GroupBy(name => name, Comparer)
+                .Where(group => group.Count() > 1)
+                .Select(group => group.Key)
+                .ToHashSet(Comparer);
+            var edgeCapacity = string.IsNullOrWhiteSpace(capacityParse.ValidationMessage) ? capacityParse.Value : null;
+            foreach (var row in SelectedEdgePermissionRows)
+            {
+                var normalizedTrafficType = string.IsNullOrWhiteSpace(row.TrafficType) ? string.Empty : row.TrafficType.Trim();
+                row.RefreshValidation(
+                    edgeCapacity,
+                    knownTrafficTypes,
+                    hasDuplicateTrafficType: !string.IsNullOrWhiteSpace(normalizedTrafficType) && duplicateTrafficTypes.Contains(normalizedTrafficType));
+            }
 
-        UpdateEdgeEditorPermissionSummaries(edgeCapacity);
-        EdgeEditorValidationText = BuildEdgeEditorValidationText();
-        RaiseEdgeDisplayStateChanged();
-        SaveEdgeEditorCommand.NotifyCanExecuteChanged();
-        DeleteSelectedEdgeEditorCommand.NotifyCanExecuteChanged();
-        AddEdgePermissionRuleCommand.NotifyCanExecuteChanged();
+            UpdateEdgeEditorPermissionSummaries(edgeCapacity);
+            EdgeEditorValidationText = BuildEdgeEditorValidationText();
+            RaiseEdgeDisplayStateChanged();
+            SaveEdgeEditorCommand.NotifyCanExecuteChanged();
+            DeleteSelectedEdgeEditorCommand.NotifyCanExecuteChanged();
+            AddEdgePermissionRuleCommand.NotifyCanExecuteChanged();
         }
         finally
         {
@@ -10231,11 +12172,23 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     }
 
     private static string FormatRoleQuantity(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+    /// <summary>
+    /// Represents the node traffic role adapter component.
+    /// </summary>
 
     private sealed class NodeTrafficRoleAdapter(NodeTrafficProfile profile) : NodeTrafficRoleCatalog.NodeTrafficProfileViewModelAdapter
     {
+        /// <summary>
+        /// Gets or sets the production.
+        /// </summary>
         public double Production { get => profile.Production; set => profile.Production = value; }
+        /// <summary>
+        /// Gets or sets the consumption.
+        /// </summary>
         public double Consumption { get => profile.Consumption; set => profile.Consumption = value; }
+        /// <summary>
+        /// Gets a value indicating whether can transship is enabled or active.
+        /// </summary>
         public bool CanTransship { get => profile.CanTransship; set => profile.CanTransship = value; }
     }
 }

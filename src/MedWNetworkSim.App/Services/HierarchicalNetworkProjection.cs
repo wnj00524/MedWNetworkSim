@@ -8,6 +8,9 @@ namespace MedWNetworkSim.App.Services;
 public static class HierarchicalNetworkProjection
 {
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+    /// <summary>
+    /// Executes the project for simulation operation.
+    /// </summary>
 
     public static NetworkModel ProjectForSimulation(NetworkModel network)
     {

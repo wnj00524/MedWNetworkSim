@@ -1,4 +1,7 @@
 namespace MedWNetworkSim.Rendering;
+/// <summary>
+/// Specifies the graph node text kind.
+/// </summary>
 
 public enum GraphNodeTextKind
 {
@@ -6,23 +9,53 @@ public enum GraphNodeTextKind
     TypeLabel,
     Detail
 }
+/// <summary>
+/// Represents the graph wrapped text line component.
+/// </summary>
 
 public readonly record struct GraphWrappedTextLine(
     string Text,
     GraphNodeTextKind Kind,
     bool IsEmphasized,
     bool IsWarning);
+/// <summary>
+/// Represents the graph node text layout result component.
+/// </summary>
 
 public sealed class GraphNodeTextLayoutResult
 {
+    /// <summary>
+    /// Gets or sets the width.
+    /// </summary>
     public required double Width { get; init; }
+    /// <summary>
+    /// Gets the collection of lines associated with this entity.
+    /// </summary>
     public required IReadOnlyList<GraphWrappedTextLine> Lines { get; init; }
+    /// <summary>
+    /// Gets the collection of title lines associated with this entity.
+    /// </summary>
     public required IReadOnlyList<GraphWrappedTextLine> TitleLines { get; init; }
+    /// <summary>
+    /// Gets the collection of type lines associated with this entity.
+    /// </summary>
     public required IReadOnlyList<GraphWrappedTextLine> TypeLines { get; init; }
+    /// <summary>
+    /// Gets the collection of detail lines associated with this entity.
+    /// </summary>
     public required IReadOnlyList<GraphWrappedTextLine> DetailLines { get; init; }
+    /// <summary>
+    /// Gets or sets the content height.
+    /// </summary>
     public required double ContentHeight { get; init; }
+    /// <summary>
+    /// Gets or sets the height.
+    /// </summary>
     public required double Height { get; init; }
 }
+/// <summary>
+/// Represents the graph node text layout component.
+/// </summary>
 
 public static class GraphNodeTextLayout
 {
@@ -43,11 +76,17 @@ public static class GraphNodeTextLayout
     private const double WidthStep = 12d;
     private const int AllowedExtraWrappedLines = 1;
     private const double AllowedExtraContentHeight = DetailLineHeight * 2d;
+    /// <summary>
+    /// Executes the compute node width operation.
+    /// </summary>
 
     public static double ComputeNodeWidth(string? title, string? typeLabel, IReadOnlyList<GraphNodeTextLine> detailLines)
     {
         return BuildLayout(title, typeLabel, detailLines).Width;
     }
+    /// <summary>
+    /// Executes the build layout operation.
+    /// </summary>
 
     public static GraphNodeTextLayoutResult BuildLayout(
         string? title,
@@ -84,6 +123,9 @@ public static class GraphNodeTextLayout
             Height = preferred.Height
         };
     }
+    /// <summary>
+    /// Executes the build layout operation.
+    /// </summary>
 
     public static GraphNodeTextLayoutResult BuildLayout(
         string? title,
@@ -94,6 +136,9 @@ public static class GraphNodeTextLayout
     {
         return BuildLayoutForWidth(title, typeLabel, detailLines, nodeWidth, maxDetailLines);
     }
+    /// <summary>
+    /// Executes the wrap text operation.
+    /// </summary>
 
     public static IReadOnlyList<string> WrapText(string? text, GraphNodeTextKind kind, double maxWidth)
     {

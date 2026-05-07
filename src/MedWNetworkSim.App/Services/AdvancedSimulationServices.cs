@@ -4,6 +4,9 @@ using System.Text.Json;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
+/// <summary>
+/// Provides business logic and operations related to inetwork layer.
+/// </summary>
 
 public interface INetworkLayerService
 {
@@ -17,6 +20,9 @@ public interface INetworkLayerService
 
     IReadOnlyList<EdgeModel> GetEdgesInLayer(NetworkModel network, Guid layerId);
 }
+/// <summary>
+/// Defines the contract and required members for inetwork layer resolver implementations.
+/// </summary>
 
 public interface INetworkLayerResolver
 {
@@ -24,9 +30,15 @@ public interface INetworkLayerResolver
 
     NetworkLayerModel GetDefaultLayer(NetworkModel network);
 }
+/// <summary>
+/// Represents the network layer resolver component.
+/// </summary>
 
 public sealed class NetworkLayerResolver : INetworkLayerResolver, INetworkLayerService
 {
+    /// <summary>
+    /// Retrieves the simulation order based on the provided parameters.
+    /// </summary>
     public IReadOnlyList<NetworkLayerModel> GetSimulationOrder(NetworkModel network)
     {
         ArgumentNullException.ThrowIfNull(network);
@@ -37,24 +49,36 @@ public sealed class NetworkLayerResolver : INetworkLayerResolver, INetworkLayerS
             .ThenBy(layer => layer.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+    /// <summary>
+    /// Retrieves the default layer based on the provided parameters.
+    /// </summary>
 
     public NetworkLayerModel GetDefaultLayer(NetworkModel network)
     {
         EnsureLayerIntegrity(network);
         return network.Layers.First(layer => layer.Type == NetworkLayerType.Physical);
     }
+    /// <summary>
+    /// Retrieves the nodes in layer based on the provided parameters.
+    /// </summary>
 
     public IReadOnlyList<NodeModel> GetNodesInLayer(NetworkModel network, Guid layerId)
     {
         EnsureLayerIntegrity(network);
         return network.Nodes.Where(node => node.LayerId == layerId).ToList();
     }
+    /// <summary>
+    /// Retrieves the edges in layer based on the provided parameters.
+    /// </summary>
 
     public IReadOnlyList<EdgeModel> GetEdgesInLayer(NetworkModel network, Guid layerId)
     {
         EnsureLayerIntegrity(network);
         return network.Edges.Where(edge => edge.LayerId == layerId).ToList();
     }
+    /// <summary>
+    /// Executes the ensure layer integrity operation.
+    /// </summary>
 
     public void EnsureLayerIntegrity(NetworkModel network)
     {
@@ -121,6 +145,9 @@ public sealed class NetworkLayerResolver : INetworkLayerResolver, INetworkLayerS
         }
     }
 }
+/// <summary>
+/// Defines the contract and required members for isimulation scheduled event implementations.
+/// </summary>
 
 public interface ISimulationScheduledEvent
 {
@@ -130,6 +157,9 @@ public interface ISimulationScheduledEvent
 
     void Execute(SimulationContext context);
 }
+/// <summary>
+/// Defines the contract and required members for isimulation event queue implementations.
+/// </summary>
 
 public interface ISimulationEventQueue
 {
@@ -139,16 +169,25 @@ public interface ISimulationEventQueue
 
     void Clear();
 }
+/// <summary>
+/// Represents the simulation event queue component.
+/// </summary>
 
 public sealed class SimulationEventQueue : ISimulationEventQueue
 {
     private readonly PriorityQueue<ISimulationScheduledEvent, double> queue = new();
+    /// <summary>
+    /// Executes the enqueue operation.
+    /// </summary>
 
     public void Enqueue(ISimulationScheduledEvent simulationEvent)
     {
         ArgumentNullException.ThrowIfNull(simulationEvent);
         queue.Enqueue(simulationEvent, simulationEvent.Time);
     }
+    /// <summary>
+    /// Executes the dequeue due events operation.
+    /// </summary>
 
     public IReadOnlyList<ISimulationScheduledEvent> DequeueDueEvents(double currentTime)
     {
@@ -160,12 +199,18 @@ public sealed class SimulationEventQueue : ISimulationEventQueue
 
         return due;
     }
+    /// <summary>
+    /// Executes the clear operation.
+    /// </summary>
 
     public void Clear()
     {
         queue.Clear();
     }
 }
+/// <summary>
+/// Defines the contract and required members for iadaptive routing memory implementations.
+/// </summary>
 
 public interface IAdaptiveRoutingMemory
 {
@@ -177,10 +222,16 @@ public interface IAdaptiveRoutingMemory
 
     void Reset();
 }
+/// <summary>
+/// Represents the adaptive routing memory component.
+/// </summary>
 
 public sealed class AdaptiveRoutingMemory : IAdaptiveRoutingMemory
 {
     private readonly Dictionary<Guid, AdaptiveEdgeState> state = [];
+    /// <summary>
+    /// Retrieves the or create based on the provided parameters.
+    /// </summary>
 
     public AdaptiveEdgeState GetOrCreate(Guid edgeId)
     {
@@ -192,6 +243,9 @@ public sealed class AdaptiveRoutingMemory : IAdaptiveRoutingMemory
 
         return item;
     }
+    /// <summary>
+    /// Executes the record observation operation.
+    /// </summary>
 
     public void RecordObservation(Guid edgeId, double observedDelay, double utilisation)
     {
@@ -204,23 +258,38 @@ public sealed class AdaptiveRoutingMemory : IAdaptiveRoutingMemory
             item.ReinforcementScore += (item.LastObservedUtilisation * 0.5d) + (observedDelay * 0.1d);
         }
     }
+    /// <summary>
+    /// Retrieves the adaptive penalty based on the provided parameters.
+    /// </summary>
 
     public double GetAdaptivePenalty(Guid edgeId)
     {
         var item = GetOrCreate(edgeId);
         return Math.Max(0d, item.HistoricalDelay * 0.05d + item.ReinforcementScore * 0.1d);
     }
+    /// <summary>
+    /// Executes the reset operation.
+    /// </summary>
 
     public void Reset() => state.Clear();
 }
+/// <summary>
+/// Defines the contract and required members for ieconomic calculator implementations.
+/// </summary>
 
 public interface IEconomicCalculator
 {
     EconomicSummary Calculate(NetworkModel network, SimulationResult result);
 }
+/// <summary>
+/// Represents the economic calculator component.
+/// </summary>
 
 public sealed class EconomicCalculator : IEconomicCalculator
 {
+    /// <summary>
+    /// Performs calculations to determine the .
+    /// </summary>
     public EconomicSummary Calculate(NetworkModel network, SimulationResult result)
     {
         var shortagePenaltyByTraffic = network.Nodes
@@ -250,14 +319,24 @@ public sealed class EconomicCalculator : IEconomicCalculator
         };
     }
 }
+/// <summary>
+/// Provides business logic and operations related to ibottleneck detection.
+/// </summary>
 
 public interface IBottleneckDetectionService
 {
     IReadOnlyList<NetworkIssue> DetectIssues(NetworkModel network, SimulationResult result, int maxIssues = 10);
 }
 
+/// <summary>
+/// Analyzes the simulation state to identify critical edges or nodes where demand consistently exceeds available capacity.
+/// These bottlenecks restrict the overall network flow and are highlighted for potential infrastructure or policy interventions.
+/// </summary>
 public sealed class BottleneckDetectionService : IBottleneckDetectionService
 {
+    /// <summary>
+    /// Executes the detect issues operation.
+    /// </summary>
     public IReadOnlyList<NetworkIssue> DetectIssues(NetworkModel network, SimulationResult result, int maxIssues = 10)
     {
         var issues = new List<NetworkIssue>();
@@ -344,6 +423,9 @@ public sealed class BottleneckDetectionService : IBottleneckDetectionService
         return issues.OrderByDescending(issue => issue.Score).Take(Math.Max(1, maxIssues)).ToList();
     }
 }
+/// <summary>
+/// Provides business logic and operations related to iexplainability.
+/// </summary>
 
 public interface IExplainabilityService
 {
@@ -351,9 +433,15 @@ public interface IExplainabilityService
 
     EdgeExplanation ExplainEdge(NetworkModel network, SimulationResult result, string edgeId);
 }
+/// <summary>
+/// Provides business logic and operations related to explainability.
+/// </summary>
 
 public sealed class ExplainabilityService : IExplainabilityService
 {
+    /// <summary>
+    /// Executes the explain node operation.
+    /// </summary>
     public NodeExplanation ExplainNode(NetworkModel network, SimulationResult result, string nodeId)
     {
         var node = network.Nodes.FirstOrDefault(item => string.Equals(item.Id, nodeId, StringComparison.OrdinalIgnoreCase));
@@ -385,6 +473,9 @@ public sealed class ExplainabilityService : IExplainabilityService
         explanation.SuggestedActions.Add("Check upstream capacity, policy permissions, and alternate routes.");
         return explanation;
     }
+    /// <summary>
+    /// Executes the explain edge operation.
+    /// </summary>
 
     public EdgeExplanation ExplainEdge(NetworkModel network, SimulationResult result, string edgeId)
     {
@@ -423,11 +514,17 @@ public sealed class ExplainabilityService : IExplainabilityService
         return explanation;
     }
 }
+/// <summary>
+/// Defines the contract and required members for iscenario runner implementations.
+/// </summary>
 
 public interface IScenarioRunner
 {
     ScenarioRunResult Run(NetworkModel sourceNetwork, ScenarioDefinitionModel scenario, ScenarioRunOptions options);
 }
+/// <summary>
+/// Represents the scenario runner component.
+/// </summary>
 
 public sealed class ScenarioRunner : IScenarioRunner
 {
@@ -449,6 +546,9 @@ public sealed class ScenarioRunner : IScenarioRunner
         this.networkLayerService = networkLayerService ?? new NetworkLayerResolver();
         this.bottleneckDetectionService = bottleneckDetectionService ?? new BottleneckDetectionService();
     }
+    /// <summary>
+    /// Executes the primary operation of this component.
+    /// </summary>
 
     public ScenarioRunResult Run(NetworkModel sourceNetwork, ScenarioDefinitionModel scenario, ScenarioRunOptions options)
     {
@@ -782,20 +882,41 @@ public sealed class ScenarioRunner : IScenarioRunner
         return JsonSerializer.Deserialize<NetworkModel>(json) ?? new NetworkModel();
     }
 }
+/// <summary>
+/// Represents the node failure scenario event component.
+/// </summary>
 
 public sealed class NodeFailureScenarioEvent : IScenarioEvent
 {
     private readonly Dictionary<NodeTrafficProfile, (double Production, double Consumption)> snapshot = [];
+    /// <summary>
+    /// Gets or sets the unique identifier for this instance.
+    /// </summary>
 
     public Guid Id { get; } = Guid.NewGuid();
+    /// <summary>
+    /// Gets or sets the name.
+    /// </summary>
 
     public string Name { get; init; } = "Node failure";
+    /// <summary>
+    /// Gets or sets the time.
+    /// </summary>
 
     public double Time { get; init; }
+    /// <summary>
+    /// Gets or sets the target kind.
+    /// </summary>
 
     public ScenarioTargetKind TargetKind => ScenarioTargetKind.Node;
+    /// <summary>
+    /// Gets or sets the target id.
+    /// </summary>
 
     public string? TargetId { get; init; }
+    /// <summary>
+    /// Executes the apply operation.
+    /// </summary>
 
     public void Apply(SimulationContext context)
     {
@@ -813,6 +934,9 @@ public sealed class NodeFailureScenarioEvent : IScenarioEvent
             profile.Consumption = 0d;
         }
     }
+    /// <summary>
+    /// Executes the revert operation.
+    /// </summary>
 
     public void Revert(SimulationContext context)
     {
@@ -823,21 +947,42 @@ public sealed class NodeFailureScenarioEvent : IScenarioEvent
         }
     }
 }
+/// <summary>
+/// Represents the edge closure scenario event component.
+/// </summary>
 
 public sealed class EdgeClosureScenarioEvent : IScenarioEvent
 {
     private bool? previousBidirectional;
     private double? previousCapacity;
+    /// <summary>
+    /// Gets or sets the unique identifier for this instance.
+    /// </summary>
 
     public Guid Id { get; } = Guid.NewGuid();
+    /// <summary>
+    /// Gets or sets the name.
+    /// </summary>
 
     public string Name { get; init; } = "Edge closure";
+    /// <summary>
+    /// Gets or sets the time.
+    /// </summary>
 
     public double Time { get; init; }
+    /// <summary>
+    /// Gets or sets the target kind.
+    /// </summary>
 
     public ScenarioTargetKind TargetKind => ScenarioTargetKind.Edge;
+    /// <summary>
+    /// Gets or sets the target id.
+    /// </summary>
 
     public string? TargetId { get; init; }
+    /// <summary>
+    /// Executes the apply operation.
+    /// </summary>
 
     public void Apply(SimulationContext context)
     {
@@ -852,6 +997,9 @@ public sealed class EdgeClosureScenarioEvent : IScenarioEvent
         edge.IsBidirectional = false;
         edge.Capacity = 0d;
     }
+    /// <summary>
+    /// Executes the revert operation.
+    /// </summary>
 
     public void Revert(SimulationContext context)
     {
@@ -865,24 +1013,51 @@ public sealed class EdgeClosureScenarioEvent : IScenarioEvent
         edge.Capacity = previousCapacity;
     }
 }
+/// <summary>
+/// Represents the demand spike scenario event component.
+/// </summary>
 
 public sealed class DemandSpikeScenarioEvent : IScenarioEvent
 {
     private readonly Dictionary<NodeTrafficProfile, double> previousDemand = [];
+    /// <summary>
+    /// Gets or sets the unique identifier for this instance.
+    /// </summary>
 
     public Guid Id { get; } = Guid.NewGuid();
+    /// <summary>
+    /// Gets or sets the name.
+    /// </summary>
 
     public string Name { get; init; } = "Demand spike";
+    /// <summary>
+    /// Gets or sets the time.
+    /// </summary>
 
     public double Time { get; init; }
+    /// <summary>
+    /// Gets or sets the target kind.
+    /// </summary>
 
     public ScenarioTargetKind TargetKind => ScenarioTargetKind.Node;
+    /// <summary>
+    /// Gets or sets the target id.
+    /// </summary>
 
     public string? TargetId { get; init; }
+    /// <summary>
+    /// Gets or sets the traffic type.
+    /// </summary>
 
     public string? TrafficType { get; init; }
+    /// <summary>
+    /// Gets or sets the multiplier.
+    /// </summary>
 
     public double Multiplier { get; init; } = 1.25d;
+    /// <summary>
+    /// Executes the apply operation.
+    /// </summary>
 
     public void Apply(SimulationContext context)
     {
@@ -898,6 +1073,9 @@ public sealed class DemandSpikeScenarioEvent : IScenarioEvent
             profile.Consumption *= Math.Max(1d, Multiplier);
         }
     }
+    /// <summary>
+    /// Executes the revert operation.
+    /// </summary>
 
     public void Revert(SimulationContext context)
     {
@@ -907,22 +1085,46 @@ public sealed class DemandSpikeScenarioEvent : IScenarioEvent
         }
     }
 }
+/// <summary>
+/// Represents the edge cost change scenario event component.
+/// </summary>
 
 public sealed class EdgeCostChangeScenarioEvent : IScenarioEvent
 {
     private double? previousCost;
+    /// <summary>
+    /// Gets or sets the unique identifier for this instance.
+    /// </summary>
 
     public Guid Id { get; } = Guid.NewGuid();
+    /// <summary>
+    /// Gets or sets the name.
+    /// </summary>
 
     public string Name { get; init; } = "Edge cost change";
+    /// <summary>
+    /// Gets or sets the time.
+    /// </summary>
 
     public double Time { get; init; }
+    /// <summary>
+    /// Gets or sets the target kind.
+    /// </summary>
 
     public ScenarioTargetKind TargetKind => ScenarioTargetKind.Edge;
+    /// <summary>
+    /// Gets or sets the target id.
+    /// </summary>
 
     public string? TargetId { get; init; }
+    /// <summary>
+    /// Gets or sets the new cost.
+    /// </summary>
 
     public double NewCost { get; init; }
+    /// <summary>
+    /// Executes the apply operation.
+    /// </summary>
 
     public void Apply(SimulationContext context)
     {
@@ -935,6 +1137,9 @@ public sealed class EdgeCostChangeScenarioEvent : IScenarioEvent
         previousCost = edge.Cost;
         edge.Cost = Math.Max(0d, NewCost);
     }
+    /// <summary>
+    /// Executes the revert operation.
+    /// </summary>
 
     public void Revert(SimulationContext context)
     {
@@ -947,16 +1152,28 @@ public sealed class EdgeCostChangeScenarioEvent : IScenarioEvent
         edge.Cost = previousCost.Value;
     }
 }
+/// <summary>
+/// Defines the contract and required members for idemand time series importer implementations.
+/// </summary>
 
 public interface IDemandTimeSeriesImporter
 {
     IReadOnlyList<DemandTimeSeriesRow> ImportCsv(string csv, bool allowNegativeDemand = false);
 }
+/// <summary>
+/// Represents the demand time series row component.
+/// </summary>
 
 public sealed record DemandTimeSeriesRow(double Time, string Node, string TrafficType, double Demand, double? Price, double? Priority, string? Scenario);
+/// <summary>
+/// Represents the demand time series importer component.
+/// </summary>
 
 public sealed class DemandTimeSeriesImporter : IDemandTimeSeriesImporter
 {
+    /// <summary>
+    /// Executes the import csv operation.
+    /// </summary>
     public IReadOnlyList<DemandTimeSeriesRow> ImportCsv(string csv, bool allowNegativeDemand = false)
     {
         var lines = csv.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
@@ -1023,6 +1240,9 @@ public sealed class DemandTimeSeriesImporter : IDemandTimeSeriesImporter
             : null;
     }
 }
+/// <summary>
+/// Defines the contract and required members for isimulation replay exporter implementations.
+/// </summary>
 
 public interface ISimulationReplayExporter
 {
@@ -1030,9 +1250,15 @@ public interface ISimulationReplayExporter
 
     void ExportCsv(string path, SimulationResult result, IReadOnlyList<NetworkIssue> issues, EconomicSummary? economics = null);
 }
+/// <summary>
+/// Represents the simulation replay exporter component.
+/// </summary>
 
 public sealed class SimulationReplayExporter : ISimulationReplayExporter
 {
+    /// <summary>
+    /// Executes the export json operation.
+    /// </summary>
     public void ExportJson(string path, NetworkModel network, ScenarioDefinition scenario, SimulationResult result, IReadOnlyList<NetworkIssue> issues, EconomicSummary? economics = null)
     {
         var payload = new
@@ -1050,6 +1276,9 @@ public sealed class SimulationReplayExporter : ISimulationReplayExporter
 
         File.WriteAllText(path, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
     }
+    /// <summary>
+    /// Executes the export csv operation.
+    /// </summary>
 
     public void ExportCsv(string path, SimulationResult result, IReadOnlyList<NetworkIssue> issues, EconomicSummary? economics = null)
     {

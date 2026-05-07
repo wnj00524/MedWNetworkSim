@@ -2,45 +2,114 @@ using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Services;
 
 namespace MedWNetworkSim.App.Insights;
+/// <summary>
+/// Specifies the insight severity.
+/// </summary>
 
 public enum InsightSeverity { Info, Warning, Critical }
+/// <summary>
+/// Specifies the insight category.
+/// </summary>
 public enum InsightCategory { UnmetDemand, Capacity, Restriction, Cost, Connectivity, LayerConflict, ScenarioRegression }
+/// <summary>
+/// Specifies the insight target.
+/// </summary>
 public enum InsightTarget { Network, Node, Edge, Route }
+/// <summary>
+/// Represents the insight cause component.
+/// </summary>
 
 public sealed class InsightCause
 {
+    /// <summary>
+    /// Gets or sets the summary.
+    /// </summary>
     public required string Summary { get; init; }
+    /// <summary>
+    /// Gets or sets the evidence.
+    /// </summary>
     public required string Evidence { get; init; }
 }
+/// <summary>
+/// Represents the insight recommendation component.
+/// </summary>
 
 public sealed class InsightRecommendation
 {
+    /// <summary>
+    /// Gets or sets the action.
+    /// </summary>
     public required string Action { get; init; }
+    /// <summary>
+    /// Gets or sets the target hint.
+    /// </summary>
     public string? TargetHint { get; init; }
 }
+/// <summary>
+/// Represents the network insight component.
+/// </summary>
 
 public sealed class NetworkInsight
 {
+    /// <summary>
+    /// Gets or sets the unique identifier for this instance.
+    /// </summary>
     public required string Id { get; init; }
+    /// <summary>
+    /// Gets or sets the title.
+    /// </summary>
     public required string Title { get; init; }
+    /// <summary>
+    /// Gets or sets the summary.
+    /// </summary>
     public required string Summary { get; init; }
+    /// <summary>
+    /// Gets or sets the severity.
+    /// </summary>
     public required InsightSeverity Severity { get; init; }
+    /// <summary>
+    /// Gets or sets the category.
+    /// </summary>
     public required InsightCategory Category { get; init; }
+    /// <summary>
+    /// Gets or sets the target type.
+    /// </summary>
     public required InsightTarget TargetType { get; init; }
+    /// <summary>
+    /// Gets or sets the target node id.
+    /// </summary>
     public string? TargetNodeId { get; init; }
+    /// <summary>
+    /// Gets or sets the target edge id.
+    /// </summary>
     public string? TargetEdgeId { get; init; }
+    /// <summary>
+    /// Gets the collection of causes associated with this entity.
+    /// </summary>
     public IReadOnlyList<InsightCause> Causes { get; init; } = [];
+    /// <summary>
+    /// Gets the collection of recommendations associated with this entity.
+    /// </summary>
     public IReadOnlyList<InsightRecommendation> Recommendations { get; init; } = [];
 }
+/// <summary>
+/// Provides business logic and operations related to inetwork insight.
+/// </summary>
 
 public interface INetworkInsightService
 {
     IReadOnlyList<NetworkInsight> Generate(VisualAnalytics.VisualAnalyticsSnapshot snapshot);
 }
+/// <summary>
+/// Provides business logic and operations related to network insight.
+/// </summary>
 
 public sealed class NetworkInsightService : INetworkInsightService
 {
     private readonly EdgeTrafficPermissionResolver permissionResolver = new();
+    /// <summary>
+    /// Executes the generate operation.
+    /// </summary>
 
     public IReadOnlyList<NetworkInsight> Generate(VisualAnalytics.VisualAnalyticsSnapshot snapshot)
     {

@@ -2,42 +2,90 @@ using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
+/// <summary>
+/// Represents the simulation actor economic ledger component.
+/// </summary>
 
 public sealed class SimulationActorEconomicLedger
 {
+    /// <summary>
+    /// Gets or sets the actor id.
+    /// </summary>
     public string ActorId { get; set; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the sales revenue.
+    /// </summary>
 
     public double SalesRevenue { get; set; }
+    /// <summary>
+    /// Gets or sets the purchase cost.
+    /// </summary>
 
     public double PurchaseCost { get; set; }
+    /// <summary>
+    /// Gets or sets the production cost.
+    /// </summary>
 
     public double ProductionCost { get; set; }
+    /// <summary>
+    /// Gets or sets the transport cost.
+    /// </summary>
 
     public double TransportCost { get; set; }
+    /// <summary>
+    /// Gets or sets the taxes paid by seller.
+    /// </summary>
 
     public double TaxesPaidBySeller { get; set; }
+    /// <summary>
+    /// Gets or sets the taxes paid by buyer.
+    /// </summary>
 
     public double TaxesPaidByBuyer { get; set; }
+    /// <summary>
+    /// Gets or sets the taxes paid.
+    /// </summary>
 
     public double TaxesPaid { get; set; }
+    /// <summary>
+    /// Gets or sets the taxes received by authority.
+    /// </summary>
 
     public double TaxesReceivedByAuthority { get; set; }
+    /// <summary>
+    /// Gets or sets the taxes received.
+    /// </summary>
 
     public double TaxesReceived { get; set; }
+    /// <summary>
+    /// Gets or sets the profit.
+    /// </summary>
 
     public double Profit { get; set; }
+    /// <summary>
+    /// Gets or sets the cash delta.
+    /// </summary>
 
     public double CashDelta { get; set; }
 }
+/// <summary>
+/// Represents the traffic economic settlement result component.
+/// </summary>
 
 public sealed record TrafficEconomicSettlementResult(
     IReadOnlyList<TrafficSimulationOutcome> Outcomes,
     IReadOnlyDictionary<string, SimulationActorEconomicLedger> Ledgers);
+/// <summary>
+/// Provides business logic and operations related to traffic economic settlement.
+/// </summary>
 
 public sealed class TrafficEconomicSettlementService
 {
     private const double Epsilon = 0.000001d;
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+    /// <summary>
+    /// Assigns or updates the tle.
+    /// </summary>
 
     public TrafficEconomicSettlementResult Settle(
         NetworkModel network,

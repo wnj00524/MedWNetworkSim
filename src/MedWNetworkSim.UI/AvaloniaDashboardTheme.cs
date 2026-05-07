@@ -2,6 +2,9 @@ using Avalonia;
 using Avalonia.Media;
 
 namespace MedWNetworkSim.UI;
+/// <summary>
+/// Represents the avalonia dashboard theme component.
+/// </summary>
 
 internal static class AvaloniaDashboardTheme
 {

@@ -1,4 +1,7 @@
 namespace MedWNetworkSim.App.Models;
+/// <summary>
+/// Specifies the command line command.
+/// </summary>
 
 public enum CommandLineCommand
 {

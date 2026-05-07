@@ -2,6 +2,9 @@ using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Services;
 
 namespace MedWNetworkSim.App.Services.Facility;
+/// <summary>
+/// Represents the facility mode simulation engine component.
+/// </summary>
 
 public sealed class FacilityModeSimulationEngine
 {
@@ -14,6 +17,9 @@ public sealed class FacilityModeSimulationEngine
     {
         this.baseEngine = baseEngine;
     }
+    /// <summary>
+    /// Executes the simulate operation.
+    /// </summary>
 
     public IReadOnlyList<TrafficSimulationOutcome> Simulate(NetworkModel network)
     {

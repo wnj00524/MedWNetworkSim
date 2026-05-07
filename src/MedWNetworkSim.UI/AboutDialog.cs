@@ -7,6 +7,9 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 
 namespace MedWNetworkSim.UI;
+/// <summary>
+/// Represents the about dialog component.
+/// </summary>
 
 internal sealed class AboutDialog : Window
 {

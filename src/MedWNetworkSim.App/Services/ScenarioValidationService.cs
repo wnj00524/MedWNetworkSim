@@ -1,15 +1,24 @@
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
+/// <summary>
+/// Provides business logic and operations related to iscenario validation.
+/// </summary>
 
 public interface IScenarioValidationService
 {
     IReadOnlyList<string> ValidateScenario(ScenarioDefinitionModel scenario);
     IReadOnlyList<string> ValidateEvent(ScenarioEventModel evt);
 }
+/// <summary>
+/// Provides business logic and operations related to scenario validation.
+/// </summary>
 
 public sealed class ScenarioValidationService : IScenarioValidationService
 {
+    /// <summary>
+    /// Executes the validate scenario operation.
+    /// </summary>
     public IReadOnlyList<string> ValidateScenario(ScenarioDefinitionModel scenario)
     {
         var errors = new List<string>();
@@ -35,6 +44,9 @@ public sealed class ScenarioValidationService : IScenarioValidationService
 
         return errors;
     }
+    /// <summary>
+    /// Executes the validate event operation.
+    /// </summary>
 
     public IReadOnlyList<string> ValidateEvent(ScenarioEventModel evt)
     {

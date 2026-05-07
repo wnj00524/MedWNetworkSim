@@ -14,15 +14,24 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics;
 
 namespace MedWNetworkSim.App.Avalonia;
+/// <summary>
+/// Represents the app component.
+/// </summary>
 
 public partial class App : Application
 {
     private ServiceProvider? serviceProvider;
+    /// <summary>
+    /// Executes the initialize operation.
+    /// </summary>
 
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
     }
+    /// <summary>
+    /// Executes the on framework initialization completed operation.
+    /// </summary>
 
     public override void OnFrameworkInitializationCompleted()
     {
@@ -146,6 +155,9 @@ public partial class App : Application
         return window;
     }
 }
+/// <summary>
+/// Represents the splash window component.
+/// </summary>
 
 internal sealed class SplashWindow : Window
 {

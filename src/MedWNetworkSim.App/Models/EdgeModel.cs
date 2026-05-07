@@ -4,7 +4,9 @@ using System.Text.Json.Serialization;
 namespace MedWNetworkSim.App.Models;
 
 /// <summary>
-/// Represents a connection between two nodes, including routing attributes and optional capacity.
+/// Represents a directed or bi-directional connection between two <see cref="NodeModel"/>s in the simulation graph.
+/// Edges dictate the viable pathways for traffic flow, governing movement through capacity limits,
+/// travel costs, transit times, and traffic-specific permissions or constraints.
 /// </summary>
 public sealed class EdgeModel
 {

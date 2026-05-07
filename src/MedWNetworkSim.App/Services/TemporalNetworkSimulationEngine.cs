@@ -1,5 +1,6 @@
 using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
+using System.Collections.Frozen;
 
 namespace MedWNetworkSim.App.Services;
 
@@ -13,6 +14,8 @@ public sealed class TemporalNetworkSimulationEngine
 {
     private readonly SimulationClock clock = new();
     private readonly ISimulationEventQueue eventQueue = new SimulationEventQueue();
+    private readonly SimulationExecutionCache executionCache = new();
+    private readonly TrafficEconomicSettlementService settlementService = new();
     /// <summary>
     /// Gets or sets the clock.
     /// </summary>
@@ -33,7 +36,7 @@ public sealed class TemporalNetworkSimulationEngine
     public TemporalSimulationState Initialize(NetworkModel network)
     {
         ArgumentNullException.ThrowIfNull(network);
-        network = HierarchicalNetworkProjection.ProjectForSimulation(network);
+        network = executionCache.GetStaticContext(network).EffectiveNetwork;
 
         var state = new TemporalSimulationState();
         foreach (var node in network.Nodes)
@@ -63,10 +66,11 @@ public sealed class TemporalNetworkSimulationEngine
         ArgumentNullException.ThrowIfNull(network);
         options ??= new SimulationRunOptions();
         clock.DeltaTime = options.DeltaTime > 0d ? options.DeltaTime : 1d;
+        var state = currentState ?? Initialize(network);
         var context = new SimulationContext
         {
             Network = network,
-            TemporalState = currentState ?? Initialize(network),
+            TemporalState = state,
             Options = options
         };
 
@@ -74,24 +78,30 @@ public sealed class TemporalNetworkSimulationEngine
         {
             scheduled.Execute(context);
         }
-        network = HierarchicalNetworkProjection.ProjectForSimulation(network);
-
-        var state = currentState ?? Initialize(network);
         var nextPeriod = state.CurrentPeriod + 1;
         var effectivePeriod = GetEffectivePeriod(nextPeriod, network.TimelineLoopLength);
-        var effectiveNetwork = ApplyTimelineEventOverlay(network, effectivePeriod);
-        var nodeStates = state.NodeStates.ToDictionary(
-            pair => pair.Key,
-            pair => pair.Value.Clone(),
-            TemporalNodeTrafficKey.Comparer);
-        var movements = state.InFlightMovements.Select(movement => movement.Clone()).ToList();
+        var compiledContext = executionCache.GetTemporalContext(network, effectivePeriod);
+        var effectiveNetwork = compiledContext.EffectiveNetwork;
+        var copyStateBeforeAdvance = options.CopyStateBeforeAdvance;
+        var nodeStates = copyStateBeforeAdvance
+            ? state.NodeStates.ToDictionary(pair => pair.Key, pair => pair.Value.Clone(), TemporalNodeTrafficKey.Comparer)
+            : state.NodeStates;
+        var movements = copyStateBeforeAdvance
+            ? state.InFlightMovements.Select(movement => movement.Clone()).ToList()
+            : state.InFlightMovements;
         var newlyAllocatedMovements = new List<TemporalInFlightMovement>();
-        var nodeLookup = effectiveNetwork.Nodes.ToDictionary(node => node.Id, node => node, Comparer);
-        var edgeLookup = effectiveNetwork.Edges.ToDictionary(edge => edge.Id, edge => edge, Comparer);
-        var definitionsByTraffic = effectiveNetwork.TrafficTypes.ToDictionary(definition => definition.Name, definition => definition, Comparer);
-        var occupiedEdgeCapacity = state.OccupiedEdgeCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
-        var occupiedEdgeTrafficCapacity = state.OccupiedEdgeTrafficCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, EdgeTrafficResourceKey.Comparer);
-        var occupiedTranshipmentCapacity = state.OccupiedTranshipmentCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
+        var nodeLookup = compiledContext.NodesById;
+        var edgeLookup = compiledContext.EdgesById;
+        var definitionsByTraffic = compiledContext.TrafficDefinitionsByName;
+        var occupiedEdgeCapacity = copyStateBeforeAdvance
+            ? state.OccupiedEdgeCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer)
+            : state.OccupiedEdgeCapacity;
+        var occupiedEdgeTrafficCapacity = copyStateBeforeAdvance
+            ? state.OccupiedEdgeTrafficCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, EdgeTrafficResourceKey.Comparer)
+            : state.OccupiedEdgeTrafficCapacity;
+        var occupiedTranshipmentCapacity = copyStateBeforeAdvance
+            ? state.OccupiedTranshipmentCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer)
+            : state.OccupiedTranshipmentCapacity;
         // Pressure is a per-period derived metric, not a persisted simulation state variable.
         // Each Advance(...) call starts with fresh accumulators and only records current-step adverse conditions.
         var nodePressure = new Dictionary<string, PressureAccumulator>(Comparer);
@@ -101,15 +111,17 @@ public sealed class TemporalNetworkSimulationEngine
         ExpireNodeTraffic(nodeStates, nodePressure, pressureEvents, nextPeriod);
         ExpireInFlightMovements(movements, occupiedEdgeCapacity, occupiedEdgeTrafficCapacity, occupiedTranshipmentCapacity, edgePressure, nodePressure, pressureEvents, nextPeriod);
 
-        ValidateResourceOccupancy(edgeLookup, nodeLookup, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
-        ValidateMovementResourceClaims(effectiveNetwork, edgeLookup, movements, occupiedEdgeCapacity, occupiedEdgeTrafficCapacity, occupiedTranshipmentCapacity);
+        if (options.EnableInvariantValidation)
+        {
+            ValidateResourceOccupancy(edgeLookup, nodeLookup, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+            ValidateMovementResourceClaims(effectiveNetwork, edgeLookup, movements, occupiedEdgeCapacity, occupiedEdgeTrafficCapacity, occupiedTranshipmentCapacity);
+        }
 
         AddScheduledNodeChanges(effectiveNetwork, definitionsByTraffic, nodeStates, effectivePeriod);
 
         var availableResources = BuildAvailableResourceCapacity(effectiveNetwork, movements, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
         var plannedAllocations = PlanNewAllocations(
-            effectiveNetwork,
-            definitionsByTraffic,
+            compiledContext,
             nodeStates,
             nextPeriod,
             effectivePeriod,
@@ -146,8 +158,9 @@ public sealed class TemporalNetworkSimulationEngine
 
 
 
-        foreach (var movement in movements.ToList())
+        for (var movementIndex = movements.Count - 1; movementIndex >= 0; movementIndex--)
         {
+            var movement = movements[movementIndex];
             if (movement.PathEdgeIds.Count == 0 || movement.CurrentEdgeIndex >= movement.PathEdgeIds.Count)
             {
                 continue;
@@ -183,7 +196,7 @@ public sealed class TemporalNetworkSimulationEngine
             {
                 ReleaseCurrentMovementResources(movement, occupiedEdgeCapacity, occupiedEdgeTrafficCapacity, occupiedTranshipmentCapacity);
                 CompleteArrival(nodeStates, nodeLookup, definitionsByTraffic, movement);
-                movements.Remove(movement);
+                movements.RemoveAt(movementIndex);
                 continue;
             }
 
@@ -194,8 +207,11 @@ public sealed class TemporalNetworkSimulationEngine
 
         movements.AddRange(newlyAllocatedMovements);
 
-        ValidateResourceOccupancy(edgeLookup, nodeLookup, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
-        ValidateMovementResourceClaims(effectiveNetwork, edgeLookup, movements, occupiedEdgeCapacity, occupiedEdgeTrafficCapacity, occupiedTranshipmentCapacity);
+        if (options.EnableInvariantValidation)
+        {
+            ValidateResourceOccupancy(edgeLookup, nodeLookup, occupiedEdgeCapacity, occupiedTranshipmentCapacity);
+            ValidateMovementResourceClaims(effectiveNetwork, edgeLookup, movements, occupiedEdgeCapacity, occupiedEdgeTrafficCapacity, occupiedTranshipmentCapacity);
+        }
 
         var edgeOccupancySnapshot = SnapshotResourceOccupancy(occupiedEdgeCapacity);
         var transhipmentOccupancySnapshot = SnapshotResourceOccupancy(occupiedTranshipmentCapacity);
@@ -238,30 +254,25 @@ public sealed class TemporalNetworkSimulationEngine
             Comparer);
 
         state.CurrentPeriod = nextPeriod;
-        state.NodeStates.Clear();
-        foreach (var pair in nodeStates)
+        if (copyStateBeforeAdvance)
         {
-            state.NodeStates[pair.Key] = pair.Value;
-        }
+            state.NodeStates.Clear();
+            foreach (var pair in nodeStates)
+            {
+                state.NodeStates[pair.Key] = pair.Value;
+            }
 
-        state.InFlightMovements.Clear();
-        state.InFlightMovements.AddRange(movements);
-        state.OccupiedEdgeCapacity.Clear();
-        foreach (var pair in occupiedEdgeCapacity.Where(pair => pair.Value > Epsilon))
-        {
-            state.OccupiedEdgeCapacity[pair.Key] = pair.Value;
+            state.InFlightMovements.Clear();
+            state.InFlightMovements.AddRange(movements);
+            ReplacePositiveEntries(state.OccupiedEdgeCapacity, occupiedEdgeCapacity);
+            ReplacePositiveEntries(state.OccupiedEdgeTrafficCapacity, occupiedEdgeTrafficCapacity);
+            ReplacePositiveEntries(state.OccupiedTranshipmentCapacity, occupiedTranshipmentCapacity);
         }
-
-        state.OccupiedEdgeTrafficCapacity.Clear();
-        foreach (var pair in occupiedEdgeTrafficCapacity.Where(pair => pair.Value > Epsilon))
+        else
         {
-            state.OccupiedEdgeTrafficCapacity[pair.Key] = pair.Value;
-        }
-
-        state.OccupiedTranshipmentCapacity.Clear();
-        foreach (var pair in occupiedTranshipmentCapacity.Where(pair => pair.Value > Epsilon))
-        {
-            state.OccupiedTranshipmentCapacity[pair.Key] = pair.Value;
+            RemoveNonPositiveEntries(occupiedEdgeCapacity);
+            RemoveNonPositiveEntries(occupiedEdgeTrafficCapacity);
+            RemoveNonPositiveEntries(occupiedTranshipmentCapacity);
         }
 
         var nodeSnapshots = nodeStates.ToDictionary(
@@ -287,7 +298,7 @@ public sealed class TemporalNetworkSimulationEngine
             pressureEvents);
     }
 
-    private static IReadOnlyList<RouteAllocation> SettleAllocations(NetworkModel network, IReadOnlyList<RouteAllocation> allocations)
+    private IReadOnlyList<RouteAllocation> SettleAllocations(NetworkModel network, IReadOnlyList<RouteAllocation> allocations)
     {
         if (allocations.Count == 0)
         {
@@ -311,7 +322,7 @@ public sealed class TemporalNetworkSimulationEngine
             })
             .ToList();
 
-        return new TrafficEconomicSettlementService()
+        return settlementService
             .Settle(network, outcomes)
             .Outcomes
             .SelectMany(outcome => outcome.Allocations)
@@ -727,8 +738,7 @@ public sealed class TemporalNetworkSimulationEngine
     }
 
     private static List<RouteAllocation> PlanNewAllocations(
-        NetworkModel network,
-        IReadOnlyDictionary<string, TrafficTypeDefinition> definitionsByTraffic,
+        CompiledNetworkSimulationContext compiledContext,
         IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
         int period,
         int effectivePeriod,
@@ -736,35 +746,43 @@ public sealed class TemporalNetworkSimulationEngine
         IReadOnlyDictionary<string, double> availableTranshipmentCapacityByNodeId,
         IReadOnlyDictionary<EdgeTrafficResourceKey, double> occupiedEdgeTrafficCapacity)
     {
+        var network = compiledContext.EffectiveNetwork;
+        var definitionsByTraffic = compiledContext.TrafficDefinitionsByName;
         var remainingCapacityByEdgeId = availableCapacityByEdgeId.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
         var remainingTranshipmentCapacityByNodeId = availableTranshipmentCapacityByNodeId.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
-        var contexts = GetOrderedTrafficNames(network)
-            .Select((trafficType, index) =>
-            {
-                definitionsByTraffic.TryGetValue(trafficType, out var definition);
-                return BuildTemporalContext(
-                    network,
-                    definition ?? new TrafficTypeDefinition { Name = trafficType, RoutingPreference = RoutingPreference.TotalCost },
-                    nodeStates,
-                    period,
-                    effectivePeriod,
-                    network.SimulationSeed + (index * 997));
-            })
-            .ToList();
+        var contexts = new List<TemporalTrafficContext>(compiledContext.OrderedTrafficNames.Length);
+        for (var index = 0; index < compiledContext.OrderedTrafficNames.Length; index++)
+        {
+            var trafficType = compiledContext.OrderedTrafficNames[index];
+            definitionsByTraffic.TryGetValue(trafficType, out var definition);
+            contexts.Add(BuildTemporalContext(
+                compiledContext,
+                definition ?? new TrafficTypeDefinition { Name = trafficType, RoutingPreference = RoutingPreference.TotalCost },
+                nodeStates,
+                period,
+                effectivePeriod,
+                network.SimulationSeed + (index * 997)));
+        }
 
         foreach (var context in contexts)
         {
-            ApplyLocalAllocations(context, network, nodeStates);
+            ApplyLocalAllocations(context, compiledContext, nodeStates);
         }
 
-        var routingContexts = contexts.Select(ToRoutingContext).ToList();
+        var routingContexts = new List<RoutingTrafficContext>(contexts.Count);
+        for (var index = 0; index < contexts.Count; index++)
+        {
+            routingContexts.Add(ToRoutingContext(contexts[index]));
+        }
+
         MixedRoutingAllocator.Allocate(
             network,
             routingContexts,
             remainingCapacityByEdgeId,
             remainingTranshipmentCapacityByNodeId,
             occupiedEdgeTrafficByKey: occupiedEdgeTrafficCapacity,
-            period: period);
+            period: period,
+            compiledContext: compiledContext);
         for (var index = 0; index < contexts.Count; index++)
         {
             contexts[index].Allocations.AddRange(routingContexts[index].Allocations);
@@ -781,18 +799,18 @@ public sealed class TemporalNetworkSimulationEngine
     }
 
     private static TemporalTrafficContext BuildTemporalContext(
-        NetworkModel network,
+        CompiledNetworkSimulationContext compiledContext,
         TrafficTypeDefinition definition,
         IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
         int period,
         int effectivePeriod,
         int seed)
     {
-        var profilesByNodeId = network.Nodes.ToDictionary(
-            node => node.Id,
-            node => node.TrafficProfiles.FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, definition.Name)),
-            Comparer);
-        var nodesById = network.Nodes.ToDictionary(node => node.Id, node => node, Comparer);
+        var network = compiledContext.EffectiveNetwork;
+        var profilesByNodeId = compiledContext.NodeProfilesByTrafficType.TryGetValue(definition.Name, out var profiles)
+            ? profiles
+            : FrozenDictionary<string, NodeTrafficProfile?>.Empty;
+        var nodesById = compiledContext.NodesById;
         var supply = new Dictionary<string, double>(Comparer);
         var supplyUnitCosts = new Dictionary<string, double>(Comparer);
         var demand = new Dictionary<string, double>(Comparer);
@@ -802,12 +820,14 @@ public sealed class TemporalNetworkSimulationEngine
         var storeDemandNodes = new HashSet<string>(Comparer);
         var recipeInputDemandNodes = new HashSet<string>(Comparer);
 
-        var permittedSellerNodeIds = SimulationActorSellLocalPermissionResolver.BuildPermittedSellerNodeSet(network, definition.Name);
+        var permittedSellerNodeIds = compiledContext.PermittedSellerNodeIdsByTrafficType.TryGetValue(definition.Name, out var permittedSellers)
+            ? permittedSellers
+            : FrozenSet<string>.Empty;
         var enforceSellLocal = SimulationActorSellLocalPermissionResolver.IsEnforced(network);
 
-        foreach (var node in network.Nodes)
+        foreach (var node in compiledContext.NodesByIndex)
         {
-            var profile = profilesByNodeId[node.Id];
+            profilesByNodeId.TryGetValue(node.Id, out var profile);
             var key = new TemporalNodeTrafficKey(node.Id, definition.Name);
             nodeStates.TryGetValue(key, out var nodeState);
             nodeState ??= new TemporalNodeTrafficState();
@@ -883,9 +903,9 @@ public sealed class TemporalNetworkSimulationEngine
             seed,
             nodesById,
             profilesByNodeId,
-            demand.Keys
-                .Where(nodeId => SimulationActorSellLocalPermissionResolver.CanReceiveMeetingNodeDemand(network, nodeId, definition.Name))
-                .ToHashSet(Comparer),
+            compiledContext.MeetingDemandEligibleNodeIdsByTrafficType.TryGetValue(definition.Name, out var eligibleNodeIds)
+                ? eligibleNodeIds
+                : FrozenSet<string>.Empty,
             supply,
             supplyUnitCosts,
             demand,
@@ -899,12 +919,12 @@ public sealed class TemporalNetworkSimulationEngine
 
     private static void ApplyLocalAllocations(
         TemporalTrafficContext context,
-        NetworkModel network,
+        CompiledNetworkSimulationContext compiledContext,
         IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates)
     {
         foreach (var nodeId in context.Supply.Keys.Intersect(context.Demand.Keys, Comparer).ToList())
         {
-            if (!SimulationActorSellLocalPermissionResolver.CanReceiveMeetingNodeDemand(network, nodeId, context.TrafficType))
+            if (!context.MeetingDemandEligibleNodeIds.Contains(nodeId))
             {
                 continue;
             }
@@ -959,6 +979,39 @@ public sealed class TemporalNetworkSimulationEngine
         foreach (var pair in source)
         {
             target[pair.Key] = (target.TryGetValue(pair.Key, out var existing) ? existing : 0d) + pair.Value;
+        }
+    }
+
+    private static void ReplacePositiveEntries<TKey>(
+        IDictionary<TKey, double> target,
+        IReadOnlyDictionary<TKey, double> source)
+        where TKey : notnull
+    {
+        target.Clear();
+        foreach (var pair in source)
+        {
+            if (pair.Value > Epsilon)
+            {
+                target[pair.Key] = pair.Value;
+            }
+        }
+    }
+
+    private static void RemoveNonPositiveEntries<TKey>(IDictionary<TKey, double> values)
+        where TKey : notnull
+    {
+        var keysToRemove = new List<TKey>();
+        foreach (var pair in values)
+        {
+            if (pair.Value <= Epsilon)
+            {
+                keysToRemove.Add(pair.Key);
+            }
+        }
+
+        for (var index = 0; index < keysToRemove.Count; index++)
+        {
+            values.Remove(keysToRemove[index]);
         }
     }
 

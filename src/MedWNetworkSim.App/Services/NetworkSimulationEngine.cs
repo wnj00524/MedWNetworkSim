@@ -12,6 +12,8 @@ namespace MedWNetworkSim.App.Services;
 public sealed class NetworkSimulationEngine
 {
     private readonly INetworkLayerResolver layerResolver = new NetworkLayerResolver();
+    private readonly SimulationExecutionCache executionCache = new();
+    private readonly TrafficEconomicSettlementService settlementService = new();
     private const double Epsilon = 0.000001d;
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
 
@@ -27,11 +29,13 @@ public sealed class NetworkSimulationEngine
         network = OrderNetworkForLayerProcessing(network);
         network = Clone(network);
         network = ApplyPolicyRules(network);
+        var compiledContext = executionCache.GetStaticContext(network);
+        network = compiledContext.EffectiveNetwork;
 
         if (network.FacilityModeEnabled)
         {
             var facilityOutcomes = new FacilityModeSimulationEngine(this).Simulate(network);
-            return new TrafficEconomicSettlementService().Settle(network, facilityOutcomes).Outcomes;
+            return settlementService.Settle(network, facilityOutcomes).Outcomes;
         }
 
         var hasRecipeDependencies = HasStaticRecipeDependencies(network);
@@ -73,13 +77,13 @@ public sealed class NetworkSimulationEngine
 
                 SetStaticSourceUnitCosts(context, definitionsByTraffic, sourceUnitCosts, landedUnitCosts);
                 MixedRoutingAllocator.ApplyLocalAllocations(context, network, period: 0);
-                MixedRoutingAllocator.Allocate(network, [context], remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId);
+                MixedRoutingAllocator.Allocate(network, [context], remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId, compiledContext: compiledContext);
                 landedUnitCosts[context.TrafficType] = SummarizeLandedUnitCosts(context.Allocations);
             }
         }
         else
         {
-            MixedRoutingAllocator.Allocate(network, contexts, remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId);
+            MixedRoutingAllocator.Allocate(network, contexts, remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId, compiledContext: compiledContext);
         }
 
         foreach (var context in contexts)
@@ -146,7 +150,7 @@ public sealed class NetworkSimulationEngine
             })
             .ToList();
 
-        return new TrafficEconomicSettlementService().Settle(network, outcomes).Outcomes;
+        return settlementService.Settle(network, outcomes).Outcomes;
     }
 
 

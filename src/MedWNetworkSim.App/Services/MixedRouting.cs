@@ -8,9 +8,9 @@ namespace MedWNetworkSim.App.Services;
 
 public interface IRouteChoiceStrategy
 {
-    void Initialize(RoutingTrafficContext context, NetworkState networkState, IReadOnlyDictionary<string, List<GraphArc>> adjacency);
+    void Initialize(RoutingTrafficContext context, NetworkState networkState, AllocationContext allocationContext);
 
-    List<FlowProposal> ProposeFlows(RoutingTrafficContext context, NetworkState networkState, int round);
+    List<FlowProposal> ProposeFlows(RoutingTrafficContext context, NetworkState networkState, AllocationContext allocationContext, int round);
 }
 /// <summary>
 /// Defines the contract and required members for icapacity resolution policy implementations.
@@ -219,7 +219,11 @@ public sealed class RoutingTrafficContext
 /// Represents the graph arc component.
 /// </summary>
 
-public sealed record GraphArc(string EdgeId, string FromNodeId, string ToNodeId, double Time, double Cost);
+public readonly record struct GraphArc(string EdgeId, string FromNodeId, string ToNodeId, double Time, double Cost);
+
+public sealed record AllocationContext(
+    IReadOnlyDictionary<string, List<GraphArc>> Adjacency,
+    IReadOnlyDictionary<string, EdgeModel> EdgesById);
 /// <summary>
 /// Represents a data model for volume capacity congestion cost entities within the simulation.
 /// </summary>
@@ -325,16 +329,16 @@ public sealed class SystemOptimalRouteChoiceStrategy : IRouteChoiceStrategy
     /// <summary>
     /// Executes the initialize operation.
     /// </summary>
-    public void Initialize(RoutingTrafficContext context, NetworkState networkState, IReadOnlyDictionary<string, List<GraphArc>> adjacency)
+    public void Initialize(RoutingTrafficContext context, NetworkState networkState, AllocationContext allocationContext)
     {
     }
     /// <summary>
     /// Executes the propose flows operation.
     /// </summary>
 
-    public List<FlowProposal> ProposeFlows(RoutingTrafficContext context, NetworkState networkState, int round)
+    public List<FlowProposal> ProposeFlows(RoutingTrafficContext context, NetworkState networkState, AllocationContext allocationContext, int round)
     {
-        return MixedRoutingAllocator.ProposeByScore(context, networkState, deterministicBest: true, round);
+        return MixedRoutingAllocator.ProposeByScore(context, networkState, allocationContext, deterministicBest: true, round);
     }
 }
 /// <summary>
@@ -346,16 +350,16 @@ public sealed class StochasticUserResponsiveRouteChoiceStrategy : IRouteChoiceSt
     /// <summary>
     /// Executes the initialize operation.
     /// </summary>
-    public void Initialize(RoutingTrafficContext context, NetworkState networkState, IReadOnlyDictionary<string, List<GraphArc>> adjacency)
+    public void Initialize(RoutingTrafficContext context, NetworkState networkState, AllocationContext allocationContext)
     {
     }
     /// <summary>
     /// Executes the propose flows operation.
     /// </summary>
 
-    public List<FlowProposal> ProposeFlows(RoutingTrafficContext context, NetworkState networkState, int round)
+    public List<FlowProposal> ProposeFlows(RoutingTrafficContext context, NetworkState networkState, AllocationContext allocationContext, int round)
     {
-        return MixedRoutingAllocator.ProposeByScore(context, networkState, deterministicBest: false, round);
+        return MixedRoutingAllocator.ProposeByScore(context, networkState, allocationContext, deterministicBest: false, round);
     }
 }
 
@@ -371,7 +375,6 @@ public static partial class MixedRoutingAllocator
     private static readonly ICongestionCostModel CongestionCostModel = new VolumeCapacityCongestionCostModel();
     private static readonly ICapacityResolutionPolicy CapacityResolutionPolicy = new PriorityWeightedCapacityResolutionPolicy();
     private static readonly IAdaptiveRoutingMemory AdaptiveRoutingMemory = new AdaptiveRoutingMemory();
-    private static IReadOnlyDictionary<string, List<GraphArc>> adjacency = new Dictionary<string, List<GraphArc>>(Comparer);
     /// <summary>
     /// Executes the build static contexts operation.
     /// </summary>
@@ -398,11 +401,15 @@ public static partial class MixedRoutingAllocator
         IDictionary<string, double> remainingCapacityByEdgeId,
         IDictionary<string, double> remainingTranshipmentCapacityByNodeId,
         IReadOnlyDictionary<EdgeTrafficResourceKey, double>? occupiedEdgeTrafficByKey = null,
-        int period = 0)
+        int period = 0,
+        CompiledNetworkSimulationContext? compiledContext = null)
     {
-        adjacency = BuildAdjacency(network);
         var permissionResolver = new EdgeTrafficPermissionResolver();
-        var edgesById = network.Edges.ToDictionary(edge => edge.Id, edge => edge, Comparer);
+        IReadOnlyDictionary<string, EdgeModel> edgesById = compiledContext is null
+            ? network.Edges.ToDictionary(edge => edge.Id, edge => edge, Comparer)
+            : compiledContext.EdgesById;
+        var adjacency = compiledContext is null ? BuildAdjacency(network) : BuildAdjacency(compiledContext);
+        var allocationContext = new AllocationContext(adjacency, edgesById);
         var state = new NetworkState
         {
             RemainingEdgeCapacity = remainingCapacityByEdgeId.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
@@ -448,7 +455,7 @@ public static partial class MixedRoutingAllocator
             context => CreateStrategy(context));
         foreach (var pair in strategies)
         {
-            pair.Value.Initialize(pair.Key, state, adjacency);
+            pair.Value.Initialize(pair.Key, state, allocationContext);
         }
 
         var maxRounds = Math.Max(1, contexts.Select(context => context.RouteChoiceSettings.IterationCount).DefaultIfEmpty(4).Max()) * 64;
@@ -456,7 +463,7 @@ public static partial class MixedRoutingAllocator
         {
             var proposals = contexts
                 .Where(HasRemainingTraffic)
-                .SelectMany(context => strategies[context].ProposeFlows(context, state, round))
+                .SelectMany(context => strategies[context].ProposeFlows(context, state, allocationContext, round))
                 .ToList();
             if (proposals.Count == 0)
             {
@@ -478,7 +485,7 @@ public static partial class MixedRoutingAllocator
         foreach (var context in contexts)
         {
             RecordAdaptiveObservations(context, state);
-            ClassifyRemainingRestrictions(network, context, state);
+            ClassifyRemainingRestrictions(network, context, state, allocationContext);
         }
 
         CopyRemainingCapacity(state.RemainingEdgeCapacity, remainingCapacityByEdgeId);
@@ -500,9 +507,9 @@ public static partial class MixedRoutingAllocator
     /// Executes the propose by score operation.
     /// </summary>
 
-    public static List<FlowProposal> ProposeByScore(RoutingTrafficContext context, NetworkState state, bool deterministicBest, int round)
+    public static List<FlowProposal> ProposeByScore(RoutingTrafficContext context, NetworkState state, AllocationContext allocationContext, bool deterministicBest, int round)
     {
-        var candidates = BuildCandidateRoutes(context, state);
+        var candidates = BuildCandidateRoutes(context, state, allocationContext);
         if (candidates.Count == 0)
         {
             return [];
@@ -651,6 +658,35 @@ public static partial class MixedRoutingAllocator
         return result;
     }
 
+    public static Dictionary<string, List<GraphArc>> BuildAdjacency(CompiledNetworkSimulationContext compiledContext)
+    {
+        var result = new Dictionary<string, List<GraphArc>>(compiledContext.NodesByIndex.Length, Comparer);
+        for (var fromIndex = 0; fromIndex < compiledContext.AdjacencyByNodeIndex.Length; fromIndex++)
+        {
+            var sourceArcs = compiledContext.AdjacencyByNodeIndex[fromIndex];
+            if (sourceArcs.Length == 0)
+            {
+                continue;
+            }
+
+            var arcs = new List<GraphArc>(sourceArcs.Length);
+            for (var arcIndex = 0; arcIndex < sourceArcs.Length; arcIndex++)
+            {
+                var arc = sourceArcs[arcIndex];
+                arcs.Add(new GraphArc(
+                    compiledContext.EdgeIdsByIndex[arc.EdgeIndex],
+                    compiledContext.NodeIdsByIndex[arc.FromNodeIndex],
+                    compiledContext.NodeIdsByIndex[arc.ToNodeIndex],
+                    arc.Time,
+                    arc.Cost));
+            }
+
+            result[compiledContext.NodeIdsByIndex[fromIndex]] = arcs;
+        }
+
+        return result;
+    }
+
     private static RoutingTrafficContext BuildStaticContext(NetworkModel network, TrafficTypeDefinition definition, int seed, bool applyLocalAllocations)
     {
         var profilesByNodeId = network.Nodes.ToDictionary(
@@ -777,7 +813,7 @@ public static partial class MixedRoutingAllocator
         }
     }
 
-    private static List<RouteCandidate> BuildCandidateRoutes(RoutingTrafficContext context, NetworkState state)
+    private static List<RouteCandidate> BuildCandidateRoutes(RoutingTrafficContext context, NetworkState state, AllocationContext allocationContext)
     {
         var routes = new List<RouteCandidate>();
         foreach (var producerNodeId in context.Supply.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
@@ -792,7 +828,7 @@ public static partial class MixedRoutingAllocator
                     continue;
                 }
 
-                routes.AddRange(FindCandidateRoutes(context, producerNodeId, consumerNodeId, state));
+                routes.AddRange(FindCandidateRoutes(context, producerNodeId, consumerNodeId, state, allocationContext));
             }
         }
 
@@ -808,7 +844,8 @@ public static partial class MixedRoutingAllocator
         RoutingTrafficContext context,
         string producerNodeId,
         string consumerNodeId,
-        NetworkState state)
+        NetworkState state,
+        AllocationContext allocationContext)
     {
         var result = new List<RouteCandidate>();
         var queue = new PriorityQueue<RouteSearchState, double>();
@@ -822,11 +859,11 @@ public static partial class MixedRoutingAllocator
             expansions++;
             if (Comparer.Equals(current.NodeId, consumerNodeId))
             {
-                result.Add(ToCandidate(context, producerNodeId, consumerNodeId, current, state));
+                result.Add(ToCandidate(context, producerNodeId, consumerNodeId, current, state, allocationContext));
                 continue;
             }
 
-            if (current.PathNodeIds.Count > maxDepth || !adjacency.TryGetValue(current.NodeId, out var arcs))
+            if (current.PathNodeIds.Count > maxDepth || !allocationContext.Adjacency.TryGetValue(current.NodeId, out var arcs))
             {
                 continue;
             }
@@ -873,10 +910,18 @@ public static partial class MixedRoutingAllocator
         string producerNodeId,
         string consumerNodeId,
         RouteSearchState route,
-        NetworkState state)
+        NetworkState state,
+        AllocationContext allocationContext)
     {
         var transhipmentNodeIds = GetIntermediateNodeIds(route.PathNodeIds);
-        var arcs = route.PathEdgeIds.Select(FindArc).Where(arc => arc is not null).Cast<GraphArc>().ToList();
+        var arcs = new List<GraphArc>(route.PathEdgeIds.Count);
+        for (var index = 0; index < route.PathEdgeIds.Count; index++)
+        {
+            if (TryFindArc(route.PathEdgeIds[index], allocationContext, out var arc))
+            {
+                arcs.Add(arc);
+            }
+        }
         var effectiveTime = arcs.Sum(arc => GetEffectiveArcTime(context, arc, state));
         var effectiveCost = arcs.Sum(arc => GetEffectiveArcCost(context, arc, state));
         var score = Score(effectiveTime, effectiveCost, context.RoutingPreference);
@@ -982,7 +1027,7 @@ public static partial class MixedRoutingAllocator
         return context.Supply.Values.Any(value => value > Epsilon) && context.Demand.Values.Any(value => value > Epsilon);
     }
 
-    private static void ClassifyRemainingRestrictions(NetworkModel network, RoutingTrafficContext context, NetworkState state)
+    private static void ClassifyRemainingRestrictions(NetworkModel network, RoutingTrafficContext context, NetworkState state, AllocationContext allocationContext)
     {
         if (!HasRemainingTraffic(context))
         {
@@ -1006,15 +1051,15 @@ public static partial class MixedRoutingAllocator
                     continue;
                 }
 
-                if (!HasAnyFeasibleRoute(network, context, producerNodeId, consumerNodeId, state, RouteConstraintMode.BlockedOnly))
+                if (!HasAnyFeasibleRoute(network, context, producerNodeId, consumerNodeId, state, allocationContext, RouteConstraintMode.BlockedOnly))
                 {
                     context.NoPermittedPathDemand += quantity;
                 }
-                else if (!HasAnyFeasibleRoute(network, context, producerNodeId, consumerNodeId, state, RouteConstraintMode.PermissionLimited))
+                else if (!HasAnyFeasibleRoute(network, context, producerNodeId, consumerNodeId, state, allocationContext, RouteConstraintMode.PermissionLimited))
                 {
                     context.PermissionLimitedDemand += quantity;
                 }
-                else if (!HasAnyFeasibleRoute(network, context, producerNodeId, consumerNodeId, state, RouteConstraintMode.AllConstraints))
+                else if (!HasAnyFeasibleRoute(network, context, producerNodeId, consumerNodeId, state, allocationContext, RouteConstraintMode.AllConstraints))
                 {
                     context.CapacityBlockedDemand += quantity;
                 }
@@ -1101,9 +1146,23 @@ public static partial class MixedRoutingAllocator
         return congestionCost + AdaptiveRoutingMemory.GetAdaptivePenalty(edgeId);
     }
 
-    private static GraphArc? FindArc(string edgeId)
+    private static bool TryFindArc(string edgeId, AllocationContext allocationContext, out GraphArc arc)
     {
-        return adjacency.Values.SelectMany(arcs => arcs).FirstOrDefault(arc => Comparer.Equals(arc.EdgeId, edgeId));
+        foreach (var pair in allocationContext.Adjacency)
+        {
+            var arcs = pair.Value;
+            for (var index = 0; index < arcs.Count; index++)
+            {
+                if (Comparer.Equals(arcs[index].EdgeId, edgeId))
+                {
+                    arc = arcs[index];
+                    return true;
+                }
+            }
+        }
+
+        arc = default;
+        return false;
     }
 
     private static bool CanTraverseNode(
@@ -1131,10 +1190,11 @@ public static partial class MixedRoutingAllocator
         string producerNodeId,
         string consumerNodeId,
         NetworkState state,
+        AllocationContext allocationContext,
         RouteConstraintMode constraintMode)
     {
         var permissionResolver = new EdgeTrafficPermissionResolver();
-        var edgeLookup = network.Edges.ToDictionary(edge => edge.Id, edge => edge, Comparer);
+        var edgeLookup = allocationContext.EdgesById;
         var visited = new HashSet<string>(Comparer) { producerNodeId };
         var queue = new Queue<string>();
         queue.Enqueue(producerNodeId);
@@ -1147,7 +1207,7 @@ public static partial class MixedRoutingAllocator
                 return true;
             }
 
-            if (!adjacency.TryGetValue(currentNodeId, out var arcs))
+            if (!allocationContext.Adjacency.TryGetValue(currentNodeId, out var arcs))
             {
                 continue;
             }

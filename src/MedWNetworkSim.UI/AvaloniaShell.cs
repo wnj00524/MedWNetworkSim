@@ -33,24 +33,57 @@ using MedWNetworkSim.UI.Controls;
 using SkiaSharp;
 
 namespace MedWNetworkSim.UI;
+/// <summary>
+/// Represents the graph canvas status changed event args component.
+/// </summary>
 
 public sealed class GraphCanvasStatusChangedEventArgs : EventArgs
 {
+    /// <summary>
+    /// Gets or sets the title.
+    /// </summary>
     public required string Title { get; init; }
+    /// <summary>
+    /// Gets or sets the detail.
+    /// </summary>
     public required string Detail { get; init; }
+    /// <summary>
+    /// Gets a value indicating whether is error is enabled or active.
+    /// </summary>
     public required bool IsError { get; init; }
+    /// <summary>
+    /// Gets a value indicating whether has visible frame is enabled or active.
+    /// </summary>
     public required bool HasVisibleFrame { get; init; }
 }
+/// <summary>
+/// Represents the graph canvas full node editor requested event args component.
+/// </summary>
 
 public sealed class GraphCanvasFullNodeEditorRequestedEventArgs : EventArgs
 {
+    /// <summary>
+    /// Gets or sets the node id.
+    /// </summary>
     public required string NodeId { get; init; }
 }
+/// <summary>
+/// Represents the graph canvas coordinate transform component.
+/// </summary>
 
 public readonly record struct GraphCanvasCoordinateTransform(GraphSize LogicalViewport, PixelSize PixelViewport)
 {
+    /// <summary>
+    /// Gets or sets the scale x.
+    /// </summary>
     public double ScaleX => LogicalViewport.Width <= 0d ? 1d : PixelViewport.Width / LogicalViewport.Width;
+    /// <summary>
+    /// Gets or sets the scale y.
+    /// </summary>
     public double ScaleY => LogicalViewport.Height <= 0d ? 1d : PixelViewport.Height / LogicalViewport.Height;
+    /// <summary>
+    /// Executes the pointer to graph operation.
+    /// </summary>
 
     public GraphPoint PointerToGraph(Point localPoint)
     {
@@ -58,6 +91,9 @@ public readonly record struct GraphCanvasCoordinateTransform(GraphSize LogicalVi
         var y = Math.Clamp(localPoint.Y, 0d, LogicalViewport.Height);
         return new GraphPoint(x, y);
     }
+    /// <summary>
+    /// Executes the create operation.
+    /// </summary>
 
     public static GraphCanvasCoordinateTransform Create(Size logicalBounds, double renderScalingX, double? renderScalingY = null)
     {
@@ -73,9 +109,15 @@ public readonly record struct GraphCanvasCoordinateTransform(GraphSize LogicalVi
         return new GraphCanvasCoordinateTransform(new GraphSize(safeWidth, safeHeight), new PixelSize(pixelWidth, pixelHeight));
     }
 }
+/// <summary>
+/// Represents the facility planning dialogs component.
+/// </summary>
 
 internal static class FacilityPlanningDialogs
 {
+    /// <summary>
+    /// Executes the prompt max travel time async operation.
+    /// </summary>
     public static async Task<double?> PromptMaxTravelTimeAsync(Control ownerControl, string facilityName, double currentValue)
     {
         var owner = ownerControl.GetVisualRoot() as Window;
@@ -196,6 +238,9 @@ internal static class FacilityPlanningDialogs
         return result;
     }
 }
+/// <summary>
+/// Represents the graph canvas control component.
+/// </summary>
 
 public sealed class GraphCanvasControl : Control, IDisposable
 {
@@ -313,6 +358,9 @@ public sealed class GraphCanvasControl : Control, IDisposable
         osmTileProvider.TilesChanged -= HandleTilesChanged;
         osmTileProvider.Dispose();
     }
+    /// <summary>
+    /// Executes the render operation.
+    /// </summary>
 
     public override void Render(DrawingContext context)
     {
@@ -438,6 +486,9 @@ public sealed class GraphCanvasControl : Control, IDisposable
             DrawStatusPanel(context, "Graph canvas failed to render", safeMessage, isError: true);
         }
     }
+    /// <summary>
+    /// Executes the on pointer pressed operation.
+    /// </summary>
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
@@ -537,7 +588,7 @@ public sealed class GraphCanvasControl : Control, IDisposable
                 return;
             }
 
-            ViewModel.InteractionController.OnPointerPressed(                interactionContext,
+            ViewModel.InteractionController.OnPointerPressed(interactionContext,
                 button,
                 point,
                 e.KeyModifiers.HasFlag(KeyModifiers.Shift),
@@ -783,6 +834,9 @@ public sealed class GraphCanvasControl : Control, IDisposable
         await dialog.ShowDialog(owner);
         return result;
     }
+    /// <summary>
+    /// Executes the try handle workspace double click operation.
+    /// </summary>
 
     public bool TryHandleWorkspaceDoubleClick(GraphInteractionContext interactionContext, GraphPoint point)
     {
@@ -870,6 +924,9 @@ public sealed class GraphCanvasControl : Control, IDisposable
             Command = new RelayCommand(action)
         };
     }
+    /// <summary>
+    /// Executes the on pointer moved operation.
+    /// </summary>
 
     protected override void OnPointerMoved(PointerEventArgs e)
     {
@@ -936,6 +993,9 @@ public sealed class GraphCanvasControl : Control, IDisposable
             e.Handled = true;
         }
     }
+    /// <summary>
+    /// Executes the on pointer released operation.
+    /// </summary>
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
@@ -1003,6 +1063,9 @@ public sealed class GraphCanvasControl : Control, IDisposable
             e.Handled = true;
         }
     }
+    /// <summary>
+    /// Executes the on pointer wheel changed operation.
+    /// </summary>
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
@@ -1044,6 +1107,9 @@ public sealed class GraphCanvasControl : Control, IDisposable
             e.Handled = true;
         }
     }
+    /// <summary>
+    /// Executes the on pointer exited operation.
+    /// </summary>
 
     protected override void OnPointerExited(PointerEventArgs e)
     {
@@ -1053,6 +1119,9 @@ public sealed class GraphCanvasControl : Control, IDisposable
         ToolTip.SetTip(this, null);
         InvalidateVisual();
     }
+    /// <summary>
+    /// Executes the on pointer capture lost operation.
+    /// </summary>
 
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
@@ -1064,6 +1133,9 @@ public sealed class GraphCanvasControl : Control, IDisposable
         didMapDrag = false;
         Cursor = null;
     }
+    /// <summary>
+    /// Executes the on key down operation.
+    /// </summary>
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
@@ -1148,6 +1220,9 @@ public sealed class GraphCanvasControl : Control, IDisposable
 
         return false;
     }
+    /// <summary>
+    /// Retrieves the coordinate transform based on the provided parameters.
+    /// </summary>
 
     public GraphCanvasCoordinateTransform GetCoordinateTransform()
     {
@@ -1462,6 +1537,9 @@ public sealed class GraphCanvasControl : Control, IDisposable
         Trace.WriteLine($"[GraphCanvasControl] {message}");
     }
 }
+/// <summary>
+/// Represents the shell window component.
+/// </summary>
 
 public sealed class ShellWindow : Window
 {
@@ -1500,6 +1578,9 @@ public sealed class ShellWindow : Window
     private DashboardLayoutState previousDashboardLayoutState = DashboardLayoutState.Normal;
     private ShellWorkspaceMode shellWorkspaceMode = ShellWorkspaceMode.Standard;
     private Action? refreshToolRailState;
+    /// <summary>
+    /// Specifies the dashboard layout state.
+    /// </summary>
 
     private enum DashboardLayoutState
     {
@@ -1507,6 +1588,9 @@ public sealed class ShellWindow : Window
         Normal,
         Expanded
     }
+    /// <summary>
+    /// Specifies the shell workspace mode.
+    /// </summary>
 
     private enum ShellWorkspaceMode
     {
@@ -1516,6 +1600,9 @@ public sealed class ShellWindow : Window
         ScenarioEditor,
         OsmImport
     }
+    /// <summary>
+    /// Specifies the unsaved changes choice.
+    /// </summary>
 
     private enum UnsavedChangesChoice
     {
@@ -1523,13 +1610,25 @@ public sealed class ShellWindow : Window
         Discard,
         Cancel
     }
+    /// <summary>
+    /// Represents the inverse bool converter component.
+    /// </summary>
 
     private sealed class InverseBoolConverter : IValueConverter
     {
+        /// <summary>
+        /// Gets or sets the instance.
+        /// </summary>
         public static InverseBoolConverter Instance { get; } = new();
+        /// <summary>
+        /// Executes the convert operation.
+        /// </summary>
 
         public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
             value is bool boolValue ? !boolValue : AvaloniaProperty.UnsetValue;
+        /// <summary>
+        /// Executes the convert back operation.
+        /// </summary>
 
         public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
             value is bool boolValue ? !boolValue : AvaloniaProperty.UnsetValue;
@@ -1825,6 +1924,9 @@ public sealed class ShellWindow : Window
         grid.Children.Add(buttons);
         return grid;
     }
+    /// <summary>
+    /// Represents the icon paths component.
+    /// </summary>
 
     private static class IconPaths
     {
@@ -8940,6 +9042,9 @@ public sealed class ShellWindow : Window
         await dialog.ShowDialog(this);
         return result;
     }
+    /// <summary>
+    /// Represents the timeline report export options component.
+    /// </summary>
 
     private sealed record TimelineReportExportOptions(int Periods, bool ApplyMeetingDemandLimit);
 

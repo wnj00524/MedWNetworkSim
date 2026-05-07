@@ -1,20 +1,44 @@
 using SkiaSharp;
 
 namespace MedWNetworkSim.Rendering;
+/// <summary>
+/// Represents the pie chart slice component.
+/// </summary>
 
 public sealed class PieChartSlice
 {
+    /// <summary>
+    /// Gets or sets the label.
+    /// </summary>
     public string Label { get; set; } = "";
+    /// <summary>
+    /// Gets or sets the value.
+    /// </summary>
     public double Value { get; set; }
+    /// <summary>
+    /// Gets or sets the color.
+    /// </summary>
     public SKColor? Color { get; set; }
 }
+/// <summary>
+/// Represents a data model for pie chart entities within the simulation.
+/// </summary>
 
 public sealed class PieChartModel
 {
+    /// <summary>
+    /// Gets the collection of slices associated with this entity.
+    /// </summary>
     public List<PieChartSlice> Slices { get; set; } = new();
 }
+/// <summary>
+/// Represents the pie chart legend item component.
+/// </summary>
 
 public sealed record PieChartLegendItem(string Label, double Value, double Share, SKColor Color);
+/// <summary>
+/// Represents the pie chart renderer component.
+/// </summary>
 
 public sealed class PieChartRenderer
 {
@@ -28,6 +52,9 @@ public sealed class PieChartRenderer
         SKColor.Parse("#FF8A5B"),
         SKColor.Parse("#69D2E7")
     ];
+    /// <summary>
+    /// Executes the draw operation.
+    /// </summary>
 
     public void Draw(SKCanvas canvas, PieChartModel model, SKRect bounds)
     {
@@ -56,6 +83,9 @@ public sealed class PieChartRenderer
             startAngle += sweep;
         }
     }
+    /// <summary>
+    /// Executes the draw legend operation.
+    /// </summary>
 
     public void DrawLegend(SKCanvas canvas, PieChartModel model, SKPoint origin)
     {
@@ -73,6 +103,9 @@ public sealed class PieChartRenderer
             y += 18f;
         }
     }
+    /// <summary>
+    /// Executes the build legend operation.
+    /// </summary>
 
     public IReadOnlyList<PieChartLegendItem> BuildLegend(PieChartModel model)
     {

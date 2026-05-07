@@ -1,4 +1,7 @@
 namespace MedWNetworkSim.App.Models;
+/// <summary>
+/// Represents the bulk apply traffic role options component.
+/// </summary>
 
 public sealed record BulkApplyTrafficRoleOptions(
     bool ApplyPlaceType,

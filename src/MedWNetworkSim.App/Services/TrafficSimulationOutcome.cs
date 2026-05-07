@@ -52,14 +52,29 @@ public sealed class TrafficSimulationOutcome
     /// Gets the demand quantity that could not be routed because no permitted path existed.
     /// </summary>
     public double NoPermittedPathDemand { get; init; }
+    /// <summary>
+    /// Gets or sets the total sales revenue.
+    /// </summary>
 
     public double TotalSalesRevenue { get; init; }
+    /// <summary>
+    /// Gets or sets the total transport cost.
+    /// </summary>
 
     public double TotalTransportCost { get; init; }
+    /// <summary>
+    /// Gets or sets the total production cost.
+    /// </summary>
 
     public double TotalProductionCost { get; init; }
+    /// <summary>
+    /// Gets or sets the total tax.
+    /// </summary>
 
     public double TotalTax { get; init; }
+    /// <summary>
+    /// Gets or sets the total profit.
+    /// </summary>
 
     public double TotalProfit { get; init; }
 

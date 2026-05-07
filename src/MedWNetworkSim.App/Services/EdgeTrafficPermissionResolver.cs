@@ -8,6 +8,9 @@ namespace MedWNetworkSim.App.Services;
 public sealed class EdgeTrafficPermissionResolver
 {
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+    /// <summary>
+    /// Executes the resolve operation.
+    /// </summary>
 
     public EffectiveEdgeTrafficPermission Resolve(NetworkModel network, EdgeModel edge, string trafficType)
     {
@@ -37,6 +40,9 @@ public sealed class EdgeTrafficPermissionResolver
             PermissionRuleSource.ImplicitPermit,
             "Effective: Permitted");
     }
+    /// <summary>
+    /// Retrieves the allowed capacity based on the provided parameters.
+    /// </summary>
 
     public double GetAllowedCapacity(EdgeModel edge, EffectiveEdgeTrafficPermission permission)
     {
@@ -56,6 +62,9 @@ public sealed class EdgeTrafficPermissionResolver
             _ => double.PositiveInfinity
         };
     }
+    /// <summary>
+    /// Executes the build initial remaining allowances operation.
+    /// </summary>
 
     public Dictionary<EdgeTrafficResourceKey, double> BuildInitialRemainingAllowances(
         NetworkModel network,
@@ -89,6 +98,9 @@ public sealed class EdgeTrafficPermissionResolver
 
         return result;
     }
+    /// <summary>
+    /// Executes the format summary operation.
+    /// </summary>
 
     public static string FormatSummary(EdgeTrafficPermissionMode mode, EdgeTrafficLimitKind limitKind, double? limitValue)
     {
@@ -123,6 +135,9 @@ public sealed class EdgeTrafficPermissionResolver
         return value.Value.ToString("0.##");
     }
 }
+/// <summary>
+/// Specifies the permission rule source.
+/// </summary>
 
 public enum PermissionRuleSource
 {
@@ -130,6 +145,9 @@ public enum PermissionRuleSource
     NetworkDefault,
     ImplicitPermit
 }
+/// <summary>
+/// Represents the effective edge traffic permission component.
+/// </summary>
 
 public readonly record struct EffectiveEdgeTrafficPermission(
     string TrafficType,
@@ -138,10 +156,19 @@ public readonly record struct EffectiveEdgeTrafficPermission(
     double? LimitValue,
     PermissionRuleSource Source,
     string Summary);
+/// <summary>
+/// Represents the edge traffic resource key component.
+/// </summary>
 
 public readonly record struct EdgeTrafficResourceKey(string EdgeId, string TrafficType)
 {
+    /// <summary>
+    /// Gets or sets the comparer.
+    /// </summary>
     public static IEqualityComparer<EdgeTrafficResourceKey> Comparer { get; } = new EdgeTrafficResourceKeyComparer();
+    /// <summary>
+    /// Represents the edge traffic resource key comparer component.
+    /// </summary>
 
     private sealed class EdgeTrafficResourceKeyComparer : IEqualityComparer<EdgeTrafficResourceKey>
     {

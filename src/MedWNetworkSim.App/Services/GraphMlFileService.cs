@@ -71,6 +71,9 @@ public sealed class GraphMlFileService
         WriteIndented = false,
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
     };
+    /// <summary>
+    /// Executes the load operation.
+    /// </summary>
 
     public NetworkModel Load(string path, GraphMlTransferOptions options)
     {
@@ -121,6 +124,9 @@ public sealed class GraphMlFileService
 
         return networkFileService.NormalizeAndValidate(model);
     }
+    /// <summary>
+    /// Executes the save operation.
+    /// </summary>
 
     public void Save(NetworkModel model, string path, GraphMlTransferOptions options)
     {
@@ -588,6 +594,9 @@ public sealed class GraphMlFileService
                 new XAttribute("key", key),
                 value));
     }
+    /// <summary>
+    /// Represents the graph ml key definition component.
+    /// </summary>
 
     private sealed record GraphMlKeyDefinition(string Id, string? Target, string Name);
 }

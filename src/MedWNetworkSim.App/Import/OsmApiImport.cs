@@ -5,15 +5,30 @@ using OsmSharp;
 using OsmSharp.Streams;
 
 namespace MedWNetworkSim.App.Import;
+/// <summary>
+/// Represents the osm bounding box component.
+/// </summary>
 
 public sealed record OsmBoundingBox(double MinLon, double MinLat, double MaxLon, double MaxLat)
 {
     public const double MinLatitudeLimit = -85.05112878d;
     public const double MaxLatitudeLimit = 85.05112878d;
+    /// <summary>
+    /// Gets or sets the area degrees.
+    /// </summary>
 
     public double AreaDegrees => Math.Max(0d, MaxLon - MinLon) * Math.Max(0d, MaxLat - MinLat);
+    /// <summary>
+    /// Gets or sets the center latitude.
+    /// </summary>
     public double CenterLatitude => (MinLat + MaxLat) / 2d;
+    /// <summary>
+    /// Gets or sets the center longitude.
+    /// </summary>
     public double CenterLongitude => (MinLon + MaxLon) / 2d;
+    /// <summary>
+    /// Executes the normalize operation.
+    /// </summary>
 
     public OsmBoundingBox Normalize()
     {
@@ -33,6 +48,9 @@ public sealed record OsmBoundingBox(double MinLon, double MinLat, double MaxLon,
 
         return new OsmBoundingBox(west, south, east, north);
     }
+    /// <summary>
+    /// Executes the validate operation.
+    /// </summary>
 
     public void Validate()
     {
@@ -51,6 +69,9 @@ public sealed record OsmBoundingBox(double MinLon, double MinLat, double MaxLon,
             throw new ArgumentException("West must be less than east, and south must be less than north.");
         }
     }
+    /// <summary>
+    /// Executes the try create operation.
+    /// </summary>
 
     public static bool TryCreate(double west, double south, double east, double north, out OsmBoundingBox bbox, out string? error)
     {
@@ -67,6 +88,9 @@ public sealed record OsmBoundingBox(double MinLon, double MinLat, double MaxLon,
             return false;
         }
     }
+    /// <summary>
+    /// Executes the normalize longitude operation.
+    /// </summary>
 
     public static double NormalizeLongitude(double longitude)
     {
@@ -79,11 +103,17 @@ public sealed record OsmBoundingBox(double MinLon, double MinLat, double MaxLon,
         return normalized == -180d && longitude > 0d ? 180d : normalized;
     }
 }
+/// <summary>
+/// Defines the contract and required members for iosm api client implementations.
+/// </summary>
 
 public interface IOsmApiClient
 {
     Task<Stream> DownloadBoundingBoxAsync(OsmBoundingBox bbox, CancellationToken ct);
 }
+/// <summary>
+/// Represents the osm api client component.
+/// </summary>
 
 public sealed class OsmApiClient : IOsmApiClient, IDisposable
 {
@@ -99,6 +129,9 @@ public sealed class OsmApiClient : IOsmApiClient, IDisposable
             this.httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("MedWNetworkSim/2.0 (OSM bounding-box importer)");
         }
     }
+    /// <summary>
+    /// Executes the download bounding box async operation.
+    /// </summary>
 
     public async Task<Stream> DownloadBoundingBoxAsync(OsmBoundingBox bbox, CancellationToken ct)
     {
@@ -142,11 +175,17 @@ public sealed class OsmApiClient : IOsmApiClient, IDisposable
 
     private static string Format(double value) => value.ToString("0.########", CultureInfo.InvariantCulture);
 }
+/// <summary>
+/// Represents the osm bounding box tiler component.
+/// </summary>
 
 public static class OsmBoundingBoxTiler
 {
     public const double MaxTileAreaDegrees = 0.25d;
     public const double AutoTileAreaLimitDegrees = 2.0d;
+    /// <summary>
+    /// Executes the create tiles operation.
+    /// </summary>
 
     public static IReadOnlyList<OsmBoundingBox> CreateTiles(OsmBoundingBox bbox)
     {
@@ -194,9 +233,15 @@ public static class OsmBoundingBoxTiler
         return tiles;
     }
 }
+/// <summary>
+/// Represents the osm bounding box importer component.
+/// </summary>
 
 public sealed class OsmBoundingBoxImporter(IOsmApiClient apiClient)
 {
+    /// <summary>
+    /// Executes the import async operation.
+    /// </summary>
     public async Task<NetworkModel> ImportAsync(OsmBoundingBox bbox, OsmImportOptions options, CancellationToken ct = default)
     {
         var tiles = OsmBoundingBoxTiler.CreateTiles(bbox);

@@ -3,6 +3,9 @@ using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Agents;
 
 namespace MedWNetworkSim.App.Services;
+/// <summary>
+/// Provides business logic and operations related to command line run.
+/// </summary>
 
 public sealed class CommandLineRunService
 {
@@ -81,11 +84,17 @@ public sealed class CommandLineRunService
 
         return LooksLikeLegacyRunArguments(args);
     }
+    /// <summary>
+    /// Determines whether help request.
+    /// </summary>
 
     public bool IsHelpRequest(string[] args)
     {
         return args.Any(IsHelpToken);
     }
+    /// <summary>
+    /// Retrieves the usage text based on the provided parameters.
+    /// </summary>
 
     public string GetUsageText()
     {
@@ -134,6 +143,9 @@ Examples:
   MedWNetworkSim.App.exe add-edge --file .\demo.json --id E1 --from N1 --to N2 --time 1 --cost 4 --direction bidirectional
 """;
     }
+    /// <summary>
+    /// Executes the parse operation.
+    /// </summary>
 
     public CommandLineOptions Parse(string[] args)
     {
@@ -165,6 +177,9 @@ Examples:
         var (legacyNamed, legacyPositional) = ParseArguments(args);
         return ParseRunCommand(legacyNamed, legacyPositional);
     }
+    /// <summary>
+    /// Executes the primary operation of this component.
+    /// </summary>
 
     public string Run(CommandLineOptions options)
     {

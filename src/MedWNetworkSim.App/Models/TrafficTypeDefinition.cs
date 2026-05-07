@@ -1,7 +1,9 @@
 namespace MedWNetworkSim.App.Models;
 
 /// <summary>
-/// Defines how one traffic type behaves when the simulator routes it through the network.
+/// Defines a specific class or category of traffic that moves through the network.
+/// Traffic types have unique characteristics such as size, transport requirements, priority, and visual representation,
+/// which influence how they are routed, delayed, or blocked by network policies and edge permissions.
 /// </summary>
 public sealed class TrafficTypeDefinition
 {
@@ -44,12 +46,24 @@ public sealed class TrafficTypeDefinition
     /// Gets or sets the optional per-unit bid used when competing for constrained edge or node transhipment capacity.
     /// </summary>
     public double? CapacityBidPerUnit { get; set; }
+    /// <summary>
+    /// Gets or sets the default unit sale price.
+    /// </summary>
 
     public double DefaultUnitSalePrice { get; set; }
+    /// <summary>
+    /// Gets or sets the default unit production cost.
+    /// </summary>
 
     public double DefaultUnitProductionCost { get; set; }
+    /// <summary>
+    /// Gets or sets the sales tax rate.
+    /// </summary>
 
     public double SalesTaxRate { get; set; }
+    /// <summary>
+    /// Gets or sets the route tax rate.
+    /// </summary>
 
     public double RouteTaxRate { get; set; }
 

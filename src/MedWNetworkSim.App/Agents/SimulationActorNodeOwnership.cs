@@ -1,9 +1,15 @@
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Agents;
+/// <summary>
+/// Represents the simulation actor node ownership component.
+/// </summary>
 
 internal static class SimulationActorNodeOwnership
 {
+    /// <summary>
+    /// Executes the build node actor lookup operation.
+    /// </summary>
     public static IReadOnlyDictionary<string, string> BuildNodeActorLookup(
         IEnumerable<NodeModel> nodes,
         IReadOnlyDictionary<string, SimulationActorState> actorsById,

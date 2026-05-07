@@ -1,6 +1,9 @@
 using MedWNetworkSim.Rendering;
 
 namespace MedWNetworkSim.Interaction;
+/// <summary>
+/// Specifies the graph pointer button.
+/// </summary>
 
 public enum GraphPointerButton
 {
@@ -8,6 +11,9 @@ public enum GraphPointerButton
     Middle,
     Right
 }
+/// <summary>
+/// Specifies the graph tool mode.
+/// </summary>
 
 public enum GraphToolMode
 {
@@ -16,25 +22,76 @@ public enum GraphToolMode
     Connect,
     Agent
 }
+/// <summary>
+/// Represents the graph interaction context component.
+/// </summary>
 
 public sealed class GraphInteractionContext
 {
+    /// <summary>
+    /// Gets or sets the scene.
+    /// </summary>
     public required GraphScene Scene { get; init; }
+    /// <summary>
+    /// Gets or sets the viewport.
+    /// </summary>
     public required GraphViewport Viewport { get; init; }
+    /// <summary>
+    /// Gets or sets the viewport size.
+    /// </summary>
     public required GraphSize ViewportSize { get; init; }
+    /// <summary>
+    /// Gets a value indicating whether show node labels is enabled or active.
+    /// </summary>
     public required bool ShowNodeLabels { get; init; }
+    /// <summary>
+    /// Gets or sets the tool mode.
+    /// </summary>
     public required GraphToolMode ToolMode { get; init; }
+    /// <summary>
+    /// Gets or sets the create edge.
+    /// </summary>
     public required Func<string, string, bool, bool> CreateEdge { get; init; }
+    /// <summary>
+    /// Gets or sets the add node at.
+    /// </summary>
     public required Func<GraphPoint, string> AddNodeAt { get; init; }
+    /// <summary>
+    /// Gets or sets the delete selection.
+    /// </summary>
     public required Action DeleteSelection { get; init; }
+    /// <summary>
+    /// Gets or sets the focus next connected edge.
+    /// </summary>
     public required Func<string?> FocusNextConnectedEdge { get; init; }
+    /// <summary>
+    /// Gets or sets the focus nearby node.
+    /// </summary>
     public required Func<string?, bool, string, string?> FocusNearbyNode { get; init; }
+    /// <summary>
+    /// Gets or sets the selection changed.
+    /// </summary>
     public required Action<string?, string?> SelectionChanged { get; init; }
+    /// <summary>
+    /// Gets or sets the status changed.
+    /// </summary>
     public required Action<string> StatusChanged { get; init; }
+    /// <summary>
+    /// Gets or sets the tool mode changed.
+    /// </summary>
     public required Action<GraphToolMode> ToolModeChanged { get; init; }
+    /// <summary>
+    /// Gets or sets the can drag node.
+    /// </summary>
     public required Func<string, bool> CanDragNode { get; init; }
+    /// <summary>
+    /// Gets or sets the get node drag blocked message.
+    /// </summary>
     public required Func<string, string> GetNodeDragBlockedMessage { get; init; }
 }
+/// <summary>
+/// Represents the graph interaction controller component.
+/// </summary>
 
 public sealed class GraphInteractionController
 {
@@ -49,6 +106,9 @@ public sealed class GraphInteractionController
     private bool connectionGestureCreatesBidirectionalEdge;
     private bool keyboardConnectMode;
     private string? keyboardConnectSource;
+    /// <summary>
+    /// Executes the on pointer pressed operation.
+    /// </summary>
 
     public void OnPointerPressed(GraphInteractionContext context, GraphPointerButton button, GraphPoint screenPoint, bool shiftPressed, bool altPressed, bool controlPressed)
     {
@@ -166,6 +226,9 @@ public sealed class GraphInteractionController
         context.SelectionChanged(GetPrimaryNode(context.Scene), GetPrimaryEdge(context.Scene));
         context.StatusChanged("Marquee selection active.");
     }
+    /// <summary>
+    /// Executes the on pointer moved operation.
+    /// </summary>
 
     public void OnPointerMoved(GraphInteractionContext context, GraphPoint screenPoint)
     {
@@ -212,6 +275,9 @@ public sealed class GraphInteractionController
         context.Scene.Selection.HoverNodeId = hit.NodeId;
         context.Scene.Selection.HoverEdgeId = hit.EdgeId;
     }
+    /// <summary>
+    /// Executes the on pointer released operation.
+    /// </summary>
 
     public void OnPointerReleased(GraphInteractionContext context, GraphPointerButton button, GraphPoint screenPoint, bool shiftPressed)
     {
@@ -322,6 +388,9 @@ public sealed class GraphInteractionController
             context.StatusChanged("Route creation cancelled.");
         }
     }
+    /// <summary>
+    /// Executes the on pointer wheel operation.
+    /// </summary>
 
     public void OnPointerWheel(GraphInteractionContext context, GraphPoint screenPoint, double delta)
     {
@@ -329,6 +398,9 @@ public sealed class GraphInteractionController
         context.Viewport.ZoomAt(screenPoint, context.ViewportSize, factor);
         context.StatusChanged($"Zoom {context.Viewport.Zoom:0.00}x.");
     }
+    /// <summary>
+    /// Executes the on key down operation.
+    /// </summary>
 
     public bool OnKeyDown(GraphInteractionContext context, string key, bool shiftPressed)
     {
@@ -413,12 +485,12 @@ public sealed class GraphInteractionController
                 return true;
 
             case "Enter":
-        if (keyboardConnectMode && keyboardConnectSource is not null && GetPrimaryNode(context.Scene) is { } targetNode && !string.Equals(keyboardConnectSource, targetNode, StringComparison.OrdinalIgnoreCase))
-        {
-            if (context.CreateEdge(keyboardConnectSource, targetNode, false))
-            {
-                keyboardConnectMode = false;
-                keyboardConnectSource = null;
+                if (keyboardConnectMode && keyboardConnectSource is not null && GetPrimaryNode(context.Scene) is { } targetNode && !string.Equals(keyboardConnectSource, targetNode, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (context.CreateEdge(keyboardConnectSource, targetNode, false))
+                    {
+                        keyboardConnectMode = false;
+                        keyboardConnectSource = null;
                         context.StatusChanged("Edge created from keyboard.");
                     }
                 }

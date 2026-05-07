@@ -4,6 +4,9 @@ using MedWNetworkSim.App.Services;
 using MedWNetworkSim.App.VisualAnalytics;
 
 namespace MedWNetworkSim.App.Agents;
+/// <summary>
+/// Represents the simulation actor coordinator component.
+/// </summary>
 
 public sealed class SimulationActorCoordinator
 {
@@ -22,6 +25,9 @@ public sealed class SimulationActorCoordinator
         this.actionApplier = actionApplier ?? new SimulationActorActionApplier();
         this.actionLogger = actionLogger ?? new AgentActionLogger();
     }
+    /// <summary>
+    /// Executes the run actors for ticks operation.
+    /// </summary>
 
     public SimulationActorRunResult RunActorsForTicks(NetworkModel network, IReadOnlyList<SimulationActorState> actors, int ticks)
     {
@@ -48,6 +54,9 @@ public sealed class SimulationActorCoordinator
             FinalSummary = $"Executed {ticks} ticks with {actorStates.Count(a => a.IsEnabled)} enabled actors."
         };
     }
+    /// <summary>
+    /// Executes the step actors once operation.
+    /// </summary>
 
     public SimulationActorStepResult StepActorsOnce(
         NetworkModel network,
@@ -128,6 +137,9 @@ public sealed class SimulationActorCoordinator
             Metrics = metrics
         };
     }
+    /// <summary>
+    /// Executes the preview actor actions operation.
+    /// </summary>
 
     public IReadOnlyList<SimulationActorDecision> PreviewActorActions(
         NetworkModel network,

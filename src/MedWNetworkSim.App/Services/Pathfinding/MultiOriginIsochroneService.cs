@@ -1,16 +1,31 @@
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services.Pathfinding;
+/// <summary>
+/// Represents the multi origin isochrone origin component.
+/// </summary>
 
 public sealed class MultiOriginIsochroneOrigin
 {
+    /// <summary>
+    /// Gets or sets the origin.
+    /// </summary>
     public required NodeModel Origin { get; init; }
+    /// <summary>
+    /// Gets or sets the max cost.
+    /// </summary>
     public required double MaxCost { get; init; }
 }
+/// <summary>
+/// Provides business logic and operations related to multi origin isochrone.
+/// </summary>
 
 public sealed class MultiOriginIsochroneService
 {
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+    /// <summary>
+    /// Executes the compute operation.
+    /// </summary>
 
     public MultiOriginIsochroneResult Compute(
         IReadOnlyCollection<NodeModel> allNodes,
@@ -27,6 +42,9 @@ public sealed class MultiOriginIsochroneService
             .ToList();
         return Compute(allNodes, edges, originRequests);
     }
+    /// <summary>
+    /// Executes the compute operation.
+    /// </summary>
 
     public MultiOriginIsochroneResult Compute(
         IReadOnlyCollection<NodeModel> allNodes,
@@ -116,6 +134,9 @@ public sealed class MultiOriginIsochroneService
             OverlapNodes = overlapNodes
         };
     }
+    /// <summary>
+    /// Executes the compute costs from origin operation.
+    /// </summary>
 
     public IReadOnlyDictionary<NodeModel, double> ComputeCostsFromOrigin(
         NodeModel origin,
@@ -213,6 +234,9 @@ public sealed class MultiOriginIsochroneService
 
         segments.Add(new Segment(to, travelTime));
     }
+    /// <summary>
+    /// Represents the segment component.
+    /// </summary>
 
     private sealed record Segment(string Target, double TravelTime);
 }

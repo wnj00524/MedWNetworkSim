@@ -2090,6 +2090,9 @@ static NetworkModel CreateFacilityIsoNetwork()
         ]
     };
 }
+/// <summary>
+/// Represents the auto complete binding host component.
+/// </summary>
 
 sealed class AutoCompleteBindingHost : ObservableObject
 {

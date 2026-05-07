@@ -87,31 +87,70 @@ public sealed class RouteAllocation
     /// Gets the total movement cost for the full delivered quantity.
     /// </summary>
     public double TotalMovementCost { get; init; }
+    /// <summary>
+    /// Gets or sets the sale unit price.
+    /// </summary>
 
     public double SaleUnitPrice { get; init; }
+    /// <summary>
+    /// Gets or sets the sale revenue.
+    /// </summary>
 
     public double SaleRevenue { get; init; }
+    /// <summary>
+    /// Gets or sets the transport cost per unit.
+    /// </summary>
 
     public double TransportCostPerUnit { get; init; }
+    /// <summary>
+    /// Gets or sets the total transport cost.
+    /// </summary>
 
     public double TotalTransportCost { get; init; }
+    /// <summary>
+    /// Gets or sets the production cost per unit.
+    /// </summary>
 
     public double ProductionCostPerUnit { get; init; }
+    /// <summary>
+    /// Gets or sets the total production cost.
+    /// </summary>
 
     public double TotalProductionCost { get; init; }
+    /// <summary>
+    /// Gets or sets the tax per unit.
+    /// </summary>
 
     public double TaxPerUnit { get; init; }
+    /// <summary>
+    /// Gets or sets the total tax.
+    /// </summary>
 
     public double TotalTax { get; init; }
+    /// <summary>
+    /// Gets or sets the profit.
+    /// </summary>
 
     public double Profit { get; init; }
+    /// <summary>
+    /// Gets or sets the seller actor id.
+    /// </summary>
 
     public string? SellerActorId { get; init; }
+    /// <summary>
+    /// Gets or sets the buyer actor id.
+    /// </summary>
 
     public string? BuyerActorId { get; init; }
+    /// <summary>
+    /// Gets or sets the taxes by authority actor id.
+    /// </summary>
 
     public IReadOnlyDictionary<string, double> TaxesByAuthorityActorId { get; init; } =
         new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets or sets the tax authority actor id.
+    /// </summary>
 
     public string? TaxAuthorityActorId { get; init; }
 

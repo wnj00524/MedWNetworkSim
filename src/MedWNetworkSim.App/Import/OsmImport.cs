@@ -5,8 +5,14 @@ using OsmSharp;
 using OsmSharp.Streams;
 
 namespace MedWNetworkSim.App.Import;
+/// <summary>
+/// Represents the osm import exception component.
+/// </summary>
 
 public sealed class OsmImportException(string message, Exception? inner = null) : InvalidOperationException(message, inner);
+/// <summary>
+/// Specifies the osm retention strategy.
+/// </summary>
 
 public enum OsmRetentionStrategy
 {
@@ -14,6 +20,9 @@ public enum OsmRetentionStrategy
     PreserveShape,
     PreserveJunctionImportance
 }
+/// <summary>
+/// Represents the osm import options component.
+/// </summary>
 
 public sealed record OsmImportOptions(
     bool Simplify = true,
@@ -35,16 +44,28 @@ public sealed record OsmImportOptions(
         }
     }
 }
+/// <summary>
+/// Defines the contract and required members for iosm parser implementations.
+/// </summary>
 
 public interface IOsmParser
 {
     bool CanParse(string path);
     IReadOnlyList<OsmGeo> Parse(string path);
 }
+/// <summary>
+/// Represents the osm xml parser component.
+/// </summary>
 
 public sealed class OsmXmlParser : IOsmParser
 {
+    /// <summary>
+    /// Executes the can parse operation.
+    /// </summary>
     public bool CanParse(string path) => path.EndsWith(".osm", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// Executes the parse operation.
+    /// </summary>
 
     public IReadOnlyList<OsmGeo> Parse(string path)
     {
@@ -52,12 +73,21 @@ public sealed class OsmXmlParser : IOsmParser
         return new XmlOsmStreamSource(stream).ToList();
     }
 }
+/// <summary>
+/// Represents the osm pbf parser component.
+/// </summary>
 
 public sealed class OsmPbfParser : IOsmParser
 {
+    /// <summary>
+    /// Executes the can parse operation.
+    /// </summary>
     public bool CanParse(string path) =>
         path.EndsWith(".pbf", StringComparison.OrdinalIgnoreCase) ||
         path.EndsWith(".osm.pbf", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// Executes the parse operation.
+    /// </summary>
 
     public IReadOnlyList<OsmGeo> Parse(string path)
     {
@@ -65,16 +95,28 @@ public sealed class OsmPbfParser : IOsmParser
         return new PBFOsmStreamSource(stream).ToList();
     }
 }
+/// <summary>
+/// Provides business logic and operations related to osm import.
+/// </summary>
 
 public sealed class OsmImportService(IReadOnlyList<IOsmParser> parsers, OsmToSimulationMapper mapper)
 {
+    /// <summary>
+    /// Executes the resolve parser operation.
+    /// </summary>
     public IOsmParser ResolveParser(string path) =>
         parsers.FirstOrDefault(parser => parser.CanParse(path))
         ?? throw new OsmImportException("Choose a .osm or .pbf OpenStreetMap file.");
+    /// <summary>
+    /// Executes the import from file operation.
+    /// </summary>
 
     public NetworkModel ImportFromFile(string path, OsmImportOptions? options = null) =>
         mapper.Map(ResolveParser(path).Parse(path), options ?? new OsmImportOptions());
 }
+/// <summary>
+/// Represents the osm importer component.
+/// </summary>
 
 public sealed class OsmImporter
 {
@@ -84,13 +126,22 @@ public sealed class OsmImporter
     {
         service = new OsmImportService([new OsmXmlParser(), new OsmPbfParser()], new OsmToSimulationMapper());
     }
+    /// <summary>
+    /// Executes the import from file operation.
+    /// </summary>
 
     public NetworkModel ImportFromFile(string path, OsmImportOptions? options = null) =>
         service.ImportFromFile(path, options);
+    /// <summary>
+    /// Executes the import from geos operation.
+    /// </summary>
 
     public NetworkModel ImportFromGeos(IEnumerable<OsmGeo> geos, OsmImportOptions? options = null) =>
         new OsmToSimulationMapper().Map(geos, options ?? new OsmImportOptions());
 }
+/// <summary>
+/// Represents the osm to simulation mapper component.
+/// </summary>
 
 public sealed class OsmToSimulationMapper
 {
@@ -100,6 +151,9 @@ public sealed class OsmToSimulationMapper
         "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link",
         "living_street", "service", "road"
     };
+    /// <summary>
+    /// Executes the map operation.
+    /// </summary>
 
     public NetworkModel Map(IEnumerable<OsmGeo> geos, OsmImportOptions options)
     {
@@ -107,7 +161,7 @@ public sealed class OsmToSimulationMapper
         ArgumentNullException.ThrowIfNull(options);
         var retention = options.ValidatedNodeRetentionPercentage;
 
-        var nodes = new Dictionary<long, Node>( );
+        var nodes = new Dictionary<long, Node>();
         var ways = new List<Way>();
         var relations = new List<Relation>();
 

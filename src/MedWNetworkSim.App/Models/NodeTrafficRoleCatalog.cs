@@ -28,6 +28,9 @@ public static class NodeTrafficRoleCatalog
     public const string ProducerTransshipRole = "Producer + Transship";
     public const string ConsumerTransshipRole = "Consumer + Transship";
     public const string ProducerConsumerTransshipRole = "Producer + Consumer + Transship";
+    /// <summary>
+    /// Gets the collection of role options associated with this entity.
+    /// </summary>
 
     public static IReadOnlyList<string> RoleOptions { get; } =
     [
@@ -148,6 +151,9 @@ public static class NodeTrafficRoleCatalog
         adapter.Consumption = flags.IsConsumer ? Math.Max(adapter.Consumption, 1d) : 0d;
         adapter.CanTransship = flags.CanTransship;
     }
+    /// <summary>
+    /// Executes the try parse flags operation.
+    /// </summary>
 
     public static bool TryParseFlags(string? roleName, out NodeTrafficRoleFlags flags)
     {
@@ -167,6 +173,9 @@ public static class NodeTrafficRoleCatalog
         flags = default;
         return false;
     }
+    /// <summary>
+    /// Represents the node traffic role flags component.
+    /// </summary>
 
     public readonly record struct NodeTrafficRoleFlags(bool IsProducer, bool IsConsumer, bool CanTransship);
 

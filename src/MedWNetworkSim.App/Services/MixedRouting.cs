@@ -2,6 +2,9 @@ using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
+/// <summary>
+/// Defines the contract and required members for iroute choice strategy implementations.
+/// </summary>
 
 public interface IRouteChoiceStrategy
 {
@@ -9,11 +12,17 @@ public interface IRouteChoiceStrategy
 
     List<FlowProposal> ProposeFlows(RoutingTrafficContext context, NetworkState networkState, int round);
 }
+/// <summary>
+/// Defines the contract and required members for icapacity resolution policy implementations.
+/// </summary>
 
 public interface ICapacityResolutionPolicy
 {
     List<CommittedFlow> Resolve(IEnumerable<FlowProposal> proposals, NetworkState networkState);
 }
+/// <summary>
+/// Represents a data model for icongestion cost entities within the simulation.
+/// </summary>
 
 public interface ICongestionCostModel
 {
@@ -21,25 +30,55 @@ public interface ICongestionCostModel
 
     double GetEffectiveCost(double baseCost, double used, double capacity, double gamma);
 }
+/// <summary>
+/// Represents the network state component.
+/// </summary>
 
 public sealed class NetworkState
 {
+    /// <summary>
+    /// Gets or sets the remaining edge capacity.
+    /// </summary>
     public Dictionary<string, double> RemainingEdgeCapacity { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets or sets the remaining node capacity.
+    /// </summary>
 
     public Dictionary<string, double> RemainingNodeCapacity { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets or sets the remaining edge traffic capacity.
+    /// </summary>
 
     public Dictionary<EdgeTrafficResourceKey, double> RemainingEdgeTrafficCapacity { get; init; } = new(EdgeTrafficResourceKey.Comparer);
+    /// <summary>
+    /// Gets or sets the edge load.
+    /// </summary>
 
     public Dictionary<string, double> EdgeLoad { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets or sets the node load.
+    /// </summary>
 
     public Dictionary<string, double> NodeLoad { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets or sets the edge capacity.
+    /// </summary>
 
     public Dictionary<string, double> EdgeCapacity { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets or sets the node capacity.
+    /// </summary>
 
     public Dictionary<string, double> NodeCapacity { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets or sets the edge traffic load.
+    /// </summary>
 
     public Dictionary<EdgeTrafficResourceKey, double> EdgeTrafficLoad { get; init; } = new(EdgeTrafficResourceKey.Comparer);
 }
+/// <summary>
+/// Represents the flow proposal component.
+/// </summary>
 
 public sealed record FlowProposal(
     RoutingTrafficContext TrafficType,
@@ -55,6 +94,9 @@ public sealed record FlowProposal(
     double EffectiveCost,
     double Score,
     double Priority);
+/// <summary>
+/// Represents the committed flow component.
+/// </summary>
 
 public sealed record CommittedFlow(
     RoutingTrafficContext TrafficType,
@@ -70,40 +112,124 @@ public sealed record CommittedFlow(
     double EffectiveCost,
     double Score,
     double Priority);
+/// <summary>
+/// Represents the routing traffic context component.
+/// </summary>
 
 public sealed class RoutingTrafficContext
 {
+    /// <summary>
+    /// Gets or sets the traffic type.
+    /// </summary>
     public string TrafficType { get; init; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the routing preference.
+    /// </summary>
     public RoutingPreference RoutingPreference { get; init; }
+    /// <summary>
+    /// Gets or sets the allocation mode.
+    /// </summary>
     public AllocationMode AllocationMode { get; init; }
+    /// <summary>
+    /// Gets or sets the route choice model.
+    /// </summary>
     public RouteChoiceModel RouteChoiceModel { get; init; }
+    /// <summary>
+    /// Gets or sets the flow split policy.
+    /// </summary>
     public FlowSplitPolicy FlowSplitPolicy { get; init; }
+    /// <summary>
+    /// Gets or sets the route choice settings.
+    /// </summary>
     public RouteChoiceSettings RouteChoiceSettings { get; init; } = new();
+    /// <summary>
+    /// Gets or sets the capacity bid per unit.
+    /// </summary>
     public double CapacityBidPerUnit { get; init; }
+    /// <summary>
+    /// Gets or sets the seed.
+    /// </summary>
     public int Seed { get; init; }
+    /// <summary>
+    /// Gets or sets the nodes by id.
+    /// </summary>
     public IReadOnlyDictionary<string, NodeModel> NodesById { get; init; } = new Dictionary<string, NodeModel>(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets or sets the profiles by node id.
+    /// </summary>
     public IReadOnlyDictionary<string, NodeTrafficProfile?> ProfilesByNodeId { get; init; } = new Dictionary<string, NodeTrafficProfile?>(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets or sets the meeting demand eligible node ids.
+    /// </summary>
     public IReadOnlySet<string> MeetingDemandEligibleNodeIds { get; init; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets or sets the supply.
+    /// </summary>
     public Dictionary<string, double> Supply { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets or sets the supply unit costs.
+    /// </summary>
     public Dictionary<string, double> SupplyUnitCosts { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets or sets the demand.
+    /// </summary>
     public Dictionary<string, double> Demand { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets or sets the total production.
+    /// </summary>
     public double TotalProduction { get; init; }
+    /// <summary>
+    /// Gets or sets the total consumption.
+    /// </summary>
     public double TotalConsumption { get; init; }
+    /// <summary>
+    /// Gets the collection of allocations associated with this entity.
+    /// </summary>
     public List<RouteAllocation> Allocations { get; init; } = [];
+    /// <summary>
+    /// Gets the collection of notes associated with this entity.
+    /// </summary>
     public List<string> Notes { get; init; } = [];
+    /// <summary>
+    /// Gets or sets the committed supply.
+    /// </summary>
     public Dictionary<string, double> CommittedSupply { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets or sets the committed demand.
+    /// </summary>
     public Dictionary<string, double> CommittedDemand { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Gets or sets the last path key.
+    /// </summary>
     public string? LastPathKey { get; set; }
+    /// <summary>
+    /// Gets or sets the permission limited demand.
+    /// </summary>
     public double PermissionLimitedDemand { get; set; }
+    /// <summary>
+    /// Gets or sets the no permitted path demand.
+    /// </summary>
     public double NoPermittedPathDemand { get; set; }
+    /// <summary>
+    /// Gets or sets the capacity blocked demand.
+    /// </summary>
     public double CapacityBlockedDemand { get; set; }
 }
+/// <summary>
+/// Represents the graph arc component.
+/// </summary>
 
 public sealed record GraphArc(string EdgeId, string FromNodeId, string ToNodeId, double Time, double Cost);
+/// <summary>
+/// Represents a data model for volume capacity congestion cost entities within the simulation.
+/// </summary>
 
 public sealed class VolumeCapacityCongestionCostModel : ICongestionCostModel
 {
     private const double Beta = 4d;
+    /// <summary>
+    /// Retrieves the effective time based on the provided parameters.
+    /// </summary>
 
     public double GetEffectiveTime(double baseTime, double used, double capacity, double alpha)
     {
@@ -115,6 +241,9 @@ public sealed class VolumeCapacityCongestionCostModel : ICongestionCostModel
         var util = Math.Max(0d, used) / capacity;
         return baseTime * (1d + alpha * Math.Pow(util, Beta));
     }
+    /// <summary>
+    /// Retrieves the effective cost based on the provided parameters.
+    /// </summary>
 
     public double GetEffectiveCost(double baseCost, double used, double capacity, double gamma)
     {
@@ -127,10 +256,16 @@ public sealed class VolumeCapacityCongestionCostModel : ICongestionCostModel
         return baseCost + (gamma * util);
     }
 }
+/// <summary>
+/// Represents the priority weighted capacity resolution policy component.
+/// </summary>
 
 public sealed class PriorityWeightedCapacityResolutionPolicy : ICapacityResolutionPolicy
 {
     private const double Epsilon = 0.000001d;
+    /// <summary>
+    /// Executes the resolve operation.
+    /// </summary>
 
     public List<CommittedFlow> Resolve(IEnumerable<FlowProposal> proposals, NetworkState networkState)
     {
@@ -181,24 +316,42 @@ public sealed class PriorityWeightedCapacityResolutionPolicy : ICapacityResoluti
         return result;
     }
 }
+/// <summary>
+/// Represents the system optimal route choice strategy component.
+/// </summary>
 
 public sealed class SystemOptimalRouteChoiceStrategy : IRouteChoiceStrategy
 {
+    /// <summary>
+    /// Executes the initialize operation.
+    /// </summary>
     public void Initialize(RoutingTrafficContext context, NetworkState networkState, IReadOnlyDictionary<string, List<GraphArc>> adjacency)
     {
     }
+    /// <summary>
+    /// Executes the propose flows operation.
+    /// </summary>
 
     public List<FlowProposal> ProposeFlows(RoutingTrafficContext context, NetworkState networkState, int round)
     {
         return MixedRoutingAllocator.ProposeByScore(context, networkState, deterministicBest: true, round);
     }
 }
+/// <summary>
+/// Represents the stochastic user responsive route choice strategy component.
+/// </summary>
 
 public sealed class StochasticUserResponsiveRouteChoiceStrategy : IRouteChoiceStrategy
 {
+    /// <summary>
+    /// Executes the initialize operation.
+    /// </summary>
     public void Initialize(RoutingTrafficContext context, NetworkState networkState, IReadOnlyDictionary<string, List<GraphArc>> adjacency)
     {
     }
+    /// <summary>
+    /// Executes the propose flows operation.
+    /// </summary>
 
     public List<FlowProposal> ProposeFlows(RoutingTrafficContext context, NetworkState networkState, int round)
     {
@@ -206,6 +359,11 @@ public sealed class StochasticUserResponsiveRouteChoiceStrategy : IRouteChoiceSt
     }
 }
 
+/// <summary>
+/// Handles complex, heterogeneous routing capacity allocations and score-based pathfinding strategies.
+/// Mixed routing coordinates scenarios where different traffic types or agents might employ disparate
+/// pathfinding heuristics simultaneously across the shared network graph, ensuring proper capacity reservations.
+/// </summary>
 public static partial class MixedRoutingAllocator
 {
     private const double Epsilon = 0.000001d;
@@ -214,6 +372,9 @@ public static partial class MixedRoutingAllocator
     private static readonly ICapacityResolutionPolicy CapacityResolutionPolicy = new PriorityWeightedCapacityResolutionPolicy();
     private static readonly IAdaptiveRoutingMemory AdaptiveRoutingMemory = new AdaptiveRoutingMemory();
     private static IReadOnlyDictionary<string, List<GraphArc>> adjacency = new Dictionary<string, List<GraphArc>>(Comparer);
+    /// <summary>
+    /// Executes the build static contexts operation.
+    /// </summary>
 
     public static IReadOnlyList<RoutingTrafficContext> BuildStaticContexts(NetworkModel network, bool applyLocalAllocations = true)
     {
@@ -227,6 +388,9 @@ public static partial class MixedRoutingAllocator
             })
             .ToList();
     }
+    /// <summary>
+    /// Executes the allocate operation.
+    /// </summary>
 
     public static IReadOnlyList<RouteAllocation> Allocate(
         NetworkModel network,
@@ -332,6 +496,9 @@ public static partial class MixedRoutingAllocator
             target[pair.Key] = pair.Value;
         }
     }
+    /// <summary>
+    /// Executes the propose by score operation.
+    /// </summary>
 
     public static List<FlowProposal> ProposeByScore(RoutingTrafficContext context, NetworkState state, bool deterministicBest, int round)
     {
@@ -434,6 +601,9 @@ public static partial class MixedRoutingAllocator
         context.CommittedDemand[flow.ConsumerNodeId] = context.CommittedDemand.GetValueOrDefault(flow.ConsumerNodeId) + quantity;
         context.LastPathKey = string.Join(">", flow.PathEdgeIds);
     }
+    /// <summary>
+    /// Executes the reserve capacity operation.
+    /// </summary>
 
     public static void ReserveCapacity(
         string trafficType,
@@ -446,6 +616,9 @@ public static partial class MixedRoutingAllocator
         ReserveTrafficCapacity(trafficType, pathEdgeIds, state.RemainingEdgeTrafficCapacity, state.EdgeTrafficLoad, quantity);
         ReserveCapacity(pathTranshipmentNodeIds, state.RemainingNodeCapacity, state.NodeLoad, quantity);
     }
+    /// <summary>
+    /// Retrieves the route remaining capacity based on the provided parameters.
+    /// </summary>
 
     public static double GetRouteRemainingCapacity(
         string trafficType,
@@ -459,6 +632,9 @@ public static partial class MixedRoutingAllocator
                 GetTrafficPathRemainingCapacity(trafficType, pathEdgeIds, state.RemainingEdgeTrafficCapacity)),
             GetPathRemainingCapacity(pathTranshipmentNodeIds, state.RemainingNodeCapacity));
     }
+    /// <summary>
+    /// Executes the build adjacency operation.
+    /// </summary>
 
     public static Dictionary<string, List<GraphArc>> BuildAdjacency(NetworkModel network)
     {
@@ -554,6 +730,9 @@ public static partial class MixedRoutingAllocator
 
         return context;
     }
+    /// <summary>
+    /// Executes the apply local allocations operation.
+    /// </summary>
 
     public static void ApplyLocalAllocations(RoutingTrafficContext context, NetworkModel network, int period)
     {
@@ -1177,6 +1356,9 @@ public static partial class MixedRoutingAllocator
 
         arcs.Add(new GraphArc(edge.Id, fromNodeId, toNodeId, edge.Time, edge.Cost));
     }
+    /// <summary>
+    /// Represents the route search state component.
+    /// </summary>
 
     private sealed record RouteSearchState(
         string NodeId,
@@ -1185,6 +1367,9 @@ public static partial class MixedRoutingAllocator
         double BaseTime,
         double BaseCost,
         double Score);
+    /// <summary>
+    /// Represents the route candidate component.
+    /// </summary>
 
     private sealed record RouteCandidate(
         string ProducerNodeId,
@@ -1199,6 +1384,9 @@ public static partial class MixedRoutingAllocator
         double Score,
         string PathKey,
         double Probability);
+    /// <summary>
+    /// Specifies the route constraint mode.
+    /// </summary>
 
     private enum RouteConstraintMode
     {

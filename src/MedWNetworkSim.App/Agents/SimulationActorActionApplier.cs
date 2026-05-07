@@ -2,6 +2,9 @@ using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Services;
 
 namespace MedWNetworkSim.App.Agents;
+/// <summary>
+/// Represents the simulation actor action applier component.
+/// </summary>
 
 public sealed class SimulationActorActionApplier
 {

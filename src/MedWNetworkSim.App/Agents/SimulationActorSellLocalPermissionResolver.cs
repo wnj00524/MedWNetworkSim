@@ -1,16 +1,31 @@
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Agents;
+/// <summary>
+/// Represents the simulation actor sell local permission resolver component.
+/// </summary>
 
 public static class SimulationActorSellLocalPermissionResolver
 {
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+    /// <summary>
+    /// Executes the has sell local agent mode operation.
+    /// </summary>
 
     public static bool HasSellLocalAgentMode(NetworkModel network) => network.AgentMode == AgentMode.SellLocal;
+    /// <summary>
+    /// Determines whether enforced.
+    /// </summary>
 
     public static bool IsEnforced(NetworkModel network) => HasSellLocalAgentMode(network);
+    /// <summary>
+    /// Executes the should limit meeting node demand operation.
+    /// </summary>
 
     public static bool ShouldLimitMeetingNodeDemand(NetworkModel network) => network.LimitMeetingNodeDemandBySellLocalPermission;
+    /// <summary>
+    /// Executes the can sell local operation.
+    /// </summary>
 
     public static bool CanSellLocal(NetworkModel network, string nodeId, string trafficType)
     {
@@ -28,6 +43,9 @@ public static class SimulationActorSellLocalPermissionResolver
             .Where(actor => actor.IsEnabled && actor.ControlledNodeIds.Any(controlled => Comparer.Equals(controlled, nodeId)))
             .Any(actor => HasExplicitSellLocalPermission(actor, nodeId, trafficType));
     }
+    /// <summary>
+    /// Executes the can receive meeting node demand operation.
+    /// </summary>
 
     public static bool CanReceiveMeetingNodeDemand(NetworkModel network, string nodeId, string trafficType)
     {
@@ -38,6 +56,9 @@ public static class SimulationActorSellLocalPermissionResolver
 
         return CanSellLocal(network, nodeId, trafficType);
     }
+    /// <summary>
+    /// Executes the build permitted seller node set operation.
+    /// </summary>
 
     public static HashSet<string> BuildPermittedSellerNodeSet(NetworkModel network, string trafficType)
     {

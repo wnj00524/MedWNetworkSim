@@ -1,6 +1,9 @@
 using MedWNetworkSim.App.Services;
 
 namespace MedWNetworkSim.App.VisualAnalytics.Sankey;
+/// <summary>
+/// Specifies the sankey node kind.
+/// </summary>
 
 public enum SankeyNodeKind
 {
@@ -10,51 +13,132 @@ public enum SankeyNodeKind
     UnmetDemandSink,
     CollapsedOther
 }
+/// <summary>
+/// Represents the sankey node component.
+/// </summary>
 
 public sealed class SankeyNode
 {
+    /// <summary>
+    /// Gets or sets the unique identifier for this instance.
+    /// </summary>
     public required string Id { get; init; }
+    /// <summary>
+    /// Gets or sets the label.
+    /// </summary>
     public required string Label { get; init; }
+    /// <summary>
+    /// Gets or sets the kind.
+    /// </summary>
     public required SankeyNodeKind Kind { get; init; }
+    /// <summary>
+    /// Gets or sets the graph node id.
+    /// </summary>
     public string? GraphNodeId { get; init; }
+    /// <summary>
+    /// Gets or sets the value.
+    /// </summary>
     public double Value { get; set; }
 }
+/// <summary>
+/// Represents the sankey link component.
+/// </summary>
 
 public sealed class SankeyLink
 {
+    /// <summary>
+    /// Gets or sets the unique identifier for this instance.
+    /// </summary>
     public required string Id { get; init; }
+    /// <summary>
+    /// Gets or sets the source node id.
+    /// </summary>
     public required string SourceNodeId { get; init; }
+    /// <summary>
+    /// Gets or sets the target node id.
+    /// </summary>
     public required string TargetNodeId { get; init; }
+    /// <summary>
+    /// Gets or sets the traffic type.
+    /// </summary>
     public required string TrafficType { get; init; }
+    /// <summary>
+    /// Gets or sets the value.
+    /// </summary>
     public required double Value { get; init; }
+    /// <summary>
+    /// Gets the collection of route edge ids associated with this entity.
+    /// </summary>
     public IReadOnlyList<string> RouteEdgeIds { get; init; } = [];
+    /// <summary>
+    /// Gets or sets the route signature.
+    /// </summary>
     public string? RouteSignature { get; init; }
+    /// <summary>
+    /// Gets a value indicating whether is unmet demand is enabled or active.
+    /// </summary>
     public bool IsUnmetDemand { get; init; }
 }
+/// <summary>
+/// Represents a data model for sankey diagram entities within the simulation.
+/// </summary>
 
 public sealed class SankeyDiagramModel
 {
+    /// <summary>
+    /// Gets the collection of nodes associated with this entity.
+    /// </summary>
     public IReadOnlyList<SankeyNode> Nodes { get; init; } = [];
+    /// <summary>
+    /// Gets the collection of links associated with this entity.
+    /// </summary>
     public IReadOnlyList<SankeyLink> Links { get; init; } = [];
+    /// <summary>
+    /// Gets or sets the empty state message.
+    /// </summary>
     public string EmptyStateMessage { get; init; } = string.Empty;
 }
+/// <summary>
+/// Represents the sankey projection options component.
+/// </summary>
 
 public sealed class SankeyProjectionOptions
 {
+    /// <summary>
+    /// Gets or sets the traffic type filter.
+    /// </summary>
     public string? TrafficTypeFilter { get; init; }
+    /// <summary>
+    /// Gets a value indicating whether include unmet demand sink is enabled or active.
+    /// </summary>
     public bool IncludeUnmetDemandSink { get; init; } = true;
+    /// <summary>
+    /// Gets or sets the minor flow threshold ratio.
+    /// </summary>
     public double MinorFlowThresholdRatio { get; init; } = 0.02d;
+    /// <summary>
+    /// Gets a value indicating whether collapse minor flows is enabled or active.
+    /// </summary>
     public bool CollapseMinorFlows { get; init; } = true;
 }
+/// <summary>
+/// Provides business logic and operations related to isankey projection.
+/// </summary>
 
 public interface ISankeyProjectionService
 {
     SankeyDiagramModel Build(VisualAnalyticsSnapshot snapshot, SankeyProjectionOptions? options = null);
 }
+/// <summary>
+/// Provides business logic and operations related to sankey projection.
+/// </summary>
 
 public sealed class SankeyProjectionService : ISankeyProjectionService
 {
     private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
+    /// <summary>
+    /// Executes the build operation.
+    /// </summary>
 
     public SankeyDiagramModel Build(VisualAnalyticsSnapshot snapshot, SankeyProjectionOptions? options = null)
     {

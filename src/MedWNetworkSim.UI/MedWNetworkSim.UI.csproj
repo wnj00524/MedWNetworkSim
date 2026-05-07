@@ -6,6 +6,12 @@
     <NoWarn>$(NoWarn);NU1903;NU1904</NoWarn>
   </PropertyGroup>
 
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\WorkspaceChromeControls.cs')">
+    <!-- WorkspaceChromeControls.cs contains the concrete workspace chrome controls.
+         Keep the legacy fallback out of the compile when both files are present. -->
+    <Compile Remove="CustomWorkspaceControls.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\MedWNetworkSim.Rendering\MedWNetworkSim.Rendering.csproj" />
     <ProjectReference Include="..\MedWNetworkSim.Interaction\MedWNetworkSim.Interaction.csproj" />

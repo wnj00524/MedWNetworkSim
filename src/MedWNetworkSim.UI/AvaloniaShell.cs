@@ -2222,6 +2222,7 @@ public sealed class ShellWindow : Window
                                 BuildButton("Export logs", viewModel.ExportAgentLogsCommand)
                             }
                         },
+                        BuildAgentProfitReportCard(viewModel),
                         new Expander
                         {
                             Header = "Advanced permissions and decision logs",
@@ -3771,6 +3772,7 @@ public sealed class ShellWindow : Window
             Children =
             {
                 BuildAgentMonitorCard(viewModel),
+                BuildAgentProfitReportCard(viewModel),
                 BuildNodeOverviewCard()
             }
         };
@@ -3783,6 +3785,180 @@ public sealed class ShellWindow : Window
         Grid.SetColumn(panel, 1);
         Grid.SetRow(panel, 0);
         return panel;
+    }
+
+    private static Control BuildAgentProfitReportCard(WorkspaceViewModel viewModel)
+    {
+        var table = new DataGrid
+        {
+            MinHeight = 170,
+            MaxHeight = 260,
+            AutoGenerateColumns = false,
+            CanUserResizeColumns = true,
+            CanUserSortColumns = true,
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.AgentProfitReportRows)),
+            Columns =
+            {
+                new DataGridTextColumn { Header = "Agent Name", Binding = new Binding(nameof(AgentProfitReportRowViewModel.AgentName)) },
+                new DataGridTextColumn { Header = "Agent Cash", Binding = new Binding(nameof(AgentProfitReportRowViewModel.AgentCash)) },
+                new DataGridTextColumn { Header = "Agent Budget", Binding = new Binding(nameof(AgentProfitReportRowViewModel.AgentBudget)) },
+                new DataGridTextColumn { Header = "Agent Tick Revenue", Binding = new Binding(nameof(AgentProfitReportRowViewModel.AgentTickRevenue)) },
+                new DataGridTextColumn { Header = "Agent Tick Costs", Binding = new Binding(nameof(AgentProfitReportRowViewModel.AgentTickCosts)) },
+                new DataGridTextColumn { Header = "Agent Tick Profit", Binding = new Binding(nameof(AgentProfitReportRowViewModel.AgentTickProfit)) }
+            }
+        };
+
+        var chartList = new ItemsControl
+        {
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.AgentProfitSeries)),
+            ItemTemplate = new FuncDataTemplate<AgentProfitSeriesViewModel>((series, _) => BuildAgentProfitLineGraph(series))
+        };
+
+        var empty = new TextBlock
+        {
+            Text = "Run one or more agent steps to populate tick revenue, costs, profit, and revenue-vs-cost trend lines.",
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+            TextWrapping = TextWrapping.Wrap
+        };
+        empty.Bind(IsVisibleProperty, new Binding(nameof(WorkspaceViewModel.ActorMetrics.Count))
+        {
+            Converter = new FuncValueConverter<int, bool>(count => count == 0)
+        });
+
+        return new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.PanelHeaderBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = AvaloniaDashboardTheme.ControlCornerRadius,
+            Padding = new Thickness(10),
+            Child = new StackPanel
+            {
+                Spacing = 10,
+                Children =
+                {
+                    BuildSectionTitle("Agent Profit Report", "Cash, budget, tick revenue, tick costs, and tick profit by agent."),
+                    table,
+                    BuildSectionTitle("Revenue vs Costs Over Time", "Each card plots per-tick revenue against production, transport, and tax costs."),
+                    empty,
+                    chartList
+                }
+            }
+        };
+    }
+
+    private static Control BuildAgentProfitLineGraph(AgentProfitSeriesViewModel? series)
+    {
+        var points = series?.Points?.OrderBy(point => point.Tick).ToList() ?? [];
+        var canvas = new Canvas
+        {
+            Width = 520,
+            Height = 190,
+            Margin = new Thickness(0, 4, 0, 12)
+        };
+
+        const double left = 44d;
+        const double top = 18d;
+        const double width = 438d;
+        const double height = 118d;
+        var axisBrush = new SolidColorBrush(AvaloniaDashboardTheme.PanelBorderStrong);
+        canvas.Children.Add(new Line { StartPoint = new Point(left, top), EndPoint = new Point(left, top + height), Stroke = axisBrush, StrokeThickness = 1 });
+        canvas.Children.Add(new Line { StartPoint = new Point(left, top + height), EndPoint = new Point(left + width, top + height), Stroke = axisBrush, StrokeThickness = 1 });
+
+        canvas.Children.Add(new TextBlock
+        {
+            Text = string.IsNullOrWhiteSpace(series?.AgentName) ? "Unnamed agent" : series!.AgentName,
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText),
+            FontWeight = FontWeight.SemiBold,
+            FontSize = 12
+        });
+
+        if (points.Count == 0)
+        {
+            var message = new TextBlock
+            {
+                Text = "No tick economics yet.",
+                Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText),
+                FontSize = 12
+            };
+            Canvas.SetLeft(message, left + 12d);
+            Canvas.SetTop(message, top + 46d);
+            canvas.Children.Add(message);
+            return canvas;
+        }
+
+        var maxValue = Math.Max(1d, points.Max(point => Math.Max(point.Revenue, point.Costs)));
+        var minTick = points.Min(point => point.Tick);
+        var maxTick = points.Max(point => point.Tick);
+        var tickSpan = Math.Max(1, maxTick - minTick);
+
+        Point Project(AgentProfitSeriesPoint point, double value)
+        {
+            var x = left + ((point.Tick - minTick) / (double)tickSpan * width);
+            var y = top + height - (Math.Max(0d, value) / maxValue * height);
+            return new Point(x, y);
+        }
+
+        AddLineSegments(canvas, points.Select(point => Project(point, point.Revenue)).ToList(), AvaloniaDashboardTheme.Success);
+        AddLineSegments(canvas, points.Select(point => Project(point, point.Costs)).ToList(), AvaloniaDashboardTheme.Danger);
+
+        var maxLabel = new TextBlock { Text = maxValue.ToString("0.##", CultureInfo.InvariantCulture), Foreground = new SolidColorBrush(AvaloniaDashboardTheme.MutedText), FontSize = 10 };
+        Canvas.SetLeft(maxLabel, 0d);
+        Canvas.SetTop(maxLabel, top - 6d);
+        canvas.Children.Add(maxLabel);
+        var tickLabel = new TextBlock { Text = $"Ticks {minTick}–{maxTick}", Foreground = new SolidColorBrush(AvaloniaDashboardTheme.MutedText), FontSize = 10 };
+        Canvas.SetLeft(tickLabel, left);
+        Canvas.SetTop(tickLabel, top + height + 8d);
+        canvas.Children.Add(tickLabel);
+        AddLegend(canvas, left + 150d, top + height + 8d, "Revenue", AvaloniaDashboardTheme.Success);
+        AddLegend(canvas, left + 240d, top + height + 8d, "Costs", AvaloniaDashboardTheme.Danger);
+        return canvas;
+    }
+
+    private static void AddLineSegments(Canvas canvas, IReadOnlyList<Point> points, Color color)
+    {
+        if (points.Count == 1)
+        {
+            var dot = new Ellipse
+            {
+                Width = 7,
+                Height = 7,
+                Fill = new SolidColorBrush(color)
+            };
+            Canvas.SetLeft(dot, points[0].X - 3.5d);
+            Canvas.SetTop(dot, points[0].Y - 3.5d);
+            canvas.Children.Add(dot);
+            return;
+        }
+
+        var brush = new SolidColorBrush(color);
+        for (var i = 1; i < points.Count; i++)
+        {
+            canvas.Children.Add(new Line
+            {
+                StartPoint = points[i - 1],
+                EndPoint = points[i],
+                Stroke = brush,
+                StrokeThickness = 2
+            });
+        }
+    }
+
+    private static void AddLegend(Canvas canvas, double x, double y, string label, Color color)
+    {
+        var swatch = new Rectangle
+        {
+            Width = 12,
+            Height = 3,
+            Fill = new SolidColorBrush(color)
+        };
+        Canvas.SetLeft(swatch, x);
+        Canvas.SetTop(swatch, y + 6d);
+        canvas.Children.Add(swatch);
+        var text = new TextBlock { Text = label, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText), FontSize = 10 };
+        Canvas.SetLeft(text, x + 16d);
+        Canvas.SetTop(text, y);
+        canvas.Children.Add(text);
     }
 
     private static Control BuildAgentMonitorCard(WorkspaceViewModel viewModel)
@@ -3894,6 +4070,7 @@ public sealed class ShellWindow : Window
             Children =
             {
                 BuildAgentMonitorCard(viewModel),
+                BuildAgentProfitReportCard(viewModel),
                 BuildNodeOverviewCard(),
                 BuildPieChartCard("Traffic Load", "Flow pressure snapshot.", viewModel.NodeUtilizationMixData, [AvaloniaDashboardTheme.Accent, AvaloniaDashboardTheme.Warning, AvaloniaDashboardTheme.Danger]),
                 BuildPieChartCard("Production Yield", "Delivered vs unmet proxy.", viewModel.AgentStatusDistributionData, [AvaloniaDashboardTheme.Success, AvaloniaDashboardTheme.Accent, AvaloniaDashboardTheme.Warning]),

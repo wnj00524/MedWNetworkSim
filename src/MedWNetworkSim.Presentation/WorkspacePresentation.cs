@@ -403,6 +403,33 @@ public sealed record FlowDataPoint(string Label, double Planned, double Delivere
 
 public sealed record NodePressurePoint(string Node, double Pressure, string TopCause, string UnmetNeed);
 /// <summary>
+/// Represents a point in an agent economics time series.
+/// </summary>
+
+public sealed record AgentProfitSeriesPoint(int Tick, double Revenue, double Costs);
+/// <summary>
+/// Represents a formatted row in the agent profit report.
+/// </summary>
+
+public sealed class AgentProfitReportRowViewModel
+{
+    public required string AgentName { get; init; }
+    public required string AgentCash { get; init; }
+    public required string AgentBudget { get; init; }
+    public required string AgentTickRevenue { get; init; }
+    public required string AgentTickCosts { get; init; }
+    public required string AgentTickProfit { get; init; }
+}
+/// <summary>
+/// Represents a revenue-versus-cost time series for an agent.
+/// </summary>
+
+public sealed class AgentProfitSeriesViewModel
+{
+    public required string AgentName { get; init; }
+    public required IReadOnlyList<AgentProfitSeriesPoint> Points { get; init; }
+}
+/// <summary>
 /// Represents a data model for agent view entities within the simulation.
 /// </summary>
 
@@ -2864,6 +2891,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         new("Low", 1d),
         new("High", 0d)
     ];
+    private IReadOnlyList<AgentProfitSeriesViewModel> agentProfitSeries = [];
 
     public WorkspaceViewModel(IAgentActionLogger? agentActionLogger = null, SimulationActorCoordinator? simulationActorCoordinator = null)
     {
@@ -2927,6 +2955,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ActorDecisions = [];
         ActorActionOutcomes = [];
         ActorMetrics = [];
+        AgentProfitReportRows = [];
         AgentLog = new AgentLogViewModel(ResolveAgentLogAgentName);
         SimulationActors.CollectionChanged += (_, _) => RefreshAgentViewModels();
         TopIssues.CollectionChanged += (_, _) => Raise(nameof(TopIssueEmptyStateText));
@@ -3226,6 +3255,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     /// Gets or sets the actor metrics.
     /// </summary>
     public ObservableCollection<SimulationActorMetricsViewModel> ActorMetrics { get; }
+    /// <summary>
+    /// Gets the formatted agent economics report rows.
+    /// </summary>
+    public ObservableCollection<AgentProfitReportRowViewModel> AgentProfitReportRows { get; }
+    /// <summary>
+    /// Gets the agent revenue-versus-cost chart series.
+    /// </summary>
+    public IReadOnlyList<AgentProfitSeriesViewModel> AgentProfitSeries
+    {
+        get => agentProfitSeries;
+        private set => SetProperty(ref agentProfitSeries, value);
+    }
     /// <summary>
     /// Gets or sets the agent log.
     /// </summary>
@@ -6962,6 +7003,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 CooperationIndex = metric.CooperationIndex.ToString("0.##", CultureInfo.InvariantCulture)
             });
         }
+        RefreshAgentProfitReport();
         agentActionLogger.Clear();
         foreach (var entry in network.AgentActionLogs)
         {
@@ -7707,7 +7749,60 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 AllowedActions = string.Join(", ", capability.AllowedActionKinds)
             });
         }
+
+        RefreshAgentProfitReport();
     }
+
+    private void RefreshAgentProfitReport()
+    {
+        AgentProfitReportRows.Clear();
+        var latestMetric = network.ActorMetrics
+            .OrderByDescending(metric => metric.Tick)
+            .FirstOrDefault();
+
+        foreach (var actor in SimulationActors.OrderBy(actor => ResolveActorDisplayName(actor.Id), Comparer))
+        {
+            var revenue = latestMetric?.ActorSalesRevenueById.GetValueOrDefault(actor.Id) ?? 0d;
+            var costs = CalculateAgentTickCosts(latestMetric, actor.Id);
+            var profit = latestMetric?.ActorProfitById.GetValueOrDefault(actor.Id) ?? revenue - costs;
+            AgentProfitReportRows.Add(new AgentProfitReportRowViewModel
+            {
+                AgentName = ResolveActorDisplayName(actor.Id),
+                AgentCash = FormatAgentEconomicsValue(actor.Cash),
+                AgentBudget = FormatAgentEconomicsValue(actor.Budget),
+                AgentTickRevenue = FormatAgentEconomicsValue(revenue),
+                AgentTickCosts = FormatAgentEconomicsValue(costs),
+                AgentTickProfit = FormatAgentEconomicsValue(profit)
+            });
+        }
+
+        AgentProfitSeries = [.. SimulationActors
+            .OrderBy(actor => ResolveActorDisplayName(actor.Id), Comparer)
+            .Select(actor => new AgentProfitSeriesViewModel
+            {
+                AgentName = ResolveActorDisplayName(actor.Id),
+                Points = [.. network.ActorMetrics
+                    .OrderBy(metric => metric.Tick)
+                    .Select(metric => new AgentProfitSeriesPoint(
+                        metric.Tick,
+                        metric.ActorSalesRevenueById.GetValueOrDefault(actor.Id),
+                        CalculateAgentTickCosts(metric, actor.Id)))]
+            })];
+    }
+
+    private static double CalculateAgentTickCosts(SimulationActorMetrics? metric, string actorId)
+    {
+        if (metric is null)
+        {
+            return 0d;
+        }
+
+        return metric.ActorProductionCostById.GetValueOrDefault(actorId) +
+            metric.ActorTransportCostById.GetValueOrDefault(actorId) +
+            metric.ActorTaxesPaidById.GetValueOrDefault(actorId);
+    }
+
+    private static string FormatAgentEconomicsValue(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 
     private void RebuildActorTrafficTypeRows()
     {
@@ -7870,6 +7965,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         network.Actors = SimulationActors.ToList();
         MarkDirty();
         Raise(nameof(SimulationActors));
+        RefreshAgentViewModels();
         RefreshSelectedActorDisplayState();
         ActorValidationText = string.Empty;
         ActorStatusMessage = $"Updated actor '{actor.Name}'.";
@@ -8184,6 +8280,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             PolicyRestrictionCount = step.Metrics.PolicyRestrictionCount.ToString(CultureInfo.InvariantCulture),
             CooperationIndex = step.Metrics.CooperationIndex.ToString("0.##", CultureInfo.InvariantCulture)
         });
+        RefreshAgentProfitReport();
         highlightedNodeIds.Clear();
         highlightedEdgeIds.Clear();
         foreach (var outcome in step.ActionOutcomes)
@@ -8246,6 +8343,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         network.ActorActionOutcomes.Clear();
         network.ActorMetrics.Clear();
         network.AgentActionLogs.Clear();
+        RefreshAgentProfitReport();
         ActorTick = 0;
         network.ActorTick = 0;
         HasActorPreview = false;

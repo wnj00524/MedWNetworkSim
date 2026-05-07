@@ -1,11 +1,11 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:ui="clr-namespace:MedWNetworkSim.UI">
+             xmlns:ui="clr-namespace:MedWNetworkSim.UI"
+             xmlns:automation="clr-namespace:Avalonia.Automation;assembly=Avalonia.Controls"
+             x:Class="MedWNetworkSim.UI.Views.AnalyticsView">
   <Grid RowDefinitions="Auto,*" RowSpacing="12" Margin="12">
     <WrapPanel>
-      <ComboBox MinWidth="180"
-                ItemsSource="{Binding SankeyTrafficTypeNameOptions}"
-                SelectedItem="{Binding SankeyTrafficTypeFilterSelection, Mode=TwoWay}" />
+      <ContentControl x:Name="TrafficTypeFilterHost" />
       <CheckBox Content="Show unmet demand"
                 IsChecked="{Binding VisualisationState.ShowUnmetDemand}" />
       <CheckBox Content="Show capacity utilisation"

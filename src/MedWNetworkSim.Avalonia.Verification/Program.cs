@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.VisualTree;
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Services;
@@ -9,6 +10,7 @@ using MedWNetworkSim.Interaction;
 using MedWNetworkSim.Presentation;
 using MedWNetworkSim.Rendering;
 using MedWNetworkSim.UI;
+using MedWNetworkSim.UI.Views;
 using System.Globalization;
 using System.Reflection;
 
@@ -55,6 +57,7 @@ ScenarioEdgeTooltipIncludesRouteDetails();
 ScenarioPressureExplanationAppearsInNodeDetails();
 ScenarioTimelineStepUsesEdgeOccupancyForVisualState();
 ScenarioReportsPopulateAndResetAroundTimeline();
+ScenarioAnalyticsViewTrafficTypeSelectorFiltersSankey();
 ScenarioFacilityIso_EmptyOriginsReturnsNoReachableNodes();
 ScenarioFacilityIso_SingleOriginMatchesLegacyIsochrone();
 ScenarioFacilityIso_MultipleOriginsCombineCoverage();
@@ -1703,6 +1706,54 @@ static void ScenarioReportsPopulateAndResetAroundTimeline()
     }
 }
 
+static void ScenarioAnalyticsViewTrafficTypeSelectorFiltersSankey()
+{
+    var workspace = new WorkspaceViewModel();
+    LoadNetwork(workspace, CreateTwoTrafficNetwork());
+    workspace.SimulateCommand.Execute(null);
+
+    var analyticsView = new AnalyticsView
+    {
+        DataContext = workspace
+    };
+    analyticsView.ApplyTemplate();
+    analyticsView.Measure(new Size(1280d, 720d));
+    analyticsView.Arrange(new Rect(0d, 0d, 1280d, 720d));
+    var selectorHost = analyticsView.FindControl<ContentControl>("TrafficTypeFilterHost")
+        ?? throw new InvalidOperationException("Analytics view did not expose the traffic type selector host.");
+    var selector = selectorHost.Content as ComboBox
+        ?? throw new InvalidOperationException("Analytics view did not populate the traffic type selector.");
+    selector.DataContext = workspace;
+    selector.ApplyTemplate();
+    var options = selector.ItemsSource?.Cast<string>().ToArray() ?? [];
+
+    AssertTrue(options.Contains(WorkspaceViewModel.AllTrafficTypesFilterLabel, StringComparer.Ordinal), "analytics view traffic selector includes all traffic option");
+    AssertTrue(options.Contains("Food", StringComparer.Ordinal), "analytics view traffic selector includes food");
+    AssertTrue(options.Contains("Water", StringComparer.Ordinal), "analytics view traffic selector includes water");
+
+    var baselineVersion = workspace.SankeyVersion;
+    analyticsView.SelectTrafficType("Food");
+
+    var foodVersion = workspace.SankeyVersion;
+    var foodSankey = workspace.CurrentSankey;
+
+    AssertTextEqual("Food", workspace.SankeyTrafficTypeFilterSelection, "analytics view selection updates workspace selection");
+    AssertTextEqual("Food", workspace.VisualisationState.ActiveTrafficTypeFilter ?? string.Empty, "analytics view selection updates active traffic filter");
+    AssertTrue(foodVersion > baselineVersion, "analytics view selection invalidates sankey version");
+    AssertTrue(foodSankey.Links.Where(link => !link.IsUnmetDemand).All(link => string.Equals(link.TrafficType, "Food", StringComparison.Ordinal)), "analytics view food filter updates sankey links");
+
+    analyticsView.SelectTrafficType("Water");
+
+    var waterVersion = workspace.SankeyVersion;
+    var waterSankey = workspace.CurrentSankey;
+
+    AssertTextEqual("Water", workspace.SankeyTrafficTypeFilterSelection, "analytics view water selection updates workspace selection");
+    AssertTextEqual("Water", workspace.VisualisationState.ActiveTrafficTypeFilter ?? string.Empty, "analytics view water selection updates active traffic filter");
+    AssertTrue(waterVersion > foodVersion, "analytics view water selection invalidates sankey version");
+    AssertTrue(!ReferenceEquals(foodSankey, waterSankey), "analytics view water selection rebuilds sankey");
+    AssertTrue(waterSankey.Links.Where(link => !link.IsUnmetDemand).All(link => string.Equals(link.TrafficType, "Water", StringComparison.Ordinal)), "analytics view water filter updates sankey links");
+}
+
 static string WriteTempNetwork(NetworkModel network)
 {
     var path = Path.Combine(Path.GetTempPath(), $"medw-avalonia-{Guid.NewGuid():N}.json");
@@ -1724,6 +1775,17 @@ static NetworkModel SaveAndReload(WorkspaceViewModel workspace)
     }
 }
 
+static void LoadNetwork(WorkspaceViewModel workspace, NetworkModel model)
+{
+    var loadMethod = typeof(WorkspaceViewModel).GetMethod("LoadNetwork", BindingFlags.Instance | BindingFlags.NonPublic);
+    if (loadMethod is null)
+    {
+        throw new InvalidOperationException("Could not locate WorkspaceViewModel.LoadNetwork for Avalonia verification.");
+    }
+
+    loadMethod.Invoke(workspace, [model, "Loaded verification network", null]);
+}
+
 static NetworkModel CreateInteractionEditingNetwork()
 {
     return new NetworkModel
@@ -1741,6 +1803,43 @@ static NetworkModel CreateInteractionEditingNetwork()
         ]
     };
 }
+
+static NetworkModel CreateTwoTrafficNetwork() => new()
+{
+    TrafficTypes =
+    [
+        new TrafficTypeDefinition { Name = "Food" },
+        new TrafficTypeDefinition { Name = "Water" }
+    ],
+    Nodes =
+    [
+        new NodeModel
+        {
+            Id = "p",
+            Name = "Producer",
+            X = 10,
+            Y = 10,
+            TrafficProfiles =
+            [
+                new NodeTrafficProfile { TrafficType = "Food", Production = 10 },
+                new NodeTrafficProfile { TrafficType = "Water", Production = 8 }
+            ]
+        },
+        new NodeModel
+        {
+            Id = "c",
+            Name = "Consumer",
+            X = 60,
+            Y = 20,
+            TrafficProfiles =
+            [
+                new NodeTrafficProfile { TrafficType = "Food", Consumption = 5 },
+                new NodeTrafficProfile { TrafficType = "Water", Consumption = 4 }
+            ]
+        }
+    ],
+    Edges = [new EdgeModel { Id = "e1", FromNodeId = "p", ToNodeId = "c", Capacity = 20, Time = 1, Cost = 1 }]
+};
 
 static GraphPoint ScreenPointForNode(WorkspaceViewModel workspace, GraphSize viewportSize, string nodeId)
 {

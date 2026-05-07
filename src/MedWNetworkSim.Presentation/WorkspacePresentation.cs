@@ -7862,7 +7862,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         {
             var revenue = latestMetric?.ActorSalesRevenueById.GetValueOrDefault(actor.Id) ?? 0d;
             var costs = CalculateAgentTickCosts(latestMetric, actor.Id);
-            var profit = latestMetric?.ActorProfitById.GetValueOrDefault(actor.Id) ?? revenue - costs;
+            var profit = latestMetric?.ActorProfitById.GetValueOrDefault(actor.Id) ?? 0d;
             AgentProfitReportRows.Add(new AgentProfitReportRowViewModel
             {
                 AgentName = ResolveActorDisplayName(actor.Id),

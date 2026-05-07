@@ -118,7 +118,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
     {
         var actions = new List<SimulationActorAction>();
         var outcomes = context.CurrentSnapshot.TrafficOutcomes;
-        var utilityBefore = EstimateUtility(State.Objective, outcomes);
+        var utilityBefore = EstimateFirmUtility(context);
         var buyerPremiumByTrafficType = ResolveBuyerPremiums(context.CurrentNetwork);
 
         foreach (var node in context.CurrentNetwork.Nodes.OrderBy(node => node.Id, Comparer))
@@ -358,6 +358,31 @@ public sealed class FirmSimulationActor : SimulationActorBase
             Explanation = "Firm actor evaluated demand, delivery, route constraints, and profit levers.",
             Evidence = context.CurrentInsights.Take(3).Select(i => i.Summary).ToList()
         };
+    }
+
+    private double EstimateFirmUtility(SimulationActorContext context)
+    {
+        if (State.Objective != SimulationActorObjective.MaximiseProfit)
+        {
+            return EstimateUtility(State.Objective, context.CurrentSnapshot.TrafficOutcomes);
+        }
+
+        var controlledNodeIds = State.ControlledNodeIds
+            .Where(nodeId => !string.IsNullOrWhiteSpace(nodeId))
+            .ToHashSet(Comparer);
+        var relevantAllocations = context.CurrentSnapshot.TrafficOutcomes
+            .SelectMany(outcome => outcome.Allocations)
+            .Where(allocation =>
+                controlledNodeIds.Contains(allocation.ProducerNodeId) ||
+                Comparer.Equals(allocation.SellerActorId, State.Id))
+            .ToList();
+
+        if (relevantAllocations.Count == 0)
+        {
+            return 0d;
+        }
+
+        return relevantAllocations.Sum(allocation => allocation.Profit);
     }
 
     private SimulationActorActionKind? ResolveMarketAction(

@@ -232,7 +232,7 @@ public sealed class ReportExportService
         builder.AppendLine("<h2>Agent Actions</h2>");
         AppendHtmlTable(
             builder,
-            ["Simulation Tick", "Agent", "Action", "Target", "Decision Summary", "Outcome", "Utility"],
+            ["Simulation Tick", "Agent", "Action", "Target", "Decision Summary", "Outcome", "Decision Utility"],
             network.AgentActionLogs
                 .OrderBy(entry => entry.SimulationTick)
                 .ThenBy(entry => entry.Timestamp)
@@ -246,6 +246,8 @@ public sealed class ReportExportService
                     entry.Outcome,
                     entry.UtilityScore.HasValue ? FormatNumber(entry.UtilityScore.Value) : "n/a"
                 }));
+
+        AppendActorEconomicsHtmlSection(builder, network, network.ActorMetrics);
 
         builder.AppendLine("<h2>Timeline Outcomes By Traffic</h2>");
         AppendHtmlTable(
@@ -579,8 +581,10 @@ public sealed class ReportExportService
         AppendCsvTable(
             builder,
             "Agent Actions",
-            ["Simulation Tick", "Agent", "Action", "Target", "Decision Summary", "Outcome", "Utility", "Factors", "Alternatives", "State Metrics"],
+            ["Simulation Tick", "Agent", "Action", "Target", "Decision Summary", "Outcome", "Decision Utility", "Factors", "Alternatives", "State Metrics"],
             BuildAgentActionRows(network, network.AgentActionLogs));
+
+        AppendActorEconomicsCsvSection(builder, network, network.ActorMetrics);
 
         AppendCsvTable(
             builder,
@@ -804,8 +808,10 @@ public sealed class ReportExportService
         builder.AppendLine("<h2>Agent Actions</h2>");
         AppendHtmlTable(
             builder,
-            ["Simulation Tick", "Agent", "Action", "Target", "Decision Summary", "Outcome", "Utility", "Factors", "Alternatives", "State Metrics"],
+            ["Simulation Tick", "Agent", "Action", "Target", "Decision Summary", "Outcome", "Decision Utility", "Factors", "Alternatives", "State Metrics"],
             BuildAgentActionRows(network, network.AgentActionLogs));
+
+        AppendActorEconomicsHtmlSection(builder, network, runResult.MetricsByTick);
 
         builder.AppendLine("</body></html>");
         return builder.ToString();
@@ -821,11 +827,13 @@ public sealed class ReportExportService
         builder.AppendLine();
 
         builder.AppendLine("Agent Actions");
-        builder.AppendLine(BuildCsvRow(["Simulation Tick", "Agent", "Action", "Target", "Decision Summary", "Outcome", "Utility", "Factors", "Alternatives", "State Metrics"]));
+        builder.AppendLine(BuildCsvRow(["Simulation Tick", "Agent", "Action", "Target", "Decision Summary", "Outcome", "Decision Utility", "Factors", "Alternatives", "State Metrics"]));
         foreach (var row in BuildAgentActionRows(network, network.AgentActionLogs))
         {
             builder.AppendLine(BuildCsvRow(row));
         }
+
+        AppendActorEconomicsCsvSection(builder, network, runResult.MetricsByTick);
 
         return builder.ToString();
     }
@@ -845,8 +853,23 @@ public sealed class ReportExportService
                     target = entry.TargetId,
                     summary = entry.DecisionSummary,
                     outcome = entry.Outcome,
-                    utility = entry.UtilityScore,
+                    decisionUtility = entry.UtilityScore,
                     stateMetrics = entry.StateMetrics
+                }),
+            actorEconomics = BuildActorEconomicsRows(network, runResult.MetricsByTick)
+                .Select(row => new
+                {
+                    tick = row.Tick,
+                    actor = row.Actor,
+                    salesRevenue = row.SalesRevenue,
+                    purchaseCost = row.PurchaseCost,
+                    productionCost = row.ProductionCost,
+                    transportCost = row.TransportCost,
+                    taxesPaid = row.TaxesPaid,
+                    taxesReceived = row.TaxesReceived,
+                    profit = row.Profit,
+                    cashDelta = row.CashDelta,
+                    cash = row.Cash
                 })
         };
         return JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true });
@@ -872,10 +895,25 @@ public sealed class ReportExportService
                     target = string.IsNullOrWhiteSpace(entry.TargetId) ? "(none)" : entry.TargetId,
                     decisionSummary = entry.DecisionSummary,
                     outcome = entry.Outcome,
-                    utility = entry.UtilityScore,
+                    decisionUtility = entry.UtilityScore,
                     factors = entry.DecisionFactors,
                     alternatives = entry.AlternativesConsidered ?? [],
                     stateMetrics = entry.StateMetrics
+                }),
+            actorEconomics = BuildActorEconomicsRows(network, network.ActorMetrics)
+                .Select(row => new
+                {
+                    tick = row.Tick,
+                    actor = row.Actor,
+                    salesRevenue = row.SalesRevenue,
+                    purchaseCost = row.PurchaseCost,
+                    productionCost = row.ProductionCost,
+                    transportCost = row.TransportCost,
+                    taxesPaid = row.TaxesPaid,
+                    taxesReceived = row.TaxesReceived,
+                    profit = row.Profit,
+                    cashDelta = row.CashDelta,
+                    cash = row.Cash
                 }),
             edges = network.Edges.Select(edge => new
             {
@@ -1499,6 +1537,113 @@ public sealed class ReportExportService
                     ? "None"
                     : string.Join("; ", entry.StateMetrics.OrderBy(pair => pair.Key, Comparer).Select(pair => $"{pair.Key}: {FormatNumber(pair.Value)}"))
             });
+    }
+
+    private static void AppendActorEconomicsHtmlSection(
+        StringBuilder builder,
+        NetworkModel network,
+        IReadOnlyList<SimulationActorMetrics> metricsByTick)
+    {
+        builder.AppendLine("<h2>Actor Economics</h2>");
+        AppendHtmlTable(
+            builder,
+            ["Tick", "Actor", "Sales Revenue", "Purchase Cost", "Production Cost", "Transport Cost", "Taxes Paid", "Taxes Received", "Profit", "Cash Delta", "Cash"],
+            BuildActorEconomicsRows(network, metricsByTick).Select(row => row.ToHtmlRow()));
+    }
+
+    private static void AppendActorEconomicsCsvSection(
+        StringBuilder builder,
+        NetworkModel network,
+        IReadOnlyList<SimulationActorMetrics> metricsByTick)
+    {
+        AppendCsvTable(
+            builder,
+            "Actor Economics",
+            ["Tick", "Actor", "Sales Revenue", "Purchase Cost", "Production Cost", "Transport Cost", "Taxes Paid", "Taxes Received", "Profit", "Cash Delta", "Cash"],
+            BuildActorEconomicsRows(network, metricsByTick).Select(row => row.ToCsvRow()));
+    }
+
+    private static IReadOnlyList<ActorEconomicsReportRow> BuildActorEconomicsRows(
+        NetworkModel network,
+        IReadOnlyList<SimulationActorMetrics> metricsByTick)
+    {
+        if (metricsByTick.Count == 0)
+        {
+            return [];
+        }
+
+        var actorNamesById = network.Actors
+            .Where(actor => !string.IsNullOrWhiteSpace(actor.Id))
+            .ToDictionary(
+                actor => actor.Id,
+                actor => string.IsNullOrWhiteSpace(actor.Name) ? actor.Id : actor.Name.Trim(),
+                Comparer);
+
+        var rows = new List<ActorEconomicsReportRow>();
+        foreach (var metric in metricsByTick.OrderBy(metric => metric.Tick))
+        {
+            var actorIds = metric.ActorCashById.Keys
+                .Concat(metric.ActorSalesRevenueById.Keys)
+                .Concat(metric.ActorPurchaseCostById.Keys)
+                .Concat(metric.ActorProductionCostById.Keys)
+                .Concat(metric.ActorTransportCostById.Keys)
+                .Concat(metric.ActorTaxesPaidById.Keys)
+                .Concat(metric.ActorTaxesReceivedById.Keys)
+                .Concat(metric.ActorProfitById.Keys)
+                .Concat(metric.ActorCashDeltaById.Keys)
+                .Distinct(Comparer)
+                .OrderBy(id => actorNamesById.GetValueOrDefault(id) ?? id, Comparer)
+                .ThenBy(id => id, Comparer);
+
+            foreach (var actorId in actorIds)
+            {
+                rows.Add(new ActorEconomicsReportRow(
+                    metric.Tick,
+                    actorNamesById.GetValueOrDefault(actorId) ?? actorId,
+                    metric.ActorSalesRevenueById.GetValueOrDefault(actorId),
+                    metric.ActorPurchaseCostById.GetValueOrDefault(actorId),
+                    metric.ActorProductionCostById.GetValueOrDefault(actorId),
+                    metric.ActorTransportCostById.GetValueOrDefault(actorId),
+                    metric.ActorTaxesPaidById.GetValueOrDefault(actorId),
+                    metric.ActorTaxesReceivedById.GetValueOrDefault(actorId),
+                    metric.ActorProfitById.GetValueOrDefault(actorId),
+                    metric.ActorCashDeltaById.GetValueOrDefault(actorId),
+                    metric.ActorCashById.GetValueOrDefault(actorId)));
+            }
+        }
+
+        return rows;
+    }
+
+    private sealed record ActorEconomicsReportRow(
+        int Tick,
+        string Actor,
+        double SalesRevenue,
+        double PurchaseCost,
+        double ProductionCost,
+        double TransportCost,
+        double TaxesPaid,
+        double TaxesReceived,
+        double Profit,
+        double CashDelta,
+        double Cash)
+    {
+        public string[] ToHtmlRow() => ToCsvRow();
+
+        public string[] ToCsvRow() =>
+        [
+            Tick.ToString(CultureInfo.InvariantCulture),
+            Actor,
+            FormatNumber(SalesRevenue),
+            FormatNumber(PurchaseCost),
+            FormatNumber(ProductionCost),
+            FormatNumber(TransportCost),
+            FormatNumber(TaxesPaid),
+            FormatNumber(TaxesReceived),
+            FormatNumber(Profit),
+            FormatNumber(CashDelta),
+            FormatNumber(Cash)
+        ];
     }
 
     private static string FormatOnOff(bool value) => value ? "On" : "Off";

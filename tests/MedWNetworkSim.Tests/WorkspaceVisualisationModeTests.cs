@@ -290,6 +290,70 @@ public sealed class WorkspaceVisualisationModeTests
         Assert.Contains(workspace.AgentProfitSeries, series => series.AgentName == "Producer Firm" && series.Points.Any(point => point.Revenue > 0d && point.Costs > 0d));
     }
 
+    [Fact]
+    public void LoadNetwork_UsesActorProfitMetricsInsteadOfDecisionUtilityInReportsTab()
+    {
+        var workspace = new WorkspaceViewModel();
+        var network = CreateEconomicActorNetwork();
+        network.ActorMetrics =
+        [
+            new SimulationActorMetrics
+            {
+                Tick = 0,
+                ActorCashById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["producer-actor"] = 90d
+                },
+                ActorSalesRevenueById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["producer-actor"] = 15d
+                },
+                ActorPurchaseCostById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
+                ActorProductionCostById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["producer-actor"] = 20d
+                },
+                ActorTransportCostById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["producer-actor"] = 5d
+                },
+                ActorTaxesPaidById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
+                ActorTaxesReceivedById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
+                ActorProfitById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["producer-actor"] = -10d
+                },
+                ActorCashDeltaById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["producer-actor"] = -10d
+                }
+            }
+        ];
+        network.AgentActionLogs =
+        [
+            new AgentActionLogEntry
+            {
+                AgentId = Guid.NewGuid(),
+                ActorId = "producer-actor",
+                AgentName = "Producer Firm",
+                SimulationTick = 0,
+                ActionType = "NoOp",
+                TargetId = "(none)",
+                DecisionSummary = "Keep shipments moving despite thin margins.",
+                Outcome = "Monitor throughput",
+                UtilityScore = 5d
+            }
+        ];
+
+        LoadNetwork(workspace, network);
+
+        var row = Assert.Single(workspace.AgentProfitReportRows);
+        Assert.Equal("Producer Firm", row.AgentName);
+        Assert.Equal("-10", row.AgentTickProfit);
+        Assert.Equal("15", row.AgentTickRevenue);
+        Assert.Equal("25", row.AgentTickCosts);
+    }
+
     private static NetworkModel CreateTwoTrafficNetwork() => new()
     {
         TrafficTypes =

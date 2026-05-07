@@ -570,6 +570,43 @@ public sealed class SimulationActorsTests
                 Outcome = "Lower delay"
             }
         ];
+        network.ActorMetrics =
+        [
+            new SimulationActorMetrics
+            {
+                Tick = 0,
+                ActorCashById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["long-unique-firm-id"] = 90d
+                },
+                ActorSalesRevenueById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["long-unique-firm-id"] = 10d
+                },
+                ActorPurchaseCostById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
+                ActorProductionCostById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["long-unique-firm-id"] = 6d
+                },
+                ActorTransportCostById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["long-unique-firm-id"] = 2d
+                },
+                ActorTaxesPaidById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["long-unique-firm-id"] = 1d
+                },
+                ActorTaxesReceivedById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
+                ActorProfitById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["long-unique-firm-id"] = 1d
+                },
+                ActorCashDeltaById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["long-unique-firm-id"] = 1d
+                }
+            }
+        ];
         var engine = new TemporalNetworkSimulationEngine();
         var state = engine.Initialize(network);
         var results = new[] { engine.Advance(network, state) };
@@ -581,6 +618,9 @@ public sealed class SimulationActorsTests
             var csv = File.ReadAllText(path);
 
             Assert.Contains("Agent Actions", csv);
+            Assert.Contains("Decision Utility", csv);
+            Assert.DoesNotContain(",Utility,", csv);
+            Assert.Contains("Actor Economics", csv);
             Assert.Contains("Local Mill", csv);
             Assert.DoesNotContain("long-unique-firm-id,AdjustProduction", csv);
             Assert.Contains("duplicate-id-a", csv);
@@ -590,6 +630,132 @@ public sealed class SimulationActorsTests
             if (File.Exists(path))
             {
                 File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public void LossMakingFirm_AgentReports_SeparateDecisionUtilityFromProfit()
+    {
+        var network = BuildLossMakingActorNetwork();
+        var actor = Assert.Single(network.Actors);
+        var coordinator = new SimulationActorCoordinator();
+        var decision = Assert.Single(coordinator.PreviewActorActions(network, [actor]));
+        Assert.True(decision.Utility > 0d);
+
+        var outcome = new NetworkSimulationEngine().Simulate(network).Single();
+        Assert.Equal(25d, outcome.TotalSalesRevenue, 6);
+        Assert.Equal(20d, outcome.TotalProductionCost, 6);
+        Assert.Equal(5d, outcome.TotalTransportCost, 6);
+        Assert.Equal(-10d, outcome.TotalProfit, 6);
+
+        var metrics = new SimulationActorMetrics
+        {
+            Tick = 0,
+            ActorCashById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+            {
+                [actor.Id] = actor.Cash + outcome.TotalProfit
+            },
+            ActorSalesRevenueById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+            {
+                [actor.Id] = outcome.TotalSalesRevenue
+            },
+            ActorPurchaseCostById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+            {
+                [actor.Id] = 0d
+            },
+            ActorProductionCostById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+            {
+                [actor.Id] = outcome.TotalProductionCost
+            },
+            ActorTransportCostById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+            {
+                [actor.Id] = outcome.TotalTransportCost
+            },
+            ActorTaxesPaidById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+            {
+                [actor.Id] = 10d
+            },
+            ActorTaxesReceivedById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+            {
+                [actor.Id] = 0d
+            },
+            ActorProfitById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+            {
+                [actor.Id] = outcome.TotalProfit
+            },
+            ActorCashDeltaById = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+            {
+                [actor.Id] = outcome.TotalProfit
+            }
+        };
+        Assert.Equal(-10d, metrics.ActorProfitById[actor.Id], 6);
+        network.AgentActionLogs =
+        [
+            new AgentActionLogEntry
+            {
+                AgentId = Guid.NewGuid(),
+                ActorId = actor.Id,
+                AgentName = actor.Name,
+                SimulationTick = 0,
+                ActionType = decision.ActionType,
+                TargetId = decision.TargetId,
+                DecisionSummary = decision.ReasonSummary,
+                DecisionFactors = [.. decision.Factors],
+                AlternativesConsidered = decision.Alternatives is null ? null : [.. decision.Alternatives],
+                Outcome = decision.ExpectedOutcome,
+                UtilityScore = decision.Utility
+            }
+        ];
+
+        var runResult = new SimulationActorRunResult
+        {
+            InitialNetwork = network,
+            FinalNetwork = network,
+            DecisionsByTick = [decision],
+            MetricsByTick = [metrics],
+            FinalSummary = "Loss-making regression"
+        };
+
+        var exporter = new ReportExportService();
+        var htmlPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.html");
+        var csvPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.csv");
+        var jsonPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.json");
+
+        try
+        {
+            exporter.SaveAgentReport(network, runResult, htmlPath, ReportExportFormat.Html);
+            exporter.SaveAgentReport(network, runResult, csvPath, ReportExportFormat.Csv);
+            exporter.SaveAgentReport(network, runResult, jsonPath, ReportExportFormat.Json);
+
+            var html = File.ReadAllText(htmlPath);
+            var csv = File.ReadAllText(csvPath);
+            var json = File.ReadAllText(jsonPath);
+
+            Assert.Contains("Decision Utility", html);
+            Assert.Contains("Actor Economics", html);
+            Assert.Contains("Decision Utility", csv);
+            Assert.Contains("Actor Economics", csv);
+            Assert.DoesNotContain(",Utility,", csv);
+            Assert.Contains("\"decisionUtility\"", json);
+            Assert.DoesNotContain("\"utility\"", json);
+            Assert.Contains("\"profit\": -10", json);
+        }
+        finally
+        {
+            if (File.Exists(htmlPath))
+            {
+                File.Delete(htmlPath);
+            }
+
+            if (File.Exists(csvPath))
+            {
+                File.Delete(csvPath);
+            }
+
+            if (File.Exists(jsonPath))
+            {
+                File.Delete(jsonPath);
             }
         }
     }
@@ -1496,6 +1662,60 @@ public sealed class SimulationActorsTests
         network.Edges.Single(edge => edge.Id == "edge-a").Id = "blocked-capacity";
         network.Edges.Single(edge => edge.Id == "blocked-capacity").Capacity = 0d;
         return network;
+    }
+
+    private static NetworkModel BuildLossMakingActorNetwork()
+    {
+        var layerId = Guid.NewGuid();
+        return new NetworkModel
+        {
+            Name = "Loss-making actor test",
+            Layers = [new NetworkLayerModel { Id = layerId, Name = "Physical", Type = NetworkLayerType.Physical, Order = 0 }],
+            TrafficTypes =
+            [
+                new TrafficTypeDefinition
+                {
+                    Name = "Food",
+                    RoutingPreference = RoutingPreference.Cost,
+                    AllocationMode = AllocationMode.GreedyBestRoute,
+                    DefaultUnitSalePrice = 3d,
+                    DefaultUnitProductionCost = 4d,
+                    SalesTaxRate = 0.4d
+                }
+            ],
+            Nodes =
+            [
+                new NodeModel
+                {
+                    Id = "producer",
+                    Name = "Producer",
+                    LayerId = layerId,
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Food", Production = 5d, UnitPrice = 3d, ProductionCostPerUnit = 4d }]
+                },
+                new NodeModel
+                {
+                    Id = "consumer",
+                    Name = "Consumer",
+                    LayerId = layerId,
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Food", Consumption = 5d }]
+                }
+            ],
+            Edges = [new EdgeModel { Id = "loss-edge", FromNodeId = "producer", ToNodeId = "consumer", LayerId = layerId, Capacity = 10d, Time = 1d, Cost = 1d }],
+            Actors =
+            [
+                new SimulationActorState
+                {
+                    Id = "loss-firm",
+                    Name = "Loss Firm",
+                    Kind = SimulationActorKind.Firm,
+                    Objective = SimulationActorObjective.MaximiseThroughput,
+                    IsEnabled = true,
+                    Cash = 100d,
+                    Budget = 100d,
+                    ControlledNodeIds = ["producer"]
+                }
+            ]
+        };
     }
 
 

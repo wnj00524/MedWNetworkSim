@@ -60,7 +60,6 @@ public sealed class CommandLineRunService
     private readonly ReportExportService reportExportService = new();
     private readonly NetworkSimulationEngine networkSimulationEngine = new();
     private readonly TemporalNetworkSimulationEngine temporalNetworkSimulationEngine = new();
-    private readonly SimulationActorCoordinator simulationActorCoordinator = new();
 
     public bool ShouldRunFromCommandLine(string[] args)
     {

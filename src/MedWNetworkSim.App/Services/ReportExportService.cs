@@ -1113,8 +1113,11 @@ public sealed class ReportExportService
             .Where(item => item.Quantity > 0)
             .ToList();
 
+        // Bolt: Optimize O(N^2) traffic type lookups to O(1)
+        var unmetTrafficTypes = unmet.Select(item => item.TrafficType).ToHashSet(Comparer);
+
         var outcomeUnmetTypes = outcomes
-            .Where(outcome => outcome.UnmetDemand > 0 && unmet.Any(item => Comparer.Equals(item.TrafficType, outcome.TrafficType)))
+            .Where(outcome => outcome.UnmetDemand > 0 && unmetTrafficTypes.Contains(outcome.TrafficType))
             .Select(outcome => outcome.TrafficType)
             .Distinct(Comparer)
             .ToHashSet(Comparer);

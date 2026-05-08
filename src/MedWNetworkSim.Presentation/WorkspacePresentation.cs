@@ -6794,8 +6794,12 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             }
 
             bestCostByNode[nodeModel] = sorted[0].TravelTime;
+
+            // Bolt: Optimize O(N^2) facility node lookups to O(1)
+            var sortedFacilityNodeIds = sorted.Select(s => s.FacilityNodeId).ToHashSet(Comparer);
+
             var coveringNodes = SelectedFacilityNodes
-                .Where(candidate => sorted.Any(coverageItem => Comparer.Equals(coverageItem.FacilityNodeId, candidate.Node.Id)))
+                .Where(candidate => sortedFacilityNodeIds.Contains(candidate.Node.Id))
                 .Select(candidate => candidate.Node)
                 .ToList();
             if (coveringNodes.Count > 0)
@@ -7564,11 +7568,15 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             selectedEdges.Contains(edge.Id) ||
             selectedNodes.Contains(edge.FromNodeId) ||
             selectedNodes.Contains(edge.ToNodeId));
+
+        // Bolt: Optimize O(N^2) Edge lookups to O(1)
+        var remainingEdgeIds = network.Edges.Select(e => e.Id).ToHashSet(Comparer);
+
         foreach (var actor in SimulationActors)
         {
             actor.ControlledNodeIds = actor.ControlledNodeIds.Where(id => !selectedNodes.Contains(id)).Distinct(Comparer).ToList();
             actor.ControlledEdgeIds = actor.ControlledEdgeIds.Where(id => !selectedEdges.Contains(id)).Distinct(Comparer).ToList();
-            actor.ControlledEdgeIds = actor.ControlledEdgeIds.Where(id => network.Edges.Any(edge => Comparer.Equals(edge.Id, id))).ToList();
+            actor.ControlledEdgeIds = actor.ControlledEdgeIds.Where(id => remainingEdgeIds.Contains(id)).ToList();
             actor.Capability?.Permissions.RemoveAll(permission =>
                 (permission.NodeId is not null && selectedNodes.Contains(permission.NodeId)) ||
                 (permission.EdgeId is not null && deletedEdges.Contains(permission.EdgeId)));

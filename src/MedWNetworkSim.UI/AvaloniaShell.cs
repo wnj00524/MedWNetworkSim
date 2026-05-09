@@ -3498,18 +3498,6 @@ public sealed class ShellWindow : Window
                         Children =
                         {
                             metrics,
-                            BuildDashboardPanel(
-                                new GraphCanvasControl
-                                {
-                                    ViewModel = viewModel,
-                                    RenderModeOverride = VisualisationMode.Sankey,
-                                    MinHeight = 320,
-                                    HorizontalAlignment = HorizontalAlignment.Stretch,
-                                    VerticalAlignment = VerticalAlignment.Stretch
-                                },
-                                header: "Sankey Flow Map",
-                                padding: new Thickness(0),
-                                radius: new CornerRadius(12)),
                             BuildAgentProfitReportCard(viewModel),
                             BuildDashboardPanel(
                                 new GraphCanvasControl

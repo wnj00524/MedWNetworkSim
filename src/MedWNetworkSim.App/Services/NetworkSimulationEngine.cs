@@ -88,6 +88,7 @@ public sealed class NetworkSimulationEngine
 
         foreach (var context in contexts)
         {
+            AddReachabilityWarnings(network, context);
             var unusedSupply = context.Supply.Values.Sum(value => Math.Max(0d, value));
             var unmetDemand = context.Demand.Values.Sum(value => Math.Max(0d, value));
 
@@ -151,6 +152,101 @@ public sealed class NetworkSimulationEngine
             .ToList();
 
         return settlementService.Settle(network, outcomes).Outcomes;
+    }
+
+    private static void AddReachabilityWarnings(NetworkModel network, RoutingTrafficContext context)
+    {
+        var producers = context.Supply
+            .Where(pair => pair.Value > Epsilon)
+            .Select(pair => pair.Key)
+            .ToList();
+        var consumers = context.Demand
+            .Where(pair => pair.Value > Epsilon)
+            .Select(pair => pair.Key)
+            .ToList();
+        if (producers.Count == 0 || consumers.Count == 0)
+        {
+            return;
+        }
+
+        var adjacency = BuildAdjacency(network);
+        var permissionResolver = new EdgeTrafficPermissionResolver();
+
+        foreach (var producerNodeId in producers)
+        {
+            var hasReachableConsumer = consumers.Any(consumerNodeId =>
+                HasPermittedPath(network, context, adjacency, permissionResolver, producerNodeId, consumerNodeId));
+            if (!hasReachableConsumer)
+            {
+                context.Notes.Add(
+                    $"Validation warning: producer '{GetNodeLabel(network, producerNodeId)}' has no permitted path to any {context.TrafficType} consumer.");
+            }
+        }
+
+        foreach (var consumerNodeId in consumers)
+        {
+            var hasReachableProducer = producers.Any(producerNodeId =>
+                HasPermittedPath(network, context, adjacency, permissionResolver, producerNodeId, consumerNodeId));
+            if (!hasReachableProducer)
+            {
+                context.Notes.Add(
+                    $"Validation warning: consumer '{GetNodeLabel(network, consumerNodeId)}' has no permitted path from any {context.TrafficType} producer.");
+            }
+        }
+    }
+
+    private static bool HasPermittedPath(
+        NetworkModel network,
+        RoutingTrafficContext context,
+        IReadOnlyDictionary<string, List<GraphArc>> adjacency,
+        EdgeTrafficPermissionResolver permissionResolver,
+        string producerNodeId,
+        string consumerNodeId)
+    {
+        if (Comparer.Equals(producerNodeId, consumerNodeId))
+        {
+            return true;
+        }
+
+        var edgesById = network.Edges.ToDictionary(edge => edge.Id, Comparer);
+        var queue = new Queue<string>();
+        var visited = new HashSet<string>(Comparer) { producerNodeId };
+        queue.Enqueue(producerNodeId);
+
+        while (queue.Count > 0)
+        {
+            var currentNodeId = queue.Dequeue();
+            if (!adjacency.TryGetValue(currentNodeId, out var arcs))
+            {
+                continue;
+            }
+
+            foreach (var arc in arcs)
+            {
+                if (!visited.Add(arc.ToNodeId) ||
+                    !edgesById.TryGetValue(arc.EdgeId, out var edge) ||
+                    permissionResolver.Resolve(network, edge, context.TrafficType).Mode == EdgeTrafficPermissionMode.Blocked ||
+                    !CanTraverseNode(arc.ToNodeId, producerNodeId, consumerNodeId, context.ProfilesByNodeId))
+                {
+                    continue;
+                }
+
+                if (Comparer.Equals(arc.ToNodeId, consumerNodeId))
+                {
+                    return true;
+                }
+
+                queue.Enqueue(arc.ToNodeId);
+            }
+        }
+
+        return false;
+    }
+
+    private static string GetNodeLabel(NetworkModel network, string nodeId)
+    {
+        var node = network.Nodes.FirstOrDefault(candidate => Comparer.Equals(candidate.Id, nodeId));
+        return string.IsNullOrWhiteSpace(node?.Name) ? nodeId : node.Name;
     }
 
 

@@ -2090,6 +2090,7 @@ public sealed class ShellWindow : Window
             AppView.Analytics => BuildAnalyticsView(viewModel),
             AppView.Facilities => BuildFacilitiesWorkspace(viewModel),
             AppView.Reports => BuildReportsWorkspace(viewModel),
+            AppView.Sankey => BuildSankeyWorkspace(viewModel),
             _ => BuildCanvasArea(viewModel)
         };
 
@@ -2324,15 +2325,6 @@ public sealed class ShellWindow : Window
 
     private Control BuildAnalyticsView(WorkspaceViewModel viewModel)
     {
-        var sankeyCanvas = new GraphCanvasControl
-        {
-            ViewModel = viewModel,
-            RenderModeOverride = VisualisationMode.Sankey,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch
-        };
-        ToolTip.SetTip(sankeyCanvas, "Hover a flow for details. Click a node or route flow to select it in the network.");
-
         var visualCanvas = new GraphCanvasControl
         {
             ViewModel = viewModel,
@@ -2365,21 +2357,13 @@ public sealed class ShellWindow : Window
         };
         Grid.SetColumn(sidePanel, 1);
 
-        var sankeyPanel = BuildDashboardPanel(sankeyCanvas, header: "Sankey Flow Map", padding: new Thickness(0), radius: new CornerRadius(12));
         var canvasPanel = BuildDashboardPanel(visualCanvas, header: "Timeline and Pressure Surface", padding: new Thickness(0), radius: new CornerRadius(12));
-        var canvasStack = new Grid
-        {
-            RowDefinitions = new RowDefinitions("1.15*,0.85*"),
-            RowSpacing = 10,
-            Children = { sankeyPanel, canvasPanel }
-        };
-        Grid.SetRow(canvasPanel, 1);
 
         var main = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,340"),
             ColumnSpacing = 12,
-            Children = { canvasStack, sidePanel }
+            Children = { canvasPanel, sidePanel }
         };
         Grid.SetRow(filterStrip, 1);
         Grid.SetRow(main, 2);
@@ -2396,6 +2380,56 @@ public sealed class ShellWindow : Window
         };
     }
 
+    private Control BuildSankeyWorkspace(WorkspaceViewModel viewModel)
+    {
+        var sankeyCanvas = new GraphCanvasControl
+        {
+            ViewModel = viewModel,
+            RenderModeOverride = VisualisationMode.Sankey,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+        ToolTip.SetTip(sankeyCanvas, "Hover a flow for details. Click a node or route flow to select it in the network.");
+
+        var filterStrip = BuildSankeyFilterStrip(viewModel);
+        var sankeyPanel = BuildDashboardPanel(sankeyCanvas, header: "Sankey Flow Map", padding: new Thickness(0), radius: new CornerRadius(12));
+
+        var main = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            RowSpacing = 12,
+            Margin = new Thickness(12),
+            Children = { filterStrip, sankeyPanel }
+        };
+        Grid.SetRow(sankeyPanel, 1);
+
+        return main;
+    }
+
+    private Control BuildSankeyFilterStrip(WorkspaceViewModel viewModel)
+    {
+        var typeCombo = new ComboBox
+        {
+            Name = "TrafficTypeFilterComboBox",
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.SankeyTrafficTypeNameOptions)),
+            [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(WorkspaceViewModel.SankeyTrafficTypeFilterSelection), BindingMode.TwoWay)
+        };
+        return BuildDashboardPanel(
+            new WrapPanel
+            {
+                Children =
+                {
+                    BuildLabeledRow("Traffic type", typeCombo),
+                    new CheckBox { Content = "Show unmet demand", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) },
+                    new CheckBox { Content = "Show capacity utilisation", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowCapacityUtilisation", BindingMode.TwoWay) },
+                    new CheckBox { Content = "Collapse minor flows", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.CollapseMinorFlows", BindingMode.TwoWay) }
+                }
+            },
+            includeHeader: false,
+            padding: new Thickness(12, 8),
+            radius: new CornerRadius(12));
+    }
+
     private Control BuildAnalyticsFilterStrip(WorkspaceViewModel viewModel)
     {
         var exportCurrent = BuildButton("Export current HTML", new RelayCommand(() => _ = ExportCurrentReportAsync(viewModel, ReportExportFormat.Html)));
@@ -2405,10 +2439,6 @@ public sealed class ShellWindow : Window
             {
                 Children =
                 {
-                    BuildLabeledComboBox("Traffic type", nameof(WorkspaceViewModel.SankeyTrafficTypeNameOptions), nameof(WorkspaceViewModel.SankeyTrafficTypeFilterSelection)),
-                    new CheckBox { Content = "Show unmet demand", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowUnmetDemand", BindingMode.TwoWay) },
-                    new CheckBox { Content = "Show capacity utilisation", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.ShowCapacityUtilisation", BindingMode.TwoWay) },
-                    new CheckBox { Content = "Collapse minor flows", [!ToggleButton.IsCheckedProperty] = new Binding("VisualisationState.CollapseMinorFlows", BindingMode.TwoWay) },
                     BuildLabeledRow("Period", new NumericUpDown
                     {
                         Minimum = 0,

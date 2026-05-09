@@ -58,7 +58,7 @@ ScenarioEdgeTooltipIncludesRouteDetails();
 ScenarioPressureExplanationAppearsInNodeDetails();
 ScenarioTimelineStepUsesEdgeOccupancyForVisualState();
 ScenarioReportsPopulateAndResetAroundTimeline();
-ScenarioAnalyticsViewTrafficTypeSelectorFiltersSankey();
+ScenarioSankeyWorkspaceTrafficTypeSelectorFiltersSankey();
 ScenarioFacilityIso_EmptyOriginsReturnsNoReachableNodes();
 ScenarioFacilityIso_SingleOriginMatchesLegacyIsochrone();
 ScenarioFacilityIso_MultipleOriginsCombineCoverage();
@@ -1707,56 +1707,54 @@ static void ScenarioReportsPopulateAndResetAroundTimeline()
     }
 }
 
-static void ScenarioAnalyticsViewTrafficTypeSelectorFiltersSankey()
+static void ScenarioSankeyWorkspaceTrafficTypeSelectorFiltersSankey()
 {
     var workspace = new WorkspaceViewModel();
     LoadNetwork(workspace, CreateTwoTrafficNetwork());
     workspace.SimulateCommand.Execute(null);
 
-    var analyticsView = new AnalyticsView
-    {
-        DataContext = workspace
-    };
-    analyticsView.ApplyTemplate();
-    analyticsView.Measure(new Size(1280d, 720d));
-    analyticsView.Arrange(new Rect(0d, 0d, 1280d, 720d));
-    var selector = analyticsView.FindControl<ComboBox>("TrafficTypeFilterComboBox")
-        ?? throw new InvalidOperationException("Analytics view did not expose the traffic type selector.");
+    var shell = new MedWNetworkSim.UI.ShellWindow(workspace);
+    workspace.ActiveView = AppView.Sankey;
+    shell.ApplyTemplate();
+    shell.Measure(new Size(1280d, 720d));
+    shell.Arrange(new Rect(0d, 0d, 1280d, 720d));
+    var selector = EnumerateControls(shell.Content).OfType<ComboBox>().FirstOrDefault(c => c.Name == "TrafficTypeFilterComboBox")
+        ?? throw new InvalidOperationException("Sankey view did not expose the traffic type selector.");
     if (!ReferenceEquals(selector.DataContext, workspace))
     {
-        throw new InvalidOperationException("Analytics view traffic type selector did not inherit the workspace DataContext.");
+        throw new InvalidOperationException("Sankey view traffic type selector did not inherit the workspace DataContext.");
     }
 
     selector.ApplyTemplate();
     var options = selector.ItemsSource?.Cast<string>().ToArray() ?? [];
 
-    AssertTrue(options.Contains(WorkspaceViewModel.AllTrafficTypesFilterLabel, StringComparer.Ordinal), "analytics view traffic selector includes all traffic option");
-    AssertTrue(options.Contains("Food", StringComparer.Ordinal), "analytics view traffic selector includes food");
-    AssertTrue(options.Contains("Water", StringComparer.Ordinal), "analytics view traffic selector includes water");
+    AssertTrue(options.Contains(WorkspaceViewModel.AllTrafficTypesFilterLabel, StringComparer.Ordinal), "sankey view traffic selector includes all traffic option");
+    AssertTrue(options.Contains("Food", StringComparer.Ordinal), "sankey view traffic selector includes food");
+    AssertTrue(options.Contains("Water", StringComparer.Ordinal), "sankey view traffic selector includes water");
 
     var baselineVersion = workspace.SankeyVersion;
     WriteSelectedItemThroughBinding(selector, options.Single(option => string.Equals(option, "Food", StringComparison.Ordinal)));
-    AssertTextEqual("Food", selector.SelectedItem?.ToString() ?? string.Empty, "analytics view selection updates combo box");
+    AssertTextEqual("Food", selector.SelectedItem?.ToString() ?? string.Empty, "sankey view selection updates combo box");
 
     var foodVersion = workspace.SankeyVersion;
     var foodSankey = workspace.CurrentSankey;
 
-    AssertTextEqual("Food", workspace.SankeyTrafficTypeFilterSelection, "analytics view selection updates workspace selection");
-    AssertTextEqual("Food", workspace.VisualisationState.ActiveTrafficTypeFilter ?? string.Empty, "analytics view selection updates active traffic filter");
-    AssertTrue(foodVersion > baselineVersion, "analytics view selection invalidates sankey version");
-    AssertTrue(foodSankey.Links.Where(link => !link.IsUnmetDemand).All(link => string.Equals(link.TrafficType, "Food", StringComparison.Ordinal)), "analytics view food filter updates sankey links");
+    AssertTextEqual("Food", workspace.SankeyTrafficTypeFilterSelection, "sankey view selection updates workspace selection");
+    AssertTextEqual("Food", workspace.VisualisationState.ActiveTrafficTypeFilter ?? string.Empty, "sankey view selection updates active traffic filter");
+    AssertTrue(foodVersion > baselineVersion, "sankey view selection invalidates sankey version");
+    AssertTrue(foodSankey.Links.Where(link => !link.IsUnmetDemand).All(link => string.Equals(link.TrafficType, "Food", StringComparison.Ordinal)), "sankey view food filter updates sankey links");
 
     WriteSelectedItemThroughBinding(selector, options.Single(option => string.Equals(option, "Water", StringComparison.Ordinal)));
-    AssertTextEqual("Water", selector.SelectedItem?.ToString() ?? string.Empty, "analytics view water selection updates combo box");
+    AssertTextEqual("Water", selector.SelectedItem?.ToString() ?? string.Empty, "sankey view water selection updates combo box");
 
     var waterVersion = workspace.SankeyVersion;
     var waterSankey = workspace.CurrentSankey;
 
-    AssertTextEqual("Water", workspace.SankeyTrafficTypeFilterSelection, "analytics view water selection updates workspace selection");
-    AssertTextEqual("Water", workspace.VisualisationState.ActiveTrafficTypeFilter ?? string.Empty, "analytics view water selection updates active traffic filter");
-    AssertTrue(waterVersion > foodVersion, "analytics view water selection invalidates sankey version");
-    AssertTrue(!ReferenceEquals(foodSankey, waterSankey), "analytics view water selection rebuilds sankey");
-    AssertTrue(waterSankey.Links.Where(link => !link.IsUnmetDemand).All(link => string.Equals(link.TrafficType, "Water", StringComparison.Ordinal)), "analytics view water filter updates sankey links");
+    AssertTextEqual("Water", workspace.SankeyTrafficTypeFilterSelection, "sankey view water selection updates workspace selection");
+    AssertTextEqual("Water", workspace.VisualisationState.ActiveTrafficTypeFilter ?? string.Empty, "sankey view water selection updates active traffic filter");
+    AssertTrue(waterVersion > foodVersion, "sankey view water selection invalidates sankey version");
+    AssertTrue(!ReferenceEquals(foodSankey, waterSankey), "sankey view water selection rebuilds sankey");
+    AssertTrue(waterSankey.Links.Where(link => !link.IsUnmetDemand).All(link => string.Equals(link.TrafficType, "Water", StringComparison.Ordinal)), "sankey view water filter updates sankey links");
 }
 
 static string WriteTempNetwork(NetworkModel network)

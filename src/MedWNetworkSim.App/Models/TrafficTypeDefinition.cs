@@ -50,4 +50,12 @@ public sealed class TrafficTypeDefinition
     /// before it expires. Null means it does not perish.
     /// </summary>
     public int? PerishabilityPeriods { get; set; }
+
+    public double DefaultUnitSalePrice { get; set; }
+
+    public double DefaultUnitProductionCost { get; set; }
+
+    public double SalesTaxRate { get; set; }
+
+    public double RouteTaxRate { get; set; }
 }

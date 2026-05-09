@@ -122,7 +122,7 @@ public sealed class NetworkSimulationEngine
             }
         }
 
-        return contexts
+        var baseOutcomes = contexts
             .Select(context => new TrafficSimulationOutcome
             {
                 TrafficType = context.TrafficType,
@@ -138,6 +138,8 @@ public sealed class NetworkSimulationEngine
                 Notes = context.Notes.ToList()
             })
             .ToList();
+
+        return new TrafficEconomicSettlementService().Settle(network, baseOutcomes).Outcomes;
     }
 
 

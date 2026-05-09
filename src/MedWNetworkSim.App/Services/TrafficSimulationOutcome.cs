@@ -62,4 +62,14 @@ public sealed class TrafficSimulationOutcome
     /// Gets informational notes describing notable routing conditions or constraints.
     /// </summary>
     public IReadOnlyList<string> Notes { get; init; } = [];
+
+    public double TotalSalesRevenue { get; init; }
+
+    public double TotalTransportCost { get; init; }
+
+    public double TotalProductionCost { get; init; }
+
+    public double TotalTax { get; init; }
+
+    public double TotalProfit { get; init; }
 }

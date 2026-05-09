@@ -107,4 +107,28 @@ public sealed class RouteAllocation
     /// Gets the ordered edge identifiers traversed by the movement path.
     /// </summary>
     public IReadOnlyList<string> PathEdgeIds { get; init; } = [];
+
+    public double SaleUnitPrice { get; init; }
+
+    public double SaleRevenue { get; init; }
+
+    public double TransportCostPerUnit { get; init; }
+
+    public double TotalTransportCost { get; init; }
+
+    public double ProductionCostPerUnit { get; init; }
+
+    public double TotalProductionCost { get; init; }
+
+    public double TaxPerUnit { get; init; }
+
+    public double TotalTax { get; init; }
+
+    public double Profit { get; init; }
+
+    public string? SellerActorId { get; init; }
+
+    public string? BuyerActorId { get; init; }
+
+    public string? TaxAuthorityActorId { get; init; }
 }

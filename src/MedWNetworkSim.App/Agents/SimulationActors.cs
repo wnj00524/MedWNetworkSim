@@ -21,7 +21,7 @@ public abstract class SimulationActorBase : ISimulationActor
     {
         return objective switch
         {
-            SimulationActorObjective.MaximiseProfit => outcomes.Sum(o => o.TotalDelivered * 2d) - outcomes.Sum(o => o.Allocations.Sum(a => a.TotalMovementCost)),
+            SimulationActorObjective.MaximiseProfit => outcomes.Sum(o => o.TotalProfit),
             SimulationActorObjective.MinimiseUnmetDemand => -outcomes.Sum(o => o.UnmetDemand),
             SimulationActorObjective.MinimiseMovementCost => -outcomes.Sum(o => o.Allocations.Sum(a => a.TotalMovementCost)),
             SimulationActorObjective.MaximiseThroughput => outcomes.Sum(o => o.TotalDelivered),
@@ -111,7 +111,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
                 var deliveredRatio = outcome.TotalConsumption <= 0d ? 0d : outcome.TotalDelivered / outcome.TotalConsumption;
 
                 if (profile.Production > 0d &&
-                    deliveredRatio >= 0.85d &&
+                    deliveredRatio >= 0.85d && outcome.TotalProfit > 0d &&
                     HasSpendingCapacity &&
                     IsPermittedByPermissions(SimulationActorActionKind.AdjustProduction, profile.TrafficType, node.Id))
                 {
@@ -126,7 +126,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
                         TrafficType = profile.TrafficType,
                         DeltaValue = delta,
                         Cost = cost,
-                        Reason = "Delivered demand is strong and production is profitable.",
+                        Reason = "Delivered demand is strong and realised margin is positive.",
                         ExpectedEffect = "Increase delivered quantity and revenue.",
                         IsPolicyAction = false
                     });
@@ -162,7 +162,7 @@ public sealed class FirmSimulationActor : SimulationActorBase
                         TrafficType = profile.TrafficType,
                         DeltaValue = -Math.Max(1d, profile.Production * 0.1d),
                         Cost = 0d,
-                        Reason = "Delivered demand collapsed relative to output.",
+                        Reason = "Delivered ratio is poor or margin is negative.",
                         ExpectedEffect = "Reduce overproduction and waste.",
                         IsPolicyAction = false
                     });

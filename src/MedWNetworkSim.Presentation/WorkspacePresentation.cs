@@ -7062,6 +7062,29 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var zoomTier = graphRenderer.GetZoomTier(Viewport.Zoom);
         var projectionViewport = IsMapLayoutLockedForGraph ? BuildGraphProjectionViewport(LastViewportSize) : (MapProjectionViewport?)null;
 
+        var nodeActorControllers = new Dictionary<string, List<string>>(Comparer);
+        var edgeActorControllers = new Dictionary<string, List<string>>(Comparer);
+        foreach (var actor in SimulationActors)
+        {
+            var actorName = string.IsNullOrWhiteSpace(actor.Name) ? actor.Id : actor.Name;
+            if (actor.Capability?.Permissions is { Count: > 0 } permissions)
+            {
+                foreach (var permission in permissions)
+                {
+                    if (permission.NodeId is not null)
+                    {
+                        if (!nodeActorControllers.TryGetValue(permission.NodeId, out var list)) nodeActorControllers[permission.NodeId] = list = [];
+                        if (!list.Contains(actorName)) list.Add(actorName);
+                    }
+                    if (permission.EdgeId is not null)
+                    {
+                        if (!edgeActorControllers.TryGetValue(permission.EdgeId, out var list)) edgeActorControllers[permission.EdgeId] = list = [];
+                        if (!list.Contains(actorName)) list.Add(actorName);
+                    }
+                }
+            }
+        }
+
         var visibleLayers = network.Layers.Where(layer => layer.IsVisible).Select(layer => layer.Id).ToHashSet();
         foreach (var node in network.Nodes.Where(node => visibleLayers.Contains(node.LayerId)))
         {
@@ -7085,7 +7108,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 FillColor = SKColor.Parse("#163149"),
                 StrokeColor = SKColor.Parse("#6AAED6"),
                 Badges = BuildNodeBadges(node),
-                ToolTipText = AppendNodeActorControlText(node.Id, BuildNodeToolTipText(node, detailLines, null)),
+                ToolTipText = AppendNodeActorControlText(node.Id, nodeActorControllers, BuildNodeToolTipText(node, detailLines, null)),
                 HasWarning = false,
                 CoveringFacilities = [],
                 IsFacilityCovered = false,
@@ -7115,7 +7138,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 Time = edge.Time,
                 LoadRatio = 0d,
                 FlowRate = 0d,
-                ToolTipText = AppendEdgeActorControlText(edge.Id, BuildEdgeToolTipText(edge, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty, 0d, null)),
+                ToolTipText = AppendEdgeActorControlText(edge.Id, edgeActorControllers, BuildEdgeToolTipText(edge, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty, 0d, null)),
                 HasWarning = isLocked,
                 IsActorControlled = false
             });
@@ -12192,26 +12215,24 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         return node is null || string.IsNullOrWhiteSpace(node.Name) ? nodeId : node.Name;
     }
 
-    private string AppendNodeActorControlText(string nodeId, string baseText)
+    private string AppendNodeActorControlText(string nodeId, Dictionary<string, List<string>> nodeActorControllers, string baseText)
     {
-        var controllers = SimulationActors
-            .Where(actor => actor.Capability?.Permissions.Any(permission => permission.NodeId is not null && Comparer.Equals(permission.NodeId, nodeId)) == true)
-            .Select(actor => string.IsNullOrWhiteSpace(actor.Name) ? actor.Id : actor.Name)
-            .ToList();
-        return controllers.Count == 0
-            ? $"{baseText}{Environment.NewLine}Actor rules: none"
-            : $"{baseText}{Environment.NewLine}Actor rules: {string.Join(", ", controllers)}";
+        if (!nodeActorControllers.TryGetValue(nodeId, out var controllers) || controllers.Count == 0)
+        {
+            return $"{baseText}{Environment.NewLine}Actor rules: none";
+        }
+
+        return $"{baseText}{Environment.NewLine}Actor rules: {string.Join(", ", controllers)}";
     }
 
-    private string AppendEdgeActorControlText(string edgeId, string baseText)
+    private string AppendEdgeActorControlText(string edgeId, Dictionary<string, List<string>> edgeActorControllers, string baseText)
     {
-        var controllers = SimulationActors
-            .Where(actor => actor.Capability?.Permissions.Any(permission => permission.EdgeId is not null && Comparer.Equals(permission.EdgeId, edgeId)) == true)
-            .Select(actor => string.IsNullOrWhiteSpace(actor.Name) ? actor.Id : actor.Name)
-            .ToList();
-        return controllers.Count == 0
-            ? $"{baseText}{Environment.NewLine}Actor rules: none"
-            : $"{baseText}{Environment.NewLine}Actor rules: {string.Join(", ", controllers)}";
+        if (!edgeActorControllers.TryGetValue(edgeId, out var controllers) || controllers.Count == 0)
+        {
+            return $"{baseText}{Environment.NewLine}Actor rules: none";
+        }
+
+        return $"{baseText}{Environment.NewLine}Actor rules: {string.Join(", ", controllers)}";
     }
 
     private string ResolveEdgeLabel(string edgeId)

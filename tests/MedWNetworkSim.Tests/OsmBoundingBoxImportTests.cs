@@ -99,6 +99,49 @@ public sealed class OsmBoundingBoxImportTests
     }
 
     [Fact]
+    public void Mapper_OneWayResidentialDeadEndSpur_ImportsAsBidirectionalAccess()
+    {
+        var geos = new List<OsmGeo>
+        {
+            new Node { Id = 1, Latitude = 51.5000, Longitude = 0.1000 },
+            new Node { Id = 2, Latitude = 51.5002, Longitude = 0.1002 },
+            new Node { Id = 3, Latitude = 51.5004, Longitude = 0.1004 },
+            new Node { Id = 4, Latitude = 51.5006, Longitude = 0.1006 },
+            new Node { Id = 5, Latitude = 51.5006, Longitude = 0.1012 }
+        };
+
+        geos.Add(new Way
+        {
+            Id = 1000,
+            Nodes = [1, 2, 3],
+            Tags = new TagsCollection
+            {
+                { "highway", "residential" },
+                { "oneway", "yes" },
+                { "name", "Dead End Road" }
+            }
+        });
+        geos.Add(new Way
+        {
+            Id = 1001,
+            Nodes = [3, 4, 5],
+            Tags = new TagsCollection
+            {
+                { "highway", "residential" },
+                { "name", "Connector Road" }
+            }
+        });
+
+        var network = new OsmToSimulationMapper().Map(geos, new OsmImportOptions(true, 100));
+        var spurEdges = network.Edges
+            .Where(edge => edge.Id.StartsWith("osm-way-1000-", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        Assert.NotEmpty(spurEdges);
+        Assert.All(spurEdges, edge => Assert.True(edge.IsBidirectional));
+    }
+
+    [Fact]
     public void Mapper_EdgesAlwaysReferenceExistingNodes()
     {
         var geos = CreateLinearWayGeos(80);

@@ -162,6 +162,46 @@ public sealed class AdvancedSimulationTests
     }
 
     [Fact]
+    public void Simulation_AddsReachabilityWarnings_ForIsolatedProducerAndConsumer()
+    {
+        var network = new NetworkModel
+        {
+            TrafficTypes = [new TrafficTypeDefinition { Name = "Cars" }],
+            Nodes =
+            [
+                new NodeModel
+                {
+                    Id = "producer",
+                    Name = "Strone Road",
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Cars", Production = 10d }]
+                },
+                new NodeModel
+                {
+                    Id = "junction",
+                    Name = "Upton Lane",
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Cars", CanTransship = true }]
+                },
+                new NodeModel
+                {
+                    Id = "consumer",
+                    Name = "Dunbar Road",
+                    TrafficProfiles = [new NodeTrafficProfile { TrafficType = "Cars", Consumption = 10d }]
+                }
+            ],
+            Edges =
+            [
+                new EdgeModel { Id = "producer-spur", FromNodeId = "junction", ToNodeId = "producer", IsBidirectional = false, Time = 1d, Cost = 1d },
+                new EdgeModel { Id = "consumer-spur", FromNodeId = "consumer", ToNodeId = "junction", IsBidirectional = false, Time = 1d, Cost = 1d }
+            ]
+        };
+
+        var outcome = new NetworkSimulationEngine().Simulate(network).Single();
+
+        Assert.Contains(outcome.Notes, note => note.Contains("producer 'Strone Road' has no permitted path", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(outcome.Notes, note => note.Contains("consumer 'Dunbar Road' has no permitted path", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void ScenarioValidation_ReturnsActionableMessages()
     {
         var validator = new ScenarioValidationService();

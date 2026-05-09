@@ -151,6 +151,13 @@ public sealed class OsmToSimulationMapper
         "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link",
         "living_street", "service", "road"
     };
+    private static readonly HashSet<string> AccessSpurHighways = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "residential",
+        "living_street",
+        "service",
+        "road"
+    };
     /// <summary>
     /// Executes the map operation.
     /// </summary>
@@ -207,6 +214,8 @@ public sealed class OsmToSimulationMapper
                 continue;
             }
 
+            var isBidirectional = ShouldImportAsBidirectionalAccessSpur(way, rawIds, adjacency) || !IsOneway(way);
+
             var previousRetainedIndex = -1;
             for (var index = 0; index < rawIds.Length; index++)
             {
@@ -237,7 +246,7 @@ public sealed class OsmToSimulationMapper
                             ToNodeId = ToNodeId(toId),
                             Time = Math.Max(distance, 0.1d),
                             Cost = Math.Max(distance, 0.1d),
-                            IsBidirectional = !IsOneway(way),
+                            IsBidirectional = isBidirectional,
                             RouteType = GetTag(way, "highway"),
                             AccessNotes = BuildAccessNotes(way)
                         });
@@ -797,6 +806,30 @@ public sealed class OsmToSimulationMapper
     }
 
     private static double DegreesToRadians(double value) => value * Math.PI / 180d;
+
+    private static bool ShouldImportAsBidirectionalAccessSpur(
+        Way way,
+        IReadOnlyList<long> rawIds,
+        IReadOnlyDictionary<long, HashSet<long>> adjacency)
+    {
+        if (!IsOneway(way))
+        {
+            return false;
+        }
+
+        var highway = GetTag(way, "highway");
+        if (string.IsNullOrWhiteSpace(highway) || !AccessSpurHighways.Contains(highway))
+        {
+            return false;
+        }
+
+        return IsDeadEnd(rawIds[0], adjacency) || IsDeadEnd(rawIds[^1], adjacency);
+    }
+
+    private static bool IsDeadEnd(long nodeId, IReadOnlyDictionary<long, HashSet<long>> adjacency)
+    {
+        return !adjacency.TryGetValue(nodeId, out var neighbors) || neighbors.Count <= 1;
+    }
 
     private static bool IsOneway(Way way)
     {

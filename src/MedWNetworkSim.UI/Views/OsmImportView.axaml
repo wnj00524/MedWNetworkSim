@@ -10,6 +10,8 @@
           <CheckBox Content="Enable area selection" IsChecked="{Binding IsOsmAreaSelectionEnabled}" />
           <TextBlock Text="Node reduction %" />
           <Slider Minimum="1" Maximum="100" Value="{Binding OsmNodeImportPercentage}" />
+          <TextBlock Text="Connectivity" />
+          <ComboBox ItemsSource="{Binding OsmConnectivityModeOptions}" SelectedItem="{Binding OsmConnectivityMode}" />
           <TextBlock Text="{Binding OsmSelectedAreaText}" TextWrapping="Wrap" />
           <TextBlock Text="{Binding OsmTileCountText}" TextWrapping="Wrap" />
           <TextBlock Text="{Binding OsmValidationMessage}" TextWrapping="Wrap" />

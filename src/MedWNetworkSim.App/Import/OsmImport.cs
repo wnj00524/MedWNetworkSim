@@ -20,6 +20,17 @@ public enum OsmRetentionStrategy
     PreserveShape,
     PreserveJunctionImportance
 }
+
+/// <summary>
+/// Specifies how the importer should resolve disconnected or directionally stranded nodes after simplification.
+/// </summary>
+public enum OsmConnectivityMode
+{
+    None,
+    Merge,
+    Cull,
+    MergeAndCull
+}
 /// <summary>
 /// Represents the osm import options component.
 /// </summary>
@@ -29,7 +40,8 @@ public sealed record OsmImportOptions(
     int NodeRetentionPercentage = 10,
     OsmRetentionStrategy RetentionStrategy = OsmRetentionStrategy.Balanced,
     bool PreserveConnectivity = true,
-    bool PreserveShapeAnchors = true)
+    bool PreserveShapeAnchors = true,
+    OsmConnectivityMode ConnectivityMode = OsmConnectivityMode.None)
 {
     public int ValidatedNodeRetentionPercentage
     {
@@ -264,6 +276,7 @@ public sealed class OsmToSimulationMapper
             .Select(id => CreateNodeModel(id, nodes[id], wayNamesByNode))
             .ToList();
         InitializeProjectedNodePositions(nodeModels);
+        var connectivityReport = ApplyPostImportConnectivity(nodeModels, edgeModels, options.ConnectivityMode);
 
         if (nodeModels.Count == 0 || edgeModels.Count == 0)
         {
@@ -273,7 +286,7 @@ public sealed class OsmToSimulationMapper
         return new NetworkModel
         {
             Name = "Imported OSM network",
-            Description = $"Imported from OpenStreetMap data with {retention.ToString(CultureInfo.InvariantCulture)}% target node retention ({nodeModels.Count.ToString(CultureInfo.InvariantCulture)} of {allRoadNodeIds.Count.ToString(CultureInfo.InvariantCulture)} road nodes kept).",
+            Description = BuildImportDescription(retention, nodeModels.Count, allRoadNodeIds.Count, options.ConnectivityMode, connectivityReport),
             TrafficTypes =
             [
                 new TrafficTypeDefinition
@@ -291,6 +304,43 @@ public sealed class OsmToSimulationMapper
             Nodes = nodeModels,
             Edges = edgeModels
         };
+    }
+
+    private static string BuildImportDescription(
+        int retention,
+        int importedNodeCount,
+        int originalRoadNodeCount,
+        OsmConnectivityMode connectivityMode,
+        ConnectivityRepairReport connectivityReport)
+    {
+        var description = $"Imported from OpenStreetMap data with {retention.ToString(CultureInfo.InvariantCulture)}% target node retention ({importedNodeCount.ToString(CultureInfo.InvariantCulture)} of {originalRoadNodeCount.ToString(CultureInfo.InvariantCulture)} road nodes kept).";
+        if (connectivityMode == OsmConnectivityMode.None)
+        {
+            return description;
+        }
+
+        var adjustments = new List<string>();
+        if (connectivityReport.DirectionalEdgesUpgraded > 0)
+        {
+            adjustments.Add($"{connectivityReport.DirectionalEdgesUpgraded.ToString(CultureInfo.InvariantCulture)} directional edge repair(s)");
+        }
+
+        if (connectivityReport.SyntheticEdgesAdded > 0)
+        {
+            adjustments.Add($"{connectivityReport.SyntheticEdgesAdded.ToString(CultureInfo.InvariantCulture)} synthetic bridge(s)");
+        }
+
+        if (connectivityReport.NodesCulled > 0)
+        {
+            adjustments.Add($"{connectivityReport.NodesCulled.ToString(CultureInfo.InvariantCulture)} node(s) culled");
+        }
+
+        if (adjustments.Count == 0)
+        {
+            adjustments.Add("no post-import repairs required");
+        }
+
+        return $"{description} Connectivity mode {connectivityMode}: {string.Join(", ", adjustments)}.";
     }
 
     private static void InitializeProjectedNodePositions(IReadOnlyList<NodeModel> nodes)
@@ -807,6 +857,468 @@ public sealed class OsmToSimulationMapper
 
     private static double DegreesToRadians(double value) => value * Math.PI / 180d;
 
+    private static ConnectivityRepairReport ApplyPostImportConnectivity(
+        List<NodeModel> nodeModels,
+        List<EdgeModel> edgeModels,
+        OsmConnectivityMode connectivityMode)
+    {
+        if (connectivityMode == OsmConnectivityMode.None || nodeModels.Count == 0 || edgeModels.Count == 0)
+        {
+            return ConnectivityRepairReport.None;
+        }
+
+        var syntheticEdgesAdded = 0;
+        var nodesCulled = 0;
+        var directionalEdgesUpgraded = 0;
+
+        if (connectivityMode is OsmConnectivityMode.Cull or OsmConnectivityMode.MergeAndCull)
+        {
+            nodesCulled += CullDisconnectedComponents(nodeModels, edgeModels);
+        }
+
+        if (connectivityMode is OsmConnectivityMode.Merge or OsmConnectivityMode.MergeAndCull)
+        {
+            directionalEdgesUpgraded += RepairDirectionalReachability(nodeModels, edgeModels);
+        }
+
+        if (connectivityMode == OsmConnectivityMode.Merge)
+        {
+            syntheticEdgesAdded += ConnectDisconnectedComponents(nodeModels, edgeModels);
+            directionalEdgesUpgraded += RepairDirectionalReachability(nodeModels, edgeModels);
+        }
+
+        return new ConnectivityRepairReport(syntheticEdgesAdded, nodesCulled, directionalEdgesUpgraded);
+    }
+
+    private static int CullDisconnectedComponents(List<NodeModel> nodeModels, List<EdgeModel> edgeModels)
+    {
+        var components = GetWeakComponents(nodeModels, edgeModels);
+        if (components.Count <= 1)
+        {
+            return 0;
+        }
+
+        var keep = SelectPrimaryComponent(components, edgeModels);
+        var removedCount = nodeModels.Count(node => !keep.Contains(node.Id));
+        if (removedCount == 0)
+        {
+            return 0;
+        }
+
+        nodeModels.RemoveAll(node => !keep.Contains(node.Id));
+        edgeModels.RemoveAll(edge => !keep.Contains(edge.FromNodeId) || !keep.Contains(edge.ToNodeId));
+        return removedCount;
+    }
+
+    private static int RepairDirectionalReachability(List<NodeModel> nodeModels, List<EdgeModel> edgeModels)
+    {
+        var repairs = 0;
+        foreach (var component in GetWeakComponents(nodeModels, edgeModels))
+        {
+            if (component.Count <= 1)
+            {
+                continue;
+            }
+
+            var anchor = SelectAnchorNode(component, edgeModels);
+            repairs += EnsureReachableFromAnchor(anchor, component, edgeModels);
+            repairs += EnsureReachableToAnchor(anchor, component, edgeModels);
+        }
+
+        return repairs;
+    }
+
+    private static int EnsureReachableFromAnchor(string anchorNodeId, IReadOnlySet<string> component, List<EdgeModel> edgeModels)
+    {
+        var repairs = 0;
+        while (true)
+        {
+            var reachable = TraverseDirected(anchorNodeId, edgeModels, reverse: false, component);
+            var pendingNodeId = component.FirstOrDefault(nodeId => !reachable.Contains(nodeId));
+            if (pendingNodeId is null)
+            {
+                return repairs;
+            }
+
+            repairs += EnsureTraversalAlongPath(FindUndirectedPath(anchorNodeId, pendingNodeId, edgeModels, component), edgeModels);
+        }
+    }
+
+    private static int EnsureReachableToAnchor(string anchorNodeId, IReadOnlySet<string> component, List<EdgeModel> edgeModels)
+    {
+        var repairs = 0;
+        while (true)
+        {
+            var canReachAnchor = TraverseDirected(anchorNodeId, edgeModels, reverse: true, component);
+            var pendingNodeId = component.FirstOrDefault(nodeId => !canReachAnchor.Contains(nodeId));
+            if (pendingNodeId is null)
+            {
+                return repairs;
+            }
+
+            repairs += EnsureTraversalAlongPath(FindUndirectedPath(pendingNodeId, anchorNodeId, edgeModels, component), edgeModels);
+        }
+    }
+
+    private static int EnsureTraversalAlongPath(IReadOnlyList<string> path, List<EdgeModel> edgeModels)
+    {
+        var repairs = 0;
+        for (var index = 1; index < path.Count; index++)
+        {
+            var fromNodeId = path[index - 1];
+            var toNodeId = path[index];
+            if (HasDirectedTraversal(edgeModels, fromNodeId, toNodeId))
+            {
+                continue;
+            }
+
+            var reverseEdge = edgeModels.FirstOrDefault(edge =>
+                string.Equals(edge.FromNodeId, toNodeId, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(edge.ToNodeId, fromNodeId, StringComparison.OrdinalIgnoreCase));
+            if (reverseEdge is not null && !reverseEdge.IsBidirectional)
+            {
+                reverseEdge.IsBidirectional = true;
+                repairs++;
+            }
+        }
+
+        return repairs;
+    }
+
+    private static int ConnectDisconnectedComponents(List<NodeModel> nodeModels, List<EdgeModel> edgeModels)
+    {
+        var addedEdges = 0;
+        var syntheticIndex = 1;
+
+        while (true)
+        {
+            var components = GetWeakComponents(nodeModels, edgeModels);
+            if (components.Count <= 1)
+            {
+                return addedEdges;
+            }
+
+            var primary = SelectPrimaryComponent(components, edgeModels);
+            var nodeById = nodeModels.ToDictionary(node => node.Id, StringComparer.OrdinalIgnoreCase);
+            var primaryNodes = primary.Select(nodeId => nodeById[nodeId]).ToList();
+            var remainingComponents = components.Where(component => !component.SetEquals(primary)).ToList();
+            ClosestComponentConnection? bestConnection = null;
+            foreach (var component in remainingComponents)
+            {
+                var candidate = FindClosestComponentConnection(primaryNodes, component, nodeById);
+                if (candidate is not { } value)
+                {
+                    continue;
+                }
+
+                if (bestConnection is null ||
+                    value.DistanceKm < bestConnection.Value.DistanceKm ||
+                    (Math.Abs(value.DistanceKm - bestConnection.Value.DistanceKm) < 0.000001d &&
+                     string.Compare(value.FromNodeId, bestConnection.Value.FromNodeId, StringComparison.OrdinalIgnoreCase) < 0))
+                {
+                    bestConnection = value;
+                }
+            }
+
+            if (bestConnection is not { } connection)
+            {
+                return addedEdges;
+            }
+
+            edgeModels.Add(new EdgeModel
+            {
+                Id = BuildSyntheticMergeEdgeId(edgeModels, syntheticIndex++),
+                FromNodeId = connection.FromNodeId,
+                ToNodeId = connection.ToNodeId,
+                Time = Math.Max(connection.DistanceKm, 0.1d),
+                Cost = Math.Max(connection.DistanceKm, 0.1d),
+                IsBidirectional = true,
+                RouteType = "synthetic-merge",
+                AccessNotes = "Auto-connected disconnected imported OSM component."
+            });
+            addedEdges++;
+        }
+    }
+
+    private static ClosestComponentConnection? FindClosestComponentConnection(
+        IReadOnlyList<NodeModel> primaryNodes,
+        IReadOnlySet<string> component,
+        IReadOnlyDictionary<string, NodeModel> nodeById)
+    {
+        ClosestComponentConnection? best = null;
+        foreach (var primaryNode in primaryNodes)
+        {
+            foreach (var nodeId in component)
+            {
+                var candidateNode = nodeById[nodeId];
+                var distanceKm = EstimateNodeDistanceKm(primaryNode, candidateNode);
+                if (best is null ||
+                    distanceKm < best.Value.DistanceKm ||
+                    (Math.Abs(distanceKm - best.Value.DistanceKm) < 0.000001d &&
+                     string.Compare(primaryNode.Id, best.Value.FromNodeId, StringComparison.OrdinalIgnoreCase) < 0))
+                {
+                    best = new ClosestComponentConnection(primaryNode.Id, candidateNode.Id, distanceKm);
+                }
+            }
+        }
+
+        return best;
+    }
+
+    private static string BuildSyntheticMergeEdgeId(IReadOnlyCollection<EdgeModel> edgeModels, int startIndex)
+    {
+        var existingIds = edgeModels.Select(edge => edge.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var index = startIndex;
+        while (true)
+        {
+            var candidate = $"osm-synthetic-merge-{index.ToString(CultureInfo.InvariantCulture)}";
+            if (!existingIds.Contains(candidate))
+            {
+                return candidate;
+            }
+
+            index++;
+        }
+    }
+
+    private static bool HasDirectedTraversal(IEnumerable<EdgeModel> edgeModels, string fromNodeId, string toNodeId)
+    {
+        return edgeModels.Any(edge =>
+            (string.Equals(edge.FromNodeId, fromNodeId, StringComparison.OrdinalIgnoreCase) &&
+             string.Equals(edge.ToNodeId, toNodeId, StringComparison.OrdinalIgnoreCase)) ||
+            (edge.IsBidirectional &&
+             string.Equals(edge.FromNodeId, toNodeId, StringComparison.OrdinalIgnoreCase) &&
+             string.Equals(edge.ToNodeId, fromNodeId, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static HashSet<string> TraverseDirected(
+        string startNodeId,
+        IReadOnlyList<EdgeModel> edgeModels,
+        bool reverse,
+        IReadOnlySet<string> component)
+    {
+        var adjacency = BuildDirectedAdjacency(edgeModels, reverse, component);
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { startNodeId };
+        var queue = new Queue<string>();
+        queue.Enqueue(startNodeId);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (!adjacency.TryGetValue(current, out var neighbors))
+            {
+                continue;
+            }
+
+            foreach (var neighbor in neighbors)
+            {
+                if (visited.Add(neighbor))
+                {
+                    queue.Enqueue(neighbor);
+                }
+            }
+        }
+
+        return visited;
+    }
+
+    private static IReadOnlyList<string> FindUndirectedPath(
+        string startNodeId,
+        string endNodeId,
+        IReadOnlyList<EdgeModel> edgeModels,
+        IReadOnlySet<string> component)
+    {
+        var adjacency = BuildUndirectedAdjacency(edgeModels, component);
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { startNodeId };
+        var previous = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var queue = new Queue<string>();
+        queue.Enqueue(startNodeId);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (string.Equals(current, endNodeId, StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+
+            if (!adjacency.TryGetValue(current, out var neighbors))
+            {
+                continue;
+            }
+
+            foreach (var neighbor in neighbors)
+            {
+                if (!visited.Add(neighbor))
+                {
+                    continue;
+                }
+
+                previous[neighbor] = current;
+                queue.Enqueue(neighbor);
+            }
+        }
+
+        if (!visited.Contains(endNodeId))
+        {
+            return [startNodeId];
+        }
+
+        var path = new List<string> { endNodeId };
+        var cursor = endNodeId;
+        while (!string.Equals(cursor, startNodeId, StringComparison.OrdinalIgnoreCase))
+        {
+            cursor = previous[cursor];
+            path.Add(cursor);
+        }
+
+        path.Reverse();
+        return path;
+    }
+
+    private static List<HashSet<string>> GetWeakComponents(IReadOnlyList<NodeModel> nodeModels, IReadOnlyList<EdgeModel> edgeModels)
+    {
+        var nodeIds = nodeModels.Select(node => node.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+        var componentNodes = nodeIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var adjacency = BuildUndirectedAdjacency(edgeModels, componentNodes);
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var components = new List<HashSet<string>>();
+
+        foreach (var nodeId in nodeIds)
+        {
+            if (!visited.Add(nodeId))
+            {
+                continue;
+            }
+
+            var component = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { nodeId };
+            var queue = new Queue<string>();
+            queue.Enqueue(nodeId);
+
+            while (queue.Count > 0)
+            {
+                var current = queue.Dequeue();
+                if (!adjacency.TryGetValue(current, out var neighbors))
+                {
+                    continue;
+                }
+
+                foreach (var neighbor in neighbors)
+                {
+                    if (visited.Add(neighbor))
+                    {
+                        component.Add(neighbor);
+                        queue.Enqueue(neighbor);
+                    }
+                }
+            }
+
+            components.Add(component);
+        }
+
+        return components;
+    }
+
+    private static HashSet<string> SelectPrimaryComponent(IReadOnlyList<HashSet<string>> components, IReadOnlyList<EdgeModel> edgeModels)
+    {
+        return components
+            .OrderByDescending(component => component.Count)
+            .ThenByDescending(component => edgeModels.Count(edge => component.Contains(edge.FromNodeId) && component.Contains(edge.ToNodeId)))
+            .ThenBy(component => component.OrderBy(id => id, StringComparer.OrdinalIgnoreCase).First(), StringComparer.OrdinalIgnoreCase)
+            .First();
+    }
+
+    private static string SelectAnchorNode(IReadOnlySet<string> component, IReadOnlyList<EdgeModel> edgeModels)
+    {
+        var degreeByNodeId = component.ToDictionary(nodeId => nodeId, _ => 0, StringComparer.OrdinalIgnoreCase);
+        foreach (var edge in edgeModels)
+        {
+            if (component.Contains(edge.FromNodeId))
+            {
+                degreeByNodeId[edge.FromNodeId]++;
+            }
+
+            if (component.Contains(edge.ToNodeId))
+            {
+                degreeByNodeId[edge.ToNodeId]++;
+            }
+        }
+
+        return degreeByNodeId
+            .OrderByDescending(pair => pair.Value)
+            .ThenBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(pair => pair.Key)
+            .First();
+    }
+
+    private static Dictionary<string, HashSet<string>> BuildUndirectedAdjacency(
+        IReadOnlyList<EdgeModel> edgeModels,
+        IReadOnlySet<string> component)
+    {
+        var adjacency = component.ToDictionary(nodeId => nodeId, _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
+        foreach (var edge in edgeModels)
+        {
+            if (!component.Contains(edge.FromNodeId) || !component.Contains(edge.ToNodeId))
+            {
+                continue;
+            }
+
+            adjacency[edge.FromNodeId].Add(edge.ToNodeId);
+            adjacency[edge.ToNodeId].Add(edge.FromNodeId);
+        }
+
+        return adjacency;
+    }
+
+    private static Dictionary<string, HashSet<string>> BuildDirectedAdjacency(
+        IReadOnlyList<EdgeModel> edgeModels,
+        bool reverse,
+        IReadOnlySet<string> component)
+    {
+        var adjacency = component.ToDictionary(nodeId => nodeId, _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
+        foreach (var edge in edgeModels)
+        {
+            if (!component.Contains(edge.FromNodeId) || !component.Contains(edge.ToNodeId))
+            {
+                continue;
+            }
+
+            AddEdge(edge.FromNodeId, edge.ToNodeId);
+            if (edge.IsBidirectional)
+            {
+                AddEdge(edge.ToNodeId, edge.FromNodeId);
+            }
+        }
+
+        return adjacency;
+
+        void AddEdge(string fromNodeId, string toNodeId)
+        {
+            var source = reverse ? toNodeId : fromNodeId;
+            var target = reverse ? fromNodeId : toNodeId;
+            adjacency[source].Add(target);
+        }
+    }
+
+    private static double EstimateNodeDistanceKm(NodeModel a, NodeModel b)
+    {
+        if (a.Latitude.HasValue && a.Longitude.HasValue && b.Latitude.HasValue && b.Longitude.HasValue)
+        {
+            return HaversineKm(
+                new Node { Latitude = a.Latitude.Value, Longitude = a.Longitude.Value },
+                new Node { Latitude = b.Latitude.Value, Longitude = b.Longitude.Value });
+        }
+
+        if (a.X.HasValue && a.Y.HasValue && b.X.HasValue && b.Y.HasValue)
+        {
+            var dx = a.X.Value - b.X.Value;
+            var dy = a.Y.Value - b.Y.Value;
+            return Math.Sqrt((dx * dx) + (dy * dy));
+        }
+
+        return 0.1d;
+    }
+
     private static bool ShouldImportAsBidirectionalAccessSpur(
         Way way,
         IReadOnlyList<long> rawIds,
@@ -863,4 +1375,11 @@ public sealed class OsmToSimulationMapper
 
         return null;
     }
+
+    private readonly record struct ConnectivityRepairReport(int SyntheticEdgesAdded, int NodesCulled, int DirectionalEdgesUpgraded)
+    {
+        public static ConnectivityRepairReport None => new(0, 0, 0);
+    }
+
+    private readonly record struct ClosestComponentConnection(string FromNodeId, string ToNodeId, double DistanceKm);
 }

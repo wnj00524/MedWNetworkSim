@@ -1,5 +1,6 @@
 using System.Text;
 using MedWNetworkSim.App.Import;
+using MedWNetworkSim.App.Models;
 using MedWNetworkSim.Presentation;
 using MedWNetworkSim.Rendering;
 using MedWNetworkSim.Rendering.Geo;
@@ -139,6 +140,110 @@ public sealed class OsmBoundingBoxImportTests
 
         Assert.NotEmpty(spurEdges);
         Assert.All(spurEdges, edge => Assert.True(edge.IsBidirectional));
+    }
+
+    [Fact]
+    public void Mapper_MergeConnectivity_RepairsDirectedReachabilityInsideMainComponent()
+    {
+        var geos = new List<OsmGeo>
+        {
+            new Node { Id = 1, Latitude = 51.5000, Longitude = 0.1000 },
+            new Node { Id = 2, Latitude = 51.5002, Longitude = 0.1002 },
+            new Node { Id = 3, Latitude = 51.5004, Longitude = 0.1004 },
+            new Node { Id = 4, Latitude = 51.5006, Longitude = 0.1006 }
+        };
+
+        geos.Add(new Way
+        {
+            Id = 2000,
+            Nodes = [1, 2, 3],
+            Tags = new TagsCollection
+            {
+                { "highway", "primary" },
+                { "oneway", "yes" },
+                { "name", "Main Corridor" }
+            }
+        });
+        geos.Add(new Way
+        {
+            Id = 2001,
+            Nodes = [3, 4],
+            Tags = new TagsCollection
+            {
+                { "highway", "residential" },
+                { "name", "Connector" }
+            }
+        });
+
+        var network = new OsmToSimulationMapper().Map(geos, new OsmImportOptions(true, 100, ConnectivityMode: OsmConnectivityMode.Merge));
+
+        var repairedEdge = Assert.Single(network.Edges, edge =>
+            edge.Id.StartsWith("osm-way-2000-", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(edge.FromNodeId, "osm-node-1", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(edge.ToNodeId, "osm-node-2", StringComparison.OrdinalIgnoreCase));
+
+        Assert.True(repairedEdge.IsBidirectional);
+    }
+
+    [Fact]
+    public void Mapper_CullConnectivity_RemovesDisconnectedClusters()
+    {
+        var geos = new List<OsmGeo>
+        {
+            new Node { Id = 1, Latitude = 51.5000, Longitude = 0.1000 },
+            new Node { Id = 2, Latitude = 51.5002, Longitude = 0.1002 },
+            new Node { Id = 3, Latitude = 51.5100, Longitude = 0.1100 },
+            new Node { Id = 4, Latitude = 51.5102, Longitude = 0.1102 }
+        };
+
+        geos.Add(new Way
+        {
+            Id = 3000,
+            Nodes = [1, 2],
+            Tags = new TagsCollection { { "highway", "residential" }, { "name", "Main Component" } }
+        });
+        geos.Add(new Way
+        {
+            Id = 3001,
+            Nodes = [3, 4],
+            Tags = new TagsCollection { { "highway", "residential" }, { "name", "Orphan Component" } }
+        });
+
+        var network = new OsmToSimulationMapper().Map(geos, new OsmImportOptions(true, 100, ConnectivityMode: OsmConnectivityMode.Cull));
+
+        Assert.Equal(2, network.Nodes.Count);
+        Assert.DoesNotContain(network.Nodes, node => string.Equals(node.Id, "osm-node-3", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(network.Nodes, node => string.Equals(node.Id, "osm-node-4", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Mapper_MergeConnectivity_BridgesDisconnectedClusters()
+    {
+        var geos = new List<OsmGeo>
+        {
+            new Node { Id = 1, Latitude = 51.5000, Longitude = 0.1000 },
+            new Node { Id = 2, Latitude = 51.5002, Longitude = 0.1002 },
+            new Node { Id = 3, Latitude = 51.5010, Longitude = 0.1010 },
+            new Node { Id = 4, Latitude = 51.5012, Longitude = 0.1012 }
+        };
+
+        geos.Add(new Way
+        {
+            Id = 4000,
+            Nodes = [1, 2],
+            Tags = new TagsCollection { { "highway", "residential" }, { "name", "West Component" } }
+        });
+        geos.Add(new Way
+        {
+            Id = 4001,
+            Nodes = [3, 4],
+            Tags = new TagsCollection { { "highway", "residential" }, { "name", "East Component" } }
+        });
+
+        var network = new OsmToSimulationMapper().Map(geos, new OsmImportOptions(true, 100, ConnectivityMode: OsmConnectivityMode.Merge));
+
+        Assert.Contains(network.Edges, edge => string.Equals(edge.RouteType, "synthetic-merge", StringComparison.OrdinalIgnoreCase) && edge.IsBidirectional);
+        Assert.Single(GetWeakComponents(network));
     }
 
     [Fact]
@@ -413,6 +518,46 @@ public sealed class OsmBoundingBoxImportTests
     }
 
     private static double DegreesToRadians(double value) => value * Math.PI / 180d;
+
+    private static IReadOnlyList<HashSet<string>> GetWeakComponents(NetworkModel network)
+    {
+        var adjacency = network.Nodes.ToDictionary(node => node.Id, _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
+        foreach (var edge in network.Edges)
+        {
+            adjacency[edge.FromNodeId].Add(edge.ToNodeId);
+            adjacency[edge.ToNodeId].Add(edge.FromNodeId);
+        }
+
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var components = new List<HashSet<string>>();
+        foreach (var node in network.Nodes)
+        {
+            if (!visited.Add(node.Id))
+            {
+                continue;
+            }
+
+            var component = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { node.Id };
+            var queue = new Queue<string>();
+            queue.Enqueue(node.Id);
+            while (queue.Count > 0)
+            {
+                var current = queue.Dequeue();
+                foreach (var neighbor in adjacency[current])
+                {
+                    if (visited.Add(neighbor))
+                    {
+                        component.Add(neighbor);
+                        queue.Enqueue(neighbor);
+                    }
+                }
+            }
+
+            components.Add(component);
+        }
+
+        return components;
+    }
 
     private sealed class FakeOsmApiClient(string xml) : IOsmApiClient
     {

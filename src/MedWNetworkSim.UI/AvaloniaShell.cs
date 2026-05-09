@@ -2147,6 +2147,7 @@ public sealed class ShellWindow : Window
                     [!ToggleButton.IsCheckedProperty] = new Binding(nameof(WorkspaceViewModel.IsOsmAreaSelectionEnabled), BindingMode.TwoWay)
                 },
                 BuildLabeledRow("Node reduction %", reductionSlider),
+                BuildLabeledComboBox("Connectivity", nameof(WorkspaceViewModel.OsmConnectivityModeOptions), nameof(WorkspaceViewModel.OsmConnectivityMode)),
                 BuildReadOnlyRow("Selected area", nameof(WorkspaceViewModel.OsmSelectedAreaText)),
                 BuildReadOnlyRow("Tile estimate", nameof(WorkspaceViewModel.OsmTileCountText)),
                 BuildReadOnlyRow("Validation", nameof(WorkspaceViewModel.OsmValidationMessage)),
@@ -4359,6 +4360,7 @@ public sealed class ShellWindow : Window
                         BuildReadOnlyRow("Tile estimate", nameof(WorkspaceViewModel.OsmTileCountText)),
                         BuildReadOnlyRow("Validation", nameof(WorkspaceViewModel.OsmValidationMessage)),
                         BuildLabeledComboBox("Nodes to import", nameof(WorkspaceViewModel.OsmNodeImportPercentagePresets), nameof(WorkspaceViewModel.OsmNodeImportPercentage)),
+                        BuildLabeledComboBox("Connectivity", nameof(WorkspaceViewModel.OsmConnectivityModeOptions), nameof(WorkspaceViewModel.OsmConnectivityMode)),
                         new StackPanel
                         {
                             Orientation = Orientation.Horizontal,

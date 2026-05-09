@@ -2860,9 +2860,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private string osmEastText = string.Empty;
     private string osmNorthText = string.Empty;
     private int osmNodeImportPercentage = 10;
+    private OsmConnectivityMode osmConnectivityMode = OsmConnectivityMode.MergeAndCull;
     private string osmValidationMessage = "Drag to select an area.";
     private bool isOsmDownloadInProgress;
-    private OsmImportOptions osmImportOptions = new(true, 10, OsmRetentionStrategy.Balanced, true, true);
+    private OsmImportOptions osmImportOptions = new(true, 10, OsmRetentionStrategy.Balanced, true, true, OsmConnectivityMode.MergeAndCull);
     private readonly HashSet<string> highlightedNodeIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> highlightedEdgeIds = new(StringComparer.OrdinalIgnoreCase);
     private SimulationActorState? selectedSimulationActor;
@@ -3522,6 +3523,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     /// </summary>
 
     public IReadOnlyList<int> OsmNodeImportPercentagePresets { get; } = [1, 2, 5, 10, 25, 50, 100];
+    public Array OsmConnectivityModeOptions { get; } = Enum.GetValues(typeof(OsmConnectivityMode));
+    public OsmConnectivityMode OsmConnectivityMode
+    {
+        get => osmConnectivityMode;
+        set
+        {
+            if (SetProperty(ref osmConnectivityMode, value))
+            {
+                osmImportOptions = osmImportOptions with { ConnectivityMode = value };
+            }
+        }
+    }
     /// <summary>
     /// Gets or sets the osm validation message.
     /// </summary>

@@ -7180,9 +7180,12 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             Scene.Nodes.Add(sceneNode);
         }
 
+        // Bolt: Optimize O(N^2) layer lookup to O(1)
+        var layersById = network.Layers.ToDictionary(layer => layer.Id);
+
         foreach (var edge in network.Edges.Where(edge => visibleLayers.Contains(edge.LayerId)))
         {
-            var layer = network.Layers.FirstOrDefault(item => item.Id == edge.LayerId);
+            layersById.TryGetValue(edge.LayerId, out var layer);
             var isLocked = layer?.IsLocked == true;
             Scene.Edges.Add(new GraphEdgeSceneItem
             {

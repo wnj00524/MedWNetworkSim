@@ -2896,6 +2896,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     ];
     private IReadOnlyList<AgentProfitSeriesViewModel> agentProfitSeries = [];
     private NetworkHealthSummary networkHealthSummary = NetworkHealthSummary.Empty;
+    private IReadOnlyList<NetworkIssue> lastDetectedIssues = [];
     private string selectedDashboardPeriod = "Current";
     private string selectedTrafficTypeFilter = "All";
 
@@ -3233,24 +3234,42 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     /// Gets or sets the network insights.
     /// </summary>
     public ObservableCollection<NetworkInsight> NetworkInsights { get; }
+    /// <summary>
+    /// Gets the dashboard network health summary.
+    /// </summary>
     public NetworkHealthSummary NetworkHealthSummary
     {
         get => networkHealthSummary;
         private set => SetProperty(ref networkHealthSummary, value);
     }
 
+    /// <summary>
+    /// Gets the dashboard bottleneck summaries.
+    /// </summary>
     public ObservableCollection<BottleneckSummary> Bottlenecks { get; }
 
+    /// <summary>
+    /// Gets the dashboard insight cards.
+    /// </summary>
     public ObservableCollection<InsightCardModel> InsightCards { get; }
 
+    /// <summary>
+    /// Gets the dashboard timeline metrics.
+    /// </summary>
     public ObservableCollection<TimelineMetricPoint> TimelineMetrics { get; }
 
+    /// <summary>
+    /// Gets or sets the dashboard period selection.
+    /// </summary>
     public string SelectedDashboardPeriod
     {
         get => selectedDashboardPeriod;
         set => SetProperty(ref selectedDashboardPeriod, string.IsNullOrWhiteSpace(value) ? "Current" : value);
     }
 
+    /// <summary>
+    /// Gets or sets the dashboard traffic type filter.
+    /// </summary>
     public string SelectedTrafficTypeFilter
     {
         get => selectedTrafficTypeFilter;
@@ -8795,7 +8814,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             : lastOutcomes.Where(o => Comparer.Equals(o.TrafficType, SelectedTrafficTypeFilter)).ToList())
             ?? [];
 
-        NetworkHealthSummary = DashboardSummaryCalculator.ComputeHealthSummary(filteredOutcomes, []);
+        NetworkHealthSummary = DashboardSummaryCalculator.ComputeHealthSummary(filteredOutcomes, lastDetectedIssues);
 
         Bottlenecks.Clear();
         foreach (var issue in TopIssues.Take(10))
@@ -8823,23 +8842,20 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         }
 
         TimelineMetrics.Clear();
-        foreach (var point in lastOutcomes
-            .SelectMany(outcome => outcome.Allocations ?? [])
-            .GroupBy(a => a.Period)
-            .OrderBy(g => g.Key)
-            .Take(240))
+        foreach (var metric in network.ActorMetrics.OrderBy(m => m.Tick).Take(240))
         {
             TimelineMetrics.Add(new TimelineMetricPoint
             {
-                Period = point.Key,
-                ServedDemand = point.Sum(x => Math.Max(0d, x.Quantity)),
-                UnmetDemand = 0d
+                Period = metric.Tick,
+                ServedDemand = metric.TotalDelivered,
+                UnmetDemand = metric.TotalUnmetDemand
             });
         }
     }
 
     private void PopulateTopIssues(IReadOnlyList<NetworkIssue> issues)
     {
+        lastDetectedIssues = issues;
         TopIssues.Clear();
         TopIssueAdvisories.Clear();
         var unmappedIssueCount = 0;

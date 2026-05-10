@@ -86,8 +86,8 @@ public static class DashboardSummaryCalculator
         {
             ServedDemandRatio = totalDemand <= 0d ? 0d : totalServed / totalDemand,
             UnmetDemandRatio = totalDemand <= 0d ? 0d : Math.Max(0d, totalDemand - totalServed) / totalDemand,
-            AverageRouteCost = allocations.Count == 0 ? 0d : allocations.Average(a => a.DeliveredCostPerUnit),
-            AverageRouteTime = allocations.Count == 0 ? 0d : allocations.Average(a => a.TotalTime)
+            AverageRouteCost = totalServed <= 0d ? 0d : allocations.Sum(a => a.DeliveredCostPerUnit * a.Quantity) / totalServed,
+            AverageRouteTime = totalServed <= 0d ? 0d : allocations.Sum(a => a.TotalTime * a.Quantity) / totalServed
         };
     }
 }

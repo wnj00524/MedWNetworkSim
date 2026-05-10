@@ -28,6 +28,7 @@ using MedWNetworkSim.Rendering.Geo;
 using MedWNetworkSim.Rendering.VisualAnalytics.Sankey;
 using MedWNetworkSim.App.VisualAnalytics;
 using MedWNetworkSim.App.Insights;
+using MedWNetworkSim.UI.Controls;
 using MedWNetworkSim.App.VisualAnalytics.Sankey;
 using MedWNetworkSim.UI.Controls;
 using SkiaSharp;
@@ -3484,24 +3485,51 @@ public sealed class ShellWindow : Window
 
     private Control BuildReportsWorkspace(WorkspaceViewModel viewModel)
     {
+        var periodCombo = new ComboBox
+        {
+            ItemsSource = new[] { "Current", "Recent", "All" },
+            [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(WorkspaceViewModel.SelectedDashboardPeriod), BindingMode.TwoWay),
+            MinWidth = 120
+        };
+        var typeCombo = new ComboBox
+        {
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.SankeyTrafficTypeNameOptions)),
+            [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(WorkspaceViewModel.SelectedTrafficTypeFilter), BindingMode.TwoWay),
+            MinWidth = 140
+        };
+
         var exports = new WrapPanel
         {
+            Spacing = 8,
             Children =
             {
+                BuildLabeledRow("Period", periodCombo),
+                BuildLabeledRow("Traffic", typeCombo),
                 BuildButton("Export Current (HTML)", new RelayCommand(() => _ = ExportCurrentReportAsync(viewModel, ReportExportFormat.Html)), isPrimary: true),
                 BuildButton("Export Current (CSV)", new RelayCommand(() => _ = ExportCurrentReportAsync(viewModel, ReportExportFormat.Csv))),
                 BuildButton("Export Timeline (CSV)", new RelayCommand(() => _ = ExportTimelineReportAsync(viewModel, ReportExportFormat.Csv)))
             }
         };
 
-        var metrics = new ItemsControl
+        var commandCentre = new Grid
         {
-            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(WorkspaceViewModel.ReportMetrics)),
-            ItemTemplate = new FuncDataTemplate<ReportMetricViewModel>((metric, _) =>
-                metric is null
-                    ? new TextBlock()
-                    : BuildKpiCard(metric.Label, metric.Value, "Open detail"))
+            ColumnDefinitions = new ColumnDefinitions("1.35*,0.95*"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,*"),
+            ColumnSpacing = 12,
+            RowSpacing = 12,
+            Children =
+            {
+                new HealthScoreCard(viewModel),
+                new BottleneckLeaderboard(viewModel),
+                new TimelineStrip(viewModel),
+                new InsightRail(viewModel)
+            }
         };
+        Grid.SetColumn(commandCentre.Children[1], 1);
+        Grid.SetRow(commandCentre.Children[2], 1);
+        Grid.SetColumnSpan(commandCentre.Children[2], 2);
+        Grid.SetRow(commandCentre.Children[3], 2);
+        Grid.SetColumnSpan(commandCentre.Children[3], 2);
 
         var body = new Grid
         {
@@ -3510,7 +3538,7 @@ public sealed class ShellWindow : Window
             Margin = new Thickness(12),
             Children =
             {
-                BuildSectionTitle("Reports", "Exports and tabular details live away from the Network canvas."),
+                BuildSectionTitle("Network Command Centre", "Health, bottlenecks, insights, and timeline context from current simulation state."),
                 exports,
                 new ScrollViewer
                 {
@@ -3521,7 +3549,7 @@ public sealed class ShellWindow : Window
                         Spacing = 12,
                         Children =
                         {
-                            metrics,
+                            commandCentre,
                             BuildAgentProfitReportCard(viewModel),
                             BuildDashboardPanel(
                                 new GraphCanvasControl

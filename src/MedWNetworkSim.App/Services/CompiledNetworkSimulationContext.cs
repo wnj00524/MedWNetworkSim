@@ -1,5 +1,4 @@
 using System.Collections.Frozen;
-using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
@@ -195,7 +194,6 @@ internal sealed class SimulationExecutionCache
             DefaultAllocationMode = network.DefaultAllocationMode,
             SimulationSeed = network.SimulationSeed,
             FacilityModeEnabled = network.FacilityModeEnabled,
-            AgentMode = network.AgentMode,
             LimitMeetingNodeDemandBySellLocalPermission = network.LimitMeetingNodeDemandBySellLocalPermission,
             LockLayoutToMap = network.LockLayoutToMap,
             FacilityCoverageThreshold = network.FacilityCoverageThreshold,
@@ -206,14 +204,7 @@ internal sealed class SimulationExecutionCache
             TimelineEvents = network.TimelineEvents,
             EdgeTrafficPermissionDefaults = network.EdgeTrafficPermissionDefaults,
             RouteTaxRules = network.RouteTaxRules,
-            Subnetworks = network.Subnetworks,
-            Actors = network.Actors,
-            ActorDecisions = network.ActorDecisions,
-            ActorMetrics = network.ActorMetrics,
-            ActorActionOutcomes = network.ActorActionOutcomes,
-            AgentActionLogs = network.AgentActionLogs,
-            PreAgentMutationNetwork = network.PreAgentMutationNetwork,
-            ActorTick = network.ActorTick
+            Subnetworks = network.Subnetworks
         };
 
         clone.Nodes = new List<NodeModel>(network.Nodes.Count);
@@ -255,7 +246,6 @@ internal sealed class SimulationExecutionCache
             FacilityCapacity = node.FacilityCapacity,
             PlaceType = node.PlaceType,
             LoreDescription = node.LoreDescription,
-            ControllingActor = node.ControllingActor,
             Tags = [.. node.Tags],
             TemplateId = node.TemplateId,
             TrafficProfiles = [.. node.TrafficProfiles.Select(CloneProfile)]
@@ -503,14 +493,14 @@ public sealed class CompiledNetworkSimulationContext
             {
                 var profile = node.TrafficProfiles.FirstOrDefault(candidate => Comparer.Equals(candidate.TrafficType, trafficType));
                 profiles[node.Id] = profile;
-                if (SimulationActorSellLocalPermissionResolver.CanReceiveMeetingNodeDemand(effectiveNetwork, node.Id, trafficType))
+                if (LocalTrafficPermissionResolver.CanReceiveMeetingNodeDemand(effectiveNetwork, node.Id, trafficType))
                 {
                     eligibleNodes.Add(node.Id);
                 }
             }
 
             profileByTraffic[trafficType] = profiles.ToFrozenDictionary(Comparer);
-            permittedSellers[trafficType] = SimulationActorSellLocalPermissionResolver
+            permittedSellers[trafficType] = LocalTrafficPermissionResolver
                 .BuildPermittedSellerNodeSet(effectiveNetwork, trafficType)
                 .ToFrozenSet(Comparer);
             meetingDemandEligible[trafficType] = eligibleNodes.ToFrozenSet(Comparer);
@@ -654,7 +644,6 @@ internal static class NetworkRevisionHasher
         hash.Add(network.SimulationSeed);
         hash.Add(network.TimelineLoopLength.GetValueOrDefault());
         hash.Add((int)network.DefaultAllocationMode);
-        hash.Add((int)network.AgentMode);
         hash.Add(network.LimitMeetingNodeDemandBySellLocalPermission);
 
         foreach (var traffic in network.TrafficTypes)
@@ -692,7 +681,6 @@ internal static class NetworkRevisionHasher
             hash.Add(node.Y.GetValueOrDefault());
             hash.Add(node.IsFacility);
             hash.Add(node.FacilityCapacity.GetValueOrDefault());
-            hash.Add(node.ControllingActor ?? string.Empty, Comparer);
             foreach (var profile in node.TrafficProfiles)
             {
                 hash.Add(profile.TrafficType ?? string.Empty, Comparer);
@@ -765,17 +753,6 @@ internal static class NetworkRevisionHasher
             hash.Add(rule.TaxAuthorityActorId ?? string.Empty, Comparer);
             hash.Add(rule.TaxRate);
             hash.Add(rule.IsActive);
-        }
-
-        foreach (var actor in network.Actors)
-        {
-            hash.Add(actor.Id ?? string.Empty, Comparer);
-            hash.Add(actor.IsEnabled);
-            hash.Add((int)actor.Kind);
-            foreach (var nodeId in actor.ControlledNodeIds)
-            {
-                hash.Add(nodeId ?? string.Empty, Comparer);
-            }
         }
 
         return hash.ToHashCode();

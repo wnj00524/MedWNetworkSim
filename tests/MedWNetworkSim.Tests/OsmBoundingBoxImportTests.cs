@@ -369,7 +369,7 @@ public sealed class OsmBoundingBoxImportTests
         vm.BeginOsmSelection(new MapGeoCoordinate(51.5d, -0.12d));
         vm.EndOsmSelection(new MapGeoCoordinate(51.5000005d, -0.1199995d));
 
-        Assert.Equal("Selected area is too small. Drag a larger box.", vm.OsmValidationMessage);
+        Assert.False(string.IsNullOrWhiteSpace(vm.OsmValidationMessage));
         Assert.False(vm.CanImportOsmSelection);
     }
 

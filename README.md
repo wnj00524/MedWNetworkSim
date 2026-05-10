@@ -1,8 +1,8 @@
 # MedWNetworkSim
 
-MedWNetworkSim is a .NET 8 network simulation and analysis tool for modelling constrained movement through graph-based systems. It focuses on traffic or resource types moving between nodes over edges/routes while accounting for capacity, cost, timing, routing, storage, production, consumption, policy, and scenario constraints.
+MedWNetworkSim is a .NET 8 network and traffic-flow simulation tool for modelling constrained movement through graph-based systems. It focuses on traffic or resource types moving between nodes over edges and routes while accounting for capacity, cost, timing, routing, storage, production, consumption, permissions, and scenario constraints.
 
-The current solution is centred on an Avalonia desktop application. Shared presentation, interaction, rendering, and UI libraries support the Avalonia shell, while legacy model, import, service, visual analytics, insight, agent, and geospatial code remains under `src/MedWNetworkSim.App` and is linked into the presentation project.
+The current solution is centred on an Avalonia desktop application. Shared presentation, interaction, rendering, and UI libraries support the Avalonia shell, while legacy model, import, service, visual analytics, insight, and geospatial code remains under `src/MedWNetworkSim.App` and is linked into the presentation project.
 
 ## Current status
 
@@ -25,7 +25,7 @@ It can be used to inspect or reason about:
 - multi-period timeline dynamics
 - scenario events such as failures, closures, demand spikes, production/consumption changes, and route cost changes
 - policy-aware routing and blocked flows
-- economic summaries, agent activity, and issue explanations
+- economic summaries, scenario impacts, and issue explanations
 
 ## Repository layout
 
@@ -55,7 +55,7 @@ It can be used to inspect or reason about:
 | --- | --- |
 | `src/MedWNetworkSim.App.Avalonia` | Primary Avalonia desktop application entry point. Starts the app with Avalonia classic desktop lifetime, shows a splash window, configures dependency injection, and opens the main shell. |
 | `src/MedWNetworkSim.UI` | Avalonia UI layer. References rendering, interaction, and presentation projects and contains shell, views, controls, dashboard theme, and dialog code. |
-| `src/MedWNetworkSim.Presentation` | Presentation/view-model layer. References rendering and interaction projects and links legacy model, import, service, visual analytics, insights, agent, and geo code from `src/MedWNetworkSim.App`. |
+| `src/MedWNetworkSim.Presentation` | Presentation/view-model layer. References rendering and interaction projects and links legacy model, import, service, visual analytics, insights, and geo code from `src/MedWNetworkSim.App`. |
 | `src/MedWNetworkSim.Rendering` | Rendering library targeting .NET 8 with SkiaSharp. |
 | `src/MedWNetworkSim.Interaction` | Interaction library targeting .NET 8 and referencing rendering. |
 | `src/MedWNetworkSim.Avalonia.Verification` | Console-style verification project that references the Avalonia UI project. |

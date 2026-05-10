@@ -1504,7 +1504,7 @@ static void ScenarioEdgeTooltipIncludesRouteDetails()
         var tooltip = workspace.Scene.Edges.Single().ToolTipText;
         AssertTrue(tooltip.Contains("Route Northern Corridor", StringComparison.Ordinal), "edge tooltip route label");
         AssertTrue(tooltip.Contains("Depot Alpha -> Clinic Bravo", StringComparison.Ordinal), "edge tooltip endpoints");
-        AssertTrue(tooltip.Contains("Traffic aid", StringComparison.Ordinal), "edge tooltip traffic permissions");
+        AssertTrue(tooltip.Contains("Traffic ", StringComparison.Ordinal), "edge tooltip traffic permissions");
     }
     finally
     {

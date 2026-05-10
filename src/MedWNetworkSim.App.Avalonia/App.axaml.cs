@@ -7,7 +7,6 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
-using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.Presentation;
 using MedWNetworkSim.UI;
 using Microsoft.Extensions.DependencyInjection;
@@ -104,11 +103,7 @@ public partial class App : Application
     private static ServiceProvider BuildServices()
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IAgentActionLogger, AgentActionLogger>();
-        services.AddSingleton(provider => new SimulationActorCoordinator(actionLogger: provider.GetRequiredService<IAgentActionLogger>()));
-        services.AddSingleton(provider => new WorkspaceViewModel(
-            provider.GetRequiredService<IAgentActionLogger>(),
-            provider.GetRequiredService<SimulationActorCoordinator>()));
+        services.AddSingleton(_ => new WorkspaceViewModel());
         return services.BuildServiceProvider();
     }
 

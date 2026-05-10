@@ -1,4 +1,3 @@
-using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
 using System.Collections.Frozen;
 
@@ -598,13 +597,11 @@ public sealed class TemporalNetworkSimulationEngine
             TimelineLoopLength = network.TimelineLoopLength,
             DefaultAllocationMode = network.DefaultAllocationMode,
             SimulationSeed = network.SimulationSeed,
-            AgentMode = network.AgentMode,
             TrafficTypes = network.TrafficTypes.Select(CloneTrafficTypeDefinition).ToList(),
             TimelineEvents = network.TimelineEvents,
             RouteTaxRules = network.RouteTaxRules.Select(CloneRouteTaxRule).ToList(),
             Nodes = network.Nodes.Select(CloneNode).ToList(),
-            Edges = network.Edges.Select(CloneEdge).ToList(),
-            Actors = network.Actors.ToList()
+            Edges = network.Edges.Select(CloneEdge).ToList()
         };
     }
 
@@ -663,7 +660,6 @@ public sealed class TemporalNetworkSimulationEngine
             TranshipmentCapacity = node.TranshipmentCapacity,
             PlaceType = node.PlaceType,
             LoreDescription = node.LoreDescription,
-            ControllingActor = node.ControllingActor,
             Tags = node.Tags.ToList(),
             TemplateId = node.TemplateId,
             TrafficProfiles = node.TrafficProfiles.Select(CloneProfile).ToList()
@@ -823,7 +819,7 @@ public sealed class TemporalNetworkSimulationEngine
         var permittedSellerNodeIds = compiledContext.PermittedSellerNodeIdsByTrafficType.TryGetValue(definition.Name, out var permittedSellers)
             ? permittedSellers
             : FrozenSet<string>.Empty;
-        var enforceSellLocal = SimulationActorSellLocalPermissionResolver.IsEnforced(network);
+        var enforceSellLocal = LocalTrafficPermissionResolver.IsEnforced(network);
 
         foreach (var node in compiledContext.NodesByIndex)
         {

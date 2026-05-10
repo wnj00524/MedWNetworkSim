@@ -1,7 +1,6 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
@@ -42,14 +41,8 @@ public sealed class NetworkFileService
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         var trafficTypesWithExplicitFlowSplitPolicy = ReadTrafficTypesWithExplicitFlowSplitPolicy(root);
-        var hasExplicitMeetingDemandLimit = HasExplicitProperty(root, nameof(NetworkModel.LimitMeetingNodeDemandBySellLocalPermission));
         var model = root.Deserialize<NetworkModel>(serializerOptions)
             ?? throw new InvalidOperationException("The selected JSON could not be deserialized into a network.");
-
-        if (!hasExplicitMeetingDemandLimit && model.AgentMode == AgentMode.SellLocal)
-        {
-            model.LimitMeetingNodeDemandBySellLocalPermission = true;
-        }
 
         return NormalizeAndValidate(model, forceLayoutAllNodes: false, trafficTypesWithExplicitFlowSplitPolicy);
     }
@@ -162,7 +155,6 @@ public sealed class NetworkFileService
                 OsmHighwayType = NormalizeOptionalText(node.OsmHighwayType),
                 PlaceType = NormalizeOptionalText(node.PlaceType),
                 LoreDescription = NormalizeOptionalText(node.LoreDescription),
-                ControllingActor = NormalizeOptionalText(node.ControllingActor),
                 Tags = NormalizeTags(node.Tags),
                 TemplateId = NormalizeOptionalText(node.TemplateId),
                 LayerId = node.LayerId == Guid.Empty ? defaultLayer.Id : node.LayerId,
@@ -275,58 +267,6 @@ public sealed class NetworkFileService
         var timelineEvents = NormalizeTimelineEvents(model.TimelineEvents, normalizedNodes, edgeIds);
         ApplyAutomaticLayout(normalizedNodes, normalizedEdges, forceLayoutAllNodes);
 
-        var normalizedActors = (model.Actors ?? [])
-            .Where(actor => actor is not null)
-            .Select(actor =>
-            {
-                actor.Id = actor.Id?.Trim() ?? string.Empty;
-                actor.Name = string.IsNullOrWhiteSpace(actor.Name) ? actor.Id : actor.Name.Trim();
-                actor.Notes ??= string.Empty;
-                actor.ControlledNodeIds = (actor.ControlledNodeIds ?? [])
-                    .Where(id => !string.IsNullOrWhiteSpace(id))
-                    .Select(id => id.Trim())
-                    .Distinct(Comparer)
-                    .ToList();
-                actor.ControlledEdgeIds = (actor.ControlledEdgeIds ?? [])
-                    .Where(id => !string.IsNullOrWhiteSpace(id))
-                    .Select(id => id.Trim())
-                    .Distinct(Comparer)
-                    .ToList();
-                actor.Capability ??= SimulationActorCapabilityCatalog.ForKind(actor.Id, actor.Kind);
-                if (string.IsNullOrWhiteSpace(actor.Capability.ActorId))
-                {
-                    actor.Capability.ActorId = actor.Id;
-                }
-
-                actor.Capability.AllowedActionKinds ??= [];
-                actor.Capability.AllowedTrafficTypes ??= [];
-                actor.Capability.Permissions = (actor.Capability.Permissions ?? [])
-                    .Where(permission => permission is not null)
-                    .Select(permission =>
-                    {
-                        permission.TrafficType = string.IsNullOrWhiteSpace(permission.TrafficType) ? null : permission.TrafficType.Trim();
-                        permission.NodeId = string.IsNullOrWhiteSpace(permission.NodeId) ? null : permission.NodeId.Trim();
-                        permission.EdgeId = string.IsNullOrWhiteSpace(permission.EdgeId) ? null : permission.EdgeId.Trim();
-                        return permission;
-                    })
-                    .ToList();
-                actor.Capability.CustomActorTypeName = string.IsNullOrWhiteSpace(actor.Capability.CustomActorTypeName)
-                    ? null
-                    : actor.Capability.CustomActorTypeName.Trim();
-
-                return actor;
-            })
-            .ToList();
-
-        var preAgentMutationNetwork = model.PreAgentMutationNetwork is null
-            ? null
-            : NormalizePreAgentMutationNetwork(
-                model.PreAgentMutationNetwork,
-                forceLayoutAllNodes,
-                trafficTypesWithExplicitFlowSplitPolicy,
-                depth,
-                ancestry);
-
         return new NetworkModel
         {
             Name = string.IsNullOrWhiteSpace(model.Name) ? "Untitled Network" : model.Name.Trim(),
@@ -334,7 +274,6 @@ public sealed class NetworkFileService
             TimelineLoopLength = timelineLoopLength,
             DefaultAllocationMode = defaultAllocationMode,
             SimulationSeed = model.SimulationSeed,
-            AgentMode = model.AgentMode,
             LimitMeetingNodeDemandBySellLocalPermission = model.LimitMeetingNodeDemandBySellLocalPermission,
             Layers = layers,
             Nodes = normalizedNodes,
@@ -344,13 +283,6 @@ public sealed class NetworkFileService
             RouteTaxRules = routeTaxRules,
             TimelineEvents = timelineEvents,
             ScenarioDefinitions = (model.ScenarioDefinitions ?? []).Where(s => s is not null).ToList(),
-            Actors = normalizedActors,
-            ActorDecisions = (model.ActorDecisions ?? []).Where(decision => decision is not null).ToList(),
-            ActorMetrics = (model.ActorMetrics ?? []).Where(metric => metric is not null).ToList(),
-            ActorActionOutcomes = (model.ActorActionOutcomes ?? []).Where(outcome => outcome is not null).ToList(),
-            AgentActionLogs = (model.AgentActionLogs ?? []).Where(entry => entry is not null).ToList(),
-            PreAgentMutationNetwork = preAgentMutationNetwork,
-            ActorTick = Math.Max(0, model.ActorTick),
             Subnetworks = NormalizeSubnetworks(model.Subnetworks, normalizedNodes, normalizedEdges, forceLayoutAllNodes, depth, ancestry)
         };
     }
@@ -404,23 +336,6 @@ public sealed class NetworkFileService
             .ThenBy(rule => rule.TrafficType, Comparer)
             .ThenBy(rule => rule.TaxAuthorityActorId, Comparer)
             .ToList();
-    }
-
-    private NetworkModel NormalizePreAgentMutationNetwork(
-        NetworkModel baseline,
-        bool forceLayoutAllNodes,
-        ISet<string>? trafficTypesWithExplicitFlowSplitPolicy,
-        int depth,
-        IReadOnlySet<string> ancestry)
-    {
-        var clone = NetworkModelCloneUtility.Clone(baseline);
-        clone.PreAgentMutationNetwork = null;
-        clone.AgentActionLogs = [];
-        clone.ActorDecisions = [];
-        clone.ActorMetrics = [];
-        clone.ActorActionOutcomes = [];
-        clone.ActorTick = 0;
-        return NormalizeAndValidate(clone, forceLayoutAllNodes, trafficTypesWithExplicitFlowSplitPolicy, depth, ancestry);
     }
 
     private List<EdgeTrafficPermissionRule> NormalizeEdgeTrafficPermissionRules(

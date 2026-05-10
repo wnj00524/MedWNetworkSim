@@ -1,4 +1,3 @@
-using MedWNetworkSim.App.Agents;
 using MedWNetworkSim.App.Models;
 
 namespace MedWNetworkSim.App.Services;
@@ -704,8 +703,8 @@ public static partial class MixedRoutingAllocator
             node => node.TrafficProfiles.FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, definition.Name)),
             Comparer);
         var nodesById = network.Nodes.ToDictionary(node => node.Id, node => node, Comparer);
-        var permittedSellerNodeIds = SimulationActorSellLocalPermissionResolver.BuildPermittedSellerNodeSet(network, definition.Name);
-        var enforceSellLocal = SimulationActorSellLocalPermissionResolver.IsEnforced(network);
+        var permittedSellerNodeIds = LocalTrafficPermissionResolver.BuildPermittedSellerNodeSet(network, definition.Name);
+        var enforceSellLocal = LocalTrafficPermissionResolver.IsEnforced(network);
         var blockedLocalSupply = 0d;
         var supply = profilesByNodeId
             .Where(pair => pair.Value?.Production > Epsilon)
@@ -742,7 +741,7 @@ public static partial class MixedRoutingAllocator
             NodesById = nodesById,
             ProfilesByNodeId = profilesByNodeId,
             MeetingDemandEligibleNodeIds = demand.Keys
-                .Where(nodeId => SimulationActorSellLocalPermissionResolver.CanReceiveMeetingNodeDemand(network, nodeId, definition.Name))
+                .Where(nodeId => LocalTrafficPermissionResolver.CanReceiveMeetingNodeDemand(network, nodeId, definition.Name))
                 .ToHashSet(Comparer),
             Supply = supply,
             SupplyUnitCosts = supplyUnitCosts,
@@ -758,10 +757,10 @@ public static partial class MixedRoutingAllocator
                 : "Agent mode Sell local is active: only supply from actors with explicit SellLocal permission can fulfil demand.");
         }
 
-        if (SimulationActorSellLocalPermissionResolver.ShouldLimitMeetingNodeDemand(network))
+        if (LocalTrafficPermissionResolver.ShouldLimitMeetingNodeDemand(network))
         {
             foreach (var nodeId in demand.Keys
-                .Where(nodeId => !SimulationActorSellLocalPermissionResolver.CanReceiveMeetingNodeDemand(network, nodeId, definition.Name))
+                .Where(nodeId => !LocalTrafficPermissionResolver.CanReceiveMeetingNodeDemand(network, nodeId, definition.Name))
                 .OrderBy(nodeId => nodeId, Comparer))
             {
                 var nodeName = nodesById.TryGetValue(nodeId, out var node) ? node.Name : nodeId;
@@ -784,7 +783,7 @@ public static partial class MixedRoutingAllocator
     {
         foreach (var nodeId in context.Supply.Keys.Intersect(context.Demand.Keys, Comparer).ToList())
         {
-            if (!SimulationActorSellLocalPermissionResolver.CanReceiveMeetingNodeDemand(network, nodeId, context.TrafficType))
+            if (!LocalTrafficPermissionResolver.CanReceiveMeetingNodeDemand(network, nodeId, context.TrafficType))
             {
                 var nodeName = context.NodesById.TryGetValue(nodeId, out var localNode) ? localNode.Name : nodeId;
                 context.Notes.Add($"Sell local meeting-demand limit is active: local demand at {nodeName} was not satisfied because no controlling actor has SellLocal permission.");

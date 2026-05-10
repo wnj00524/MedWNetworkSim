@@ -13,7 +13,5 @@ public enum CommandLineCommand
     AddNode,
     SetProfile,
     AddEdge,
-    AutoArrange,
-    AddAgent,
-    RunAgents
+    AutoArrange
 }

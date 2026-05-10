@@ -41,15 +41,12 @@ public sealed class NetworkModel
     public bool FacilityModeEnabled { get; set; }
 
     /// <summary>
-    /// Gets or sets how actor permissions constrain supply that can fulfil node demand.
-    /// Off preserves the default unrestricted demand fulfilment behaviour.
-    /// </summary>
-    public AgentMode AgentMode { get; set; } = AgentMode.Off;
-
-    /// <summary>
-    /// Gets or sets a value indicating whether same-node meeting demand requires explicit SellLocal permission.
-    /// </summary>
+     /// Gets or sets a value indicating whether same-node meeting demand requires explicit SellLocal permission.
+     /// </summary>
     public bool LimitMeetingNodeDemandBySellLocalPermission { get; set; }
+
+    [JsonIgnore]
+    public AgentMode AgentMode { get; set; } = AgentMode.Off;
 
     /// <summary>
     /// Gets or sets a value indicating whether graph layout should follow geographic map coordinates for geo-anchored nodes.
@@ -115,39 +112,25 @@ public sealed class NetworkModel
     /// </summary>
     public List<EdgeModel> Edges { get; set; } = [];
 
-    /// <summary>
-    /// Gets or sets autonomous actor configuration persisted with the network.
-    /// </summary>
+    [JsonIgnore]
     public List<SimulationActorState> Actors { get; set; } = [];
 
-    /// <summary>
-    /// Gets or sets optional persisted actor decision history.
-    /// </summary>
+    [JsonIgnore]
     public List<SimulationActorDecision> ActorDecisions { get; set; } = [];
 
-    /// <summary>
-    /// Gets or sets optional persisted actor metrics by tick.
-    /// </summary>
+    [JsonIgnore]
     public List<SimulationActorMetrics> ActorMetrics { get; set; } = [];
 
-    /// <summary>
-    /// Gets or sets optional persisted actor action outcomes.
-    /// </summary>
+    [JsonIgnore]
     public List<SimulationActorActionOutcome> ActorActionOutcomes { get; set; } = [];
 
-    /// <summary>
-    /// Gets or sets optional persisted detailed actor action logs.
-    /// </summary>
+    [JsonIgnore]
     public List<AgentActionLogEntry> AgentActionLogs { get; set; } = [];
 
-    /// <summary>
-    /// Gets or sets the network snapshot captured before agent actions first mutated the network.
-    /// </summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonIgnore]
     public NetworkModel? PreAgentMutationNetwork { get; set; }
 
-    /// <summary>
-    /// Gets or sets the persisted actor simulation tick.
-    /// </summary>
+    [JsonIgnore]
     public int ActorTick { get; set; }
+
 }

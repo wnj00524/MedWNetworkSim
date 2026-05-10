@@ -7,6 +7,5 @@ public enum AppWorkspaceMode
 {
     Build,
     Simulate,
-    Analyze,
-    Actors
+    Analyze
 }

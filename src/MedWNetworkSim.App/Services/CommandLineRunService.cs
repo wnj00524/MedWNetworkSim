@@ -1,6 +1,5 @@
 using System.IO;
 using MedWNetworkSim.App.Models;
-using MedWNetworkSim.App.Agents;
 
 namespace MedWNetworkSim.App.Services;
 /// <summary>
@@ -57,15 +56,6 @@ public sealed class CommandLineRunService
         "direction",
         "one-way",
         "bidirectional",
-        "agent",
-        "agent-name",
-        "kind",
-        "objective",
-        "nodes",
-        "edges",
-        "budget",
-        "risk-tolerance",
-        "cooperation-weight",
         "ticks"
     };
 
@@ -73,7 +63,6 @@ public sealed class CommandLineRunService
     private readonly ReportExportService reportExportService = new();
     private readonly NetworkSimulationEngine networkSimulationEngine = new();
     private readonly TemporalNetworkSimulationEngine temporalNetworkSimulationEngine = new();
-    private readonly SimulationActorCoordinator simulationActorCoordinator = new();
 
     public bool ShouldRunFromCommandLine(string[] args)
     {
@@ -121,8 +110,6 @@ Usage:
   MedWNetworkSim.App.exe set-profile --file <network.json> --node <node-id> --traffic <traffic-name> [--role producer|consumer|transship|producer+consumer|producer+transship|consumer+transship|all|none] [--production <amount>] [--consumption <amount>] [--premium <amount>] [--production-window <start-end>] [--consumption-window <start-end>] [--clear-production-windows] [--clear-consumption-windows] [--input <traffic:ratio>] [--clear-inputs] [--store|--no-store] [--store-capacity <amount>|none]
   MedWNetworkSim.App.exe add-edge --file <network.json> --from <node-id> --to <node-id> [--id <edge-id>] [--time <number>] [--cost <number>] [--capacity <amount>|none] [--direction one-way|bidirectional]
   MedWNetworkSim.App.exe auto-arrange --file <network.json>
-  MedWNetworkSim.App.exe add-agent --file <network.json> --agent <agent-id> [--agent-name <name>] [--kind <kind>] [--objective <objective>] [--nodes <id,id...>] [--edges <id,id...>] [--budget <amount>] [--risk-tolerance <amount>] [--cooperation-weight <amount>]
-  MedWNetworkSim.App.exe run-agents --file <network.json> --output <report.html> [--ticks <count>]
   MedWNetworkSim.App.exe --gui
 
 Friendly aliases:
@@ -180,8 +167,6 @@ Examples:
                 CommandLineCommand.SetProfile => ParseSetProfileCommand(named, positional),
                 CommandLineCommand.AddEdge => ParseAddEdgeCommand(named, positional),
                 CommandLineCommand.AutoArrange => ParseAutoArrangeCommand(named, positional),
-                CommandLineCommand.AddAgent => ParseAddAgentCommand(named, positional),
-                CommandLineCommand.RunAgents => ParseRunAgentsCommand(named, positional),
                 _ => new CommandLineOptions { Command = CommandLineCommand.Help }
             };
         }
@@ -206,8 +191,6 @@ Examples:
             CommandLineCommand.SetProfile => ExecuteSetProfile(options),
             CommandLineCommand.AddEdge => ExecuteAddEdge(options),
             CommandLineCommand.AutoArrange => ExecuteAutoArrange(options),
-            CommandLineCommand.AddAgent => ExecuteAddAgent(options),
-            CommandLineCommand.RunAgents => ExecuteRunAgents(options),
             _ => throw new InvalidOperationException("Unknown CLI command.")
         };
     }
@@ -256,14 +239,6 @@ Examples:
             case "auto-arrange":
             case "arrange":
                 command = CommandLineCommand.AutoArrange;
-                return true;
-            case "add-agent":
-            case "agent":
-                command = CommandLineCommand.AddAgent;
-                return true;
-            case "run-agents":
-            case "agents":
-                command = CommandLineCommand.RunAgents;
                 return true;
             default:
                 command = default;
@@ -466,75 +441,6 @@ Examples:
                 value = string.Empty;
                 return false;
         }
-    }
-
-    private static SimulationActorKind ParseAgentKind(string value)
-    {
-        if (Enum.TryParse<SimulationActorKind>(value, true, out var result))
-        {
-            return result;
-        }
-        throw new InvalidOperationException($"'{value}' is not a valid agent kind.");
-    }
-
-    private static SimulationActorObjective ParseAgentObjective(string value)
-    {
-        if (Enum.TryParse<SimulationActorObjective>(value, true, out var result))
-        {
-            return result;
-        }
-        throw new InvalidOperationException($"'{value}' is not a valid agent objective.");
-    }
-
-    private CommandLineOptions ParseAddAgentCommand(IReadOnlyDictionary<string, string> named, IReadOnlyList<string> positional)
-    {
-        var networkPath = GetRequiredValue(named, positional, 0, "file", "network");
-        var agentId = GetRequiredValue(named, positional, 1, "agent", "id");
-
-        return new CommandLineOptions
-        {
-            Command = CommandLineCommand.AddAgent,
-            NetworkPath = Path.GetFullPath(networkPath),
-            AgentId = agentId,
-            AgentName = GetOptionalNamedValue(named, "agent-name"),
-            HasAgentName = HasOption(named, "agent-name"),
-            AgentKind = HasOption(named, "kind") ? ParseAgentKind(GetOptionalNamedValue(named, "kind")) : null,
-            HasAgentKind = HasOption(named, "kind"),
-            AgentObjective = HasOption(named, "objective") ? ParseAgentObjective(GetOptionalNamedValue(named, "objective")) : null,
-            HasAgentObjective = HasOption(named, "objective"),
-            AgentControlledNodes = GetOptionalNamedValues(named, "nodes").ToList(),
-            HasAgentControlledNodes = HasOption(named, "nodes"),
-            AgentControlledEdges = GetOptionalNamedValues(named, "edges").ToList(),
-            HasAgentControlledEdges = HasOption(named, "edges"),
-            AgentBudget = ParseDoubleOption(named, "budget"),
-            HasAgentBudget = HasOption(named, "budget"),
-            AgentRiskTolerance = ParseDoubleOption(named, "risk-tolerance"),
-            HasAgentRiskTolerance = HasOption(named, "risk-tolerance"),
-            AgentCooperationWeight = ParseDoubleOption(named, "cooperation-weight"),
-            HasAgentCooperationWeight = HasOption(named, "cooperation-weight")
-        };
-    }
-
-    private CommandLineOptions ParseRunAgentsCommand(IReadOnlyDictionary<string, string> named, IReadOnlyList<string> positional)
-    {
-        var networkPath = GetRequiredValue(named, positional, 0, "file", "network");
-        var outputPath = GetRequiredValue(named, positional, 1, "output", "report");
-        outputPath = NormalizeOutputPath(outputPath, out var format);
-        var ticksText = GetOptionalValue(named, positional, 2, "turns", "ticks");
-        var ticks = 1;
-        if (!string.IsNullOrWhiteSpace(ticksText) && (!int.TryParse(ticksText, out ticks) || ticks < 1))
-        {
-            throw new InvalidOperationException($"'{ticksText}' is not a valid number of ticks. It must be an integer >= 1.");
-        }
-
-        return new CommandLineOptions
-        {
-            Command = CommandLineCommand.RunAgents,
-            NetworkPath = Path.GetFullPath(networkPath),
-            OutputPath = outputPath,
-            ReportFormat = format,
-            AgentTicks = ticks
-        };
     }
 
     private CommandLineOptions ParseRunCommand(
@@ -1192,49 +1098,6 @@ Examples:
         var firstWindow = profile.ConsumptionWindows.FirstOrDefault();
         profile.ConsumptionStartPeriod = firstWindow?.StartPeriod;
         profile.ConsumptionEndPeriod = firstWindow?.EndPeriod;
-    }
-
-    private string ExecuteAddAgent(CommandLineOptions options)
-    {
-        var network = networkFileService.Load(options.NetworkPath);
-        var agent = network.Actors.FirstOrDefault(item => Comparer.Equals(item.Id, options.AgentId));
-
-        if (agent is null)
-        {
-            agent = new SimulationActorState
-            {
-                Id = options.AgentId,
-                Name = options.HasAgentName ? options.AgentName : options.AgentId,
-                Kind = options.HasAgentKind ? options.AgentKind!.Value : SimulationActorKind.Firm,
-                Objective = options.HasAgentObjective ? options.AgentObjective!.Value : SimulationActorObjective.MaximiseProfit
-            };
-            network.Actors.Add(agent);
-        }
-        else
-        {
-            if (options.HasAgentName) agent.Name = options.AgentName;
-            if (options.HasAgentKind) agent.Kind = options.AgentKind!.Value;
-            if (options.HasAgentObjective) agent.Objective = options.AgentObjective!.Value;
-        }
-
-        if (options.HasAgentControlledNodes) agent.ControlledNodeIds = options.AgentControlledNodes.ToList();
-        if (options.HasAgentControlledEdges) agent.ControlledEdgeIds = options.AgentControlledEdges.ToList();
-        if (options.HasAgentBudget) agent.Budget = options.AgentBudget!.Value;
-        if (options.HasAgentRiskTolerance) agent.RiskTolerance = options.AgentRiskTolerance!.Value;
-        if (options.HasAgentCooperationWeight) agent.CooperationWeight = options.AgentCooperationWeight!.Value;
-
-        SaveNetwork(network, options.NetworkPath);
-        return $"Agent '{options.AgentId}' configured in {options.NetworkPath}";
-    }
-
-    private string ExecuteRunAgents(CommandLineOptions options)
-    {
-        var network = networkFileService.Load(options.NetworkPath);
-        EnsureParentDirectory(options.OutputPath);
-
-        var results = simulationActorCoordinator.RunActorsForTicks(network, network.Actors, options.AgentTicks);
-        reportExportService.SaveAgentReport(network, results, options.OutputPath, options.ReportFormat);
-        return $"Agent run report written to {options.OutputPath}";
     }
 
     private void SaveNetwork(NetworkModel network, string path)

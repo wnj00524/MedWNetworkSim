@@ -9,7 +9,6 @@ public enum AppView
     Map,
     Sankey,
     OSMImport,
-    Agents,
     Analytics,
     Facilities,
     Reports

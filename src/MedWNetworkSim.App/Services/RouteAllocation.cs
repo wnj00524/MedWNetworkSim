@@ -133,30 +133,8 @@ public sealed class RouteAllocation
 
     public double Profit { get; init; }
     /// <summary>
-    /// Gets or sets the seller actor id.
-    /// </summary>
-
-    public string? SellerActorId { get; init; }
-    /// <summary>
-    /// Gets or sets the buyer actor id.
-    /// </summary>
-
-    public string? BuyerActorId { get; init; }
-    /// <summary>
-    /// Gets or sets the taxes by authority actor id.
-    /// </summary>
-
-    public IReadOnlyDictionary<string, double> TaxesByAuthorityActorId { get; init; } =
-        new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-    /// <summary>
-    /// Gets or sets the tax authority actor id.
-    /// </summary>
-
-    public string? TaxAuthorityActorId { get; init; }
-
-    /// <summary>
-    /// Gets the route score used for path comparison under the active routing preference.
-    /// </summary>
+     /// Gets the route score used for path comparison under the active routing preference.
+     /// </summary>
     public double TotalScore { get; init; }
 
     /// <summary>

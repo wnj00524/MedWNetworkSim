@@ -118,14 +118,12 @@ public sealed class NodeModel
     /// </summary>
     public string? LoreDescription { get; set; }
 
-    /// <summary>
-    /// Gets or sets the optional actor currently controlling this place.
-    /// </summary>
+    [JsonIgnore]
     public string? ControllingActor { get; set; }
 
     /// <summary>
-    /// Gets or sets optional worldbuilder tags for this place.
-    /// </summary>
+     /// Gets or sets optional worldbuilder tags for this place.
+     /// </summary>
     public List<string> Tags { get; set; } = [];
 
     /// <summary>

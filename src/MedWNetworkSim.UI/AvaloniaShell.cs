@@ -1731,8 +1731,6 @@ public sealed class ShellWindow : Window
             }
         };
         viewModel.AboutRequested += HandleAboutRequested;
-        viewModel.ExportAgentLogsRequested += async (_, _) => await ExportAgentLogsAsync(viewModel);
-
         Closing += HandleWindowClosing;
         KeyDown += HandleShellWindowKeyDown;
         Content = BuildLayout(viewModel);
@@ -2017,7 +2015,6 @@ public sealed class ShellWindow : Window
         var reportsButton = BuildIconRailButton(IconPaths.Reports, "Reports", viewModel.SetReportsViewCommand);
         var facilitiesButton = BuildIconRailButton(IconPaths.Facilities, "Facility Planning", viewModel.SetFacilitiesViewCommand);
         var osmButton = BuildIconRailButton(IconPaths.OsmImport, "Import OSM", viewModel.SetOsmImportViewCommand);
-        var agentsButton = BuildIconRailButton(IconPaths.Agents, "Agents", viewModel.SetAgentsViewCommand);
         var trafficTypesButton = BuildIconRailButton(IconPaths.TrafficTypes, "Traffic Types", new RelayCommand(EnterTrafficTypeWorkspace));
         var scenariosButton = BuildIconRailButton(IconPaths.Scenarios, "Scenarios", viewModel.OpenScenarioEditorCommand);
 
@@ -2030,7 +2027,6 @@ public sealed class ShellWindow : Window
             ApplyToolButtonState(reportsButton, viewModel.ActiveView == AppView.Reports && shellWorkspaceMode == ShellWorkspaceMode.Standard);
             ApplyToolButtonState(facilitiesButton, viewModel.ActiveView == AppView.Facilities && shellWorkspaceMode == ShellWorkspaceMode.Standard);
             ApplyToolButtonState(osmButton, viewModel.ActiveView == AppView.OSMImport || viewModel.IsOsmImportWorkspaceMode);
-            ApplyToolButtonState(agentsButton, viewModel.ActiveView == AppView.Agents && shellWorkspaceMode == ShellWorkspaceMode.Standard);
             ApplyToolButtonState(trafficTypesButton, shellWorkspaceMode == ShellWorkspaceMode.TrafficTypes);
         }
         refreshToolRailState = RefreshToolState;
@@ -2058,7 +2054,6 @@ public sealed class ShellWindow : Window
                 facilitiesButton,
                 BuildRailSeparator(),
                 osmButton,
-                agentsButton,
                 trafficTypesButton,
                 scenariosButton
             }
@@ -2086,7 +2081,6 @@ public sealed class ShellWindow : Window
         Control BuildView(AppView view) => view switch
         {
             AppView.OSMImport => BuildCanvasArea(viewModel),
-            AppView.Agents => BuildAgentsView(viewModel),
             AppView.Analytics => BuildAnalyticsView(viewModel),
             AppView.Facilities => BuildFacilitiesWorkspace(viewModel),
             AppView.Reports => BuildReportsWorkspace(viewModel),
@@ -5570,7 +5564,6 @@ public sealed class ShellWindow : Window
                     BuildReadOnlyRow("Longitude", nameof(WorkspaceViewModel.SelectedNodeLongitudeText)),
                     BuildLabeledAutoCompleteTextBox("Place type", "NodeDraft.PlaceTypeText", "NodeDraft.PlaceTypeSuggestions", "Type or choose a place type", nameof(WorkspaceViewModel.ApplyInspectorCommand)),
                     BuildLabeledTextBox("Description", "NodeDraft.DescriptionText"),
-                    BuildLabeledTextBox("Controlling actor", "NodeDraft.ControllingActorText"),
                     BuildLabeledTextBox("Tags", "NodeDraft.TagsText"),
                     BuildReadOnlyRow("Template id", "NodeDraft.TemplateIdText")),
                 BuildEditorSection(
@@ -5838,28 +5831,12 @@ public sealed class ShellWindow : Window
     }
 
 
-    private static Control BuildAgentModeSelector(WorkspaceViewModel viewModel)
+    private static Control BuildTrafficRestrictionOptions(WorkspaceViewModel viewModel)
     {
-        var selector = new ComboBox
-        {
-            MinWidth = 160,
-            ItemsSource = viewModel.AgentModeOptions
-        };
-        selector.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(WorkspaceViewModel.AgentMode), BindingMode.TwoWay));
-        ToolTip.SetTip(selector, "Off uses default demand fulfilment. SellLocal requires an enabled controlling actor with explicit SellLocal permission before that node's produced or purchased supply can fulfil demand.");
         var limitCheckBox = BuildMeetingDemandLimitCheckBox();
         limitCheckBox.Bind(ToggleButton.IsCheckedProperty, new Binding(nameof(WorkspaceViewModel.LimitMeetingNodeDemandBySellLocalPermission), BindingMode.TwoWay));
-        return new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 12,
-            VerticalAlignment = VerticalAlignment.Center,
-            Children =
-            {
-                BuildLabeledRow("Agent Mode", selector),
-                limitCheckBox
-            }
-        };
+        ToolTip.SetTip(limitCheckBox, "Limit same-node demand fulfilment using the network's local traffic permission rules.");
+        return limitCheckBox;
     }
 
     private Control BuildDashboardStripTabs(WorkspaceViewModel viewModel)
@@ -5879,9 +5856,9 @@ public sealed class ShellWindow : Window
         playbackGrid.Children.Add(BuildButton("Step", viewModel.StepCommand, 1, isPrimary: true, toolTip: "Advance one period."));
         playbackGrid.Children.Add(BuildButton("Reset", viewModel.ResetTimelineCommand, 2, toolTip: "Reset timeline to start."));
         playbackGrid.Children.Add(BuildButton("Fit", viewModel.FitCommand, 3, toolTip: "Fit graph on canvas."));
-        var agentModeSelector = BuildAgentModeSelector(viewModel);
-        Grid.SetColumn(agentModeSelector, 4);
-        playbackGrid.Children.Add(agentModeSelector);
+        var trafficRestrictionOptions = BuildTrafficRestrictionOptions(viewModel);
+        Grid.SetColumn(trafficRestrictionOptions, 4);
+        playbackGrid.Children.Add(trafficRestrictionOptions);
 
         var slider = new Slider
         {
@@ -7056,9 +7033,9 @@ public sealed class ShellWindow : Window
         playbackGrid.Children.Add(BuildButton("Step", viewModel.StepCommand, 1, isPrimary: true, toolTip: "Advance one period."));
         playbackGrid.Children.Add(BuildButton("Reset", viewModel.ResetTimelineCommand, 2, toolTip: "Reset timeline to start."));
         playbackGrid.Children.Add(BuildButton("Fit", viewModel.FitCommand, 3, toolTip: "Fit graph on canvas."));
-        var agentModeSelector = BuildAgentModeSelector(viewModel);
-        Grid.SetColumn(agentModeSelector, 4);
-        playbackGrid.Children.Add(agentModeSelector);
+        var trafficRestrictionOptions = BuildTrafficRestrictionOptions(viewModel);
+        Grid.SetColumn(trafficRestrictionOptions, 4);
+        playbackGrid.Children.Add(trafficRestrictionOptions);
 
         var slider = new Slider
         {

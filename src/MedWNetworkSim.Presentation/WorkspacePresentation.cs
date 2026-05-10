@@ -2986,7 +2986,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         SetMapViewCommand = new RelayCommand(() => ActiveView = AppView.Map);
         SetSankeyViewCommand = new RelayCommand(() => ActiveView = AppView.Sankey);
         SetOsmImportViewCommand = new RelayCommand(EnterOsmImportWorkspace);
-        SetAgentsViewCommand = new RelayCommand(() => ActiveView = AppView.Agents);
+        SetAgentsViewCommand = new RelayCommand(() => ActiveView = AppView.Network);
         SetAnalyticsViewCommand = new RelayCommand(() => ActiveView = AppView.Analytics);
         SetFacilitiesViewCommand = new RelayCommand(() =>
         {
@@ -4070,6 +4070,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         get => showAgentTools;
         set
         {
+            value = false;
             if (SetProperty(ref showAgentTools, value))
             {
                 if (!showAgentTools && ActiveToolMode == GraphToolMode.Agent)
@@ -4616,7 +4617,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     /// <summary>
     /// Gets a value indicating whether is agents view is enabled or active.
     /// </summary>
-    public bool IsAgentsView => ActiveView == AppView.Agents;
+    public bool IsAgentsView => false;
     /// <summary>
     /// Gets a value indicating whether is analytics view is enabled or active.
     /// </summary>

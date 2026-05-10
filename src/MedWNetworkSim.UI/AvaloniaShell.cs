@@ -28,7 +28,6 @@ using MedWNetworkSim.Rendering.Geo;
 using MedWNetworkSim.Rendering.VisualAnalytics.Sankey;
 using MedWNetworkSim.App.VisualAnalytics;
 using MedWNetworkSim.App.Insights;
-using MedWNetworkSim.UI.Controls;
 using MedWNetworkSim.App.VisualAnalytics.Sankey;
 using MedWNetworkSim.UI.Controls;
 using SkiaSharp;
@@ -3500,7 +3499,6 @@ public sealed class ShellWindow : Window
 
         var exports = new WrapPanel
         {
-            Spacing = 8,
             Children =
             {
                 BuildLabeledRow("Period", periodCombo),

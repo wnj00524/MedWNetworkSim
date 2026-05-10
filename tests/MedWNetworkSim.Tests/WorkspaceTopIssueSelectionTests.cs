@@ -83,6 +83,31 @@ public sealed class WorkspaceTopIssueSelectionTests
         Assert.Equal(11, workspace.TimelineMetrics.First().Period);
     }
 
+    [Fact]
+    public void ResetTimeline_ClearsDashboardSummaryIssues()
+    {
+        var workspace = new WorkspaceViewModel();
+        LoadNetwork(workspace, BuildNodeIssueNetworkModel());
+
+        var populateTopIssuesMethod = typeof(WorkspaceViewModel).GetMethod("PopulateTopIssues", BindingFlags.Instance | BindingFlags.NonPublic);
+        populateTopIssuesMethod!.Invoke(workspace, new object[] {
+            new List<NetworkIssue> {
+                new NetworkIssue { Title = "Critical issue", Explanation = "Failed", Type = NetworkIssueType.CongestedEdge, Severity = NetworkIssueSeverity.Critical }
+            }
+        });
+
+        var refreshMethod = typeof(WorkspaceViewModel).GetMethod("RefreshDashboardSummaries", BindingFlags.Instance | BindingFlags.NonPublic);
+        refreshMethod!.Invoke(workspace, null);
+
+        Assert.Equal(1, workspace.NetworkHealthSummary.CriticalIssueCount);
+
+        var resetMethod = typeof(WorkspaceViewModel).GetMethod("ResetTimeline", BindingFlags.Instance | BindingFlags.NonPublic);
+        resetMethod!.Invoke(workspace, null);
+
+        Assert.Equal(0, workspace.NetworkHealthSummary.CriticalIssueCount);
+        Assert.Equal(0, workspace.NetworkHealthSummary.WarningIssueCount);
+    }
+
     private static NetworkModel BuildNetworkModel() => new()
     {
         Name = "Top issue test",

@@ -2895,6 +2895,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         new("High", 0d)
     ];
     private IReadOnlyList<AgentProfitSeriesViewModel> agentProfitSeries = [];
+    private NetworkHealthSummary networkHealthSummary = NetworkHealthSummary.Empty;
+    private string selectedDashboardPeriod = "Current";
+    private string selectedTrafficTypeFilter = "All";
+
 
     public WorkspaceViewModel(IAgentActionLogger? agentActionLogger = null, SimulationActorCoordinator? simulationActorCoordinator = null)
     {
@@ -2950,6 +2954,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ScenarioWarnings = [];
         VisualisationState = new VisualisationState();
         NetworkInsights = [];
+        Bottlenecks = [];
+        InsightCards = [];
+        TimelineMetrics = [];
         SimulationActors = [];
         Agents = [];
         FilteredSimulationActors = [];
@@ -3226,6 +3233,36 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     /// Gets or sets the network insights.
     /// </summary>
     public ObservableCollection<NetworkInsight> NetworkInsights { get; }
+    public NetworkHealthSummary NetworkHealthSummary
+    {
+        get => networkHealthSummary;
+        private set => SetProperty(ref networkHealthSummary, value);
+    }
+
+    public ObservableCollection<BottleneckSummary> Bottlenecks { get; }
+
+    public ObservableCollection<InsightCardModel> InsightCards { get; }
+
+    public ObservableCollection<TimelineMetricPoint> TimelineMetrics { get; }
+
+    public string SelectedDashboardPeriod
+    {
+        get => selectedDashboardPeriod;
+        set => SetProperty(ref selectedDashboardPeriod, string.IsNullOrWhiteSpace(value) ? "Current" : value);
+    }
+
+    public string SelectedTrafficTypeFilter
+    {
+        get => selectedTrafficTypeFilter;
+        set
+        {
+            if (SetProperty(ref selectedTrafficTypeFilter, string.IsNullOrWhiteSpace(value) ? "All" : value))
+            {
+                RefreshDashboardSummaries();
+            }
+        }
+    }
+
     /// <summary>
     /// Gets or sets the simulation actors.
     /// </summary>
@@ -6960,6 +6997,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         lastConsumerCosts = [];
         visualAnalyticsSnapshot = null;
         NetworkInsights.Clear();
+        RefreshDashboardSummaries();
         CurrentPeriod = 0;
         TimelineMaximum = Math.Max(8, network.TimelineLoopLength ?? 12);
         TimelinePosition = 0;
@@ -7731,6 +7769,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         Raise(nameof(TrafficDeliveredColumnLabel));
         ApplySimulationOutcomes(lastOutcomes.SelectMany(outcome => outcome.Allocations), null);
         PopulateTopIssues(new BottleneckDetectionService().DetectIssues(network, new SimulationResult { Outcomes = lastOutcomes }));
+        RefreshDashboardSummaries();
         RebuildAnalytics();
         StatusText = "Simulation finished.";
     }
@@ -8606,6 +8645,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         lastConsumerCosts = [];
         visualAnalyticsSnapshot = null;
         NetworkInsights.Clear();
+        RefreshDashboardSummaries();
         CurrentPeriod = 0;
         TimelinePosition = 0;
         foreach (var edge in Scene.Edges)
@@ -8746,6 +8786,56 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshInspector();
         UpdateExplanationForSelection();
         NotifyVisualChanged();
+    }
+
+    private void RefreshDashboardSummaries()
+    {
+        var filteredOutcomes = (SelectedTrafficTypeFilter == "All"
+            ? lastOutcomes
+            : lastOutcomes.Where(o => Comparer.Equals(o.TrafficType, SelectedTrafficTypeFilter)).ToList())
+            ?? [];
+
+        NetworkHealthSummary = DashboardSummaryCalculator.ComputeHealthSummary(filteredOutcomes, []);
+
+        Bottlenecks.Clear();
+        foreach (var issue in TopIssues.Take(10))
+        {
+            Bottlenecks.Add(new BottleneckSummary
+            {
+                Id = issue.NodeId ?? issue.EdgeId ?? issue.Title,
+                Label = issue.Title,
+                Kind = issue.TargetKind.ToString(),
+                SeverityScore = 0d,
+                Badge = issue.Detail
+            });
+        }
+
+        InsightCards.Clear();
+        foreach (var insight in NetworkInsights.Take(8))
+        {
+            InsightCards.Add(new InsightCardModel
+            {
+                Title = insight.Title,
+                Summary = insight.Summary,
+                Severity = insight.Severity.ToString(),
+                Evidence = insight.Causes.FirstOrDefault()?.Evidence ?? string.Empty
+            });
+        }
+
+        TimelineMetrics.Clear();
+        foreach (var point in lastOutcomes
+            .SelectMany(outcome => outcome.Allocations ?? [])
+            .GroupBy(a => a.Period)
+            .OrderBy(g => g.Key)
+            .Take(240))
+        {
+            TimelineMetrics.Add(new TimelineMetricPoint
+            {
+                Period = point.Key,
+                ServedDemand = point.Sum(x => Math.Max(0d, x.Quantity)),
+                UnmetDemand = 0d
+            });
+        }
     }
 
     private void PopulateTopIssues(IReadOnlyList<NetworkIssue> issues)
@@ -11154,6 +11244,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private void RefreshInsights()
     {
         NetworkInsights.Clear();
+        RefreshDashboardSummaries();
         if (lastOutcomes.Count == 0)
         {
             Raise(nameof(InsightsEmptyStateText));

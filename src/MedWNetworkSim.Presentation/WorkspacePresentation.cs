@@ -2897,6 +2897,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private IReadOnlyList<AgentProfitSeriesViewModel> agentProfitSeries = [];
     private NetworkHealthSummary networkHealthSummary = NetworkHealthSummary.Empty;
     private IReadOnlyList<NetworkIssue> lastDetectedIssues = [];
+    private IReadOnlyList<BottleneckSummary> bottlenecks = [];
+    private IReadOnlyList<InsightCardModel> insightCards = [];
+    private IReadOnlyList<TimelineMetricPoint> timelineMetrics = [];
+
     private string selectedDashboardPeriod = "Current";
     private string selectedTrafficTypeFilter = "All";
 
@@ -2955,9 +2959,6 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         ScenarioWarnings = [];
         VisualisationState = new VisualisationState();
         NetworkInsights = [];
-        Bottlenecks = [];
-        InsightCards = [];
-        TimelineMetrics = [];
         SimulationActors = [];
         Agents = [];
         FilteredSimulationActors = [];
@@ -3246,17 +3247,29 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     /// <summary>
     /// Gets the dashboard bottleneck summaries.
     /// </summary>
-    public ObservableCollection<BottleneckSummary> Bottlenecks { get; }
+    public IReadOnlyList<BottleneckSummary> Bottlenecks
+    {
+        get => bottlenecks;
+        private set => SetProperty(ref bottlenecks, value);
+    }
 
     /// <summary>
     /// Gets the dashboard insight cards.
     /// </summary>
-    public ObservableCollection<InsightCardModel> InsightCards { get; }
+    public IReadOnlyList<InsightCardModel> InsightCards
+    {
+        get => insightCards;
+        private set => SetProperty(ref insightCards, value);
+    }
 
     /// <summary>
     /// Gets the dashboard timeline metrics.
     /// </summary>
-    public ObservableCollection<TimelineMetricPoint> TimelineMetrics { get; }
+    public IReadOnlyList<TimelineMetricPoint> TimelineMetrics
+    {
+        get => timelineMetrics;
+        private set => SetProperty(ref timelineMetrics, value);
+    }
 
     /// <summary>
     /// Gets or sets the dashboard period selection.
@@ -8819,41 +8832,29 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         NetworkHealthSummary = DashboardSummaryCalculator.ComputeHealthSummary(filteredOutcomes, lastDetectedIssues);
 
-        Bottlenecks.Clear();
-        foreach (var issue in TopIssues.Take(10))
+        Bottlenecks = TopIssues.Take(10).Select(issue => new BottleneckSummary
         {
-            Bottlenecks.Add(new BottleneckSummary
-            {
-                Id = issue.NodeId ?? issue.EdgeId ?? issue.Title,
-                Label = issue.Title,
-                Kind = issue.TargetKind.ToString(),
-                SeverityScore = 0d,
-                Badge = issue.Detail
-            });
-        }
+            Id = issue.NodeId ?? issue.EdgeId ?? issue.Title,
+            Label = issue.Title,
+            Kind = issue.TargetKind.ToString(),
+            SeverityScore = 0d,
+            Badge = issue.Detail
+        }).ToList();
 
-        InsightCards.Clear();
-        foreach (var insight in NetworkInsights.Take(8))
+        InsightCards = NetworkInsights.Take(8).Select(insight => new InsightCardModel
         {
-            InsightCards.Add(new InsightCardModel
-            {
-                Title = insight.Title,
-                Summary = insight.Summary,
-                Severity = insight.Severity.ToString(),
-                Evidence = insight.Causes.FirstOrDefault()?.Evidence ?? string.Empty
-            });
-        }
+            Title = insight.Title,
+            Summary = insight.Summary,
+            Severity = insight.Severity.ToString(),
+            Evidence = insight.Causes.FirstOrDefault()?.Evidence ?? string.Empty
+        }).ToList();
 
-        TimelineMetrics.Clear();
-        foreach (var metric in network.ActorMetrics.OrderBy(m => m.Tick).TakeLast(240))
+        TimelineMetrics = network.ActorMetrics.OrderBy(m => m.Tick).TakeLast(240).Select(metric => new TimelineMetricPoint
         {
-            TimelineMetrics.Add(new TimelineMetricPoint
-            {
-                Period = metric.Tick,
-                ServedDemand = metric.TotalDelivered,
-                UnmetDemand = metric.TotalUnmetDemand
-            });
-        }
+            Period = metric.Tick,
+            ServedDemand = metric.TotalDelivered,
+            UnmetDemand = metric.TotalUnmetDemand
+        }).ToList();
     }
 
     private void PopulateTopIssues(IReadOnlyList<NetworkIssue> issues)

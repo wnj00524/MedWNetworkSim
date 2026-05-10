@@ -64,6 +64,25 @@ public sealed class WorkspaceTopIssueSelectionTests
         Assert.NotNull(workspace.RouteReports);
     }
 
+    [Fact]
+    public void Simulate_TimelineMetrics_UsesLatestTicks()
+    {
+        var workspace = new WorkspaceViewModel();
+        LoadNetwork(workspace, BuildNodeIssueNetworkModel());
+
+        var networkField = typeof(WorkspaceViewModel).GetField("network", BindingFlags.Instance | BindingFlags.NonPublic);
+        var network = (NetworkModel)networkField!.GetValue(workspace)!;
+
+        network.ActorMetrics = Enumerable.Range(1, 250).Select(i => new MedWNetworkSim.App.Agents.SimulationActorMetrics { Tick = i }).ToList();
+
+        var refreshMethod = typeof(WorkspaceViewModel).GetMethod("RefreshDashboardSummaries", BindingFlags.Instance | BindingFlags.NonPublic);
+        refreshMethod!.Invoke(workspace, null);
+
+        Assert.Equal(240, workspace.TimelineMetrics.Count);
+        Assert.Equal(250, workspace.TimelineMetrics.Last().Period);
+        Assert.Equal(11, workspace.TimelineMetrics.First().Period);
+    }
+
     private static NetworkModel BuildNetworkModel() => new()
     {
         Name = "Top issue test",

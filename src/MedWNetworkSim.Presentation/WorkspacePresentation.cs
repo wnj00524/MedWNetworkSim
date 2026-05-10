@@ -8842,7 +8842,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         }
 
         TimelineMetrics.Clear();
-        foreach (var metric in network.ActorMetrics.OrderBy(m => m.Tick).Take(240))
+        foreach (var metric in network.ActorMetrics.OrderBy(m => m.Tick).TakeLast(240))
         {
             TimelineMetrics.Add(new TimelineMetricPoint
             {

@@ -7029,6 +7029,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         lastConsumerCosts = [];
         visualAnalyticsSnapshot = null;
         NetworkInsights.Clear();
+        lastDetectedIssues = [];
         RefreshDashboardSummaries();
         CurrentPeriod = 0;
         TimelineMaximum = Math.Max(8, network.TimelineLoopLength ?? 12);
@@ -8680,6 +8681,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         lastConsumerCosts = [];
         visualAnalyticsSnapshot = null;
         NetworkInsights.Clear();
+        lastDetectedIssues = [];
         RefreshDashboardSummaries();
         CurrentPeriod = 0;
         TimelinePosition = 0;
@@ -9287,6 +9289,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         TopIssueUnmappedSummary = string.Empty;
         SelectedTopIssue = null;
         SelectedIssueBreadcrumb = "Issue → (none selected)";
+        lastDetectedIssues = [];
         RefreshNetworkAnalyticsPieChartData();
     }
 

@@ -2061,6 +2061,11 @@ public sealed class ShellWindow : Window
 
         return new IconRail
         {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.GlassBackgroundStrong),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.GlassBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(18),
+            Padding = new Thickness(8),
             Child = new ScrollViewer
             {
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
@@ -3066,8 +3071,26 @@ public sealed class ShellWindow : Window
         };
         RefreshToolButtons();
 
+        var kpiStrip = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children =
+            {
+                BuildKpiBadge("Mode", nameof(WorkspaceViewModel.ActiveModeLabel)),
+                BuildKpiBadge("Tool", nameof(WorkspaceViewModel.ToolStatusText)),
+                BuildKpiBadge("Sim", nameof(WorkspaceViewModel.SimulationSummary))
+            }
+        };
+
         return new FloatingCommandBar
         {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.GlassBackgroundStrong),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.GlassBorderStrong),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(20),
+            Padding = new Thickness(10, 8),
             Child = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -3087,7 +3110,9 @@ public sealed class ShellWindow : Window
                     fitButton,
                     labelsButton,
                     clearSelectionButton,
-                    deleteButton
+                    deleteButton,
+                    BuildCommandSeparator(),
+                    kpiStrip
                 }
             }
         };
@@ -3110,6 +3135,11 @@ public sealed class ShellWindow : Window
 
         return new SimulationTransportBar
         {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.GlassBackgroundStrong),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.GlassBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(20),
+            Padding = new Thickness(12, 8),
             Child = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -3127,6 +3157,34 @@ public sealed class ShellWindow : Window
                         FontSize = 12
                     },
                     slider
+                }
+            }
+        };
+    }
+
+    private static Border BuildKpiBadge(string label, string propertyName)
+    {
+        var value = new TextBlock
+        {
+            FontSize = 11,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = new SolidColorBrush(AvaloniaDashboardTheme.PrimaryText)
+        };
+        value.Bind(TextBlock.TextProperty, new Binding(propertyName));
+        return new Border
+        {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.GlassBackground),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.GlassBorder),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(8, 4),
+            Child = new StackPanel
+            {
+                Spacing = 1,
+                Children =
+                {
+                    new TextBlock { Text = label, FontSize = 10, Foreground = new SolidColorBrush(AvaloniaDashboardTheme.SecondaryText) },
+                    value
                 }
             }
         };
@@ -3254,6 +3312,11 @@ public sealed class ShellWindow : Window
 
         return new ContextInspectorDrawer
         {
+            Background = new SolidColorBrush(AvaloniaDashboardTheme.GlassBackgroundStrong),
+            BorderBrush = new SolidColorBrush(AvaloniaDashboardTheme.GlassBorderStrong),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(16),
+            Padding = new Thickness(12),
             Child = new Grid
             {
                 RowDefinitions = new RowDefinitions("Auto,*"),

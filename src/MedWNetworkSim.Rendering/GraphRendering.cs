@@ -684,13 +684,13 @@ public sealed class GraphHitTester
 
 public sealed class GraphRenderer
 {
-    private const float NodeCornerRadius = 18f;
+    private const float NodeCornerRadius = 20f;
     private const double TextClipInset = 6d;
-    private static readonly SKColor BackgroundColor = SKColor.Parse("#08111D");
-    private static readonly SKColor GridMajorColor = SKColor.Parse("#1A3148");
-    private static readonly SKColor GridMinorColor = SKColor.Parse("#102437");
-    private static readonly SKColor EdgeColor = SKColor.Parse("#4B708A");
-    private static readonly SKColor OverlayColor = SKColor.Parse("#67C6F0");
+    private static readonly SKColor BackgroundColor = SKColor.Parse("#091726");
+    private static readonly SKColor GridMajorColor = SKColor.Parse("#244664");
+    private static readonly SKColor GridMinorColor = SKColor.Parse("#162E43");
+    private static readonly SKColor EdgeColor = SKColor.Parse("#5A7F9F");
+    private static readonly SKColor OverlayColor = SKColor.Parse("#4DDCFF");
     private static readonly SKColor FocusColor = SKColor.Parse("#F2D38B");
     private static readonly SKColor TextColor = SKColor.Parse("#E4EEF8");
     private static readonly SKColor MutedTextColor = SKColor.Parse("#89A5BA");
@@ -920,8 +920,10 @@ public sealed class GraphRenderer
             var end = viewport.WorldToScreen(GraphHitTester.GetEdgeAnchor(scene, edge.ToNodeId, edge.FromNodeId, showNodeLabels), viewportSize);
             var edgeAlpha = (byte)Math.Clamp(Math.Round((edge.HasWarning ? 190d : 180d) * edge.VisualOpacity), 15d, 255d);
             edgePaint.Color = edge.HasWarning ? WarningColor.WithAlpha(edgeAlpha) : EdgeColor.WithAlpha(edgeAlpha);
-            edgePaint.StrokeWidth = (float)(2.4d + (edge.LoadRatio * 1.6d));
+            edgePaint.StrokeWidth = (float)(4.8d + (edge.LoadRatio * 2.1d));
+            using var flowPaint = new SKPaint { Color = (edge.HasWarning ? WarningColor : OverlayColor).WithAlpha((byte)Math.Clamp(edgeAlpha + 25, 40, 255)), IsAntialias = true, StrokeWidth = Math.Max(1.4f, edgePaint.StrokeWidth * 0.34f), Style = SKPaintStyle.Stroke, StrokeCap = SKStrokeCap.Round };
             canvas.DrawLine((float)start.X, (float)start.Y, (float)end.X, (float)end.Y, edgePaint);
+            canvas.DrawLine((float)start.X, (float)start.Y, (float)end.X, (float)end.Y, flowPaint);
             if (!edge.IsBidirectional)
             {
                 arrowPaint.Color = edgePaint.Color;
@@ -963,7 +965,7 @@ public sealed class GraphRenderer
             {
                 var midpointWorld = GetEdgeMidpoint(scene, edge, showNodeLabels);
                 var midpoint = viewport.WorldToScreen(midpointWorld, viewportSize);
-                using var handleFill = new SKPaint { IsAntialias = true, Color = SKColor.Parse("#08111D") };
+                using var handleFill = new SKPaint { IsAntialias = true, Color = SKColor.Parse("#091726") };
                 using var handleStroke = new SKPaint { IsAntialias = true, Color = FocusColor, Style = SKPaintStyle.Stroke, StrokeWidth = 2.4f };
                 canvas.DrawCircle((float)midpoint.X, (float)midpoint.Y, 6.5f, handleFill);
                 canvas.DrawCircle((float)midpoint.X, (float)midpoint.Y, 6.5f, handleStroke);
@@ -1011,8 +1013,13 @@ public sealed class GraphRenderer
                 Style = SKPaintStyle.Stroke
             };
 
-            canvas.DrawRoundRect(screenRect, NodeCornerRadius, NodeCornerRadius, fill);
-            canvas.DrawRoundRect(screenRect, NodeCornerRadius, NodeCornerRadius, stroke);
+            var cx = (screenRect.Left + screenRect.Right) / 2f;
+            var cy = (screenRect.Top + screenRect.Bottom) / 2f;
+            var radius = Math.Max(10f, Math.Min(screenRect.Width, screenRect.Height) * 0.36f);
+            using var halo = new SKPaint { Color = (isSelected || isHovered ? OverlayColor : node.StrokeColor).WithAlpha((byte)(isSelected ? 120 : 64)), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = isSelected ? 6.4f : 3.6f };
+            canvas.DrawCircle(cx, cy, radius + 6f, halo);
+            canvas.DrawCircle(cx, cy, radius, fill);
+            canvas.DrawCircle(cx, cy, radius, stroke);
             if (!isSelected && isHighlighted)
             {
                 using var highlight = new SKPaint { Color = FocusColor.WithAlpha(150), Style = SKPaintStyle.Stroke, StrokeWidth = 2f, PathEffect = SKPathEffect.CreateDash([6f, 4f], 0f), IsAntialias = true };

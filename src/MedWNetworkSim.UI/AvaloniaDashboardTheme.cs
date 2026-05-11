@@ -34,6 +34,19 @@ internal static class AvaloniaDashboardTheme
     public static readonly Color ToolbarButtonPrimaryBackground = Color.Parse("#2C5E95");
     public static readonly Color ToolbarButtonBorder = Color.Parse("#3C5A80");
 
+    public static readonly Color GlassBackground = Color.Parse("#1A14233A");
+    public static readonly Color GlassBackgroundStrong = Color.Parse("#CC101C31");
+    public static readonly Color GlassBorder = Color.Parse("#4A6A8D");
+    public static readonly Color GlassBorderStrong = Color.Parse("#79A8D8");
+    public static readonly Color GlowCyan = Color.Parse("#4EDCFF");
+    public static readonly Color GlowAmber = Color.Parse("#FFB65C");
+    public static readonly Color RouteBase = Color.Parse("#496D8F");
+    public static readonly Color RouteFlow = Color.Parse("#4DDCFF");
+    public static readonly Color MarketPressure = Color.Parse("#F2A255");
+    public static readonly Color HealthyGreen = Color.Parse("#4EDB97");
+    public static readonly Color CriticalRed = Color.Parse("#F06C6C");
+    public static readonly Color CanvasGridSubtle = Color.Parse("#29455F");
+    public static readonly Color ShadowSoft = Color.Parse("#66040A14");
     public static readonly double SectionSpacing = 12d;
     public static readonly CornerRadius ControlCornerRadius = new(10);
     public static readonly CornerRadius PanelCornerRadius = new(16);

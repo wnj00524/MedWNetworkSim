@@ -7662,8 +7662,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var selectedNodes = Scene.Selection.SelectedNodeIds.ToHashSet(Comparer);
         var selectedEdges = Scene.Selection.SelectedEdgeIds.ToHashSet(Comparer);
 
-        if (network.Nodes.Any(node => selectedNodes.Contains(node.Id) && IsLockedLayer(node.LayerId)) ||
-            network.Edges.Any(edge => selectedEdges.Contains(edge.Id) && IsLockedLayer(edge.LayerId)))
+        // Bolt: Optimize O(N^2) layer lookup to O(1)
+        var lockedLayerIds = network.Layers.Where(layer => layer.IsLocked).Select(layer => layer.Id).ToHashSet();
+
+        if (network.Nodes.Any(node => selectedNodes.Contains(node.Id) && lockedLayerIds.Contains(node.LayerId)) ||
+            network.Edges.Any(edge => selectedEdges.Contains(edge.Id) && lockedLayerIds.Contains(edge.LayerId)))
         {
             StatusText = "Selected items include locked-layer content. Unlock the layer before deleting.";
             return;

@@ -210,13 +210,13 @@ public sealed class SimulationActorCoordinator
         IReadOnlyList<SimulationActorState> actors,
         int tick,
         IReadOnlyList<SimulationActorDecision>? previousDecisions = null) => new()
-    {
-        Decision = new SimulationActorDecision(),
-        Metrics = new SimulationActorMetrics(),
-        NetworkAfterStep = network,
-        Decisions = [],
-        ActionOutcomes = []
-    };
+        {
+            Decision = new SimulationActorDecision(),
+            Metrics = new SimulationActorMetrics(),
+            NetworkAfterStep = network,
+            Decisions = [],
+            ActionOutcomes = []
+        };
 
     public IReadOnlyList<SimulationActorDecision> PreviewActorActions(
         NetworkModel network,

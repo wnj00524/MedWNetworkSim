@@ -133,8 +133,8 @@ public sealed class RouteAllocation
 
     public double Profit { get; init; }
     /// <summary>
-     /// Gets the route score used for path comparison under the active routing preference.
-     /// </summary>
+    /// Gets the route score used for path comparison under the active routing preference.
+    /// </summary>
     public double TotalScore { get; init; }
 
     /// <summary>

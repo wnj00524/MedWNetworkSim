@@ -8695,13 +8695,17 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             edge.HasWarning = false;
         }
 
+        var nodesById = network.Nodes.ToDictionary(node => node.Id, Comparer);
+
         foreach (var node in Scene.Nodes)
         {
-            var nodeModel = network.Nodes.First(model => Comparer.Equals(model.Id, node.Id));
-            node.MetricsLabel = string.Empty;
-            node.DetailLines = BuildNodeDetailLines(nodeModel, [], null);
-            UpdateSceneNodeLayout(node, nodeModel, null, graphRenderer.GetZoomTier(Viewport.Zoom));
-            node.HasWarning = false;
+            if (nodesById.TryGetValue(node.Id, out var nodeModel))
+            {
+                node.MetricsLabel = string.Empty;
+                node.DetailLines = BuildNodeDetailLines(nodeModel, [], null);
+                UpdateSceneNodeLayout(node, nodeModel, null, graphRenderer.GetZoomTier(Viewport.Zoom));
+                node.HasWarning = false;
+            }
         }
 
         ApplyIsochroneVisuals();
@@ -8770,13 +8774,14 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var allocationList = allocations.ToList();
         var edgeLoads = BuildEdgeLoads(allocationList, timeline);
         var maxLoad = Math.Max(1d, edgeLoads.Values.DefaultIfEmpty(0d).Max());
+        var edgesById = network.Edges.ToDictionary(edge => edge.Id, Comparer);
         foreach (var edge in Scene.Edges)
         {
+            if (!edgesById.TryGetValue(edge.Id, out var edgeModel)) continue;
             var load = edgeLoads.GetValueOrDefault(edge.Id);
             edge.LoadRatio = load / maxLoad;
             edge.FlowRate = load / maxLoad;
             edge.HasWarning = edge.Capacity > 0d && load >= edge.Capacity * 0.8d;
-            var edgeModel = network.Edges.First(model => Comparer.Equals(model.Id, edge.Id));
             var edgeFlow = timeline?.EdgeFlows.GetValueOrDefault(edge.Id, TemporalNetworkSimulationEngine.EdgeFlowVisualSummary.Empty)
                 ?? new TemporalNetworkSimulationEngine.EdgeFlowVisualSummary(load, 0d);
             var edgeOccupancy = timeline?.EdgeOccupancy.GetValueOrDefault(edge.Id, load) ?? load;
@@ -8784,11 +8789,12 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             edge.ToolTipText = BuildEdgeToolTipText(edgeModel, edgeFlow, edgeOccupancy, edgePressure);
         }
 
+        var nodesById = network.Nodes.ToDictionary(node => node.Id, Comparer);
         if (timeline is not null)
         {
             foreach (var node in Scene.Nodes)
             {
-                var nodeModel = network.Nodes.First(model => Comparer.Equals(model.Id, node.Id));
+                if (!nodesById.TryGetValue(node.Id, out var nodeModel)) continue;
                 var state = timeline.NodeStates
                     .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id))
                     .Select(pair => pair.Value)
@@ -8809,7 +8815,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         {
             foreach (var node in Scene.Nodes)
             {
-                var nodeModel = network.Nodes.First(model => Comparer.Equals(model.Id, node.Id));
+                if (!nodesById.TryGetValue(node.Id, out var nodeModel)) continue;
                 node.MetricsLabel = string.Empty;
                 node.DetailLines = BuildNodeDetailLines(nodeModel, [], null);
                 UpdateSceneNodeLayout(node, nodeModel, null, graphRenderer.GetZoomTier(Viewport.Zoom));

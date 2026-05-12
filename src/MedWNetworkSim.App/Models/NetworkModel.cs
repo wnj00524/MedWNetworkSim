@@ -41,8 +41,8 @@ public sealed class NetworkModel
     public bool FacilityModeEnabled { get; set; }
 
     /// <summary>
-     /// Gets or sets a value indicating whether same-node meeting demand requires explicit SellLocal permission.
-     /// </summary>
+    /// Gets or sets a value indicating whether same-node meeting demand requires explicit SellLocal permission.
+    /// </summary>
     public bool LimitMeetingNodeDemandBySellLocalPermission { get; set; }
 
     [JsonIgnore]

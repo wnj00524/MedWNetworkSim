@@ -7226,13 +7226,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         networkLayerService.EnsureLayerIntegrity(network);
         LayerItems.Clear();
+
+        // Bolt: Optimize O(N^2) layer counts lookup to O(1)
+        var nodeCountsByLayer = network.Nodes.GroupBy(node => node.LayerId).ToDictionary(g => g.Key, g => g.Count());
+        var edgeCountsByLayer = network.Edges.GroupBy(edge => edge.LayerId).ToDictionary(g => g.Key, g => g.Count());
+
         foreach (var layer in network.Layers.OrderBy(item => item.Order))
         {
             LayerItems.Add(new LayerListItemViewModel
             {
                 Layer = layer,
-                NodeCount = network.Nodes.Count(node => node.LayerId == layer.Id),
-                EdgeCount = network.Edges.Count(edge => edge.LayerId == layer.Id),
+                NodeCount = nodeCountsByLayer.TryGetValue(layer.Id, out var n) ? n : 0,
+                EdgeCount = edgeCountsByLayer.TryGetValue(layer.Id, out var e) ? e : 0,
                 OnStateChanged = () =>
                 {
                     BuildSceneFromNetwork();

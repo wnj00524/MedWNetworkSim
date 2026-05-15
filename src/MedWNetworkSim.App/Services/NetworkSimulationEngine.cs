@@ -1081,9 +1081,39 @@ public sealed class NetworkSimulationEngine
     {
         var routes = new List<RouteCandidate>();
 
-        foreach (var producerNodeId in context.Supply.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
+        // Cache active producers and consumers to avoid repeated LINQ enumerations and allocations,
+        // especially since the consumer loop is nested inside the producer loop.
+        var activeProducers = new List<string>();
+        foreach (var pair in context.Supply)
         {
-            foreach (var consumerNodeId in context.Demand.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
+            if (pair.Value > Epsilon)
+            {
+                activeProducers.Add(pair.Key);
+            }
+        }
+
+        if (activeProducers.Count == 0)
+        {
+            return routes;
+        }
+
+        var activeConsumers = new List<string>();
+        foreach (var pair in context.Demand)
+        {
+            if (pair.Value > Epsilon)
+            {
+                activeConsumers.Add(pair.Key);
+            }
+        }
+
+        if (activeConsumers.Count == 0)
+        {
+            return routes;
+        }
+
+        foreach (var producerNodeId in activeProducers)
+        {
+            foreach (var consumerNodeId in activeConsumers)
             {
                 if (Comparer.Equals(producerNodeId, consumerNodeId))
                 {

@@ -7,3 +7,6 @@
 ## 2026-05-12 - O(N^2) Lookup inside Simulation Refresh Loop
 **Learning:** The `RefreshSimulationDisplayState` and `ResetTimeline` methods perform an O(N) `First` lookup into the `network.Nodes` collection for every single node in the scene, and an O(E) `First` lookup into the `network.Edges` collection for every edge in the scene. This causes a severe O(N^2 + E^2) bottleneck during animation or timeline resets, scaling terribly with large networks.
 **Action:** Pre-compute lookup dictionaries (`network.Nodes.ToDictionary` and `network.Edges.ToDictionary`) outside the `foreach` scene iteration loops to reduce the lookups to O(1), bringing the overall update complexity to O(N + E).
+## 2026-05-13 - O(N^2) Lookup inside Layer Refresh Loop
+**Learning:** The `RefreshLayerItems` method in `WorkspacePresentation` performs an O(N) `Count()` lookup over `network.Nodes` and `network.Edges` for every single layer in the network. This causes an O(L * (N + E)) bottleneck when layers are updated, which slows down the UI with many layers.
+**Action:** Pre-compute lookup dictionaries for node and edge counts by layer outside the iteration loop using `.GroupBy(x => x.LayerId).ToDictionary(g => g.Key, g => g.Count())` to turn the lookups into O(1). Note: `LayerId` is a `Guid`, so avoid using string fallbacks or comparers.

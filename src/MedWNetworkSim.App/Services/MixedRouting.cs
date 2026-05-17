@@ -825,12 +825,19 @@ public static partial class MixedRoutingAllocator
     private static List<RouteCandidate> BuildCandidateRoutes(RoutingTrafficContext context, NetworkState state, AllocationContext allocationContext)
     {
         var routes = new List<RouteCandidate>();
-        foreach (var producerNodeId in context.Supply.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
+
+        // ⚡ Bolt: Pre-compute active producers and consumers outside the nested loops
+        // to avoid O(P * C) redundant LINQ evaluations and allocations during routing.
+        var activeProducers = context.Supply.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key).ToList();
+        var activeConsumers = context.Demand
+            .Where(pair => pair.Value > Epsilon)
+            .Select(pair => pair.Key)
+            .Where(nodeId => context.MeetingDemandEligibleNodeIds.Contains(nodeId))
+            .ToList();
+
+        foreach (var producerNodeId in activeProducers)
         {
-            foreach (var consumerNodeId in context.Demand
-                .Where(pair => pair.Value > Epsilon)
-                .Select(pair => pair.Key)
-                .Where(nodeId => context.MeetingDemandEligibleNodeIds.Contains(nodeId)))
+            foreach (var consumerNodeId in activeConsumers)
             {
                 if (Comparer.Equals(producerNodeId, consumerNodeId))
                 {

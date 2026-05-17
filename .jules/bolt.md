@@ -10,3 +10,6 @@
 ## 2026-05-13 - O(N^2) Lookup inside Layer Refresh Loop
 **Learning:** The `RefreshLayerItems` method in `WorkspacePresentation` performs an O(N) `Count()` lookup over `network.Nodes` and `network.Edges` for every single layer in the network. This causes an O(L * (N + E)) bottleneck when layers are updated, which slows down the UI with many layers.
 **Action:** Pre-compute lookup dictionaries for node and edge counts by layer outside the iteration loop using `.GroupBy(x => x.LayerId).ToDictionary(g => g.Key, g => g.Count())` to turn the lookups into O(1). Note: `LayerId` is a `Guid`, so avoid using string fallbacks or comparers.
+## 2026-05-14 - O(N^2) LINQ Evaluation inside Nested Routing Loop
+**Learning:** `BuildCandidateRoutes` runs repeatedly during capacity bidding (inside a `while (true)` loop). In its original form, it performed `context.Demand.Where(...).Select(...)` within the body of an outer `foreach` loop over `context.Supply`. This led to the `Demand` dictionary being repeatedly iterated and filtered on *every* producer iteration, causing severe O(P * C) allocation and evaluation bottlenecks.
+**Action:** When a method processes combinations from two collections using nested loops, always pre-compute the filtered/projected sequences (e.g., `ToList()`) *outside* of the outer loop.

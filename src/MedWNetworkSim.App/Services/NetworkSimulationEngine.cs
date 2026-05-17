@@ -1081,9 +1081,12 @@ public sealed class NetworkSimulationEngine
     {
         var routes = new List<RouteCandidate>();
 
-        foreach (var producerNodeId in context.Supply.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
+        var activeProducers = context.Supply.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key).ToList();
+        var activeConsumers = context.Demand.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key).ToList();
+
+        foreach (var producerNodeId in activeProducers)
         {
-            foreach (var consumerNodeId in context.Demand.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
+            foreach (var consumerNodeId in activeConsumers)
             {
                 if (Comparer.Equals(producerNodeId, consumerNodeId))
                 {

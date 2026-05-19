@@ -1097,7 +1097,10 @@ public sealed class NetworkSimulationEngine
 
         foreach (var producerNodeId in activeProducers)
         {
-            var targetConsumers = activeConsumers.Where(id => !Comparer.Equals(producerNodeId, id)).ToHashSet(Comparer);
+            // Bolt: Replaced O(C) LINQ iteration with O(1) HashSet copy and remove to prevent O(P * C) bottleneck
+            var targetConsumers = new HashSet<string>(activeConsumers, Comparer);
+            targetConsumers.Remove(producerNodeId);
+
             if (targetConsumers.Count == 0)
             {
                 continue;

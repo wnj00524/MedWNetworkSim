@@ -907,10 +907,15 @@ public sealed class NetworkSimulationEngine
     {
         var branchesByKey = new Dictionary<string, BranchDemand>(Comparer);
 
-        var targetConsumers = context.Demand
-            .Where(pair => pair.Value > Epsilon && !Comparer.Equals(pair.Key, currentNodeId))
-            .Select(pair => pair.Key)
-            .ToHashSet(Comparer);
+        // Bolt: Replaced LINQ with foreach to avoid delegate allocations and enumerator overhead
+        var targetConsumers = new HashSet<string>(Comparer);
+        foreach (var pair in context.Demand)
+        {
+            if (pair.Value > Epsilon && !Comparer.Equals(pair.Key, currentNodeId))
+            {
+                targetConsumers.Add(pair.Key);
+            }
+        }
 
         if (targetConsumers.Count == 0)
         {
@@ -1317,10 +1322,18 @@ public sealed class NetworkSimulationEngine
             return double.PositiveInfinity;
         }
 
-        return pathResourceIds
-            .Select(resourceId => remainingCapacityById.TryGetValue(resourceId, out var remainingCapacity) ? remainingCapacity : 0d)
-            .DefaultIfEmpty(0d)
-            .Min();
+        double minCapacity = double.PositiveInfinity;
+        // Bolt: Replaced LINQ Select/Min with a for loop to avoid delegate and enumerator allocations in hot path
+        for (int i = 0; i < pathResourceIds.Count; i++)
+        {
+            var remainingCapacity = remainingCapacityById.TryGetValue(pathResourceIds[i], out var capacity) ? capacity : 0d;
+            if (remainingCapacity < minCapacity)
+            {
+                minCapacity = remainingCapacity;
+            }
+        }
+
+        return minCapacity == double.PositiveInfinity ? 0d : minCapacity;
     }
 
     private static double CalculateBidCostPerUnit(
@@ -1353,10 +1366,18 @@ public sealed class NetworkSimulationEngine
         IDictionary<string, double> remainingCapacityById,
         double routeCapacity)
     {
-        return pathResourceIds.Count(resourceId =>
-            remainingCapacityById.TryGetValue(resourceId, out var remainingCapacity) &&
-            !double.IsPositiveInfinity(remainingCapacity) &&
-            remainingCapacity <= routeCapacity + Epsilon);
+        int count = 0;
+        // Bolt: Replaced LINQ Count with foreach to avoid delegate allocations and closure overhead
+        foreach (var resourceId in pathResourceIds)
+        {
+            if (remainingCapacityById.TryGetValue(resourceId, out var remainingCapacity) &&
+                !double.IsPositiveInfinity(remainingCapacity) &&
+                remainingCapacity <= routeCapacity + Epsilon)
+            {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static void ReserveCapacity(

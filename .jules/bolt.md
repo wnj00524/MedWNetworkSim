@@ -19,3 +19,7 @@
 ## 2026-05-16 - O(P * C) LINQ Evaluation inside Candidate Route Builder Loop
 **Learning:** `BuildCandidateRoutes` inside `NetworkSimulationEngine` contained an `O(P * C)` operation inside its producer loop: `var targetConsumers = activeConsumers.Where(id => !Comparer.Equals(producerNodeId, id)).ToHashSet(Comparer);`. This repeatedly evaluated a LINQ query over all consumers ($C$) for every producer ($P$), causing significant CPU and memory overhead during capacity bidding.
 **Action:** Replaced the repetitive `Where` filter with a fast O(1) subset operation by creating a copy of the pre-computed `activeConsumers` `HashSet` and removing the current `producerNodeId` via `targetConsumers.Remove(producerNodeId);`. When finding subsets inside a hot loop, prefer copying HashSets and removing items over repeating LINQ queries.
+
+## 2024-05-23 - Optimize LINQ Allocations in Network Simulation Engine
+**Learning:** Found multiple places in `NetworkSimulationEngine.cs` where LINQ `.Count()` and `.Select().Min()` inside inner loops on the simulation path were allocating delegates and enumerators on the hot path (e.g., inside `GetPathRemainingCapacity` and `CountBottleneckResources`).
+**Action:** Replaced these LINQ chains with `for` and `foreach` loops respectively to minimize garbage generation during greedy route allocation, reducing allocations during repeated graph evaluations.

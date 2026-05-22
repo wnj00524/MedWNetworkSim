@@ -8797,23 +8797,30 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var nodesById = network.Nodes.ToDictionary(node => node.Id, Comparer);
         if (timeline is not null)
         {
+            // Bolt: Pre-compute node states to optimize O(N^2) timeline.NodeStates lookup
+            var nodeStatesByNodeId = timeline.NodeStates
+                .GroupBy(pair => pair.Key.NodeId, Comparer)
+                .ToDictionary(group => group.Key, group => group.ToList(), Comparer);
+
             foreach (var node in Scene.Nodes)
             {
                 if (!nodesById.TryGetValue(node.Id, out var nodeModel)) continue;
-                var state = timeline.NodeStates
-                    .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id))
-                    .Select(pair => pair.Value)
-                    .FirstOrDefault();
-                var backlogByTraffic = timeline.NodeStates
-                    .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id) && pair.Value.DemandBacklog > 0d)
+
+                var nodeTrafficStates = nodeStatesByNodeId.GetValueOrDefault(node.Id) ?? [];
+
+                var state = nodeTrafficStates.Select(pair => pair.Value).FirstOrDefault();
+
+                var backlogByTraffic = nodeTrafficStates
+                    .Where(pair => pair.Value.DemandBacklog > 0d)
                     .GroupBy(pair => pair.Key.TrafficType, pair => pair.Value.DemandBacklog, Comparer)
                     .Select(group => new KeyValuePair<string, double>(group.Key, group.Sum()))
                     .ToList();
+
                 var pressure = timeline.NodePressureById.GetValueOrDefault(node.Id);
                 node.MetricsLabel = string.Empty;
                 node.DetailLines = BuildNodeDetailLines(nodeModel, backlogByTraffic, pressure.Score > 0d ? pressure : null);
                 UpdateSceneNodeLayout(node, nodeModel, pressure.Score > 0d ? pressure : null, graphRenderer.GetZoomTier(Viewport.Zoom));
-                node.HasWarning = pressure.Score > 0d || state.DemandBacklog > 0d;
+                node.HasWarning = pressure.Score > 0d || (state.DemandBacklog > 0d);
             }
         }
         else

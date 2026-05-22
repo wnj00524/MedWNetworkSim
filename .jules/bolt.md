@@ -23,3 +23,6 @@
 ## 2024-05-23 - Optimize LINQ Allocations in Network Simulation Engine
 **Learning:** Found multiple places in `NetworkSimulationEngine.cs` where LINQ `.Count()` and `.Select().Min()` inside inner loops on the simulation path were allocating delegates and enumerators on the hot path (e.g., inside `GetPathRemainingCapacity` and `CountBottleneckResources`).
 **Action:** Replaced these LINQ chains with `for` and `foreach` loops respectively to minimize garbage generation during greedy route allocation, reducing allocations during repeated graph evaluations.
+## 2026-05-22 - O(N^2) Lookup inside Simulation Updates
+**Learning:** In the Avalonia presentation layer, `ApplySimulationOutcomes` in `WorkspacePresentation` was performing an O(N^2) nested lookup by filtering `timeline.NodeStates` inside a loop that iterated over every node in the scene. For large networks, this repeated filtering could freeze the UI during heavy simulation updates.
+**Action:** Pre-compute node states into a grouped lookup dictionary outside of the loop, reducing the update bottleneck to O(N + S).

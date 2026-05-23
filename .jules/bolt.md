@@ -23,3 +23,6 @@
 ## 2024-05-23 - Optimize LINQ Allocations in Network Simulation Engine
 **Learning:** Found multiple places in `NetworkSimulationEngine.cs` where LINQ `.Count()` and `.Select().Min()` inside inner loops on the simulation path were allocating delegates and enumerators on the hot path (e.g., inside `GetPathRemainingCapacity` and `CountBottleneckResources`).
 **Action:** Replaced these LINQ chains with `for` and `foreach` loops respectively to minimize garbage generation during greedy route allocation, reducing allocations during repeated graph evaluations.
+## 2024-05-24 - Optimize LINQ Allocations in Candidate Route Builder
+**Learning:** Found that `BuildCandidateRoutes` and `FindBestRoutes` in `NetworkSimulationEngine.cs` were using LINQ `Where`, `Select`, `ToHashSet`, and `Sum` inside the hot loops that execute during capacity bidding (e.g., when finding active consumers/producers, and calculating total route score/cost/time). This allocated significant amounts of enumerators and delegates, reducing performance in large simulations.
+**Action:** Replaced these LINQ chains with standard `for` and `foreach` loops to minimize garbage generation, eliminating redundant allocation inside the routing bottleneck.

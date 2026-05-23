@@ -1097,8 +1097,18 @@ public sealed class NetworkSimulationEngine
     {
         var routes = new List<RouteCandidate>();
 
-        var activeProducers = context.Supply.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key).ToList();
-        var activeConsumers = context.Demand.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key).ToHashSet(Comparer);
+        // Bolt: Replaced LINQ with foreach to prevent delegate allocations in the hot loop
+        var activeProducers = new List<string>();
+        foreach (var pair in context.Supply)
+        {
+            if (pair.Value > Epsilon) activeProducers.Add(pair.Key);
+        }
+
+        var activeConsumers = new HashSet<string>(Comparer);
+        foreach (var pair in context.Demand)
+        {
+            if (pair.Value > Epsilon) activeConsumers.Add(pair.Key);
+        }
 
         foreach (var producerNodeId in activeProducers)
         {
@@ -1223,16 +1233,28 @@ public sealed class NetworkSimulationEngine
             pathArcs.Reverse();
             var pathTranshipmentNodeIds = GetIntermediateNodeIds(pathNodeIds);
 
+            var pathEdgeIds = new List<string>(pathArcs.Count);
+            var totalTime = 0d;
+            var totalCost = 0d;
+            var totalScore = 0d;
+            foreach (var arc in pathArcs)
+            {
+                pathEdgeIds.Add(arc.EdgeId);
+                totalTime += arc.Time;
+                totalCost += arc.Cost;
+                totalScore += Score(arc.Time, arc.Cost, context.RoutingPreference);
+            }
+
             results[consumerNodeId] = new RouteCandidate(
                 context,
                 producerNodeId,
                 consumerNodeId,
                 pathNodeIds,
-                pathArcs.Select(arc => arc.EdgeId).ToList(),
+                pathEdgeIds,
                 pathTranshipmentNodeIds,
-                pathArcs.Sum(arc => arc.Time),
-                pathArcs.Sum(arc => arc.Cost),
-                pathArcs.Sum(arc => Score(arc.Time, arc.Cost, context.RoutingPreference)),
+                totalTime,
+                totalCost,
+                totalScore,
                 GetCapacityBidPerUnit(context, consumerNodeId));
         }
 

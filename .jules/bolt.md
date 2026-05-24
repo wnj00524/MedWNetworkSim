@@ -26,3 +26,10 @@
 ## 2024-05-24 - Optimize LINQ Allocations in Candidate Route Builder
 **Learning:** Found that `BuildCandidateRoutes` and `FindBestRoutes` in `NetworkSimulationEngine.cs` were using LINQ `Where`, `Select`, `ToHashSet`, and `Sum` inside the hot loops that execute during capacity bidding (e.g., when finding active consumers/producers, and calculating total route score/cost/time). This allocated significant amounts of enumerators and delegates, reducing performance in large simulations.
 **Action:** Replaced these LINQ chains with standard `for` and `foreach` loops to minimize garbage generation, eliminating redundant allocation inside the routing bottleneck.
+## 2024-05-25 - Avoid O(N) Hashset Copy In Hot Loops
+**Learning:** Found multiple places in `TemporalNetworkSimulationEngine.cs` and `MixedRouting.cs` where `new HashSet<string>(activeConsumers, Comparer)` was being called inside an `O(P)` hot loop to filter out the `producerNodeId` via `.Remove(producerNodeId)`. Copy constructors for `HashSet` are `O(N)`, which caused severe GC overhead that bottlenecked graph traversal logic.
+**Action:** Replace `HashSet` copying inside hot loops with iterative passes over the original collection alongside `O(1)` conditional filtering (`if (consumerNodeId == producerNodeId) continue;`).
+
+## 2024-05-25 - Be Careful Replacing LINQ Min with For Loops
+**Learning:** When attempting to remove LINQ `.Select().DefaultIfEmpty(0d).Min()` inside `GetPathRemainingCapacity`, I replaced it with a `for` loop but incorrectly added `minCapacity == double.PositiveInfinity ? 0d : minCapacity;`. This broke capacity calculations on paths made entirely of unconstrained edges (which expect `PositiveInfinity`).
+**Action:** When replacing LINQ `.Min()` or `.DefaultIfEmpty()` aggregations with manual `for` loops (e.g., for calculating capacities), ensure that traversing empty collections correctly defaults to `double.PositiveInfinity` (or the equivalent semantically unconstrained value) rather than inadvertently returning `0`.

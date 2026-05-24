@@ -1941,48 +1941,62 @@ public sealed class TemporalNetworkSimulationEngine
     {
         var routes = new List<RouteCandidate>();
 
-        foreach (var producerNodeId in context.Supply.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
+        // Bolt: Replaced LINQ with foreach to prevent delegate allocations in the hot loop
+        var activeProducers = new List<string>();
+        foreach (var pair in context.Supply)
         {
-            foreach (var consumerNodeId in context.Demand
-                .Where(pair => pair.Value > Epsilon)
-                .Select(pair => pair.Key)
-                .Where(nodeId => context.MeetingDemandEligibleNodeIds.Contains(nodeId)))
+            if (pair.Value > Epsilon) activeProducers.Add(pair.Key);
+        }
+
+        var activeConsumers = new HashSet<string>(Comparer);
+        foreach (var pair in context.Demand)
+        {
+            if (pair.Value > Epsilon && context.MeetingDemandEligibleNodeIds.Contains(pair.Key))
             {
-                if (Comparer.Equals(producerNodeId, consumerNodeId))
-                {
-                    continue;
-                }
-
-                var route = FindBestRoute(
-                    context,
-                    producerNodeId,
-                    consumerNodeId,
-                    adjacency,
-                    remainingCapacityByEdgeId,
-                    remainingTranshipmentCapacityByNodeId);
-
-                if (route is not null)
-                {
-                    routes.Add(route);
-                }
+                activeConsumers.Add(pair.Key);
             }
+        }
+
+        foreach (var producerNodeId in activeProducers)
+        {
+            // Bolt: Replaced O(C) LINQ iteration with O(1) HashSet copy and remove to prevent O(P * C) bottleneck
+            var targetConsumers = new HashSet<string>(activeConsumers, Comparer);
+            targetConsumers.Remove(producerNodeId);
+
+            if (targetConsumers.Count == 0)
+            {
+                continue;
+            }
+
+            var routesToConsumers = FindBestRoutes(
+                context,
+                producerNodeId,
+                targetConsumers,
+                adjacency,
+                remainingCapacityByEdgeId,
+                remainingTranshipmentCapacityByNodeId);
+
+            routes.AddRange(routesToConsumers.Values);
         }
 
         return routes;
     }
 
-    private static RouteCandidate? FindBestRoute(
+    private static IReadOnlyDictionary<string, RouteCandidate> FindBestRoutes(
         TemporalTrafficContext context,
         string producerNodeId,
-        string consumerNodeId,
+        IReadOnlySet<string> consumerNodeIds,
         IReadOnlyDictionary<string, List<GraphArc>> adjacency,
         IDictionary<string, double> remainingCapacityByEdgeId,
         IDictionary<string, double> remainingTranshipmentCapacityByNodeId)
     {
+        // A batched Dijkstra pass finds the best currently-feasible routes to all targeted consumers.
         var distances = new Dictionary<string, double>(Comparer) { [producerNodeId] = 0d };
         var previous = new Dictionary<string, PreviousStep>(Comparer);
         var queue = new PriorityQueue<string, double>();
         queue.Enqueue(producerNodeId, 0d);
+
+        var remainingConsumers = new HashSet<string>(consumerNodeIds, Comparer);
 
         while (queue.TryDequeue(out var currentNodeId, out var currentDistance))
         {
@@ -1991,7 +2005,8 @@ public sealed class TemporalNetworkSimulationEngine
                 continue;
             }
 
-            if (Comparer.Equals(currentNodeId, consumerNodeId))
+            remainingConsumers.Remove(currentNodeId);
+            if (remainingConsumers.Count == 0)
             {
                 break;
             }
@@ -2001,21 +2016,23 @@ public sealed class TemporalNetworkSimulationEngine
                 continue;
             }
 
+            // Before expanding out of the current node (except the origin), check if transshipment is allowed.
+            if (!Comparer.Equals(currentNodeId, producerNodeId))
+            {
+                if (!context.ProfilesByNodeId.TryGetValue(currentNodeId, out var profile) || profile?.CanTransship != true)
+                {
+                    continue;
+                }
+
+                if (remainingTranshipmentCapacityByNodeId.TryGetValue(currentNodeId, out var transhipmentCapacity) && transhipmentCapacity <= Epsilon)
+                {
+                    continue;
+                }
+            }
+
             foreach (var arc in arcs)
             {
                 if (!remainingCapacityByEdgeId.TryGetValue(arc.EdgeId, out var remainingCapacity) || remainingCapacity <= Epsilon)
-                {
-                    continue;
-                }
-
-                if (IsIntermediateNode(arc.ToNodeId, producerNodeId, consumerNodeId) &&
-                    remainingTranshipmentCapacityByNodeId.TryGetValue(arc.ToNodeId, out var remainingNodeCapacity) &&
-                    remainingNodeCapacity <= Epsilon)
-                {
-                    continue;
-                }
-
-                if (!CanTraverseNode(arc.ToNodeId, producerNodeId, consumerNodeId, context.ProfilesByNodeId))
                 {
                     continue;
                 }
@@ -2033,38 +2050,57 @@ public sealed class TemporalNetworkSimulationEngine
             }
         }
 
-        if (!distances.ContainsKey(consumerNodeId))
+        var results = new Dictionary<string, RouteCandidate>(Comparer);
+
+        foreach (var consumerNodeId in consumerNodeIds)
         {
-            return null;
+            if (!distances.ContainsKey(consumerNodeId))
+            {
+                continue;
+            }
+
+            var pathNodeIds = new List<string> { consumerNodeId };
+            var pathArcs = new List<GraphArc>();
+            var cursor = consumerNodeId;
+
+            while (!Comparer.Equals(cursor, producerNodeId))
+            {
+                var step = previous[cursor];
+                pathNodeIds.Add(step.PreviousNodeId);
+                pathArcs.Add(step.Arc);
+                cursor = step.PreviousNodeId;
+            }
+
+            pathNodeIds.Reverse();
+            pathArcs.Reverse();
+            var pathTranshipmentNodeIds = GetIntermediateNodeIds(pathNodeIds);
+
+            var pathEdgeIds = new List<string>(pathArcs.Count);
+            var totalTime = 0d;
+            var totalCost = 0d;
+            var totalScore = 0d;
+            foreach (var arc in pathArcs)
+            {
+                pathEdgeIds.Add(arc.EdgeId);
+                totalTime += arc.Time;
+                totalCost += arc.Cost;
+                totalScore += Score(arc.Time, arc.Cost, context.RoutingPreference);
+            }
+
+            results[consumerNodeId] = new RouteCandidate(
+                context,
+                producerNodeId,
+                consumerNodeId,
+                pathNodeIds,
+                pathEdgeIds,
+                pathTranshipmentNodeIds,
+                totalTime,
+                totalCost,
+                totalScore,
+                GetCapacityBidPerUnit(context, consumerNodeId));
         }
 
-        var pathNodeIds = new List<string> { consumerNodeId };
-        var pathArcs = new List<GraphArc>();
-        var cursor = consumerNodeId;
-
-        while (!Comparer.Equals(cursor, producerNodeId))
-        {
-            var step = previous[cursor];
-            pathNodeIds.Add(step.PreviousNodeId);
-            pathArcs.Add(step.Arc);
-            cursor = step.PreviousNodeId;
-        }
-
-        pathNodeIds.Reverse();
-        pathArcs.Reverse();
-        var pathTranshipmentNodeIds = GetIntermediateNodeIds(pathNodeIds);
-
-        return new RouteCandidate(
-            context,
-            producerNodeId,
-            consumerNodeId,
-            pathNodeIds,
-            pathArcs.Select(arc => arc.EdgeId).ToList(),
-            pathTranshipmentNodeIds,
-            pathArcs.Sum(arc => arc.Time),
-            pathArcs.Sum(arc => arc.Cost),
-            pathArcs.Sum(arc => Score(arc.Time, arc.Cost, context.RoutingPreference)),
-            GetCapacityBidPerUnit(context, consumerNodeId));
+        return results;
     }
 
     private static bool CanTraverseNode(
@@ -2147,10 +2183,18 @@ public sealed class TemporalNetworkSimulationEngine
             return double.PositiveInfinity;
         }
 
-        return pathResourceIds
-            .Select(resourceId => remainingCapacityById.TryGetValue(resourceId, out var remainingCapacity) ? remainingCapacity : 0d)
-            .DefaultIfEmpty(0d)
-            .Min();
+        double minCapacity = double.PositiveInfinity;
+        // Bolt: Replaced LINQ Select/Min with a for loop to avoid delegate and enumerator allocations in hot path
+        for (int i = 0; i < pathResourceIds.Count; i++)
+        {
+            var remainingCapacity = remainingCapacityById.TryGetValue(pathResourceIds[i], out var capacity) ? capacity : 0d;
+            if (remainingCapacity < minCapacity)
+            {
+                minCapacity = remainingCapacity;
+            }
+        }
+
+        return minCapacity == double.PositiveInfinity ? 0d : minCapacity;
     }
 
     private static double CalculateBidCostPerUnit(

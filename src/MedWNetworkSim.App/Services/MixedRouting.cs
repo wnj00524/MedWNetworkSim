@@ -825,18 +825,36 @@ public static partial class MixedRoutingAllocator
     private static List<RouteCandidate> BuildCandidateRoutes(RoutingTrafficContext context, NetworkState state, AllocationContext allocationContext)
     {
         var routes = new List<RouteCandidate>();
-        foreach (var producerNodeId in context.Supply.Where(pair => pair.Value > Epsilon).Select(pair => pair.Key))
-        {
-            foreach (var consumerNodeId in context.Demand
-                .Where(pair => pair.Value > Epsilon)
-                .Select(pair => pair.Key)
-                .Where(nodeId => context.MeetingDemandEligibleNodeIds.Contains(nodeId)))
-            {
-                if (Comparer.Equals(producerNodeId, consumerNodeId))
-                {
-                    continue;
-                }
 
+        // Bolt: Replaced LINQ with foreach to prevent delegate allocations in the hot loop
+        var activeProducers = new List<string>();
+        foreach (var pair in context.Supply)
+        {
+            if (pair.Value > Epsilon) activeProducers.Add(pair.Key);
+        }
+
+        var activeConsumers = new HashSet<string>(Comparer);
+        foreach (var pair in context.Demand)
+        {
+            if (pair.Value > Epsilon && context.MeetingDemandEligibleNodeIds.Contains(pair.Key))
+            {
+                activeConsumers.Add(pair.Key);
+            }
+        }
+
+        foreach (var producerNodeId in activeProducers)
+        {
+            // Bolt: Replaced O(C) LINQ iteration with O(1) HashSet copy and remove to prevent O(P * C) bottleneck
+            var targetConsumers = new HashSet<string>(activeConsumers, Comparer);
+            targetConsumers.Remove(producerNodeId);
+
+            if (targetConsumers.Count == 0)
+            {
+                continue;
+            }
+
+            foreach (var consumerNodeId in targetConsumers)
+            {
                 routes.AddRange(FindCandidateRoutes(context, producerNodeId, consumerNodeId, state, allocationContext));
             }
         }

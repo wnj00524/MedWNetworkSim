@@ -33,3 +33,7 @@
 ## 2024-05-25 - Be Careful Replacing LINQ Min with For Loops
 **Learning:** When attempting to remove LINQ `.Select().DefaultIfEmpty(0d).Min()` inside `GetPathRemainingCapacity`, I replaced it with a `for` loop but incorrectly added `minCapacity == double.PositiveInfinity ? 0d : minCapacity;`. This broke capacity calculations on paths made entirely of unconstrained edges (which expect `PositiveInfinity`).
 **Action:** When replacing LINQ `.Min()` or `.DefaultIfEmpty()` aggregations with manual `for` loops (e.g., for calculating capacities), ensure that traversing empty collections correctly defaults to `double.PositiveInfinity` (or the equivalent semantically unconstrained value) rather than inadvertently returning `0`.
+
+## 2024-05-26 - O(P * C) Allocation bottleneck in multi-target Dijkstra loops
+**Learning:** Found that `FindBestRoutes` and `BuildCandidateRoutes` were repeatedly instantiating `HashSet<string>` copies of target consumers (`targetConsumers` and `remainingConsumers`) for every active producer during simulation bidding. Copy constructors for `HashSet` are $O(N)$, resulting in a massive $O(P \times C)$ memory allocation overhead.
+**Action:** Replaced the collection copies with simple integer state variables (`consumersToFind`) that track the count of remaining targets, decrementing when a node is settled. When checking for early exit conditions in batched search algorithms inside hot loops, always use integer tracking counters rather than allocating sets or collections.

@@ -1112,11 +1112,8 @@ public sealed class NetworkSimulationEngine
 
         foreach (var producerNodeId in activeProducers)
         {
-            // Bolt: Replaced O(C) LINQ iteration with O(1) HashSet copy and remove to prevent O(P * C) bottleneck
-            var targetConsumers = new HashSet<string>(activeConsumers, Comparer);
-            targetConsumers.Remove(producerNodeId);
-
-            if (targetConsumers.Count == 0)
+            // Check if there are any valid consumers left (excluding the producer itself).
+            if (activeConsumers.Count == 0 || (activeConsumers.Count == 1 && activeConsumers.Contains(producerNodeId)))
             {
                 continue;
             }
@@ -1124,7 +1121,7 @@ public sealed class NetworkSimulationEngine
             var routesToConsumers = FindBestRoutes(
                 context,
                 producerNodeId,
-                targetConsumers,
+                activeConsumers,
                 adjacency,
                 remainingCapacityByEdgeId,
                 remainingTranshipmentCapacityByNodeId);
@@ -1153,7 +1150,11 @@ public sealed class NetworkSimulationEngine
         var queue = new PriorityQueue<string, double>();
         queue.Enqueue(producerNodeId, 0d);
 
-        var remainingConsumers = new HashSet<string>(consumerNodeIds, Comparer);
+        var consumersToFind = consumerNodeIds.Count;
+        if (consumerNodeIds.Contains(producerNodeId))
+        {
+            consumersToFind--;
+        }
 
         while (queue.TryDequeue(out var currentNodeId, out var currentDistance))
         {
@@ -1162,8 +1163,12 @@ public sealed class NetworkSimulationEngine
                 continue;
             }
 
-            remainingConsumers.Remove(currentNodeId);
-            if (remainingConsumers.Count == 0)
+            if (consumerNodeIds.Contains(currentNodeId) && !Comparer.Equals(currentNodeId, producerNodeId))
+            {
+                consumersToFind--;
+            }
+
+            if (consumersToFind <= 0)
             {
                 break;
             }
@@ -1212,7 +1217,7 @@ public sealed class NetworkSimulationEngine
 
         foreach (var consumerNodeId in consumerNodeIds)
         {
-            if (!distances.ContainsKey(consumerNodeId))
+            if (Comparer.Equals(consumerNodeId, producerNodeId) || !distances.ContainsKey(consumerNodeId))
             {
                 continue;
             }

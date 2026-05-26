@@ -698,15 +698,43 @@ public sealed class NetworkSimulationEngine
         while (true)
         {
             // Capacity bidding is resolved globally: every greedy traffic type competes for the next best route.
-            var nextCandidate = contexts
-                .SelectMany(context => BuildCandidateRoutes(context, adjacency, remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId))
-                .OrderByDescending(candidate => candidate.CapacityBidPerUnit)
-                .ThenBy(candidate => candidate.TotalScore)
-                .ThenBy(candidate => candidate.TotalTime)
-                .ThenBy(candidate => candidate.TransitCostPerUnit)
-                .ThenBy(candidate => candidate.ProducerNodeId, Comparer)
-                .ThenBy(candidate => candidate.ConsumerNodeId, Comparer)
-                .FirstOrDefault();
+            RouteCandidate? nextCandidate = null;
+            // Bolt: Replaced LINQ OrderBy/ThenBy with manual O(N) linear scan to avoid O(N log N) sorting overhead and delegate allocations
+            foreach (var ctx in contexts)
+            {
+                var candidates = BuildCandidateRoutes(ctx, adjacency, remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId);
+                foreach (var candidate in candidates)
+                {
+                    if (nextCandidate is null)
+                    {
+                        nextCandidate = candidate;
+                        continue;
+                    }
+
+                    int cmp = nextCandidate.CapacityBidPerUnit.CompareTo(candidate.CapacityBidPerUnit);
+                    if (cmp > 0) continue;
+                    if (cmp < 0) { nextCandidate = candidate; continue; }
+
+                    cmp = candidate.TotalScore.CompareTo(nextCandidate.TotalScore);
+                    if (cmp > 0) continue;
+                    if (cmp < 0) { nextCandidate = candidate; continue; }
+
+                    cmp = candidate.TotalTime.CompareTo(nextCandidate.TotalTime);
+                    if (cmp > 0) continue;
+                    if (cmp < 0) { nextCandidate = candidate; continue; }
+
+                    cmp = candidate.TransitCostPerUnit.CompareTo(nextCandidate.TransitCostPerUnit);
+                    if (cmp > 0) continue;
+                    if (cmp < 0) { nextCandidate = candidate; continue; }
+
+                    cmp = Comparer.Compare(candidate.ProducerNodeId, nextCandidate.ProducerNodeId);
+                    if (cmp > 0) continue;
+                    if (cmp < 0) { nextCandidate = candidate; continue; }
+
+                    cmp = Comparer.Compare(candidate.ConsumerNodeId, nextCandidate.ConsumerNodeId);
+                    if (cmp < 0) { nextCandidate = candidate; continue; }
+                }
+            }
 
             if (nextCandidate is null)
             {

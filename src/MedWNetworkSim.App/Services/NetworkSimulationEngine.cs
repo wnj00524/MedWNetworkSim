@@ -1016,23 +1016,47 @@ public sealed class NetworkSimulationEngine
 
     private static List<BranchShare> AllocateAcrossBranchRoutes(double availableSupply, IReadOnlyList<BranchDemand> branches)
     {
-        var states = branches
-            .Select(branch => new BranchShareState(branch, branch.DownstreamDemand, Math.Min(branch.DownstreamDemand, branch.FirstHopCapacity)))
-            .Where(state => state.RemainingCapacity > Epsilon)
-            .ToList();
+        // Bolt: Pre-sort the states once outside the loop, avoiding redundant sorting and delegate allocation on every cycle
+        var states = new List<BranchShareState>(branches.Count);
+        foreach (var branch in branches)
+        {
+            var remainingCapacity = Math.Min(branch.DownstreamDemand, branch.FirstHopCapacity);
+            if (remainingCapacity > Epsilon)
+            {
+                states.Add(new BranchShareState(branch, branch.DownstreamDemand, remainingCapacity));
+            }
+        }
+
+        states.Sort((a, b) =>
+        {
+            int cmp = Comparer.Compare(a.Branch.ToNodeId, b.Branch.ToNodeId);
+            if (cmp != 0) return cmp;
+            return Comparer.Compare(a.Branch.EdgeId, b.Branch.EdgeId);
+        });
+
         var remainingSupply = availableSupply;
 
         while (remainingSupply > Epsilon)
         {
-            var totalDemand = states.Sum(state => state.RemainingDemand);
+            var totalDemand = 0d;
+            foreach (var state in states)
+            {
+                totalDemand += state.RemainingDemand;
+            }
+
             if (totalDemand <= Epsilon)
             {
                 break;
             }
 
             var progress = 0d;
-            foreach (var state in states.Where(state => state.RemainingDemand > Epsilon).OrderBy(state => state.Branch.ToNodeId, Comparer).ThenBy(state => state.Branch.EdgeId, Comparer))
+            foreach (var state in states)
             {
+                if (state.RemainingDemand <= Epsilon)
+                {
+                    continue;
+                }
+
                 var targetShare = remainingSupply * state.RemainingDemand / totalDemand;
                 var quantity = Math.Min(targetShare, Math.Min(state.RemainingDemand, state.RemainingCapacity));
                 if (quantity <= Epsilon)
@@ -1054,10 +1078,16 @@ public sealed class NetworkSimulationEngine
             remainingSupply -= progress;
         }
 
-        return states
-            .Where(state => state.Quantity > Epsilon)
-            .Select(state => new BranchShare(state.Branch, state.Quantity))
-            .ToList();
+        var results = new List<BranchShare>();
+        foreach (var state in states)
+        {
+            if (state.Quantity > Epsilon)
+            {
+                results.Add(new BranchShare(state.Branch, state.Quantity));
+            }
+        }
+
+        return results;
     }
 
     private static void AddRouteAllocation(

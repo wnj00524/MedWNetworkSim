@@ -40,3 +40,6 @@
 ## 2026-05-26 - Replaced SelectMany().OrderByDescending().ThenBy() with O(N) scan in MedWNetworkSim hot path
 **Learning:** When selecting a single best element via `FirstOrDefault()` after sorting operations on collections via LINQ `SelectMany` -> `OrderBy` -> `ThenBy` (specifically in `AllocateGreedyBestRoutes` inside `NetworkSimulationEngine`), the performance overhead of sorting ((N \log N)$) and lambda delegate allocations creates immense GC pressure.
 **Action:** Manually unroll complex chained LINQ queries into explicit O(N) linear scans utilizing standard `foreach` loops and explicit `.CompareTo` conditional blocks. Ensure to map `OrderByDescending` logic to `cmp > 0` vs `cmp < 0` correctly during tiebreakers while maintaining stable-sort constraints.
+## 2026-05-27 - [NetworkSimulationEngine Branch Routing Optimization]
+**Learning:** [When resolving capacity iteratively in loops (e.g., in `AllocateAcrossBranchRoutes`), LINQ sorting operations (`.OrderBy().ThenBy()`) on static properties inside the loop cause massive redundant O(N log N) overhead and delegate closure allocations.]
+**Action:** [Hoist static sorting constraints completely outside the capacity resolution `while` loop into a pre-allocated `List<T>`, allowing the inner loop to run as a fast O(N) linear scan.]

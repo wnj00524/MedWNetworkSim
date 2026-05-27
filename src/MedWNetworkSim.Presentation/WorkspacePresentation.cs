@@ -9151,14 +9151,21 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return;
         }
 
+        // Bolt: Optimize O(N^2) NodeStates lookup to O(1)
+        var nodeStatesByNodeId = timeline.NodeStates
+            .Where(pair => pair.Value.DemandBacklog > 0d)
+            .GroupBy(pair => pair.Key.NodeId, Comparer)
+            .ToDictionary(group => group.Key, group => group.ToList(), Comparer);
+
         foreach (var node in network.Nodes.OrderBy(item => item.Name, Comparer))
         {
             var pressure = timeline.NodePressureById.GetValueOrDefault(node.Id);
-            var backlog = timeline.NodeStates
-                .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id) && pair.Value.DemandBacklog > 0d)
-                .OrderByDescending(pair => pair.Value.DemandBacklog)
-                .ThenBy(pair => pair.Key.TrafficType, Comparer)
-                .FirstOrDefault();
+            var backlog = nodeStatesByNodeId.TryGetValue(node.Id, out var states)
+                ? states
+                    .OrderByDescending(pair => pair.Value.DemandBacklog)
+                    .ThenBy(pair => pair.Key.TrafficType, Comparer)
+                    .FirstOrDefault()
+                : default;
             var unmetNeed = backlog.Value.DemandBacklog > 0d
                 ? $"{ReportExportService.FormatNumber(backlog.Value.DemandBacklog)} {backlog.Key.TrafficType}"
                 : "None";

@@ -374,12 +374,29 @@ public sealed class NetworkSimulationEngine
             .GroupBy(allocation => new { allocation.TrafficType, allocation.ConsumerNodeId, allocation.ConsumerName })
             .Select(group =>
             {
-                var localAllocations = group.Where(allocation => allocation.IsLocalSupply).ToList();
-                var importedAllocations = group.Where(allocation => !allocation.IsLocalSupply).ToList();
-                var localQuantity = localAllocations.Sum(allocation => allocation.Quantity);
-                var importedQuantity = importedAllocations.Sum(allocation => allocation.Quantity);
-                var totalMovementCost = group.Sum(allocation => allocation.TotalMovementCost);
-                var totalQuantity = group.Sum(allocation => allocation.Quantity);
+                // Bolt: Replaced multiple LINQ enumerations and delegate allocations (.Where, .Sum, .ToList)
+                // with a single foreach pass to accumulate costs and quantities, reducing execution time significantly.
+                double localQuantity = 0d;
+                double localMovementCost = 0d;
+                double importedQuantity = 0d;
+                double importedMovementCost = 0d;
+
+                foreach (var allocation in group)
+                {
+                    if (allocation.IsLocalSupply)
+                    {
+                        localQuantity += allocation.Quantity;
+                        localMovementCost += allocation.TotalMovementCost;
+                    }
+                    else
+                    {
+                        importedQuantity += allocation.Quantity;
+                        importedMovementCost += allocation.TotalMovementCost;
+                    }
+                }
+
+                double totalQuantity = localQuantity + importedQuantity;
+                double totalMovementCost = localMovementCost + importedMovementCost;
 
                 return new ConsumerCostSummary
                 {
@@ -387,9 +404,9 @@ public sealed class NetworkSimulationEngine
                     ConsumerNodeId = group.Key.ConsumerNodeId,
                     ConsumerName = group.Key.ConsumerName,
                     LocalQuantity = localQuantity,
-                    LocalUnitCost = CalculateAverageUnitCost(localAllocations),
+                    LocalUnitCost = localQuantity > Epsilon ? localMovementCost / localQuantity : 0d,
                     ImportedQuantity = importedQuantity,
-                    ImportedUnitCost = CalculateAverageUnitCost(importedAllocations),
+                    ImportedUnitCost = importedQuantity > Epsilon ? importedMovementCost / importedQuantity : 0d,
                     BlendedUnitCost = totalQuantity > Epsilon ? totalMovementCost / totalQuantity : 0d,
                     TotalMovementCost = totalMovementCost
                 };
@@ -422,17 +439,6 @@ public sealed class NetworkSimulationEngine
         }
 
         return inputQuantity / outputQuantity;
-    }
-
-    private static double CalculateAverageUnitCost(IReadOnlyCollection<RouteAllocation> allocations)
-    {
-        var quantity = allocations.Sum(allocation => allocation.Quantity);
-        if (quantity <= Epsilon)
-        {
-            return 0d;
-        }
-
-        return allocations.Sum(allocation => allocation.TotalMovementCost) / quantity;
     }
 
     private static bool HasStaticRecipeDependencies(NetworkModel network)

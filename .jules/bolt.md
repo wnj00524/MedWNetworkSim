@@ -43,3 +43,6 @@
 ## 2026-05-27 - [NetworkSimulationEngine Branch Routing Optimization]
 **Learning:** [When resolving capacity iteratively in loops (e.g., in `AllocateAcrossBranchRoutes`), LINQ sorting operations (`.OrderBy().ThenBy()`) on static properties inside the loop cause massive redundant O(N log N) overhead and delegate closure allocations.]
 **Action:** [Hoist static sorting constraints completely outside the capacity resolution `while` loop into a pre-allocated `List<T>`, allowing the inner loop to run as a fast O(N) linear scan.]
+## $(date +%Y-%m-%d) - [Optimize GroupBy Redundant Enumerations]
+**Learning:** In C#, applying multiple LINQ `Where()`, `ToList()`, and `Sum()` aggregations inside a `Select` projection on grouped data triggers redundant iterations over the group's elements and creates unnecessary temporary lists and delegate closures.
+**Action:** Replace multiple LINQ aggregations on `IEnumerable` groupings with a single `foreach` loop that accumulates all required metrics at once. This shifts the time complexity per group from O(k*N) to strictly O(N) and drastically cuts heap allocations.

@@ -594,10 +594,16 @@ public sealed class NetworkSimulationEngine
                 group => group.Key,
                 group =>
                 {
-                    var quantity = group.Sum(allocation => allocation.Quantity);
-                    return quantity > Epsilon
-                        ? group.Sum(allocation => allocation.DeliveredCostPerUnit * allocation.Quantity) / quantity
-                        : 0d;
+                    // Bolt: Accumulate quantity and total cost in a single loop to avoid multiple O(N) LINQ enumerations and delegate allocations
+                    var quantity = 0d;
+                    var totalCost = 0d;
+                    foreach (var allocation in group)
+                    {
+                        quantity += allocation.Quantity;
+                        totalCost += allocation.DeliveredCostPerUnit * allocation.Quantity;
+                    }
+
+                    return quantity > Epsilon ? totalCost / quantity : 0d;
                 },
                 Comparer);
     }

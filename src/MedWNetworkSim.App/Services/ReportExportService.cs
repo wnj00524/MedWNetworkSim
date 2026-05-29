@@ -247,13 +247,22 @@ public sealed class ReportExportService
                 .OrderBy(group => group.Key, Comparer)
                 .Select(group =>
                 {
-                    var totalQuantity = group.Sum(item => item.Quantity);
-                    var totalMovementCost = group.Sum(item => item.TotalMovementCost);
+                    // Bolt: Accumulate statistics in a single loop to avoid multiple O(N) LINQ enumerations and delegate allocations
+                    var totalQuantity = 0d;
+                    var totalMovementCost = 0d;
+                    var count = 0;
+                    foreach (var item in group)
+                    {
+                        totalQuantity += item.Quantity;
+                        totalMovementCost += item.TotalMovementCost;
+                        count++;
+                    }
+
                     return new[]
                     {
                         group.Key,
                         FormatNumber(totalQuantity),
-                        group.Count().ToString(CultureInfo.InvariantCulture),
+                        count.ToString(CultureInfo.InvariantCulture),
                         FormatNumber(totalQuantity > 0 ? totalMovementCost / totalQuantity : 0d)
                     };
                 }));

@@ -2231,10 +2231,18 @@ public sealed class TemporalNetworkSimulationEngine
         IDictionary<string, double> remainingCapacityById,
         double routeCapacity)
     {
-        return pathResourceIds.Count(resourceId =>
-            remainingCapacityById.TryGetValue(resourceId, out var remainingCapacity) &&
-            !double.IsPositiveInfinity(remainingCapacity) &&
-            remainingCapacity <= routeCapacity + Epsilon);
+        int count = 0;
+        // Bolt: Replaced LINQ Count with foreach to avoid delegate allocations and closure overhead
+        foreach (var resourceId in pathResourceIds)
+        {
+            if (remainingCapacityById.TryGetValue(resourceId, out var remainingCapacity) &&
+                !double.IsPositiveInfinity(remainingCapacity) &&
+                remainingCapacity <= routeCapacity + Epsilon)
+            {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static void ReserveCapacity(

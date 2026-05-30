@@ -50,3 +50,6 @@
 ## 2026-05-29 - Optimize GroupBy Redundant Enumerations
 **Learning:** In C#, applying multiple LINQ `Where()`, `ToList()`, and `Sum()` aggregations inside a `Select` projection on grouped data triggers redundant iterations over the group's elements and creates unnecessary temporary lists and delegate closures.
 **Action:** Replace multiple LINQ aggregations on `IEnumerable` groupings with a single `foreach` loop that accumulates all required metrics at once. This shifts the time complexity per group from O(k*N) to strictly O(N) and drastically cuts heap allocations.
+## 2024-05-31 - Replace LINQ Count with Foreach
+**Learning:** Found that `CountBottleneckResources` in `TemporalNetworkSimulationEngine.cs` used LINQ `Count` with a lambda expression over `pathResourceIds` inside a hot capacity-bidding loop. This allocated delegates and enumerators heavily, causing GC pressure during network routing calculations.
+**Action:** Replaced the LINQ `Count` with standard `foreach` loops to minimize garbage generation, matching the optimization done in `NetworkSimulationEngine.cs`.

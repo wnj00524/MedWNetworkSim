@@ -58,6 +58,61 @@ public sealed class AdvancedSimulationTests
         Assert.Equal(NetworkLayerType.Policy, ordered[2].Type);
     }
 
+
+    [Fact]
+    public void TemporalInitialize_SeedsStoreInventoryFromProfiles()
+    {
+        var network = new NetworkModel
+        {
+            TrafficTypes = [new TrafficTypeDefinition { Name = "Food" }],
+            Nodes =
+            [
+                new NodeModel
+                {
+                    Id = "store",
+                    TrafficProfiles =
+                    [
+                        new NodeTrafficProfile
+                        {
+                            TrafficType = "Food",
+                            IsStore = true,
+                            StoreCapacity = 20d,
+                            Inventory = 12d,
+                            UnitPrice = 3d
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var state = new TemporalNetworkSimulationEngine().Initialize(network);
+
+        Assert.Equal(12d, state.GetOrCreateNodeTrafficState("store", "Food").StoreInventory);
+    }
+
+    [Fact]
+    public void LoadJson_RejectsInitialInventoryBeyondStorageCapacity()
+    {
+        const string json = """
+        {
+          "trafficTypes": [{ "name": "Food" }, { "name": "Medicine" }],
+          "nodes": [
+            {
+              "id": "store",
+              "trafficProfiles": [
+                { "trafficType": "Food", "isStore": true, "storeCapacity": 5, "inventory": 6 },
+                { "trafficType": "Medicine", "isStore": true, "storeCapacity": 5, "inventory": 1 }
+              ]
+            }
+          ],
+          "edges": []
+        }
+        """;
+
+        var exception = Assert.Throws<InvalidOperationException>(() => new NetworkFileService().LoadJson(json));
+        Assert.Contains("inventory greater than storeCapacity", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void ScenarioRun_DoesNotMutateSourceNetwork_AndWarningsForInvalidTarget()
     {

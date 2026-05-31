@@ -622,7 +622,9 @@ Examples:
                 : null,
             HasIsStore = HasOption(named, "store"),
             StoreCapacity = ParseOptionalDoubleOption(named, "store-capacity"),
-            HasStoreCapacity = HasOption(named, "store-capacity")
+            HasStoreCapacity = HasOption(named, "store-capacity"),
+            Inventory = ParseDoubleOption(named, "inventory"),
+            HasInventory = HasOption(named, "inventory")
         };
     }
 
@@ -958,6 +960,22 @@ Examples:
             profile.StoreCapacity = options.StoreCapacity;
         }
 
+        if (options.HasInventory)
+        {
+            if (options.Inventory.GetValueOrDefault() < 0d)
+            {
+                throw new InvalidOperationException("Initial inventory must be 0 or more.");
+            }
+
+            profile.Inventory = options.Inventory.GetValueOrDefault();
+            if (profile.Inventory > 0d)
+            {
+                profile.IsStore = true;
+            }
+        }
+
+        ValidateProfileStorage(node);
+
         if (IsProfileEmpty(profile))
         {
             node.TrafficProfiles.Remove(profile);
@@ -1065,7 +1083,38 @@ Examples:
             profile.ProductionWindows.Count == 0 &&
             profile.ConsumptionWindows.Count == 0 &&
             profile.InputRequirements.Count == 0 &&
-            !profile.StoreCapacity.HasValue;
+            !profile.StoreCapacity.HasValue &&
+            profile.Inventory <= 0d;
+    }
+
+    private static void ValidateProfileStorage(NodeModel node)
+    {
+        var finiteCapacityTotal = 0d;
+        var inventoryTotal = 0d;
+        var hasUnlimitedStorage = false;
+
+        foreach (var profile in node.TrafficProfiles.Where(profile => profile.IsStore))
+        {
+            if (profile.StoreCapacity.HasValue && profile.Inventory > profile.StoreCapacity.Value)
+            {
+                throw new InvalidOperationException($"Initial inventory for traffic '{profile.TrafficType}' cannot exceed its store capacity.");
+            }
+
+            inventoryTotal += Math.Max(0d, profile.Inventory);
+            if (profile.StoreCapacity.HasValue)
+            {
+                finiteCapacityTotal += profile.StoreCapacity.Value;
+            }
+            else
+            {
+                hasUnlimitedStorage = true;
+            }
+        }
+
+        if (!hasUnlimitedStorage && inventoryTotal > finiteCapacityTotal)
+        {
+            throw new InvalidOperationException("Initial inventory across stored traffic types cannot exceed the node's total store capacity.");
+        }
     }
 
     private static PeriodWindow CloneWindow(PeriodWindow window)

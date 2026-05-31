@@ -5685,7 +5685,8 @@ public sealed class ShellWindow : Window
                     BuildLabeledTextBox("Consumer premium", nameof(WorkspaceViewModel.NodeConsumerPremiumText)),
                     BuildLabeledCheckBox("Can transship", nameof(WorkspaceViewModel.NodeCanTransship)),
                     BuildLabeledCheckBox("Store enabled", nameof(WorkspaceViewModel.NodeStoreEnabled)),
-                    BuildLabeledTextBox("Store capacity", nameof(WorkspaceViewModel.NodeStoreCapacityText), nameof(WorkspaceViewModel.IsNodeStoreCapacityEnabled))),
+                    BuildLabeledTextBox("Store capacity", nameof(WorkspaceViewModel.NodeStoreCapacityText), nameof(WorkspaceViewModel.IsNodeStoreCapacityEnabled)),
+                    BuildLabeledTextBox("Initial inventory", nameof(WorkspaceViewModel.NodeInitialInventoryText), nameof(WorkspaceViewModel.IsNodeInitialInventoryEnabled))),
                 BuildEditorSection(
                     "Schedules",
                     "Legacy start/end fields plus explicit production and consumption windows.",
@@ -7848,7 +7849,8 @@ public sealed class ShellWindow : Window
                 BuildSectionTitle("Storage and relay", "Movement and storage"),
                 BuildLabeledCheckBox("Can transship", nameof(WorkspaceViewModel.NodeCanTransship)),
                 BuildLabeledCheckBox("Store enabled", nameof(WorkspaceViewModel.NodeStoreEnabled)),
-                BuildLabeledTextBox("Store capacity", nameof(WorkspaceViewModel.NodeStoreCapacityText), nameof(WorkspaceViewModel.IsNodeStoreCapacityEnabled))
+                BuildLabeledTextBox("Store capacity", nameof(WorkspaceViewModel.NodeStoreCapacityText), nameof(WorkspaceViewModel.IsNodeStoreCapacityEnabled)),
+                BuildLabeledTextBox("Initial inventory", nameof(WorkspaceViewModel.NodeInitialInventoryText), nameof(WorkspaceViewModel.IsNodeInitialInventoryEnabled))
             }
         };
         var card = new Border

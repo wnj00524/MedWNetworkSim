@@ -223,7 +223,8 @@ public static class HierarchicalNetworkProjection
             ConsumptionWindows = profile.ConsumptionWindows.Select(window => new PeriodWindow { StartPeriod = window.StartPeriod, EndPeriod = window.EndPeriod }).ToList(),
             InputRequirements = profile.InputRequirements.Select(requirement => new ProductionInputRequirement { TrafficType = requirement.TrafficType, QuantityPerOutputUnit = requirement.QuantityPerOutputUnit }).ToList(),
             IsStore = profile.IsStore,
-            StoreCapacity = profile.StoreCapacity
+            StoreCapacity = profile.StoreCapacity,
+            Inventory = profile.Inventory
         };
     }
 

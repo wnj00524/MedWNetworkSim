@@ -704,6 +704,21 @@ public sealed class NetworkFileService
                 throw new InvalidOperationException($"Node '{nodeId}' has an invalid storeCapacity for traffic '{profile.TrafficType}'. Use a number >= 0 or omit it.");
             }
 
+            if (double.IsNaN(profile.Inventory) || double.IsInfinity(profile.Inventory) || profile.Inventory < 0d)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has an invalid inventory for traffic '{profile.TrafficType}'. Use a finite number >= 0.");
+            }
+
+            if (!profile.IsStore && profile.Inventory > 0d)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has initial inventory for traffic '{profile.TrafficType}', but that traffic profile is not marked as a store.");
+            }
+
+            if (profile.StoreCapacity.HasValue && profile.Inventory > profile.StoreCapacity.Value)
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' has initial inventory greater than storeCapacity for traffic '{profile.TrafficType}'.");
+            }
+
             var trafficType = profile.TrafficType.Trim();
             if (!normalizedProfiles.TryGetValue(trafficType, out var normalizedProfile))
             {
@@ -732,6 +747,8 @@ public sealed class NetworkFileService
         }
 
         // Duplicate traffic rows on the same node are collapsed into one persisted profile per traffic type.
+        ValidateStorageInventoryTotals(normalizedProfiles.Values, nodeId);
+
         foreach (var profile in normalizedProfiles.Values)
         {
             MirrorLegacyScheduleFields(profile);
@@ -740,6 +757,31 @@ public sealed class NetworkFileService
         return normalizedProfiles.Values
             .OrderBy(profile => profile.TrafficType, Comparer)
             .ToList();
+    }
+
+    private static void ValidateStorageInventoryTotals(IEnumerable<NodeTrafficProfile> profiles, string nodeId)
+    {
+        var finiteCapacityTotal = 0d;
+        var inventoryTotal = 0d;
+        var hasUnlimitedStorage = false;
+
+        foreach (var profile in profiles.Where(profile => profile.IsStore))
+        {
+            inventoryTotal += Math.Max(0d, profile.Inventory);
+            if (profile.StoreCapacity.HasValue)
+            {
+                finiteCapacityTotal += profile.StoreCapacity.Value;
+            }
+            else
+            {
+                hasUnlimitedStorage = true;
+            }
+        }
+
+        if (!hasUnlimitedStorage && inventoryTotal > finiteCapacityTotal)
+        {
+            throw new InvalidOperationException($"Node '{nodeId}' has initial inventory across stored traffic types greater than its total store capacity.");
+        }
     }
 
     private static List<PeriodWindow> NormalizeWindows(

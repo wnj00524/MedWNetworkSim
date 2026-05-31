@@ -248,6 +248,7 @@ A traffic profile says what one node does for one traffic type.
 | `inputRequirements` | array | No | Local precursor traffic required per unit of this profile's output. |
 | `isStore` | boolean | No | Whether received traffic can be stored in timeline mode. |
 | `storeCapacity` | number or null | No | Non-negative inventory cap for this traffic type at this node. Omit for unlimited. |
+| `inventory` | number | No | Non-negative initial stored amount for this traffic type. Requires `isStore`; cannot exceed this profile's `storeCapacity`, and total initial inventory across stored traffic types on a node cannot exceed total finite store capacity unless a stored profile has unlimited capacity. |
 
 If a node contains duplicate profiles for the same `trafficType`, the loader collapses them into one profile. It sums `production` and `consumption`, keeps the maximum `consumerPremiumPerUnit`, ORs `canTransship` and `isStore`, merges windows and input requirements, and keeps the first non-null `storeCapacity`.
 

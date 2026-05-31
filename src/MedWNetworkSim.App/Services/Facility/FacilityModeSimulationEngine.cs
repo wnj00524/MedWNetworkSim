@@ -372,7 +372,8 @@ public sealed class FacilityModeSimulationEngine
             ConsumptionWindows = profile.ConsumptionWindows.ToList(),
             InputRequirements = profile.InputRequirements.ToList(),
             IsStore = profile.IsStore,
-            StoreCapacity = profile.StoreCapacity
+            StoreCapacity = profile.StoreCapacity,
+            Inventory = profile.Inventory
         };
 
     private static NodeTrafficProfile EnsureProfile(NodeModel node, string trafficType)

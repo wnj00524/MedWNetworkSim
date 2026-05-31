@@ -1685,10 +1685,12 @@ public sealed class ShellWindow : Window
                 Title = FormatBrandedWindowTitle(viewModel.WindowTitle);
             }
 
-            if (e.PropertyName is nameof(WorkspaceViewModel.IsEditingNode)
+            if (string.IsNullOrEmpty(e.PropertyName)
+                || e.PropertyName is nameof(WorkspaceViewModel.IsEditingNode)
                 or nameof(WorkspaceViewModel.IsEditingEdge)
                 or nameof(WorkspaceViewModel.IsEditingSelection)
-                or nameof(WorkspaceViewModel.CurrentInspectorEditMode))
+                or nameof(WorkspaceViewModel.CurrentInspectorEditMode)
+                or nameof(WorkspaceViewModel.SelectionSummary))
             {
                 isContextInspectorDismissed = false;
             }
@@ -2995,10 +2997,12 @@ public sealed class ShellWindow : Window
 
         viewModel.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(WorkspaceViewModel.IsEditingNode)
+            if (string.IsNullOrEmpty(e.PropertyName)
+                || e.PropertyName is nameof(WorkspaceViewModel.IsEditingNode)
                 or nameof(WorkspaceViewModel.IsEditingEdge)
                 or nameof(WorkspaceViewModel.IsEditingSelection)
-                or nameof(WorkspaceViewModel.CurrentInspectorEditMode))
+                or nameof(WorkspaceViewModel.CurrentInspectorEditMode)
+                or nameof(WorkspaceViewModel.SelectionSummary))
             {
                 RefreshContextInspectorDrawer();
             }

@@ -53,3 +53,7 @@
 ## 2024-05-31 - Replace LINQ Count with Foreach
 **Learning:** Found that `CountBottleneckResources` in `TemporalNetworkSimulationEngine.cs` used LINQ `Count` with a lambda expression over `pathResourceIds` inside a hot capacity-bidding loop. This allocated delegates and enumerators heavily, causing GC pressure during network routing calculations.
 **Action:** Replaced the LINQ `Count` with standard `foreach` loops to minimize garbage generation, matching the optimization done in `NetworkSimulationEngine.cs`.
+
+## 2025-02-12 - Replacing LINQ in the Temporal Simulation Engine
+**Learning:** In C# hot loops such as those within `NetworkSimulationEngine` or `TemporalNetworkSimulationEngine`, standard LINQ methods like `.Where()`, `.Select()`, `.ToList()`, and `.ToDictionary()` cause significant memory allocations per call due to enumerator, delegate, and closure instances. This leads to garbage collection pressure and measurable slowdowns during the inner simulation loop.
+**Action:** Replace LINQ method chains with manual `for` or `foreach` loops on the hot path (like the `Advance` method or timeline/occupancy calculation functions). This approach avoids closures and enumerator allocations entirely while retaining the identical computational result.

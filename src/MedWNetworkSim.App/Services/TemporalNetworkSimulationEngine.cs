@@ -226,13 +226,23 @@ public sealed class TemporalNetworkSimulationEngine
             AddNodePressure(nodePressure, pair.Key.NodeId, pair.Key.TrafficType, PressureCauseKind.DemandBacklog, pair.Value.DemandBacklog, pressureEvents, nextPeriod);
         }
 
-        var allocationTargets = plannedAllocations
-            .Where(allocation => allocation.PathNodeIds.Count > 0)
-            .Select(allocation => allocation.PathNodeIds[^1])
-            .ToHashSet(Comparer);
-
-        foreach (var pair in nodeStates.Where(pair => pair.Value.DemandBacklog > Epsilon))
+        // Bolt: Replaced LINQ chains (.Where, .Select, .ToHashSet, .Where) with manual loops to avoid delegate allocations.
+        var allocationTargets = new HashSet<string>(Comparer);
+        foreach (var allocation in plannedAllocations)
         {
+            if (allocation.PathNodeIds.Count > 0)
+            {
+                allocationTargets.Add(allocation.PathNodeIds[^1]);
+            }
+        }
+
+        foreach (var pair in nodeStates)
+        {
+            if (pair.Value.DemandBacklog <= Epsilon)
+            {
+                continue;
+            }
+
             if (allocationTargets.Contains(pair.Key.NodeId))
             {
                 continue;
@@ -476,9 +486,15 @@ public sealed class TemporalNetworkSimulationEngine
 
     private static NetworkModel ApplyTimelineEventOverlay(NetworkModel network, int effectivePeriod)
     {
-        var activeEvents = network.TimelineEvents
-            .Where(timelineEvent => IsTimelineEventActive(timelineEvent, effectivePeriod))
-            .ToList();
+        // Bolt: Replaced LINQ .Where(...).ToList() with manual loop to avoid enumerator and delegate allocations.
+        var activeEvents = new List<TimelineEventModel>();
+        foreach (var timelineEvent in network.TimelineEvents)
+        {
+            if (IsTimelineEventActive(timelineEvent, effectivePeriod))
+            {
+                activeEvents.Add(timelineEvent);
+            }
+        }
 
         if (activeEvents.Count == 0)
         {
@@ -1575,9 +1591,17 @@ public sealed class TemporalNetworkSimulationEngine
 
     private static IReadOnlyDictionary<string, double> SnapshotResourceOccupancy(IReadOnlyDictionary<string, double> occupiedCapacity)
     {
-        return occupiedCapacity
-            .Where(pair => pair.Value > Epsilon)
-            .ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
+        // Bolt: Replaced LINQ .Where(...).ToDictionary(...) with manual loop to avoid enumerator and delegate allocations.
+        var snapshot = new Dictionary<string, double>(Comparer);
+        foreach (var pair in occupiedCapacity)
+        {
+            if (pair.Value > Epsilon)
+            {
+                snapshot[pair.Key] = pair.Value;
+            }
+        }
+
+        return snapshot;
     }
 
     private static void ValidateResourceOccupancy(

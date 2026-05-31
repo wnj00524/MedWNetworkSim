@@ -2783,6 +2783,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private bool nodeCanTransship = true;
     private bool nodeStoreEnabled;
     private string nodeStoreCapacityText = string.Empty;
+    private string nodeInitialInventoryText = "0";
     private string inspectorValidationText = string.Empty;
     private TrafficDefinitionListItem? selectedTrafficDefinitionItem;
     private string trafficNameText = string.Empty;
@@ -4973,6 +4974,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 PreviewSelectedNodeSceneLayout();
                 Raise(nameof(IsNodeTrafficRoleSelected));
                 Raise(nameof(IsNodeStoreCapacityEnabled));
+                Raise(nameof(IsNodeInitialInventoryEnabled));
                 RaiseNodeTrafficRoleValidationStateChanged();
                 DuplicateSelectedNodeTrafficProfileCommand.NotifyCanExecuteChanged();
                 RemoveSelectedNodeTrafficProfileCommand.NotifyCanExecuteChanged();
@@ -5205,6 +5207,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             if (SetProperty(ref nodeStoreEnabled, value))
             {
                 Raise(nameof(IsNodeStoreCapacityEnabled));
+                Raise(nameof(IsNodeInitialInventoryEnabled));
                 PreviewSelectedNodeSceneLayout();
             }
         }
@@ -5215,6 +5218,20 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         set
         {
             if (SetProperty(ref nodeStoreCapacityText, value))
+            {
+                PreviewSelectedNodeSceneLayout();
+            }
+        }
+    }
+
+    public bool IsNodeInitialInventoryEnabled => IsNodeTrafficRoleSelected && NodeStoreEnabled;
+
+    public string NodeInitialInventoryText
+    {
+        get => nodeInitialInventoryText;
+        set
+        {
+            if (SetProperty(ref nodeInitialInventoryText, value))
             {
                 PreviewSelectedNodeSceneLayout();
             }
@@ -9679,6 +9696,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             NodeCanTransship = true;
             NodeStoreEnabled = false;
             NodeStoreCapacityText = string.Empty;
+            NodeInitialInventoryText = "0";
             isPopulatingNodeTrafficEditor = false;
             RaiseNodeTrafficRoleValidationStateChanged();
             return;
@@ -9698,6 +9716,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         NodeCanTransship = profile.CanTransship;
         NodeStoreEnabled = profile.IsStore;
         NodeStoreCapacityText = profile.StoreCapacity?.ToString("0.##", CultureInfo.InvariantCulture) ?? string.Empty;
+        NodeInitialInventoryText = profile.Inventory.ToString("0.##", CultureInfo.InvariantCulture);
         SelectedNodeProductionWindows.Clear();
         foreach (var window in profile.ProductionWindows)
         {
@@ -9984,6 +10003,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             profile.StoreCapacity = NodeStoreEnabled
                 ? ParseOptionalNonNegativeDouble(NodeStoreCapacityText, "Enter store capacity as 0 or more, or leave it blank.")
                 : null;
+            profile.Inventory = NodeStoreEnabled
+                ? ParseInitialInventory(NodeInitialInventoryText, profile.StoreCapacity)
+                : 0d;
+            ValidateNodeStorageInventoryTotals(node);
             profile.ProductionWindows = BuildPeriodWindows(
                 SelectedNodeProductionWindows,
                 "production window");
@@ -10617,7 +10640,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                     ConsumptionStartPeriod = profile.ConsumptionStartPeriod,
                     ConsumptionEndPeriod = profile.ConsumptionEndPeriod,
                     IsStore = profile.IsStore,
-                    StoreCapacity = profile.StoreCapacity
+                    StoreCapacity = profile.StoreCapacity,
+                    Inventory = profile.Inventory
                 }).ToList()
             }).ToList(),
             Edges = source.Edges.Select(edge => new EdgeModel
@@ -12224,7 +12248,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                     })
                     .ToList(),
                 IsStore = profile.IsStore,
-                StoreCapacity = profile.StoreCapacity
+                StoreCapacity = profile.StoreCapacity,
+                Inventory = profile.Inventory
             }).ToList()
         };
 
@@ -12243,6 +12268,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             profile.CanTransship = NodeCanTransship;
             profile.IsStore = NodeStoreEnabled;
             profile.StoreCapacity = NodeStoreEnabled ? TryParseOptionalNonNegativeDouble(NodeStoreCapacityText) : null;
+            profile.Inventory = NodeStoreEnabled ? Math.Max(0d, TryParseNonNegativeDouble(NodeInitialInventoryText) ?? profile.Inventory) : 0d;
             profile.ProductionWindows = SelectedNodeProductionWindows
                 .Select(window => new PeriodWindow
                 {
@@ -12525,6 +12551,42 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         }
 
         return ParseNonNegativeDouble(text, errorMessage);
+    }
+
+    private static double ParseInitialInventory(string text, double? storeCapacity)
+    {
+        var inventory = ParseNonNegativeDouble(text, "Enter initial inventory as 0 or more.");
+        if (storeCapacity.HasValue && inventory > storeCapacity.Value)
+        {
+            throw new InvalidOperationException("Initial inventory cannot exceed this traffic type's store capacity.");
+        }
+
+        return inventory;
+    }
+
+    private static void ValidateNodeStorageInventoryTotals(NodeModel node)
+    {
+        var finiteCapacityTotal = 0d;
+        var hasUnlimitedStorage = false;
+        var inventoryTotal = 0d;
+
+        foreach (var profile in node.TrafficProfiles.Where(profile => profile.IsStore))
+        {
+            inventoryTotal += Math.Max(0d, profile.Inventory);
+            if (profile.StoreCapacity.HasValue)
+            {
+                finiteCapacityTotal += profile.StoreCapacity.Value;
+            }
+            else
+            {
+                hasUnlimitedStorage = true;
+            }
+        }
+
+        if (!hasUnlimitedStorage && inventoryTotal > finiteCapacityTotal)
+        {
+            throw new InvalidOperationException("Initial inventory across stored traffic types cannot exceed the node's total store capacity.");
+        }
     }
 
     private static double? ParseOptionalDouble(string text, string errorMessage)

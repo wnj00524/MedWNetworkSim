@@ -173,7 +173,7 @@ Examples:
 ```bash
 MedWNetworkSim.App.exe set-profile --file .\demo.json --node N1 --traffic Waste --role producer --production 25
 MedWNetworkSim.App.exe set-profile --file .\demo.json --node N2 --traffic Waste --role consumer+transship --consumption 25 --premium 2
-MedWNetworkSim.App.exe set-profile --file .\demo.json --node N3 --traffic Waste --role consumer --store --store-capacity 40
+MedWNetworkSim.App.exe set-profile --file .\demo.json --node N3 --traffic Waste --role consumer --store --store-capacity 40 --inventory 10
 ```
 
 Options:
@@ -193,6 +193,7 @@ Options:
 - `--clear-inputs`: remove all precursor input requirements
 - `--store` or `--no-store`: whether the node stores inventory
 - `--store-capacity`: optional storage limit; use `none` to clear it
+- `--inventory`: initial stored amount for this traffic type; total initial inventory on a node must fit within total finite store capacity unless one stored profile is unlimited
 
 Allowed roles:
 - `producer`

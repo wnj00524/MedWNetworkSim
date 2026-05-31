@@ -307,6 +307,16 @@ public sealed class CommandLineOptions
 
     public bool HasStoreCapacity { get; init; }
     /// <summary>
+    /// Gets or sets the initial inventory.
+    /// </summary>
+
+    public double? Inventory { get; init; }
+    /// <summary>
+    /// Gets a value indicating whether initial inventory was provided.
+    /// </summary>
+
+    public bool HasInventory { get; init; }
+    /// <summary>
     /// Gets or sets the edge id.
     /// </summary>
 

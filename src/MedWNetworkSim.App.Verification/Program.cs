@@ -574,7 +574,7 @@ static void ScenarioUC_RecipeInputStoresStillFeedProduction()
     var network = CreateRecipeInputStoreNetwork();
     var engine = new TemporalNetworkSimulationEngine();
     var state = engine.Initialize(network);
-    state.GetOrCreateNodeTrafficState("Bakery", "Wheat").StoreInventory = 10d;
+    state.GetOrCreateNodeTrafficState("Bakery", "Wheat").BlendStoreInventory(10d, 0d);
 
     engine.Advance(network, state);
 

@@ -38,11 +38,22 @@ public sealed class TemporalNetworkSimulationEngine
         network = executionCache.GetStaticContext(network).EffectiveNetwork;
 
         var state = new TemporalSimulationState();
+        var definitionsByTraffic = network.TrafficTypes.ToDictionary(definition => definition.Name, definition => definition, Comparer);
         foreach (var node in network.Nodes)
         {
             foreach (var profile in node.TrafficProfiles)
             {
-                state.GetOrCreateNodeTrafficState(node.Id, profile.TrafficType);
+                var nodeState = state.GetOrCreateNodeTrafficState(node.Id, profile.TrafficType);
+                if (profile.IsStore && profile.Inventory > Epsilon)
+                {
+                    var initialInventory = profile.StoreCapacity.HasValue
+                        ? Math.Min(profile.Inventory, profile.StoreCapacity.Value)
+                        : profile.Inventory;
+                    nodeState.BlendStoreInventory(
+                        initialInventory,
+                        profile.UnitPrice,
+                        GetPerishabilityPeriods(definitionsByTraffic, profile.TrafficType));
+                }
             }
         }
 
@@ -700,6 +711,7 @@ public sealed class TemporalNetworkSimulationEngine
             InputRequirements = profile.InputRequirements.Select(CloneInputRequirement).ToList(),
             IsStore = profile.IsStore,
             StoreCapacity = profile.StoreCapacity,
+            Inventory = profile.Inventory,
             UnitPrice = profile.UnitPrice,
             ProductionCostPerUnit = profile.ProductionCostPerUnit,
             SalesTaxRate = profile.SalesTaxRate,

@@ -57,17 +57,6 @@ public sealed class GraphCanvasStatusChangedEventArgs : EventArgs
     public required bool HasVisibleFrame { get; init; }
 }
 /// <summary>
-/// Represents the graph canvas full node editor requested event args component.
-/// </summary>
-
-public sealed class GraphCanvasFullNodeEditorRequestedEventArgs : EventArgs
-{
-    /// <summary>
-    /// Gets or sets the node id.
-    /// </summary>
-    public required string NodeId { get; init; }
-}
-/// <summary>
 /// Represents the graph canvas coordinate transform component.
 /// </summary>
 
@@ -352,7 +341,6 @@ public sealed class GraphCanvasControl : Control, IDisposable
     }
 
     public event EventHandler<GraphCanvasStatusChangedEventArgs>? StatusChanged;
-    public event EventHandler<GraphCanvasFullNodeEditorRequestedEventArgs>? FullNodeEditorRequested;
 
     public WorkspaceViewModel? ViewModel
     {
@@ -904,18 +892,10 @@ public sealed class GraphCanvasControl : Control, IDisposable
         if (hit.NodeId is not null)
         {
             ViewModel.SelectNodeForEdit(hit.NodeId);
-            FullNodeEditorRequested?.Invoke(this, new GraphCanvasFullNodeEditorRequestedEventArgs
-            {
-                NodeId = hit.NodeId
-            });
             return true;
         }
 
-        var nodeId = ViewModel.AddNodeAtPosition(worldPoint);
-        FullNodeEditorRequested?.Invoke(this, new GraphCanvasFullNodeEditorRequestedEventArgs
-        {
-            NodeId = nodeId
-        });
+        ViewModel.AddNodeAtPosition(worldPoint);
         return true;
     }
 
@@ -1614,6 +1594,7 @@ public sealed class ShellWindow : Window
     private Border? canvasHost;
     private Border? inspectorHost;
     private bool isContextInspectorPinned;
+    private bool isContextInspectorDismissed;
     private Button? contextInspectorPinButton;
     private Button? contextInspectorToggleButton;
     private Border? dashboardStripHost;
@@ -1702,6 +1683,14 @@ public sealed class ShellWindow : Window
             if (e.PropertyName == nameof(WorkspaceViewModel.WindowTitle))
             {
                 Title = FormatBrandedWindowTitle(viewModel.WindowTitle);
+            }
+
+            if (e.PropertyName is nameof(WorkspaceViewModel.IsEditingNode)
+                or nameof(WorkspaceViewModel.IsEditingEdge)
+                or nameof(WorkspaceViewModel.IsEditingSelection)
+                or nameof(WorkspaceViewModel.CurrentInspectorEditMode))
+            {
+                isContextInspectorDismissed = false;
             }
 
             if (e.PropertyName == nameof(WorkspaceViewModel.IsEditingNode) && !viewModel.IsEditingNode)
@@ -2952,8 +2941,6 @@ public sealed class ShellWindow : Window
             fallbackDetail.Text = args.Detail;
             fallbackPanel.IsVisible = args.IsError;
         };
-        graphCanvas.FullNodeEditorRequested += (_, _) => OpenFullNodeEditor();
-
         var statusPill = new Border
         {
             Margin = new Thickness(14),
@@ -3266,6 +3253,7 @@ public sealed class ShellWindow : Window
         var closeButton = BuildIconRailButton(IconPaths.Close, "Close Inspector", new RelayCommand(() =>
         {
             isContextInspectorPinned = false;
+            isContextInspectorDismissed = true;
             RefreshContextInspectorDrawer();
         }));
         contextInspectorPinButton = BuildIconRailButton(IconPaths.Pin, "Pin Inspector", new RelayCommand(ToggleContextInspectorPinned));
@@ -3355,7 +3343,7 @@ public sealed class ShellWindow : Window
         var hasSelectionEditor = viewModel.IsEditingNode || viewModel.IsEditingEdge || viewModel.IsEditingSelection;
         if (inspectorHost is not null)
         {
-            inspectorHost.IsVisible = hasSelectionEditor || isContextInspectorPinned;
+            inspectorHost.IsVisible = (hasSelectionEditor && !isContextInspectorDismissed) || isContextInspectorPinned;
         }
 
         if (contextInspectorPinButton is not null)
@@ -5318,7 +5306,12 @@ public sealed class ShellWindow : Window
 
     private Control BuildCompactNodeInspector(WorkspaceViewModel viewModel)
     {
-        var openFullEditorButton = BuildButton("Open full editor", new RelayCommand(OpenFullNodeEditor), isPrimary: true, toolTip: "Open the full node editor drawer.");
+        var openFullEditorButton = BuildButton("Open full editor", new RelayCommand(() =>
+        {
+            isContextInspectorDismissed = true;
+            RefreshContextInspectorDrawer();
+            OpenFullNodeEditor();
+        }), isPrimary: true, toolTip: "Open the full node editor drawer.");
         openFullEditorButton.Bind(IsEnabledProperty, new Binding(nameof(WorkspaceViewModel.IsEditingNode)));
 
         var card = new Border
@@ -7066,7 +7059,6 @@ public sealed class ShellWindow : Window
                     details,
                     BuildValidationBlock(nameof(WorkspaceViewModel.InspectorValidationText)),
                     BuildNetworkEditor(),
-                    BuildNodeEditor(viewModel),
                     BuildEdgeEditor(viewModel),
                     BuildBulkEditor(),
                     BuildApplyRow(viewModel.ApplyInspectorCommand)

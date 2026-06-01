@@ -8,7 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    
+    <ProjectReference Include="..\MedWNetworkSim.Presentation\MedWNetworkSim.Presentation.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OsmSharp" Version="6.2.0" />
   </ItemGroup>
 
 </Project>

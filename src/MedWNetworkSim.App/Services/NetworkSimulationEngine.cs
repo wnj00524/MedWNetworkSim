@@ -557,15 +557,16 @@ public sealed class NetworkSimulationEngine
     string nodeId,
     IReadOnlyDictionary<string, Dictionary<string, double>> landedUnitCosts)
     {
-        var requirements = profile.InputRequirements
-            .Where(requirement =>
-                (requirement.InputQuantity > Epsilon && requirement.OutputQuantity > Epsilon) ||
-                requirement.QuantityPerOutputUnit.GetValueOrDefault() > Epsilon)
-            .ToList();
-
         var sourceUnitCost = ResolveBaseProductionCost(profile, definition);
-        foreach (var requirement in requirements)
+        // Bolt: Eliminated .Where().ToList() allocation and delegate overhead by using a standard foreach loop
+        foreach (var requirement in profile.InputRequirements)
         {
+            if (!((requirement.InputQuantity > Epsilon && requirement.OutputQuantity > Epsilon) ||
+                  requirement.QuantityPerOutputUnit.GetValueOrDefault() > Epsilon))
+            {
+                continue;
+            }
+
             var precursorUnitCost = landedUnitCosts.TryGetValue(requirement.TrafficType, out var costsByNode)
                 ? costsByNode.GetValueOrDefault(nodeId)
                 : 0d;
@@ -611,18 +612,54 @@ public sealed class NetworkSimulationEngine
     private static TrafficContext BuildContext(NetworkModel network, TrafficTypeDefinition definition)
     {
         // Each traffic type sees its own supply/demand profile, but references the same underlying node set.
-        var profilesByNodeId = network.Nodes.ToDictionary(
-            node => node.Id,
-            node => node.TrafficProfiles.FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, definition.Name)),
-            Comparer);
-        var nodesById = network.Nodes.ToDictionary(node => node.Id, node => node, Comparer);
-        var supply = profilesByNodeId
-            .Where(pair => pair.Value?.Production > Epsilon)
-            .ToDictionary(pair => pair.Key, pair => pair.Value!.Production, Comparer);
-        var demand = profilesByNodeId
-            .Where(pair => pair.Value?.Consumption > Epsilon)
-            .ToDictionary(pair => pair.Key, pair => pair.Value!.Consumption, Comparer);
+        // Bolt: Replaced LINQ ToDictionary, Where, and Sum with a single foreach pass to avoid multiple enumerations and allocations
+        var profilesByNodeId = new Dictionary<string, NodeTrafficProfile?>(Comparer);
+        var nodesById = new Dictionary<string, NodeModel>(Comparer);
+        var supply = new Dictionary<string, double>(Comparer);
+        var demand = new Dictionary<string, double>(Comparer);
+
+        var totalProduction = 0d;
+        var totalConsumption = 0d;
+
+        foreach (var node in network.Nodes)
+        {
+            nodesById[node.Id] = node;
+
+            NodeTrafficProfile? matchedProfile = null;
+            foreach (var profile in node.TrafficProfiles)
+            {
+                if (Comparer.Equals(profile.TrafficType, definition.Name))
+                {
+                    matchedProfile = profile;
+                    break;
+                }
+            }
+
+            profilesByNodeId[node.Id] = matchedProfile;
+
+            if (matchedProfile != null)
+            {
+                if (matchedProfile.Production > Epsilon)
+                {
+                    supply[node.Id] = matchedProfile.Production;
+                    totalProduction += matchedProfile.Production;
+                }
+
+                if (matchedProfile.Consumption > Epsilon)
+                {
+                    demand[node.Id] = matchedProfile.Consumption;
+                    totalConsumption += matchedProfile.Consumption;
+                }
+            }
+        }
+
         AddImplicitRecipeDemand(network, definition.Name, demand);
+
+        var totalDemand = 0d;
+        foreach (var value in demand.Values)
+        {
+            totalDemand += value;
+        }
 
         return new TrafficContext(
             definition.Name,
@@ -633,8 +670,8 @@ public sealed class NetworkSimulationEngine
             profilesByNodeId,
             supply,
             demand,
-            supply.Values.Sum(),
-            demand.Values.Sum(),
+            totalProduction,
+            totalDemand,
             [],
             []);
     }
@@ -647,11 +684,21 @@ public sealed class NetworkSimulationEngine
         foreach (var node in network.Nodes)
         {
             var implicitDemand = 0d;
-            foreach (var profile in node.TrafficProfiles.Where(profile => profile.Production > Epsilon))
+            // Bolt: Replaced nested LINQ .Where and .Sum with standard foreach loops to prevent delegate allocations and GC pressure
+            foreach (var profile in node.TrafficProfiles)
             {
-                implicitDemand += profile.InputRequirements
-                    .Where(requirement => Comparer.Equals(requirement.TrafficType, trafficType))
-                    .Sum(requirement => profile.Production * GetRequiredInputPerOutputUnit(requirement, profile.TrafficType));
+                if (profile.Production <= Epsilon)
+                {
+                    continue;
+                }
+
+                foreach (var requirement in profile.InputRequirements)
+                {
+                    if (Comparer.Equals(requirement.TrafficType, trafficType))
+                    {
+                        implicitDemand += profile.Production * GetRequiredInputPerOutputUnit(requirement, profile.TrafficType);
+                    }
+                }
             }
 
             if (implicitDemand <= Epsilon)

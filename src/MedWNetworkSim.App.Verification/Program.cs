@@ -1,7 +1,7 @@
 using MedWNetworkSim.App.Models;
 using MedWNetworkSim.App.Import;
 using MedWNetworkSim.App.Services;
-using MedWNetworkSim.App.ViewModels;
+using MedWNetworkSim.Presentation.ViewModels;
 using OsmSharp;
 using OsmSharp.Streams;
 

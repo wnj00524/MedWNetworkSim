@@ -93,25 +93,56 @@ public sealed class TemporalNetworkSimulationEngine
         var compiledContext = executionCache.GetTemporalContext(network, effectivePeriod);
         var effectiveNetwork = compiledContext.EffectiveNetwork;
         var copyStateBeforeAdvance = options.CopyStateBeforeAdvance;
-        var nodeStates = copyStateBeforeAdvance
-            ? state.NodeStates.ToDictionary(pair => pair.Key, pair => pair.Value.Clone(), TemporalNodeTrafficKey.Comparer)
-            : state.NodeStates;
-        var movements = copyStateBeforeAdvance
-            ? state.InFlightMovements.Select(movement => movement.Clone()).ToList()
-            : state.InFlightMovements;
+        var nodeStates = state.NodeStates;
+        var movements = state.InFlightMovements;
+        var occupiedEdgeCapacity = state.OccupiedEdgeCapacity;
+        var occupiedEdgeTrafficCapacity = state.OccupiedEdgeTrafficCapacity;
+        var occupiedTranshipmentCapacity = state.OccupiedTranshipmentCapacity;
+
+        if (copyStateBeforeAdvance)
+        {
+            // Bolt: Replaced LINQ ToDictionary() with manual loop to avoid enumerator and delegate allocations on hot path.
+            var newNodeStates = new Dictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState>(state.NodeStates.Count, TemporalNodeTrafficKey.Comparer);
+            foreach (var pair in state.NodeStates)
+            {
+                newNodeStates[pair.Key] = pair.Value.Clone();
+            }
+            nodeStates = newNodeStates;
+
+            // Bolt: Replaced LINQ Select().ToList() with manual loop to avoid enumerator and delegate allocations on hot path.
+            var newMovements = new List<TemporalInFlightMovement>(state.InFlightMovements.Count);
+            foreach (var movement in state.InFlightMovements)
+            {
+                newMovements.Add(movement.Clone());
+            }
+            movements = newMovements;
+
+            var newOccupiedEdgeCapacity = new Dictionary<string, double>(state.OccupiedEdgeCapacity.Count, Comparer);
+            foreach (var pair in state.OccupiedEdgeCapacity)
+            {
+                newOccupiedEdgeCapacity[pair.Key] = pair.Value;
+            }
+            occupiedEdgeCapacity = newOccupiedEdgeCapacity;
+
+            var newOccupiedEdgeTrafficCapacity = new Dictionary<EdgeTrafficResourceKey, double>(state.OccupiedEdgeTrafficCapacity.Count, EdgeTrafficResourceKey.Comparer);
+            foreach (var pair in state.OccupiedEdgeTrafficCapacity)
+            {
+                newOccupiedEdgeTrafficCapacity[pair.Key] = pair.Value;
+            }
+            occupiedEdgeTrafficCapacity = newOccupiedEdgeTrafficCapacity;
+
+            var newOccupiedTranshipmentCapacity = new Dictionary<string, double>(state.OccupiedTranshipmentCapacity.Count, Comparer);
+            foreach (var pair in state.OccupiedTranshipmentCapacity)
+            {
+                newOccupiedTranshipmentCapacity[pair.Key] = pair.Value;
+            }
+            occupiedTranshipmentCapacity = newOccupiedTranshipmentCapacity;
+        }
+
         var newlyAllocatedMovements = new List<TemporalInFlightMovement>();
         var nodeLookup = compiledContext.NodesById;
         var edgeLookup = compiledContext.EdgesById;
         var definitionsByTraffic = compiledContext.TrafficDefinitionsByName;
-        var occupiedEdgeCapacity = copyStateBeforeAdvance
-            ? state.OccupiedEdgeCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer)
-            : state.OccupiedEdgeCapacity;
-        var occupiedEdgeTrafficCapacity = copyStateBeforeAdvance
-            ? state.OccupiedEdgeTrafficCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, EdgeTrafficResourceKey.Comparer)
-            : state.OccupiedEdgeTrafficCapacity;
-        var occupiedTranshipmentCapacity = copyStateBeforeAdvance
-            ? state.OccupiedTranshipmentCapacity.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer)
-            : state.OccupiedTranshipmentCapacity;
         // Pressure is a per-period derived metric, not a persisted simulation state variable.
         // Each Advance(...) call starts with fresh accumulators and only records current-step adverse conditions.
         var nodePressure = new Dictionary<string, PressureAccumulator>(Comparer);
@@ -264,14 +295,18 @@ public sealed class TemporalNetworkSimulationEngine
 
         // Scores can decrease between periods when adverse causes shrink in later steps.
         // Relief is currently modeled indirectly (fewer future causes), not via explicit negative deltas.
-        var nodePressureSnapshot = nodePressure.ToDictionary(
-            pair => pair.Key,
-            pair => pair.Value.ToNodeSnapshot(),
-            Comparer);
-        var edgePressureSnapshot = edgePressure.ToDictionary(
-            pair => pair.Key,
-            pair => pair.Value.ToEdgeSnapshot(),
-            Comparer);
+        // Bolt: Replaced LINQ ToDictionary() with manual loops to avoid enumerator and delegate allocations on hot path.
+        var nodePressureSnapshot = new Dictionary<string, NodePressureSnapshot>(nodePressure.Count, Comparer);
+        foreach (var pair in nodePressure)
+        {
+            nodePressureSnapshot[pair.Key] = pair.Value.ToNodeSnapshot();
+        }
+
+        var edgePressureSnapshot = new Dictionary<string, EdgePressureSnapshot>(edgePressure.Count, Comparer);
+        foreach (var pair in edgePressure)
+        {
+            edgePressureSnapshot[pair.Key] = pair.Value.ToEdgeSnapshot();
+        }
 
         state.CurrentPeriod = nextPeriod;
         if (copyStateBeforeAdvance)
@@ -295,10 +330,12 @@ public sealed class TemporalNetworkSimulationEngine
             RemoveNonPositiveEntries(occupiedTranshipmentCapacity);
         }
 
-        var nodeSnapshots = nodeStates.ToDictionary(
-            pair => pair.Key,
-            pair => new TemporalNodeStateSnapshot(pair.Value.AvailableSupply, pair.Value.DemandBacklog, pair.Value.StoreInventory),
-            TemporalNodeTrafficKey.Comparer);
+        // Bolt: Replaced LINQ ToDictionary() with manual loops to avoid enumerator and delegate allocations on hot path.
+        var nodeSnapshots = new Dictionary<TemporalNodeTrafficKey, TemporalNodeStateSnapshot>(nodeStates.Count, TemporalNodeTrafficKey.Comparer);
+        foreach (var pair in nodeStates)
+        {
+            nodeSnapshots[pair.Key] = new TemporalNodeStateSnapshot(pair.Value.AvailableSupply, pair.Value.DemandBacklog, pair.Value.StoreInventory);
+        }
 
         clock.Advance(options.DeltaTime);
         var settledAllocations = SettleAllocations(effectiveNetwork, plannedAllocations);
@@ -772,8 +809,19 @@ public sealed class TemporalNetworkSimulationEngine
     {
         var network = compiledContext.EffectiveNetwork;
         var definitionsByTraffic = compiledContext.TrafficDefinitionsByName;
-        var remainingCapacityByEdgeId = availableCapacityByEdgeId.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
-        var remainingTranshipmentCapacityByNodeId = availableTranshipmentCapacityByNodeId.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
+        // Bolt: Replaced LINQ ToDictionary() with manual loops to avoid enumerator and delegate allocations on hot path.
+        var remainingCapacityByEdgeId = new Dictionary<string, double>(availableCapacityByEdgeId.Count, Comparer);
+        foreach (var pair in availableCapacityByEdgeId)
+        {
+            remainingCapacityByEdgeId[pair.Key] = pair.Value;
+        }
+
+        var remainingTranshipmentCapacityByNodeId = new Dictionary<string, double>(availableTranshipmentCapacityByNodeId.Count, Comparer);
+        foreach (var pair in availableTranshipmentCapacityByNodeId)
+        {
+            remainingTranshipmentCapacityByNodeId[pair.Key] = pair.Value;
+        }
+
         var contexts = new List<TemporalTrafficContext>(compiledContext.OrderedTrafficNames.Length);
         for (var index = 0; index < compiledContext.OrderedTrafficNames.Length; index++)
         {
@@ -1327,15 +1375,20 @@ public sealed class TemporalNetworkSimulationEngine
             }
         }
 
-        return new AvailableResourceCapacity(
-            network.Edges.ToDictionary(
-                edge => edge.Id,
-                edge => GetAvailableCapacity(edge.Capacity, edge.Id, occupiedEdgeCapacity, pendingEdgeClaims),
-                Comparer),
-            network.Nodes.ToDictionary(
-                node => node.Id,
-                node => GetAvailableCapacity(node.TranshipmentCapacity, node.Id, occupiedTranshipmentCapacity, pendingTranshipmentClaims),
-                Comparer));
+        // Bolt: Replaced LINQ ToDictionary() with manual loops to avoid enumerator and delegate allocations on hot path.
+        var edgeCapacityDict = new Dictionary<string, double>(network.Edges.Count, Comparer);
+        foreach (var edge in network.Edges)
+        {
+            edgeCapacityDict[edge.Id] = GetAvailableCapacity(edge.Capacity, edge.Id, occupiedEdgeCapacity, pendingEdgeClaims);
+        }
+
+        var nodeCapacityDict = new Dictionary<string, double>(network.Nodes.Count, Comparer);
+        foreach (var node in network.Nodes)
+        {
+            nodeCapacityDict[node.Id] = GetAvailableCapacity(node.TranshipmentCapacity, node.Id, occupiedTranshipmentCapacity, pendingTranshipmentClaims);
+        }
+
+        return new AvailableResourceCapacity(edgeCapacityDict, nodeCapacityDict);
     }
 
     private static double GetAvailableCapacity(

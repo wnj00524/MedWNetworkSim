@@ -64,27 +64,47 @@ public sealed class FacilityAssignmentEngine
                 continue;
             }
 
-            var bestFacility = facilities
-                .Select(facility => new
-                {
-                    Facility = facility,
-                    Cost = facilityDistances[facility.Id].TryGetValue(node.Id, out var cost) ? cost : double.PositiveInfinity
-                })
-                .Where(candidate => !double.IsPositiveInfinity(candidate.Cost))
-                .OrderBy(candidate => candidate.Cost)
-                .ThenBy(candidate => candidate.Facility.Name, Comparer)
-                .ThenBy(candidate => candidate.Facility.Id, Comparer)
-                .FirstOrDefault();
+            // Bolt: Replaced O(N log N) LINQ sorting and anonymous object allocations with O(N) linear scan
+            NodeModel? selectedFacility = null;
+            double lowestCost = double.PositiveInfinity;
 
-            if (bestFacility is null)
+            foreach (var facility in facilities)
+            {
+                if (facilityDistances[facility.Id].TryGetValue(node.Id, out var cost))
+                {
+                    if (cost < lowestCost)
+                    {
+                        lowestCost = cost;
+                        selectedFacility = facility;
+                    }
+                    else if (cost == lowestCost && selectedFacility is not null)
+                    {
+                        int nameComparison = Comparer.Compare(facility.Name, selectedFacility.Name);
+                        if (nameComparison < 0)
+                        {
+                            selectedFacility = facility;
+                        }
+                        else if (nameComparison == 0)
+                        {
+                            int idComparison = Comparer.Compare(facility.Id, selectedFacility.Id);
+                            if (idComparison < 0)
+                            {
+                                selectedFacility = facility;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (selectedFacility is null)
             {
                 unassignedNodeIds.Add(node.Id);
                 continue;
             }
 
-            assignments[node.Id] = bestFacility.Facility.Id;
-            assignmentCosts[node.Id] = bestFacility.Cost;
-            demandByFacility[bestFacility.Facility.Id] += GetDemand(node, trafficType);
+            assignments[node.Id] = selectedFacility.Id;
+            assignmentCosts[node.Id] = lowestCost;
+            demandByFacility[selectedFacility.Id] += GetDemand(node, trafficType);
         }
 
         var overflowDemandByFacility = new Dictionary<string, double>(Comparer);

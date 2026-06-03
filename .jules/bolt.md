@@ -60,3 +60,6 @@
 ## $(date +%Y-%m-%d) - Avoiding IDictionary Interfaces for ReadOnly Conversions
 **Learning:** In C#, declaring variables as `IDictionary<TKey, TValue>` prevents implicit conversion to `IReadOnlyDictionary<TKey, TValue>` when passed as method arguments, causing CS1503 compilation errors. Furthermore, using `.Capacity` on a `List` or interface when pre-sizing new collections is unsafe and causes errors.
 **Action:** Always declare new collections with `var` or as concrete `Dictionary<TKey, TValue>` to allow implicit `IReadOnlyDictionary` conversions, and strictly use `.Count` instead of `.Capacity` when pre-sizing allocations.
+## 2024-05-31 - Preserving Sort Order in LINQ to foreach Refactoring
+**Learning:** When refactoring a LINQ `.OrderBy(cost).ThenBy(name).ThenBy(id).FirstOrDefault()` chain into a single O(N) `foreach` loop scan, replacing the initial conditions with a strict less-than check (`<`) is not sufficient to preserve the precise behavior if ties exist.
+**Action:** Always replicate the exact tie-breaker logic from the `ThenBy` clauses within an `else if (currentVal == bestVal)` branch inside the loop, using the original exact comparator types and strict equality checks rather than epsilon-based approximation.

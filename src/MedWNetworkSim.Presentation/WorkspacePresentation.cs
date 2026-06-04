@@ -6910,12 +6910,28 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         }
 
         var reachableNodes = bestCostByNode.Keys.ToList();
-        var uncoveredNodes = network.Nodes
-            .Where(node => string.IsNullOrWhiteSpace(node.Id) || !coverage.ContainsKey(node.Id))
-            .ToList();
-        var overlapNodes = network.Nodes
-            .Where(node => !string.IsNullOrWhiteSpace(node.Id) && coverage.TryGetValue(node.Id, out var list) && list.Count > 1)
-            .ToList();
+
+        // Bolt: Optimize O(N) multi-pass LINQ and redundant dictionary lookups into a single pass loop
+        var uncoveredNodes = new List<NodeModel>();
+        var overlapNodes = new List<NodeModel>();
+        foreach (var node in network.Nodes)
+        {
+            if (string.IsNullOrWhiteSpace(node.Id))
+            {
+                uncoveredNodes.Add(node);
+            }
+            else if (coverage.TryGetValue(node.Id, out var list))
+            {
+                if (list.Count > 1)
+                {
+                    overlapNodes.Add(node);
+                }
+            }
+            else
+            {
+                uncoveredNodes.Add(node);
+            }
+        }
 
         CurrentMultiOriginIsochrone = new MultiOriginIsochroneResult
         {

@@ -63,3 +63,6 @@
 ## 2024-05-31 - Preserving Sort Order in LINQ to foreach Refactoring
 **Learning:** When refactoring a LINQ `.OrderBy(cost).ThenBy(name).ThenBy(id).FirstOrDefault()` chain into a single O(N) `foreach` loop scan, replacing the initial conditions with a strict less-than check (`<`) is not sufficient to preserve the precise behavior if ties exist.
 **Action:** Always replicate the exact tie-breaker logic from the `ThenBy` clauses within an `else if (currentVal == bestVal)` branch inside the loop, using the original exact comparator types and strict equality checks rather than epsilon-based approximation.
+## 2026-05-31 - Optimize LINQ Sum in properties and lambda bodies
+**Learning:** In C#, using LINQ `.Sum()` inside properties (e.g. `AvailableSupply`) or lambda bodies evaluated frequently in the simulation loop causes continuous delegate allocation and enumerator overhead. This is measurable on hot paths where graph traversal updates properties often.
+**Action:** Replace `property => collection.Sum(x => x.prop)` with explicit `get` blocks containing `foreach` loops on the collection. Although more verbose, it completely eliminates GC pressure and runs much faster on hot paths.

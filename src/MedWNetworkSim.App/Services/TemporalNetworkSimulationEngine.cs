@@ -368,12 +368,19 @@ public sealed class TemporalNetworkSimulationEngine
             {
                 var definition = network.TrafficTypes.FirstOrDefault(candidate => Comparer.Equals(candidate.Name, group.Key));
                 var trafficAllocations = group.ToList();
+
+                double totalDelivered = 0d;
+                foreach (var allocation in trafficAllocations)
+                {
+                    totalDelivered += allocation.Quantity;
+                }
+
                 return new TrafficSimulationOutcome
                 {
                     TrafficType = group.Key,
                     RoutingPreference = definition?.RoutingPreference ?? trafficAllocations[0].RoutingPreference,
                     AllocationMode = definition?.AllocationMode ?? trafficAllocations[0].AllocationMode,
-                    TotalDelivered = trafficAllocations.Sum(allocation => allocation.Quantity),
+                    TotalDelivered = totalDelivered,
                     Allocations = trafficAllocations
                 };
             })
@@ -2565,7 +2572,18 @@ public sealed class TemporalNetworkSimulationEngine
         /// Gets or sets the available supply.
         /// </summary>
 
-        public double AvailableSupply => availableSupplyBatches.Sum(batch => batch.Quantity);
+        public double AvailableSupply
+        {
+            get
+            {
+                double sum = 0d;
+                foreach (var batch in availableSupplyBatches)
+                {
+                    sum += batch.Quantity;
+                }
+                return sum;
+            }
+        }
         /// <summary>
         /// Gets or sets the available supply unit cost per unit.
         /// </summary>
@@ -2580,7 +2598,18 @@ public sealed class TemporalNetworkSimulationEngine
         /// Gets or sets the store inventory.
         /// </summary>
 
-        public double StoreInventory => storeInventoryBatches.Sum(batch => batch.Quantity);
+        public double StoreInventory
+        {
+            get
+            {
+                double sum = 0d;
+                foreach (var batch in storeInventoryBatches)
+                {
+                    sum += batch.Quantity;
+                }
+                return sum;
+            }
+        }
         /// <summary>
         /// Gets or sets the store inventory unit cost per unit.
         /// </summary>

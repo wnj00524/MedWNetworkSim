@@ -135,19 +135,41 @@ public sealed class NetworkSimulationEngine
         }
 
         var outcomes = contexts
-            .Select(context => new TrafficSimulationOutcome
+            .Select(context =>
             {
-                TrafficType = context.TrafficType,
-                RoutingPreference = context.RoutingPreference,
-                AllocationMode = context.AllocationMode,
-                TotalProduction = context.TotalProduction,
-                TotalConsumption = context.TotalConsumption,
-                TotalDelivered = context.Allocations.Sum(allocation => allocation.Quantity),
-                UnusedSupply = context.Supply.Values.Sum(value => Math.Max(0d, value)),
-                UnmetDemand = context.Demand.Values.Sum(value => Math.Max(0d, value)),
-                NoPermittedPathDemand = context.NoPermittedPathDemand,
-                Allocations = context.Allocations.ToList(),
-                Notes = context.Notes.ToList()
+                // Bolt: Replaced multiple LINQ Sums with a single block computing them manually to reduce delegate allocations
+                double totalDelivered = 0d;
+                foreach (var allocation in context.Allocations)
+                {
+                    totalDelivered += allocation.Quantity;
+                }
+
+                double unusedSupply = 0d;
+                foreach (var value in context.Supply.Values)
+                {
+                    unusedSupply += Math.Max(0d, value);
+                }
+
+                double unmetDemand = 0d;
+                foreach (var value in context.Demand.Values)
+                {
+                    unmetDemand += Math.Max(0d, value);
+                }
+
+                return new TrafficSimulationOutcome
+                {
+                    TrafficType = context.TrafficType,
+                    RoutingPreference = context.RoutingPreference,
+                    AllocationMode = context.AllocationMode,
+                    TotalProduction = context.TotalProduction,
+                    TotalConsumption = context.TotalConsumption,
+                    TotalDelivered = totalDelivered,
+                    UnusedSupply = unusedSupply,
+                    UnmetDemand = unmetDemand,
+                    NoPermittedPathDemand = context.NoPermittedPathDemand,
+                    Allocations = context.Allocations.ToList(),
+                    Notes = context.Notes.ToList()
+                };
             })
             .ToList();
 

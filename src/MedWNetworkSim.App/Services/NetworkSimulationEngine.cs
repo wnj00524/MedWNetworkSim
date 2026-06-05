@@ -465,13 +465,27 @@ public sealed class NetworkSimulationEngine
 
     private static bool HasStaticRecipeDependencies(NetworkModel network)
     {
-        return network.Nodes
-            .SelectMany(node => node.TrafficProfiles)
-            .Where(profile => profile.Production > Epsilon)
-            .SelectMany(profile => profile.InputRequirements)
-            .Any(requirement =>
-                (requirement.InputQuantity > Epsilon && requirement.OutputQuantity > Epsilon) ||
-                requirement.QuantityPerOutputUnit.GetValueOrDefault() > Epsilon);
+        // Bolt: Replaced LINQ .SelectMany, .Where, and .Any with standard nested foreach loops
+        // to avoid delegate allocations and enumerator overhead during simulation setup.
+        foreach (var node in network.Nodes)
+        {
+            foreach (var profile in node.TrafficProfiles)
+            {
+                if (profile.Production > Epsilon)
+                {
+                    foreach (var requirement in profile.InputRequirements)
+                    {
+                        if ((requirement.InputQuantity > Epsilon && requirement.OutputQuantity > Epsilon) ||
+                            requirement.QuantityPerOutputUnit.GetValueOrDefault() > Epsilon)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     private static List<string> BuildStaticRecipeCostOrder(NetworkModel network, IReadOnlyList<string> trafficTypes)
@@ -482,58 +496,86 @@ public sealed class NetworkSimulationEngine
         var graph = trafficTypes.ToDictionary(trafficType => trafficType, _ => new HashSet<string>(Comparer), Comparer);
         var indegree = trafficTypes.ToDictionary(trafficType => trafficType, _ => 0, Comparer);
 
-        foreach (var profile in network.Nodes.SelectMany(node => node.TrafficProfiles).Where(profile => profile.Production > Epsilon))
+        // Bolt: Replaced LINQ .SelectMany and .Where with standard loops
+        // to avoid enumerator allocations and delegate overhead during initialization.
+        foreach (var node in network.Nodes)
         {
-            if (!graph.ContainsKey(profile.TrafficType))
+            foreach (var profile in node.TrafficProfiles)
             {
-                graph[profile.TrafficType] = [];
-                indegree[profile.TrafficType] = 0;
-                originalIndex[profile.TrafficType] = originalIndex.Count;
-            }
+                if (profile.Production <= Epsilon) continue;
 
-            foreach (var requirement in profile.InputRequirements.Where(requirement =>
-     (requirement.InputQuantity > Epsilon && requirement.OutputQuantity > Epsilon) ||
-     requirement.QuantityPerOutputUnit.GetValueOrDefault() > Epsilon))
-            {
-                if (!graph.ContainsKey(requirement.TrafficType))
+                if (!graph.ContainsKey(profile.TrafficType))
                 {
-                    graph[requirement.TrafficType] = [];
-                    indegree[requirement.TrafficType] = 0;
-                    originalIndex[requirement.TrafficType] = originalIndex.Count;
+                    graph[profile.TrafficType] = [];
+                    indegree[profile.TrafficType] = 0;
+                    originalIndex[profile.TrafficType] = originalIndex.Count;
                 }
 
-                if (graph[requirement.TrafficType].Add(profile.TrafficType))
+                foreach (var requirement in profile.InputRequirements)
                 {
-                    indegree[profile.TrafficType]++;
+                    if (!((requirement.InputQuantity > Epsilon && requirement.OutputQuantity > Epsilon) ||
+                          requirement.QuantityPerOutputUnit.GetValueOrDefault() > Epsilon))
+                    {
+                        continue;
+                    }
+
+                    if (!graph.ContainsKey(requirement.TrafficType))
+                    {
+                        graph[requirement.TrafficType] = [];
+                        indegree[requirement.TrafficType] = 0;
+                        originalIndex[requirement.TrafficType] = originalIndex.Count;
+                    }
+
+                    if (graph[requirement.TrafficType].Add(profile.TrafficType))
+                    {
+                        indegree[profile.TrafficType]++;
+                    }
                 }
             }
         }
 
-        var ready = indegree
-            .Where(pair => pair.Value == 0)
-            .Select(pair => pair.Key)
-            .OrderBy(trafficType => originalIndex.GetValueOrDefault(trafficType, int.MaxValue))
-            .ThenBy(trafficType => trafficType, Comparer)
-            .ToList();
+        var ready = new List<string>();
+        foreach (var pair in indegree)
+        {
+            if (pair.Value == 0)
+            {
+                ready.Add(pair.Key);
+            }
+        }
+        ready.Sort((a, b) =>
+        {
+            var idxA = originalIndex.GetValueOrDefault(a, int.MaxValue);
+            var idxB = originalIndex.GetValueOrDefault(b, int.MaxValue);
+            var cmp = idxA.CompareTo(idxB);
+            if (cmp != 0) return cmp;
+            return Comparer.Compare(a, b);
+        });
         var result = new List<string>(graph.Count);
+        Comparison<string> trafficTypeComparison = (a, b) =>
+        {
+            var idxA = originalIndex.GetValueOrDefault(a, int.MaxValue);
+            var idxB = originalIndex.GetValueOrDefault(b, int.MaxValue);
+            var cmp = idxA.CompareTo(idxB);
+            if (cmp != 0) return cmp;
+            return Comparer.Compare(a, b);
+        };
+
         while (ready.Count > 0)
         {
             var trafficType = ready[0];
             ready.RemoveAt(0);
             result.Add(trafficType);
 
-            foreach (var dependent in graph[trafficType]
-                .OrderBy(item => originalIndex.GetValueOrDefault(item, int.MaxValue))
-                .ThenBy(item => item, Comparer))
+            var dependents = graph[trafficType].ToList();
+            dependents.Sort(trafficTypeComparison);
+
+            foreach (var dependent in dependents)
             {
                 indegree[dependent]--;
                 if (indegree[dependent] == 0)
                 {
                     ready.Add(dependent);
-                    ready = ready
-                        .OrderBy(item => originalIndex.GetValueOrDefault(item, int.MaxValue))
-                        .ThenBy(item => item, Comparer)
-                        .ToList();
+                    ready.Sort(trafficTypeComparison);
                 }
             }
         }
@@ -1576,6 +1618,8 @@ public sealed class NetworkSimulationEngine
 
     private static List<string> GetOrderedTrafficNames(NetworkModel network)
     {
+        // Bolt: Replaced LINQ queries (.SelectMany, .Select, .Concat, .Where, .Distinct)
+        // with standard foreach loops to avoid enumerator and delegate allocations during setup.
         var orderedTrafficNames = new List<string>();
         var seen = new HashSet<string>(Comparer);
 
@@ -1587,18 +1631,34 @@ public sealed class NetworkSimulationEngine
             }
         }
 
-        var undeclaredTrafficNames = network.Nodes
-            .SelectMany(node => node.TrafficProfiles)
-            .Select(profile => profile.TrafficType)
-            .Concat(network.Nodes
-                .SelectMany(node => node.TrafficProfiles)
-                .SelectMany(profile => profile.InputRequirements)
-                .Select(requirement => requirement.TrafficType))
-            .Where(name => !string.IsNullOrWhiteSpace(name) && !seen.Contains(name))
-            .Distinct(Comparer)
-            .OrderBy(name => name, Comparer);
+        var undeclaredTrafficNames = new HashSet<string>(Comparer);
 
-        orderedTrafficNames.AddRange(undeclaredTrafficNames);
+        foreach (var node in network.Nodes)
+        {
+            foreach (var profile in node.TrafficProfiles)
+            {
+                if (!string.IsNullOrWhiteSpace(profile.TrafficType) && !seen.Contains(profile.TrafficType))
+                {
+                    undeclaredTrafficNames.Add(profile.TrafficType);
+                }
+
+                foreach (var requirement in profile.InputRequirements)
+                {
+                    if (!string.IsNullOrWhiteSpace(requirement.TrafficType) && !seen.Contains(requirement.TrafficType))
+                    {
+                        undeclaredTrafficNames.Add(requirement.TrafficType);
+                    }
+                }
+            }
+        }
+
+        if (undeclaredTrafficNames.Count > 0)
+        {
+            var undeclaredList = undeclaredTrafficNames.ToList();
+            undeclaredList.Sort(Comparer);
+            orderedTrafficNames.AddRange(undeclaredList);
+        }
+
         return orderedTrafficNames;
     }
 

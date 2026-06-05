@@ -1180,10 +1180,23 @@ public sealed class TemporalNetworkSimulationEngine
 
     private static bool IsRecipeInputTraffic(NodeModel node, string trafficType)
     {
-        return node.TrafficProfiles
-            .Where(profile => profile.Production > Epsilon)
-            .SelectMany(profile => profile.InputRequirements)
-            .Any(requirement => Comparer.Equals(requirement.TrafficType, trafficType));
+        // Bolt: Replaced LINQ .Where, .SelectMany, and .Any with standard foreach loops
+        // to prevent delegate allocations and enumerator overhead in this frequently called method.
+        foreach (var profile in node.TrafficProfiles)
+        {
+            if (profile.Production > Epsilon)
+            {
+                foreach (var requirement in profile.InputRequirements)
+                {
+                    if (Comparer.Equals(requirement.TrafficType, trafficType))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     private static ProductionResult CalculateAndConsumeProductionInputs(
@@ -2368,33 +2381,74 @@ public sealed class TemporalNetworkSimulationEngine
 
     private static List<string> GetOrderedTrafficNames(NetworkModel network)
     {
-        var definitionsWithOrder = network.TrafficTypes
-            .Select((definition, index) => new { Definition = definition, Index = index })
-            .Where(item => !string.IsNullOrWhiteSpace(item.Definition.Name))
-            .GroupBy(item => item.Definition.Name, Comparer)
-            .Select(group => group.First())
-            .OrderBy(item => item.Definition.PerishabilityPeriods.HasValue ? 0 : 1)
-            .ThenBy(item => item.Definition.PerishabilityPeriods ?? int.MaxValue)
-            .ThenByDescending(item => item.Definition.RouteChoiceSettings?.Priority ?? 0d)
-            .ThenBy(item => item.Index)
-            .Select(item => item.Definition.Name)
-            .ToList();
+        // Bolt: Replaced LINQ queries (.Select, .Where, .GroupBy, .SelectMany, .Concat)
+        // with standard loops and list sorting to avoid significant enumerator and delegate allocations
+        var definitionsList = new List<(TrafficTypeDefinition Definition, int Index)>();
+        var definitionsSeen = new HashSet<string>(Comparer);
 
-        var seen = new HashSet<string>(definitionsWithOrder, Comparer);
+        for (int i = 0; i < network.TrafficTypes.Count; i++)
+        {
+            var definition = network.TrafficTypes[i];
+            if (!string.IsNullOrWhiteSpace(definition.Name) && definitionsSeen.Add(definition.Name))
+            {
+                definitionsList.Add((definition, i));
+            }
+        }
 
-        var undeclaredTrafficNames = network.Nodes
-            .SelectMany(node => node.TrafficProfiles)
-            .Select(profile => profile.TrafficType)
-            .Concat(network.Nodes
-                .SelectMany(node => node.TrafficProfiles)
-                .SelectMany(profile => profile.InputRequirements)
-                .Select(requirement => requirement.TrafficType))
-            .Where(name => !string.IsNullOrWhiteSpace(name) && !seen.Contains(name))
-            .Distinct(Comparer)
-            .OrderBy(name => name, Comparer);
+        definitionsList.Sort((a, b) =>
+        {
+            var aHasPerishability = a.Definition.PerishabilityPeriods.HasValue;
+            var bHasPerishability = b.Definition.PerishabilityPeriods.HasValue;
+            if (aHasPerishability != bHasPerishability)
+                return aHasPerishability ? -1 : 1;
 
-        definitionsWithOrder.AddRange(undeclaredTrafficNames);
-        return definitionsWithOrder;
+            var perishCmp = (a.Definition.PerishabilityPeriods ?? int.MaxValue).CompareTo(b.Definition.PerishabilityPeriods ?? int.MaxValue);
+            if (perishCmp != 0) return perishCmp;
+
+            var aPriority = a.Definition.RouteChoiceSettings?.Priority ?? 0d;
+            var bPriority = b.Definition.RouteChoiceSettings?.Priority ?? 0d;
+            var priorityCmp = bPriority.CompareTo(aPriority);
+            if (priorityCmp != 0) return priorityCmp;
+
+            return a.Index.CompareTo(b.Index);
+        });
+
+        var result = new List<string>(definitionsList.Count);
+        var resultSeen = new HashSet<string>(Comparer);
+        foreach (var item in definitionsList)
+        {
+            result.Add(item.Definition.Name);
+            resultSeen.Add(item.Definition.Name);
+        }
+
+        var undeclaredNames = new HashSet<string>(Comparer);
+        foreach (var node in network.Nodes)
+        {
+            foreach (var profile in node.TrafficProfiles)
+            {
+                if (!string.IsNullOrWhiteSpace(profile.TrafficType) && !resultSeen.Contains(profile.TrafficType))
+                {
+                    undeclaredNames.Add(profile.TrafficType);
+                }
+
+                foreach (var req in profile.InputRequirements)
+                {
+                    if (!string.IsNullOrWhiteSpace(req.TrafficType) && !resultSeen.Contains(req.TrafficType))
+                    {
+                        undeclaredNames.Add(req.TrafficType);
+                    }
+                }
+            }
+        }
+
+        if (undeclaredNames.Count > 0)
+        {
+            var undeclaredList = undeclaredNames.ToList();
+            undeclaredList.Sort(Comparer);
+            result.AddRange(undeclaredList);
+        }
+
+        return result;
     }
 
     private static int? GetPerishabilityPeriods(

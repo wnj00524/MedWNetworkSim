@@ -500,11 +500,20 @@ public sealed class NetworkSimulationEngine
 
     private static List<string> BuildStaticRecipeCostOrder(NetworkModel network, IReadOnlyList<string> trafficTypes)
     {
-        var originalIndex = trafficTypes
-            .Select((trafficType, index) => new { trafficType, index })
-            .ToDictionary(item => item.trafficType, item => item.index, Comparer);
-        var graph = trafficTypes.ToDictionary(trafficType => trafficType, _ => new HashSet<string>(Comparer), Comparer);
-        var indegree = trafficTypes.ToDictionary(trafficType => trafficType, _ => 0, Comparer);
+        // Bolt: Replaced LINQ dictionary initializations with a single standard loop
+        // to avoid anonymous type allocations, enumerators, and delegates, reducing initialization overhead.
+        var count = trafficTypes.Count;
+        var originalIndex = new Dictionary<string, int>(count, Comparer);
+        var graph = new Dictionary<string, HashSet<string>>(count, Comparer);
+        var indegree = new Dictionary<string, int>(count, Comparer);
+
+        for (int i = 0; i < count; i++)
+        {
+            var trafficType = trafficTypes[i];
+            originalIndex[trafficType] = i;
+            graph[trafficType] = new HashSet<string>(Comparer);
+            indegree[trafficType] = 0;
+        }
 
         // Bolt: Replaced LINQ .SelectMany and .Where with standard loops
         // to avoid enumerator allocations and delegate overhead during initialization.

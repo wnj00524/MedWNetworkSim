@@ -66,3 +66,6 @@
 ## 2026-05-31 - Optimize LINQ Sum in properties and lambda bodies
 **Learning:** In C#, using LINQ `.Sum()` inside properties (e.g. `AvailableSupply`) or lambda bodies evaluated frequently in the simulation loop causes continuous delegate allocation and enumerator overhead. This is measurable on hot paths where graph traversal updates properties often.
 **Action:** Replace `property => collection.Sum(x => x.prop)` with explicit `get` blocks containing `foreach` loops on the collection. Although more verbose, it completely eliminates GC pressure and runs much faster on hot paths.
+## 2024-05-24 - BuildStaticRecipeCostOrder LINQ Dictionary Initialization Overhead
+**Learning:** In C#, replacing `Enumerable.Select` returning an anonymous type into a `.ToDictionary()` call with a manual `for` loop and indexer initialization (`dict[key] = value`) inside hot paths significantly reduces allocations and speeds up execution by avoiding hidden enumerator and delegate generation. Note that this changes behavior slightly on duplicate keys (throwing vs overwriting).
+**Action:** Actively scan for `.ToDictionary()` inside heavily utilized setup or iterative loops. Convert these to pre-sized `new Dictionary<K, V>(count)` and standard loops to eliminate enumerator GC pressure.

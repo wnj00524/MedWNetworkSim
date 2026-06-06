@@ -86,6 +86,15 @@ public sealed class NetworkSimulationEngine
             MixedRoutingAllocator.Allocate(network, contexts, remainingCapacityByEdgeId, remainingTranshipmentCapacityByNodeId, compiledContext: compiledContext);
         }
 
+        AnalyzeContextResults(network, contexts, hasFiniteCapacities);
+
+        var outcomes = BuildOutcomes(contexts);
+
+        return settlementService.Settle(network, outcomes).Outcomes;
+    }
+
+    private static void AnalyzeContextResults(NetworkModel network, IReadOnlyList<RoutingTrafficContext> contexts, bool hasFiniteCapacities)
+    {
         foreach (var context in contexts)
         {
             AddReachabilityWarnings(network, context);
@@ -133,8 +142,11 @@ public sealed class NetworkSimulationEngine
                 context.Notes.Add("No feasible producer-to-consumer routes were found with the current node roles, edge directions, capacities, and bidding rules.");
             }
         }
+    }
 
-        var outcomes = contexts
+    private static List<TrafficSimulationOutcome> BuildOutcomes(IReadOnlyList<RoutingTrafficContext> contexts)
+    {
+        return contexts
             .Select(context =>
             {
                 // Bolt: Replaced multiple LINQ Sums with a single block computing them manually to reduce delegate allocations
@@ -172,8 +184,6 @@ public sealed class NetworkSimulationEngine
                 };
             })
             .ToList();
-
-        return settlementService.Settle(network, outcomes).Outcomes;
     }
 
     private static void AddReachabilityWarnings(NetworkModel network, RoutingTrafficContext context)

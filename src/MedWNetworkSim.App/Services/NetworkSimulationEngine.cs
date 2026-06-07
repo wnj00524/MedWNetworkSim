@@ -204,10 +204,13 @@ public sealed class NetworkSimulationEngine
         var adjacency = BuildAdjacency(network);
         var permissionResolver = new EdgeTrafficPermissionResolver();
 
+        // Bolt: Extract ToDictionary to avoid O(N) allocation inside the double loop (O(P*C)) of producer/consumer checks
+        var edgesById = network.Edges.ToDictionary(edge => edge.Id, Comparer);
+
         foreach (var producerNodeId in producers)
         {
             var hasReachableConsumer = consumers.Any(consumerNodeId =>
-                HasPermittedPath(network, context, adjacency, permissionResolver, producerNodeId, consumerNodeId));
+                HasPermittedPath(network, context, adjacency, edgesById, permissionResolver, producerNodeId, consumerNodeId));
             if (!hasReachableConsumer)
             {
                 context.Notes.Add(
@@ -218,7 +221,7 @@ public sealed class NetworkSimulationEngine
         foreach (var consumerNodeId in consumers)
         {
             var hasReachableProducer = producers.Any(producerNodeId =>
-                HasPermittedPath(network, context, adjacency, permissionResolver, producerNodeId, consumerNodeId));
+                HasPermittedPath(network, context, adjacency, edgesById, permissionResolver, producerNodeId, consumerNodeId));
             if (!hasReachableProducer)
             {
                 context.Notes.Add(
@@ -231,6 +234,7 @@ public sealed class NetworkSimulationEngine
         NetworkModel network,
         RoutingTrafficContext context,
         IReadOnlyDictionary<string, List<GraphArc>> adjacency,
+        IReadOnlyDictionary<string, EdgeModel> edgesById,
         EdgeTrafficPermissionResolver permissionResolver,
         string producerNodeId,
         string consumerNodeId)
@@ -240,7 +244,6 @@ public sealed class NetworkSimulationEngine
             return true;
         }
 
-        var edgesById = network.Edges.ToDictionary(edge => edge.Id, Comparer);
         var queue = new Queue<string>();
         var visited = new HashSet<string>(Comparer) { producerNodeId };
         queue.Enqueue(producerNodeId);

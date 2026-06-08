@@ -188,14 +188,25 @@ public sealed class NetworkSimulationEngine
 
     private static void AddReachabilityWarnings(NetworkModel network, RoutingTrafficContext context)
     {
-        var producers = context.Supply
-            .Where(pair => pair.Value > Epsilon)
-            .Select(pair => pair.Key)
-            .ToList();
-        var consumers = context.Demand
-            .Where(pair => pair.Value > Epsilon)
-            .Select(pair => pair.Key)
-            .ToList();
+        // Bolt: Replaced LINQ methods with manual loops to avoid delegate allocations and enumerator overhead
+        var producers = new List<string>(context.Supply.Count);
+        foreach (var pair in context.Supply)
+        {
+            if (pair.Value > Epsilon)
+            {
+                producers.Add(pair.Key);
+            }
+        }
+
+        var consumers = new List<string>(context.Demand.Count);
+        foreach (var pair in context.Demand)
+        {
+            if (pair.Value > Epsilon)
+            {
+                consumers.Add(pair.Key);
+            }
+        }
+
         if (producers.Count == 0 || consumers.Count == 0)
         {
             return;
@@ -204,10 +215,25 @@ public sealed class NetworkSimulationEngine
         var adjacency = BuildAdjacency(network);
         var permissionResolver = new EdgeTrafficPermissionResolver();
 
+        // Bolt: Hoist dictionary allocation to avoid O(P * C * E) memory bottleneck
+        var edgesById = new Dictionary<string, EdgeModel>(network.Edges.Count, Comparer);
+        foreach (var edge in network.Edges)
+        {
+            edgesById[edge.Id] = edge;
+        }
+
         foreach (var producerNodeId in producers)
         {
-            var hasReachableConsumer = consumers.Any(consumerNodeId =>
-                HasPermittedPath(network, context, adjacency, permissionResolver, producerNodeId, consumerNodeId));
+            var hasReachableConsumer = false;
+            foreach (var consumerNodeId in consumers)
+            {
+                if (HasPermittedPath(network, context, adjacency, permissionResolver, edgesById, producerNodeId, consumerNodeId))
+                {
+                    hasReachableConsumer = true;
+                    break;
+                }
+            }
+
             if (!hasReachableConsumer)
             {
                 context.Notes.Add(
@@ -217,8 +243,16 @@ public sealed class NetworkSimulationEngine
 
         foreach (var consumerNodeId in consumers)
         {
-            var hasReachableProducer = producers.Any(producerNodeId =>
-                HasPermittedPath(network, context, adjacency, permissionResolver, producerNodeId, consumerNodeId));
+            var hasReachableProducer = false;
+            foreach (var producerNodeId in producers)
+            {
+                if (HasPermittedPath(network, context, adjacency, permissionResolver, edgesById, producerNodeId, consumerNodeId))
+                {
+                    hasReachableProducer = true;
+                    break;
+                }
+            }
+
             if (!hasReachableProducer)
             {
                 context.Notes.Add(
@@ -232,6 +266,7 @@ public sealed class NetworkSimulationEngine
         RoutingTrafficContext context,
         IReadOnlyDictionary<string, List<GraphArc>> adjacency,
         EdgeTrafficPermissionResolver permissionResolver,
+        IReadOnlyDictionary<string, EdgeModel> edgesById,
         string producerNodeId,
         string consumerNodeId)
     {
@@ -240,7 +275,6 @@ public sealed class NetworkSimulationEngine
             return true;
         }
 
-        var edgesById = network.Edges.ToDictionary(edge => edge.Id, Comparer);
         var queue = new Queue<string>();
         var visited = new HashSet<string>(Comparer) { producerNodeId };
         queue.Enqueue(producerNodeId);

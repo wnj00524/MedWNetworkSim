@@ -73,3 +73,6 @@
 ## 2024-06-08 - Hoisting Dictionary Construction to Avoid $O(P \times C \times E)$ Allocation Bottleneck
 **Learning:** In C# graph reachability algorithms, if a `.ToDictionary()` call on the entire graph's edges (like `network.Edges.ToDictionary(...)`) is located inside a nested loop structure (e.g., inside `HasPermittedPath` called repeatedly by `producers.Any()` and `consumers.Any()`), it creates an enormous hidden memory and performance bottleneck, effectively multiplying an $O(E)$ operation by $O(P \times C)$.
 **Action:** When inspecting hot paths or reachability checks in simulation engines, explicitly look for dictionary or collection allocations inside the traversal or checking logic, and hoist them out as parameters to be constructed exactly once per network/batch. Replace LINQ allocations with manual, pre-sized `foreach` loops to eliminate continuous delegate and closure overhead.
+## $(date +%Y-%m-%d) - format.sh FileNotFoundException
+**Learning:** The `format.sh` script in the repository fails with a `FileNotFoundException` because `src/MedWNetworkSim.App/MedWNetworkSim.App.csproj` does not exist.
+**Action:** Use the native `dotnet format` command for linting and formatting instead.

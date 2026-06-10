@@ -298,13 +298,23 @@ public sealed class EconomicCalculator : IEconomicCalculator
             .ToDictionary(group => group.Key, group => group.Max(item => item.Penalty), StringComparer.OrdinalIgnoreCase);
 
         var settled = new TrafficEconomicSettlementService().Settle(network, result.Outcomes).Outcomes;
-        var salesRevenue = settled.Sum(outcome => outcome.TotalSalesRevenue);
-        var transport = settled.Sum(outcome => outcome.TotalTransportCost);
-        var production = settled.Sum(outcome => outcome.TotalProductionCost);
-        var tax = settled.Sum(outcome => outcome.TotalTax);
+        var salesRevenue = 0d;
+        var transport = 0d;
+        var production = 0d;
+        var tax = 0d;
+        var shortage = 0d;
+
+        // Iterate once to calculate all metrics, replacing 5 O(N) LINQ Sum calls
+        foreach (var outcome in settled)
+        {
+            salesRevenue += outcome.TotalSalesRevenue;
+            transport += outcome.TotalTransportCost;
+            production += outcome.TotalProductionCost;
+            tax += outcome.TotalTax;
+            shortage += Math.Max(0d, outcome.UnmetDemand) * shortagePenaltyByTraffic.GetValueOrDefault(outcome.TrafficType, 0d);
+        }
+
         var holding = 0d;
-        var shortage = settled.Sum(outcome =>
-            Math.Max(0d, outcome.UnmetDemand) * shortagePenaltyByTraffic.GetValueOrDefault(outcome.TrafficType, 0d));
 
         return new EconomicSummary
         {
@@ -654,24 +664,45 @@ public sealed class ScenarioRunner : IScenarioRunner
         var simulation = new SimulationResult
         {
             Outcomes = deliveredByTraffic.Keys
-                .Select(traffic => new TrafficSimulationOutcome
+                .Select(traffic =>
                 {
-                    TrafficType = traffic,
-                    RoutingPreference = routingByTraffic.GetValueOrDefault(traffic),
-                    AllocationMode = allocationModeByTraffic.GetValueOrDefault(traffic),
-                    TotalProduction = productionByTraffic.GetValueOrDefault(traffic),
-                    TotalConsumption = consumptionByTraffic.GetValueOrDefault(traffic),
-                    TotalDelivered = deliveredByTraffic.GetValueOrDefault(traffic),
-                    UnusedSupply = unusedByTraffic.GetValueOrDefault(traffic),
-                    UnmetDemand = unmetByTraffic.GetValueOrDefault(traffic),
-                    NoPermittedPathDemand = noPermittedPathByTraffic.GetValueOrDefault(traffic),
-                    Allocations = allocationsByTraffic.GetValueOrDefault(traffic) ?? [],
-                    TotalSalesRevenue = (allocationsByTraffic.GetValueOrDefault(traffic) ?? []).Sum(allocation => allocation.SaleRevenue),
-                    TotalTransportCost = (allocationsByTraffic.GetValueOrDefault(traffic) ?? []).Sum(allocation => allocation.TotalTransportCost),
-                    TotalProductionCost = (allocationsByTraffic.GetValueOrDefault(traffic) ?? []).Sum(allocation => allocation.TotalProductionCost),
-                    TotalTax = (allocationsByTraffic.GetValueOrDefault(traffic) ?? []).Sum(allocation => allocation.TotalTax),
-                    TotalProfit = (allocationsByTraffic.GetValueOrDefault(traffic) ?? []).Sum(allocation => allocation.Profit),
-                    Notes = notesByTraffic.TryGetValue(traffic, out var notes) ? notes.ToList() : []
+                    var trafficAllocations = allocationsByTraffic.GetValueOrDefault(traffic) ?? [];
+
+                    var salesRevenue = 0d;
+                    var transportCost = 0d;
+                    var productionCost = 0d;
+                    var tax = 0d;
+                    var profit = 0d;
+
+                    // Iterate once to calculate all metrics, replacing 5 O(N) LINQ Sum calls
+                    foreach (var allocation in trafficAllocations)
+                    {
+                        salesRevenue += allocation.SaleRevenue;
+                        transportCost += allocation.TotalTransportCost;
+                        productionCost += allocation.TotalProductionCost;
+                        tax += allocation.TotalTax;
+                        profit += allocation.Profit;
+                    }
+
+                    return new TrafficSimulationOutcome
+                    {
+                        TrafficType = traffic,
+                        RoutingPreference = routingByTraffic.GetValueOrDefault(traffic),
+                        AllocationMode = allocationModeByTraffic.GetValueOrDefault(traffic),
+                        TotalProduction = productionByTraffic.GetValueOrDefault(traffic),
+                        TotalConsumption = consumptionByTraffic.GetValueOrDefault(traffic),
+                        TotalDelivered = deliveredByTraffic.GetValueOrDefault(traffic),
+                        UnusedSupply = unusedByTraffic.GetValueOrDefault(traffic),
+                        UnmetDemand = unmetByTraffic.GetValueOrDefault(traffic),
+                        NoPermittedPathDemand = noPermittedPathByTraffic.GetValueOrDefault(traffic),
+                        Allocations = trafficAllocations,
+                        TotalSalesRevenue = salesRevenue,
+                        TotalTransportCost = transportCost,
+                        TotalProductionCost = productionCost,
+                        TotalTax = tax,
+                        TotalProfit = profit,
+                        Notes = notesByTraffic.TryGetValue(traffic, out var notes) ? notes.ToList() : []
+                    };
                 })
                 .ToList(),
             Steps = simulationSteps

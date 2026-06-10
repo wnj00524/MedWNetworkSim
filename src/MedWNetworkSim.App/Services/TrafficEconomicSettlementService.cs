@@ -45,6 +45,22 @@ public sealed class TrafficEconomicSettlementService
                     .Select(allocation => EnrichAllocation(allocation, nodesById, definitionsByTraffic))
                     .ToList();
 
+                var salesRevenue = 0d;
+                var transportCost = 0d;
+                var productionCost = 0d;
+                var tax = 0d;
+                var profit = 0d;
+
+                // Iterate once to calculate all metrics, replacing 5 O(N) LINQ Sum calls
+                foreach (var allocation in allocations)
+                {
+                    salesRevenue += allocation.SaleRevenue;
+                    transportCost += allocation.TotalTransportCost;
+                    productionCost += allocation.TotalProductionCost;
+                    tax += allocation.TotalTax;
+                    profit += allocation.Profit;
+                }
+
                 return new TrafficSimulationOutcome
                 {
                     TrafficType = outcome.TrafficType,
@@ -56,11 +72,11 @@ public sealed class TrafficEconomicSettlementService
                     UnusedSupply = outcome.UnusedSupply,
                     UnmetDemand = outcome.UnmetDemand,
                     NoPermittedPathDemand = outcome.NoPermittedPathDemand,
-                    TotalSalesRevenue = allocations.Sum(allocation => allocation.SaleRevenue),
-                    TotalTransportCost = allocations.Sum(allocation => allocation.TotalTransportCost),
-                    TotalProductionCost = allocations.Sum(allocation => allocation.TotalProductionCost),
-                    TotalTax = allocations.Sum(allocation => allocation.TotalTax),
-                    TotalProfit = allocations.Sum(allocation => allocation.Profit),
+                    TotalSalesRevenue = salesRevenue,
+                    TotalTransportCost = transportCost,
+                    TotalProductionCost = productionCost,
+                    TotalTax = tax,
+                    TotalProfit = profit,
                     Allocations = allocations,
                     Notes = outcome.Notes.ToList()
                 };

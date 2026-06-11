@@ -76,3 +76,6 @@
 ## $(date +%Y-%m-%d) - format.sh FileNotFoundException
 **Learning:** The `format.sh` script in the repository fails with a `FileNotFoundException` because `src/MedWNetworkSim.App/MedWNetworkSim.App.csproj` does not exist.
 **Action:** Use the native `dotnet format` command for linting and formatting instead.
+## $(date +%Y-%m-%d) - Preserve GroupBy Determinism when refactoring to Dictionary
+**Learning:** When refactoring LINQ `GroupBy` calls to manual `Dictionary` iterations to reduce allocation overhead, it is easy to accidentally introduce non-determinism. `Enumerable.GroupBy` yields elements in the exact order their keys first appeared, while `Dictionary` enumeration uses hash buckets (which are randomized per execution in modern .NET). This loss of determinism can be fatal in simulation engines.
+**Action:** When manually replacing `GroupBy` with a `Dictionary`, always track the order of keys explicitly as they are first encountered (e.g., using a `List<TKey> orderedKeys`) and iterate over that list instead of the dictionary keys or values.

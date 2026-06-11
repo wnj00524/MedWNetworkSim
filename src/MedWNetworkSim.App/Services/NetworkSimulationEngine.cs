@@ -429,6 +429,8 @@ public sealed class NetworkSimulationEngine
         return JsonSerializer.Deserialize<NetworkModel>(json) ?? new NetworkModel();
     }
 
+    private readonly record struct ConsumerCostKey(string TrafficType, string ConsumerNodeId, string ConsumerName);
+
     /// <summary>
     /// Aggregates route allocations into landed-cost summaries for each consumer node and traffic type.
     /// </summary>
@@ -436,47 +438,61 @@ public sealed class NetworkSimulationEngine
     /// <returns>The consumer cost summaries.</returns>
     public IReadOnlyList<ConsumerCostSummary> SummarizeConsumerCosts(IEnumerable<RouteAllocation> allocations)
     {
-        return allocations
-            .GroupBy(allocation => new { allocation.TrafficType, allocation.ConsumerNodeId, allocation.ConsumerName })
-            .Select(group =>
+        var groups = new Dictionary<ConsumerCostKey, List<RouteAllocation>>();
+        var orderedKeys = new List<ConsumerCostKey>();
+        foreach (var allocation in allocations)
+        {
+            var key = new ConsumerCostKey(allocation.TrafficType, allocation.ConsumerNodeId, allocation.ConsumerName);
+            if (!groups.TryGetValue(key, out var list))
             {
-                // Bolt: Replaced multiple LINQ enumerations and delegate allocations (.Where, .Sum, .ToList)
-                // with a single foreach pass to accumulate costs and quantities, reducing execution time significantly.
-                double localQuantity = 0d;
-                double localMovementCost = 0d;
-                double importedQuantity = 0d;
-                double importedMovementCost = 0d;
+                list = new List<RouteAllocation>();
+                groups.Add(key, list);
+                orderedKeys.Add(key);
+            }
+            list.Add(allocation);
+        }
 
-                foreach (var allocation in group)
+        var summaries = new List<ConsumerCostSummary>(groups.Count);
+        foreach (var key in orderedKeys)
+        {
+            var group = groups[key];
+            double localQuantity = 0d;
+            double localMovementCost = 0d;
+            double importedQuantity = 0d;
+            double importedMovementCost = 0d;
+
+            foreach (var allocation in group)
+            {
+                if (allocation.IsLocalSupply)
                 {
-                    if (allocation.IsLocalSupply)
-                    {
-                        localQuantity += allocation.Quantity;
-                        localMovementCost += allocation.TotalMovementCost;
-                    }
-                    else
-                    {
-                        importedQuantity += allocation.Quantity;
-                        importedMovementCost += allocation.TotalMovementCost;
-                    }
+                    localQuantity += allocation.Quantity;
+                    localMovementCost += allocation.TotalMovementCost;
                 }
-
-                double totalQuantity = localQuantity + importedQuantity;
-                double totalMovementCost = localMovementCost + importedMovementCost;
-
-                return new ConsumerCostSummary
+                else
                 {
-                    TrafficType = group.Key.TrafficType,
-                    ConsumerNodeId = group.Key.ConsumerNodeId,
-                    ConsumerName = group.Key.ConsumerName,
-                    LocalQuantity = localQuantity,
-                    LocalUnitCost = localQuantity > Epsilon ? localMovementCost / localQuantity : 0d,
-                    ImportedQuantity = importedQuantity,
-                    ImportedUnitCost = importedQuantity > Epsilon ? importedMovementCost / importedQuantity : 0d,
-                    BlendedUnitCost = totalQuantity > Epsilon ? totalMovementCost / totalQuantity : 0d,
-                    TotalMovementCost = totalMovementCost
-                };
-            })
+                    importedQuantity += allocation.Quantity;
+                    importedMovementCost += allocation.TotalMovementCost;
+                }
+            }
+
+            double totalQuantity = localQuantity + importedQuantity;
+            double totalMovementCost = localMovementCost + importedMovementCost;
+
+            summaries.Add(new ConsumerCostSummary
+            {
+                TrafficType = key.TrafficType,
+                ConsumerNodeId = key.ConsumerNodeId,
+                ConsumerName = key.ConsumerName,
+                LocalQuantity = localQuantity,
+                LocalUnitCost = localQuantity > Epsilon ? localMovementCost / localQuantity : 0d,
+                ImportedQuantity = importedQuantity,
+                ImportedUnitCost = importedQuantity > Epsilon ? importedMovementCost / importedQuantity : 0d,
+                BlendedUnitCost = totalQuantity > Epsilon ? totalMovementCost / totalQuantity : 0d,
+                TotalMovementCost = totalMovementCost
+            });
+        }
+
+        return summaries
             .OrderBy(summary => summary.TrafficType, Comparer)
             .ThenBy(summary => summary.ConsumerName, Comparer)
             .ToList();

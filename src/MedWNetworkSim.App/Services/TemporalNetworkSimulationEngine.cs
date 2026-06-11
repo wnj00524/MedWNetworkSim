@@ -362,35 +362,56 @@ public sealed class TemporalNetworkSimulationEngine
             return allocations;
         }
 
-        var outcomes = allocations
-            .GroupBy(allocation => allocation.TrafficType, Comparer)
-            .Select(group =>
+        var groups = new Dictionary<string, List<RouteAllocation>>(Comparer);
+        var orderedKeys = new List<string>();
+        foreach (var allocation in allocations)
+        {
+            if (!groups.TryGetValue(allocation.TrafficType, out var list))
             {
-                var definition = network.TrafficTypes.FirstOrDefault(candidate => Comparer.Equals(candidate.Name, group.Key));
-                var trafficAllocations = group.ToList();
+                list = new List<RouteAllocation>();
+                groups.Add(allocation.TrafficType, list);
+                orderedKeys.Add(allocation.TrafficType);
+            }
+            list.Add(allocation);
+        }
 
-                double totalDelivered = 0d;
-                foreach (var allocation in trafficAllocations)
+        var outcomes = new List<TrafficSimulationOutcome>(groups.Count);
+        foreach (var key in orderedKeys)
+        {
+            var trafficAllocations = groups[key];
+            double totalDelivered = 0d;
+            foreach (var allocation in trafficAllocations)
+            {
+                totalDelivered += allocation.Quantity;
+            }
+
+            TrafficTypeDefinition? definition = null;
+            foreach (var candidate in network.TrafficTypes)
+            {
+                if (Comparer.Equals(candidate.Name, key))
                 {
-                    totalDelivered += allocation.Quantity;
+                    definition = candidate;
+                    break;
                 }
+            }
 
-                return new TrafficSimulationOutcome
-                {
-                    TrafficType = group.Key,
-                    RoutingPreference = definition?.RoutingPreference ?? trafficAllocations[0].RoutingPreference,
-                    AllocationMode = definition?.AllocationMode ?? trafficAllocations[0].AllocationMode,
-                    TotalDelivered = totalDelivered,
-                    Allocations = trafficAllocations
-                };
-            })
-            .ToList();
+            outcomes.Add(new TrafficSimulationOutcome
+            {
+                TrafficType = key,
+                RoutingPreference = definition?.RoutingPreference ?? trafficAllocations[0].RoutingPreference,
+                AllocationMode = definition?.AllocationMode ?? trafficAllocations[0].AllocationMode,
+                TotalDelivered = totalDelivered,
+                Allocations = trafficAllocations
+            });
+        }
 
-        return settlementService
-            .Settle(network, outcomes)
-            .Outcomes
-            .SelectMany(outcome => outcome.Allocations)
-            .ToList();
+        var settledOutcomes = settlementService.Settle(network, outcomes).Outcomes;
+        var settledAllocations = new List<RouteAllocation>();
+        foreach (var outcome in settledOutcomes)
+        {
+            settledAllocations.AddRange(outcome.Allocations);
+        }
+        return settledAllocations;
     }
 
     private static void ExpireNodeTraffic(

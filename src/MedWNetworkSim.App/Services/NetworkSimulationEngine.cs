@@ -39,34 +39,51 @@ public sealed class NetworkSimulationEngine
         }
 
         var hasRecipeDependencies = HasStaticRecipeDependencies(network);
-        var definitionsByTraffic = network.TrafficTypes
-            .Where(definition => !string.IsNullOrWhiteSpace(definition.Name))
-            .GroupBy(definition => definition.Name, Comparer)
-            .ToDictionary(group => group.Key, group => group.First(), Comparer);
+
+        // Bolt: Replaced LINQ ToDictionary chains with manual Dictionary initialization to avoid enumerator and delegate allocations on hot path.
+        var definitionsByTraffic = new Dictionary<string, TrafficTypeDefinition>(Comparer);
+        foreach (var definition in network.TrafficTypes)
+        {
+            if (!string.IsNullOrWhiteSpace(definition.Name) && !definitionsByTraffic.ContainsKey(definition.Name))
+            {
+                definitionsByTraffic.Add(definition.Name, definition);
+            }
+        }
+
         var contexts = MixedRoutingAllocator.BuildStaticContexts(network, applyLocalAllocations: !hasRecipeDependencies).ToList();
-        var remainingCapacityByEdgeId = network.Edges.ToDictionary(
-            edge => edge.Id,
-            edge => edge.Capacity ?? double.PositiveInfinity,
-            Comparer);
-        var remainingTranshipmentCapacityByNodeId = network.Nodes.ToDictionary(
-            node => node.Id,
-            node => node.TranshipmentCapacity ?? double.PositiveInfinity,
-            Comparer);
+
+        var remainingCapacityByEdgeId = new Dictionary<string, double>(network.Edges.Count, Comparer);
+        foreach (var edge in network.Edges)
+        {
+            remainingCapacityByEdgeId[edge.Id] = edge.Capacity ?? double.PositiveInfinity;
+        }
+
+        var remainingTranshipmentCapacityByNodeId = new Dictionary<string, double>(network.Nodes.Count, Comparer);
+        foreach (var node in network.Nodes)
+        {
+            remainingTranshipmentCapacityByNodeId[node.Id] = node.TranshipmentCapacity ?? double.PositiveInfinity;
+        }
+
         var hasFiniteCapacities = network.Edges.Any(edge => edge.Capacity.HasValue) ||
             network.Nodes.Any(node => node.TranshipmentCapacity.HasValue);
 
         if (hasRecipeDependencies)
         {
-            var contextsByTraffic = contexts.ToDictionary(context => context.TrafficType, context => context, Comparer);
-            var allocationOrder = BuildStaticRecipeCostOrder(network, contexts.Select(context => context.TrafficType).ToList());
-            var sourceUnitCosts = contexts.ToDictionary(
-                context => context.TrafficType,
-                _ => new Dictionary<string, double>(Comparer),
-                Comparer);
-            var landedUnitCosts = contexts.ToDictionary(
-                context => context.TrafficType,
-                _ => new Dictionary<string, double>(Comparer),
-                Comparer);
+            // Bolt: Replaced multiple LINQ ToDictionary allocations with a single manual initialization loop.
+            var contextsByTraffic = new Dictionary<string, RoutingTrafficContext>(contexts.Count, Comparer);
+            var trafficTypes = new List<string>(contexts.Count);
+            var sourceUnitCosts = new Dictionary<string, Dictionary<string, double>>(contexts.Count, Comparer);
+            var landedUnitCosts = new Dictionary<string, Dictionary<string, double>>(contexts.Count, Comparer);
+
+            foreach (var context in contexts)
+            {
+                contextsByTraffic[context.TrafficType] = context;
+                trafficTypes.Add(context.TrafficType);
+                sourceUnitCosts[context.TrafficType] = new Dictionary<string, double>(Comparer);
+                landedUnitCosts[context.TrafficType] = new Dictionary<string, double>(Comparer);
+            }
+
+            var allocationOrder = BuildStaticRecipeCostOrder(network, trafficTypes);
 
             foreach (var trafficType in allocationOrder)
             {
@@ -318,9 +335,13 @@ public sealed class NetworkSimulationEngine
 
     private NetworkModel OrderNetworkForLayerProcessing(NetworkModel network)
     {
-        var order = layerResolver.GetSimulationOrder(network)
-            .Select((layer, index) => new { layer.Id, index })
-            .ToDictionary(item => item.Id, item => item.index);
+        var orderedLayers = layerResolver.GetSimulationOrder(network);
+        var order = new Dictionary<Guid, int>(orderedLayers.Count);
+        var index = 0;
+        foreach (var layer in orderedLayers)
+        {
+            order[layer.Id] = index++;
+        }
 
         return new NetworkModel
         {

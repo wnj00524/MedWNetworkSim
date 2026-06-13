@@ -1,0 +1,71 @@
+--- src/MedWNetworkSim.App/Services/NetworkSimulationEngine.cs
++++ src/MedWNetworkSim.App/Services/NetworkSimulationEngine.cs
+@@ -40,31 +40,43 @@
+
+         var hasRecipeDependencies = HasStaticRecipeDependencies(network);
+-        var definitionsByTraffic = network.TrafficTypes
+-            .Where(definition => !string.IsNullOrWhiteSpace(definition.Name))
+-            .GroupBy(definition => definition.Name, Comparer)
+-            .ToDictionary(group => group.Key, group => group.First(), Comparer);
++
++        var definitionsByTraffic = new Dictionary<string, TrafficTypeDefinition>(Comparer);
++        foreach (var definition in network.TrafficTypes)
++        {
++            if (!string.IsNullOrWhiteSpace(definition.Name) && !definitionsByTraffic.ContainsKey(definition.Name))
++            {
++                definitionsByTraffic[definition.Name] = definition;
++            }
++        }
++
+         var contexts = MixedRoutingAllocator.BuildStaticContexts(network, applyLocalAllocations: !hasRecipeDependencies).ToList();
+-        var remainingCapacityByEdgeId = network.Edges.ToDictionary(
+-            edge => edge.Id,
+-            edge => edge.Capacity ?? double.PositiveInfinity,
+-            Comparer);
+-        var remainingTranshipmentCapacityByNodeId = network.Nodes.ToDictionary(
+-            node => node.Id,
+-            node => node.TranshipmentCapacity ?? double.PositiveInfinity,
+-            Comparer);
++        var remainingCapacityByEdgeId = new Dictionary<string, double>(network.Edges.Count, Comparer);
++        foreach (var edge in network.Edges)
++        {
++            remainingCapacityByEdgeId[edge.Id] = edge.Capacity ?? double.PositiveInfinity;
++        }
++
++        var remainingTranshipmentCapacityByNodeId = new Dictionary<string, double>(network.Nodes.Count, Comparer);
++        foreach (var node in network.Nodes)
++        {
++            remainingTranshipmentCapacityByNodeId[node.Id] = node.TranshipmentCapacity ?? double.PositiveInfinity;
++        }
++
+         var hasFiniteCapacities = network.Edges.Any(edge => edge.Capacity.HasValue) ||
+             network.Nodes.Any(node => node.TranshipmentCapacity.HasValue);
+
+         if (hasRecipeDependencies)
+         {
+-            var contextsByTraffic = contexts.ToDictionary(context => context.TrafficType, context => context, Comparer);
+-            var allocationOrder = BuildStaticRecipeCostOrder(network, contexts.Select(context => context.TrafficType).ToList());
+-            var sourceUnitCosts = contexts.ToDictionary(
+-                context => context.TrafficType,
+-                _ => new Dictionary<string, double>(Comparer),
+-                Comparer);
+-            var landedUnitCosts = contexts.ToDictionary(
+-                context => context.TrafficType,
+-                _ => new Dictionary<string, double>(Comparer),
+-                Comparer);
++            var contextsByTraffic = new Dictionary<string, RoutingTrafficContext>(contexts.Count, Comparer);
++            var trafficTypes = new List<string>(contexts.Count);
++            var sourceUnitCosts = new Dictionary<string, Dictionary<string, double>>(contexts.Count, Comparer);
++            var landedUnitCosts = new Dictionary<string, Dictionary<string, double>>(contexts.Count, Comparer);
++
++            foreach (var context in contexts)
++            {
++                contextsByTraffic[context.TrafficType] = context;
++                trafficTypes.Add(context.TrafficType);
++                sourceUnitCosts[context.TrafficType] = new Dictionary<string, double>(Comparer);
++                landedUnitCosts[context.TrafficType] = new Dictionary<string, double>(Comparer);
++            }
++
++            var allocationOrder = BuildStaticRecipeCostOrder(network, trafficTypes);
+
+             foreach (var trafficType in allocationOrder)

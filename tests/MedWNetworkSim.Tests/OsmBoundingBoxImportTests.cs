@@ -94,7 +94,7 @@ public sealed class OsmBoundingBoxImportTests
 
         var first = network.Nodes.Select(node => long.Parse(node.OsmId!)).Min();
         var last = network.Nodes.Select(node => long.Parse(node.OsmId!)).Max();
-        var edge = Assert.Single(network.Edges.Where(e => e.FromNodeId == $"osm-node-{first}" && e.ToNodeId == $"osm-node-{last}"));
+        var edge = Assert.Single(network.Edges, e => e.FromNodeId == $"osm-node-{first}" && e.ToNodeId == $"osm-node-{last}");
         var expectedDistance = SumPathDistance(geos, 1, 20);
         Assert.InRange(Math.Abs(edge.Cost - expectedDistance), 0d, 0.00001d);
     }

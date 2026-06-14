@@ -27,7 +27,7 @@ public sealed class SankeyProjectionServiceTests
 
         var model = new SankeyProjectionService().Build(new VisualAnalyticsSnapshot { Network = network, TrafficOutcomes = [outcome], ConsumerCosts = [], Period = 0 });
 
-        var link = Assert.Single(model.Links.Where(l => !l.IsUnmetDemand));
+        var link = Assert.Single(model.Links, l => !l.IsUnmetDemand);
         Assert.Equal(8d, link.Value, 6);
     }
 

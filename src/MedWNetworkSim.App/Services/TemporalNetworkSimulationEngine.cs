@@ -2750,8 +2750,18 @@ public sealed class TemporalNetworkSimulationEngine
                 ReservedStoreReceipts = ReservedStoreReceipts
             };
 
-            clone.availableSupplyBatches.AddRange(availableSupplyBatches.Select(batch => batch.Clone()));
-            clone.storeInventoryBatches.AddRange(storeInventoryBatches.Select(batch => batch.Clone()));
+            // Bolt: Replaced LINQ .Select() and .AddRange() with pre-sized loops to prevent multiple enumerator and delegate allocations on cloning.
+            clone.availableSupplyBatches.Capacity = availableSupplyBatches.Count;
+            foreach (var batch in availableSupplyBatches)
+            {
+                clone.availableSupplyBatches.Add(batch.Clone());
+            }
+
+            clone.storeInventoryBatches.Capacity = storeInventoryBatches.Count;
+            foreach (var batch in storeInventoryBatches)
+            {
+                clone.storeInventoryBatches.Add(batch.Clone());
+            }
             return clone;
         }
 
@@ -2786,10 +2796,16 @@ public sealed class TemporalNetworkSimulationEngine
                 return GetWeightedUnitCost(batches);
             }
 
-            var ordered = batches
-                .OrderBy(batch => batch.RemainingLifePeriods ?? int.MaxValue)
-                .ThenBy(batch => batch.Sequence)
-                .ToList();
+            // Bolt: Replaced O(N log N) LINQ multiple sorting and enumerator allocations with in-place List allocation and List.Sort().
+            // Sequence acts as a stable sort tie-breaker as it's generated via Interlocked.Increment.
+            var ordered = new List<TemporalQuantityBatch>(batches.Count);
+            ordered.AddRange(batches);
+            ordered.Sort((a, b) =>
+            {
+                int cmp = (a.RemainingLifePeriods ?? int.MaxValue).CompareTo(b.RemainingLifePeriods ?? int.MaxValue);
+                if (cmp != 0) return cmp;
+                return a.Sequence.CompareTo(b.Sequence);
+            });
 
             var remaining = quantity;
             var totalCost = 0d;
@@ -2843,7 +2859,8 @@ public sealed class TemporalNetworkSimulationEngine
             return expired;
         }
 
-        private static double GetWeightedUnitCost(IEnumerable<TemporalQuantityBatch> batches)
+        // Bolt: Changed parameter type from IEnumerable<T> to List<T> to avoid boxing the List<T> enumerator on the heap during the foreach loop.
+        private static double GetWeightedUnitCost(List<TemporalQuantityBatch> batches)
         {
             var quantity = 0d;
             var cost = 0d;

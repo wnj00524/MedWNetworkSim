@@ -82,3 +82,6 @@
 ## 2025-02-17 - Avoid LINQ multiple enumerator allocations during clones and sorting
 **Learning:** Using LINQ `.Select().Clone()` with `AddRange()` and passing `List<T>` to an `IEnumerable<T>` parameter creates unnecessary garbage collection overhead through enumerator and delegate allocations. Furthermore, `.OrderBy().ThenBy()` forces multiple sequence allocations for sorting operations that could be done in-place.
 **Action:** Use pre-sized loops to add clones directly, change `IEnumerable<T>` parameters to `List<T>` to avoid boxing the list enumerator, and replace LINQ sorting with `List.Sort()` using a stable identifier (`Sequence`) to ensure determinism without O(N log N) allocation overhead.
+## 2024-06-15 - Optimize Dictionary allocations in C# hot loops
+**Learning:** In C#, LINQ `.ToDictionary` allocates a new dictionary, delegates, and enumerators. Using `.Any()` afterwards also introduces another O(N) pass.
+**Action:** Replace `.ToDictionary` and subsequent `.Any()` combinations with a manual `Dictionary` pre-allocated by count, populated via a `foreach` loop, and track boolean flags (e.g., `hasFiniteEdges`) inside the same loop to avoid multiple iterations and delegate allocations.

@@ -44,16 +44,30 @@ public sealed class NetworkSimulationEngine
             .GroupBy(definition => definition.Name, Comparer)
             .ToDictionary(group => group.Key, group => group.First(), Comparer);
         var contexts = MixedRoutingAllocator.BuildStaticContexts(network, applyLocalAllocations: !hasRecipeDependencies).ToList();
-        var remainingCapacityByEdgeId = network.Edges.ToDictionary(
-            edge => edge.Id,
-            edge => edge.Capacity ?? double.PositiveInfinity,
-            Comparer);
-        var remainingTranshipmentCapacityByNodeId = network.Nodes.ToDictionary(
-            node => node.Id,
-            node => node.TranshipmentCapacity ?? double.PositiveInfinity,
-            Comparer);
-        var hasFiniteCapacities = network.Edges.Any(edge => edge.Capacity.HasValue) ||
-            network.Nodes.Any(node => node.TranshipmentCapacity.HasValue);
+        // Bolt: Replaced LINQ .ToDictionary() with manual foreach to avoid enumerator and delegate allocations
+        var remainingCapacityByEdgeId = new Dictionary<string, double>(network.Edges.Count, Comparer);
+        var hasFiniteEdges = false;
+        foreach (var edge in network.Edges)
+        {
+            remainingCapacityByEdgeId[edge.Id] = edge.Capacity ?? double.PositiveInfinity;
+            if (edge.Capacity.HasValue)
+            {
+                hasFiniteEdges = true;
+            }
+        }
+
+        var remainingTranshipmentCapacityByNodeId = new Dictionary<string, double>(network.Nodes.Count, Comparer);
+        var hasFiniteNodes = false;
+        foreach (var node in network.Nodes)
+        {
+            remainingTranshipmentCapacityByNodeId[node.Id] = node.TranshipmentCapacity ?? double.PositiveInfinity;
+            if (node.TranshipmentCapacity.HasValue)
+            {
+                hasFiniteNodes = true;
+            }
+        }
+
+        var hasFiniteCapacities = hasFiniteEdges || hasFiniteNodes;
 
         if (hasRecipeDependencies)
         {

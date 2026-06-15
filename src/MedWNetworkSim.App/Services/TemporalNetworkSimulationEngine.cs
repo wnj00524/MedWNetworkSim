@@ -503,10 +503,17 @@ public sealed class TemporalNetworkSimulationEngine
         IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates,
         int period)
     {
-        var profilesByNodeAndTraffic = network.Nodes.ToDictionary(
-            node => node.Id,
-            node => node.TrafficProfiles.ToDictionary(profile => profile.TrafficType, profile => profile, Comparer),
-            Comparer);
+        // Bolt: Replaced LINQ .ToDictionary() with manual foreach to avoid enumerator and delegate allocations
+        var profilesByNodeAndTraffic = new Dictionary<string, Dictionary<string, NodeTrafficProfile>>(network.Nodes.Count, Comparer);
+        foreach (var node in network.Nodes)
+        {
+            var profileDict = new Dictionary<string, NodeTrafficProfile>(node.TrafficProfiles.Count, Comparer);
+            foreach (var profile in node.TrafficProfiles)
+            {
+                profileDict[profile.TrafficType] = profile;
+            }
+            profilesByNodeAndTraffic[node.Id] = profileDict;
+        }
 
         foreach (var node in network.Nodes)
         {

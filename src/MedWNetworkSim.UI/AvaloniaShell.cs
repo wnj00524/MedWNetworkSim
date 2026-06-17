@@ -37,6 +37,18 @@ namespace MedWNetworkSim.UI;
 /// Represents the graph canvas status changed event args component.
 /// </summary>
 
+
+/// <summary>
+/// Provides data for requests to open the full node editor.
+/// </summary>
+public sealed class FullNodeEditorRequestedEventArgs : EventArgs
+{
+    /// <summary>
+    /// Gets the node identifier that should be opened in the full editor.
+    /// </summary>
+    public required string NodeId { get; init; }
+}
+
 public sealed class GraphCanvasStatusChangedEventArgs : EventArgs
 {
     /// <summary>
@@ -341,6 +353,7 @@ public sealed class GraphCanvasControl : Control, IDisposable
     }
 
     public event EventHandler<GraphCanvasStatusChangedEventArgs>? StatusChanged;
+    public event EventHandler<FullNodeEditorRequestedEventArgs>? FullNodeEditorRequested;
 
     public WorkspaceViewModel? ViewModel
     {
@@ -892,11 +905,18 @@ public sealed class GraphCanvasControl : Control, IDisposable
         if (hit.NodeId is not null)
         {
             ViewModel.SelectNodeForEdit(hit.NodeId);
+            OnFullNodeEditorRequested(hit.NodeId);
             return true;
         }
 
-        ViewModel.AddNodeAtPosition(worldPoint);
+        var nodeId = ViewModel.AddNodeAtPosition(worldPoint);
+        OnFullNodeEditorRequested(nodeId);
         return true;
+    }
+
+    private void OnFullNodeEditorRequested(string nodeId)
+    {
+        FullNodeEditorRequested?.Invoke(this, new FullNodeEditorRequestedEventArgs { NodeId = nodeId });
     }
 
     private void ShowContextMenu(WorkspaceViewModel viewModel, GraphInteractionContext interactionContext, GraphPoint screenPoint)

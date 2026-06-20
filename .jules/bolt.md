@@ -85,3 +85,7 @@
 ## 2024-06-15 - Optimize Dictionary allocations in C# hot loops
 **Learning:** In C#, LINQ `.ToDictionary` allocates a new dictionary, delegates, and enumerators. Using `.Any()` afterwards also introduces another O(N) pass.
 **Action:** Replace `.ToDictionary` and subsequent `.Any()` combinations with a manual `Dictionary` pre-allocated by count, populated via a `foreach` loop, and track boolean flags (e.g., `hasFiniteEdges`) inside the same loop to avoid multiple iterations and delegate allocations.
+
+## $(date +%Y-%m-%d) - Eliminate LINQ allocations in MixedRouting.cs hot paths
+**Learning:** Found that `MixedRouting.cs` heavily used LINQ extensions (`.ToDictionary`, `.Select`, `.Where`, `.Sum`, etc.) during context building and route capacity evaluations (`Allocate`, `RankStochastic`, `BuildStaticContext`, etc.). These repeated hidden enumerators and closure delegates cause massive CPU and Garbage Collection bottlenecks inside the engine's nested simulation loops, significantly increasing runtimes.
+**Action:** Unrolled multiple LINQ method chains into explicit standard `foreach` and `for` loops across the `MixedRoutingAllocator`. Manually pre-allocated `Dictionary` sizes using collection `.Count` to reduce overhead and swapped chained aggregations (`.Sum()`, `.Min()`) for fast linear accumulator patterns.

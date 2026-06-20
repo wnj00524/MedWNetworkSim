@@ -1,0 +1,114 @@
+--- src/MedWNetworkSim.App/Services/MixedRouting.cs
++++ src/MedWNetworkSim.App/Services/MixedRouting.cs
+@@ -728,6 +728,12 @@
+             .ToDictionary(pair => pair.Key, pair => pair.Value!.Consumption, Comparer);
+         AddImplicitRecipeDemand(network, definition.Name, demand);
+
++        var totalProduction = 0d;
++        foreach (var val in supply.Values) totalProduction += val;
++
++        var totalConsumption = 0d;
++        foreach (var val in demand.Values) totalConsumption += val;
++
+         var context = new RoutingTrafficContext
+         {
+             TrafficType = definition.Name,
+@@ -746,8 +752,8 @@
+             Supply = supply,
+             SupplyUnitCosts = supplyUnitCosts,
+             Demand = demand,
+-            TotalProduction = supply.Values.Sum(),
+-            TotalConsumption = demand.Values.Sum()
++            TotalProduction = totalProduction,
++            TotalConsumption = totalConsumption
+         };
+
+         if (enforceSellLocal)
+@@ -942,15 +948,17 @@
+     {
+         var transhipmentNodeIds = GetIntermediateNodeIds(route.PathNodeIds);
+         var arcs = new List<GraphArc>(route.PathEdgeIds.Count);
++        var effectiveTime = 0d;
++        var effectiveCost = 0d;
+         for (var index = 0; index < route.PathEdgeIds.Count; index++)
+         {
+             if (TryFindArc(route.PathEdgeIds[index], allocationContext, out var arc))
+             {
+                 arcs.Add(arc);
++                effectiveTime += GetEffectiveArcTime(context, arc, state);
++                effectiveCost += GetEffectiveArcCost(context, arc, state);
+             }
+         }
+-        var effectiveTime = arcs.Sum(arc => GetEffectiveArcTime(context, arc, state));
+-        var effectiveCost = arcs.Sum(arc => GetEffectiveArcCost(context, arc, state));
+         var score = Score(effectiveTime, effectiveCost, context.RoutingPreference);
+         var pathKey = string.Join(">", route.PathEdgeIds);
+         if (!string.IsNullOrEmpty(context.LastPathKey) && Comparer.Equals(pathKey, context.LastPathKey))
+@@ -978,8 +986,15 @@
+         var rng = new Random(HashCode.Combine(context.Seed, round, StringComparer.OrdinalIgnoreCase.GetHashCode(context.TrafficType)));
+         var diversity = Math.Max(0.01d, context.RouteChoiceSettings.RouteDiversity);
+         var lambda = 1d / diversity;
+-        var bestActual = candidates.Min(candidate => candidate.Score);
+-        var perceived = candidates.Select(candidate =>
++        var bestActual = double.PositiveInfinity;
++        foreach (var candidate in candidates)
++        {
++            if (candidate.Score < bestActual) bestActual = candidate.Score;
++        }
++
++        var perceived = new List<RouteCandidate>(candidates.Count);
++        var total = 0d;
++        foreach (var candidate in candidates)
+         {
+             var noiseScale = Math.Max(0d, 1d - context.RouteChoiceSettings.InformationAccuracy);
+             var noise = (rng.NextDouble() - 0.5d) * noiseScale * Math.Max(1d, candidate.Score);
+@@ -991,9 +1006,11 @@
+                 score += context.RouteChoiceSettings.Stickiness * Math.Max(1d, candidate.Score);
+             }
+
+-            return candidate with { Probability = Math.Exp(-lambda * Math.Max(0d, score)) };
+-        }).ToList();
+-        var total = perceived.Sum(candidate => candidate.Probability);
++            var p = Math.Exp(-lambda * Math.Max(0d, score));
++            perceived.Add(candidate with { Probability = p });
++            total += p;
++        }
++
+         if (total <= Epsilon)
+         {
+             return perceived.OrderBy(candidate => candidate.Score).ToList();
+@@ -1098,21 +1115,22 @@
+     {
+         foreach (var node in network.Nodes)
+         {
+-            var implicitDemand = node.TrafficProfiles
+-                .Where(profile => profile.Production > Epsilon)
+-                .SelectMany(profile => profile.InputRequirements.Select(requirement => new { profile.Production, requirement }))
+-                .Where(item => Comparer.Equals(item.requirement.TrafficType, trafficType))
+-                .Sum(item =>
+-                {
+-                    var requirement = item.requirement;
++            var implicitDemand = 0d;
++            foreach (var profile in node.TrafficProfiles)
++            {
++                if (profile.Production <= Epsilon) continue;
+
+-                    var quantityPerOutputUnit =
+-                        requirement.OutputQuantity > Epsilon
++                foreach (var requirement in profile.InputRequirements)
++                {
++                    if (Comparer.Equals(requirement.TrafficType, trafficType))
++                    {
++                        var quantityPerOutputUnit = requirement.OutputQuantity > Epsilon
+                             ? requirement.InputQuantity / requirement.OutputQuantity
+                             : requirement.QuantityPerOutputUnit.GetValueOrDefault();
+-
+-                    return item.Production * quantityPerOutputUnit;
+-                });
++                        implicitDemand += profile.Production * quantityPerOutputUnit;
++                    }
++                }
++            }
+
+             if (implicitDemand > Epsilon)
+             {

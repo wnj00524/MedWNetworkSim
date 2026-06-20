@@ -380,23 +380,15 @@ public static partial class MixedRoutingAllocator
 
     public static IReadOnlyList<RoutingTrafficContext> BuildStaticContexts(NetworkModel network, bool applyLocalAllocations = true)
     {
-        var definitionsByTraffic = new Dictionary<string, TrafficTypeDefinition>(network.TrafficTypes.Count, Comparer);
-        foreach (var definition in network.TrafficTypes)
-        {
-            definitionsByTraffic[definition.Name] = definition;
-        }
-
-        var orderedTrafficNames = GetOrderedTrafficNames(network);
-        var contexts = new List<RoutingTrafficContext>(orderedTrafficNames.Count);
-        for (var index = 0; index < orderedTrafficNames.Count; index++)
-        {
-            var trafficType = orderedTrafficNames[index];
-            var definition = definitionsByTraffic.GetValueOrDefault(trafficType)
-                ?? new TrafficTypeDefinition { Name = trafficType };
-            contexts.Add(BuildStaticContext(network, definition, network.SimulationSeed + (index * 997), applyLocalAllocations));
-        }
-
-        return contexts;
+        var definitionsByTraffic = network.TrafficTypes.ToDictionary(definition => definition.Name, definition => definition, Comparer);
+        return GetOrderedTrafficNames(network)
+            .Select((trafficType, index) =>
+            {
+                var definition = definitionsByTraffic.GetValueOrDefault(trafficType)
+                    ?? new TrafficTypeDefinition { Name = trafficType };
+                return BuildStaticContext(network, definition, network.SimulationSeed + (index * 997), applyLocalAllocations);
+            })
+            .ToList();
     }
     /// <summary>
     /// Executes the allocate operation.
@@ -576,17 +568,8 @@ public static partial class MixedRoutingAllocator
             return proposals;
         }
 
-        var remainingSupplyByProducer = new Dictionary<string, double>(context.Supply.Count, Comparer);
-        foreach (var pair in context.Supply)
-        {
-            remainingSupplyByProducer[pair.Key] = pair.Value;
-        }
-
-        var remainingDemandByConsumer = new Dictionary<string, double>(context.Demand.Count, Comparer);
-        foreach (var pair in context.Demand)
-        {
-            remainingDemandByConsumer[pair.Key] = pair.Value;
-        }
+        var remainingSupplyByProducer = context.Supply.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
+        var remainingDemandByConsumer = context.Demand.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
         var maxRoutes = Math.Max(1, context.RouteChoiceSettings.MaxCandidateRoutes);
         foreach (var route in ranked.Take(maxRoutes))
         {
@@ -772,12 +755,6 @@ public static partial class MixedRoutingAllocator
             .ToDictionary(pair => pair.Key, pair => pair.Value!.Consumption, Comparer);
         AddImplicitRecipeDemand(network, definition.Name, demand);
 
-        var totalProduction = 0d;
-        foreach (var val in supply.Values) totalProduction += val;
-
-        var totalConsumption = 0d;
-        foreach (var val in demand.Values) totalConsumption += val;
-
         var context = new RoutingTrafficContext
         {
             TrafficType = definition.Name,
@@ -796,8 +773,8 @@ public static partial class MixedRoutingAllocator
             Supply = supply,
             SupplyUnitCosts = supplyUnitCosts,
             Demand = demand,
-            TotalProduction = totalProduction,
-            TotalConsumption = totalConsumption
+            TotalProduction = supply.Values.Sum(),
+            TotalConsumption = demand.Values.Sum()
         };
 
         if (enforceSellLocal)
@@ -992,17 +969,15 @@ public static partial class MixedRoutingAllocator
     {
         var transhipmentNodeIds = GetIntermediateNodeIds(route.PathNodeIds);
         var arcs = new List<GraphArc>(route.PathEdgeIds.Count);
-        var effectiveTime = 0d;
-        var effectiveCost = 0d;
         for (var index = 0; index < route.PathEdgeIds.Count; index++)
         {
             if (TryFindArc(route.PathEdgeIds[index], allocationContext, out var arc))
             {
                 arcs.Add(arc);
-                effectiveTime += GetEffectiveArcTime(context, arc, state);
-                effectiveCost += GetEffectiveArcCost(context, arc, state);
             }
         }
+        var effectiveTime = arcs.Sum(arc => GetEffectiveArcTime(context, arc, state));
+        var effectiveCost = arcs.Sum(arc => GetEffectiveArcCost(context, arc, state));
         var score = Score(effectiveTime, effectiveCost, context.RoutingPreference);
         var pathKey = string.Join(">", route.PathEdgeIds);
         if (!string.IsNullOrEmpty(context.LastPathKey) && Comparer.Equals(pathKey, context.LastPathKey))
@@ -1030,15 +1005,8 @@ public static partial class MixedRoutingAllocator
         var rng = new Random(HashCode.Combine(context.Seed, round, StringComparer.OrdinalIgnoreCase.GetHashCode(context.TrafficType)));
         var diversity = Math.Max(0.01d, context.RouteChoiceSettings.RouteDiversity);
         var lambda = 1d / diversity;
-        var bestActual = double.PositiveInfinity;
-        foreach (var candidate in candidates)
-        {
-            if (candidate.Score < bestActual) bestActual = candidate.Score;
-        }
-
-        var perceived = new List<RouteCandidate>(candidates.Count);
-        var total = 0d;
-        foreach (var candidate in candidates)
+        var bestActual = candidates.Min(candidate => candidate.Score);
+        var perceived = candidates.Select(candidate =>
         {
             var noiseScale = Math.Max(0d, 1d - context.RouteChoiceSettings.InformationAccuracy);
             var noise = (rng.NextDouble() - 0.5d) * noiseScale * Math.Max(1d, candidate.Score);
@@ -1050,11 +1018,9 @@ public static partial class MixedRoutingAllocator
                 score += context.RouteChoiceSettings.Stickiness * Math.Max(1d, candidate.Score);
             }
 
-            var p = Math.Exp(-lambda * Math.Max(0d, score));
-            perceived.Add(candidate with { Probability = p });
-            total += p;
-        }
-
+            return candidate with { Probability = Math.Exp(-lambda * Math.Max(0d, score)) };
+        }).ToList();
+        var total = perceived.Sum(candidate => candidate.Probability);
         if (total <= Epsilon)
         {
             return perceived.OrderBy(candidate => candidate.Score).ToList();
@@ -1159,22 +1125,21 @@ public static partial class MixedRoutingAllocator
     {
         foreach (var node in network.Nodes)
         {
-            var implicitDemand = 0d;
-            foreach (var profile in node.TrafficProfiles)
-            {
-                if (profile.Production <= Epsilon) continue;
-
-                foreach (var requirement in profile.InputRequirements)
+            var implicitDemand = node.TrafficProfiles
+                .Where(profile => profile.Production > Epsilon)
+                .SelectMany(profile => profile.InputRequirements.Select(requirement => new { profile.Production, requirement }))
+                .Where(item => Comparer.Equals(item.requirement.TrafficType, trafficType))
+                .Sum(item =>
                 {
-                    if (Comparer.Equals(requirement.TrafficType, trafficType))
-                    {
-                        var quantityPerOutputUnit = requirement.OutputQuantity > Epsilon
+                    var requirement = item.requirement;
+
+                    var quantityPerOutputUnit =
+                        requirement.OutputQuantity > Epsilon
                             ? requirement.InputQuantity / requirement.OutputQuantity
                             : requirement.QuantityPerOutputUnit.GetValueOrDefault();
-                        implicitDemand += profile.Production * quantityPerOutputUnit;
-                    }
-                }
-            }
+
+                    return item.Production * quantityPerOutputUnit;
+                });
 
             if (implicitDemand > Epsilon)
             {

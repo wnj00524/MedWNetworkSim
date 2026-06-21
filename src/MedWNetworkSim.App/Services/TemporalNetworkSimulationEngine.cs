@@ -3117,7 +3117,13 @@ public sealed class TemporalNetworkSimulationEngine
 
         public NodePressureSnapshot ToNodeSnapshot()
         {
-            var score = weightedByCause.Sum(pair => pair.Value);
+            // Bolt: Eliminated LINQ .Sum() allocation and delegate overhead by using a standard foreach loop
+            var score = 0d;
+            foreach (var pair in weightedByCause)
+            {
+                score += pair.Value;
+            }
+
             var backlogQuantity = weightedByCause.GetValueOrDefault(PressureCauseKind.DemandBacklog, 0d);
             var expiredQuantity =
                 weightedByCause.GetValueOrDefault(PressureCauseKind.PerishedInNodeInventory, 0d) +
@@ -3133,7 +3139,13 @@ public sealed class TemporalNetworkSimulationEngine
 
         public EdgePressureSnapshot ToEdgeSnapshot()
         {
-            var score = weightedByCause.Sum(pair => pair.Value);
+            // Bolt: Eliminated LINQ .Sum() allocation and delegate overhead by using a standard foreach loop
+            var score = 0d;
+            foreach (var pair in weightedByCause)
+            {
+                score += pair.Value;
+            }
+
             var blockedQuantity = weightedByCause.GetValueOrDefault(PressureCauseKind.EdgeCapacitySaturation, 0d);
             var expiredInTransitQuantity = weightedByCause.GetValueOrDefault(PressureCauseKind.PerishedInTransit, 0d);
             var topCause = weightedByCause.Count == 0

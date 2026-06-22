@@ -112,8 +112,19 @@ public sealed class NetworkSimulationEngine
         foreach (var context in contexts)
         {
             AddReachabilityWarnings(network, context);
-            var unusedSupply = context.Supply.Values.Sum(value => Math.Max(0d, value));
-            var unmetDemand = context.Demand.Values.Sum(value => Math.Max(0d, value));
+
+            // Bolt: Replaced LINQ Sums with a single block computing them manually to reduce delegate allocations
+            var unusedSupply = 0d;
+            foreach (var value in context.Supply.Values)
+            {
+                unusedSupply += Math.Max(0d, value);
+            }
+
+            var unmetDemand = 0d;
+            foreach (var value in context.Demand.Values)
+            {
+                unmetDemand += Math.Max(0d, value);
+            }
 
             if (unusedSupply > Epsilon)
             {
@@ -145,7 +156,13 @@ public sealed class NetworkSimulationEngine
                 context.Notes.Add("Shared edge or node transhipment capacity limits may have prevented additional routing.");
             }
 
-            var totalBidCost = context.Allocations.Sum(allocation => allocation.BidCostPerUnit * allocation.Quantity);
+            // Bolt: Replaced LINQ Sums with a single block computing them manually to reduce delegate allocations
+            var totalBidCost = 0d;
+            foreach (var allocation in context.Allocations)
+            {
+                totalBidCost += allocation.BidCostPerUnit * allocation.Quantity;
+            }
+
             if (totalBidCost > Epsilon)
             {
                 context.Notes.Add($"Capacity bidding added {totalBidCost:0.##} in extra movement cost.");

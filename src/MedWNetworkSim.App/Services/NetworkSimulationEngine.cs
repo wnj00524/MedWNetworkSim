@@ -366,21 +366,38 @@ public sealed class NetworkSimulationEngine
             return network;
         }
 
-        var allTrafficTypes = network.TrafficTypes
-            .Select(trafficType => trafficType.Name)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Distinct(Comparer)
-            .ToList();
-
-        foreach (var rule in network.PolicyRules.Where(rule => rule.IsEnabled))
+        // Bolt: Replaced LINQ chain (.Select, .Where, .Distinct) with standard manual loop
+        // to avoid delegate allocations and enumerator overhead during simulation startup.
+        var allTrafficTypes = new List<string>();
+        var seenTrafficTypes = new HashSet<string>(Comparer);
+        foreach (var trafficType in network.TrafficTypes)
         {
-            var edges = network.Edges.Where(edge =>
-                (string.IsNullOrWhiteSpace(rule.TargetEdgeId) || Comparer.Equals(edge.Id, rule.TargetEdgeId)) &&
-                (string.IsNullOrWhiteSpace(rule.TargetNodeId) || Comparer.Equals(edge.FromNodeId, rule.TargetNodeId) || Comparer.Equals(edge.ToNodeId, rule.TargetNodeId)));
-
-            foreach (var edge in edges)
+            if (!string.IsNullOrWhiteSpace(trafficType.Name) && seenTrafficTypes.Add(trafficType.Name))
             {
-                ApplyRuleToEdge(edge, rule, allTrafficTypes);
+                allTrafficTypes.Add(trafficType.Name);
+            }
+        }
+
+        // Bolt: Replaced LINQ .Where filters with standard loops to avoid nested enumerator
+        // allocations and delegate invocations for every edge check.
+        foreach (var rule in network.PolicyRules)
+        {
+            if (!rule.IsEnabled)
+            {
+                continue;
+            }
+
+            foreach (var edge in network.Edges)
+            {
+                bool matchesEdge = string.IsNullOrWhiteSpace(rule.TargetEdgeId) || Comparer.Equals(edge.Id, rule.TargetEdgeId);
+                bool matchesNode = string.IsNullOrWhiteSpace(rule.TargetNodeId) ||
+                                   Comparer.Equals(edge.FromNodeId, rule.TargetNodeId) ||
+                                   Comparer.Equals(edge.ToNodeId, rule.TargetNodeId);
+
+                if (matchesEdge && matchesNode)
+                {
+                    ApplyRuleToEdge(edge, rule, allTrafficTypes);
+                }
             }
         }
 

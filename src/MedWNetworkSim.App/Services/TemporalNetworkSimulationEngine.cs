@@ -1058,6 +1058,16 @@ public sealed class TemporalNetworkSimulationEngine
         }
     }
 
+    private static Dictionary<string, double> CloneDictionary(IDictionary<string, double> source)
+    {
+        var dict = new Dictionary<string, double>(source.Count, Comparer);
+        foreach (var pair in source)
+        {
+            dict.Add(pair.Key, pair.Value);
+        }
+        return dict;
+    }
+
     private static RoutingTrafficContext ToRoutingContext(TemporalTrafficContext context)
     {
         return new RoutingTrafficContext
@@ -1072,9 +1082,10 @@ public sealed class TemporalNetworkSimulationEngine
             Seed = context.Seed,
             NodesById = context.NodesById,
             ProfilesByNodeId = context.ProfilesByNodeId,
-            Supply = context.Supply.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
-            SupplyUnitCosts = context.SupplyUnitCosts.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
-            Demand = context.Demand.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
+            // Bolt: Replaced LINQ .ToDictionary() with manual foreach loops via CloneDictionary to avoid enumerator and delegate allocations
+            Supply = CloneDictionary(context.Supply),
+            SupplyUnitCosts = CloneDictionary(context.SupplyUnitCosts),
+            Demand = CloneDictionary(context.Demand),
             MeetingDemandEligibleNodeIds = context.MeetingDemandEligibleNodeIds
         };
     }

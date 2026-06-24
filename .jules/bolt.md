@@ -85,3 +85,6 @@
 ## 2024-06-15 - Optimize Dictionary allocations in C# hot loops
 **Learning:** In C#, LINQ `.ToDictionary` allocates a new dictionary, delegates, and enumerators. Using `.Any()` afterwards also introduces another O(N) pass.
 **Action:** Replace `.ToDictionary` and subsequent `.Any()` combinations with a manual `Dictionary` pre-allocated by count, populated via a `foreach` loop, and track boolean flags (e.g., `hasFiniteEdges`) inside the same loop to avoid multiple iterations and delegate allocations.
+## $(date +%Y-%m-%d) - Avoiding IDictionary Interfaces for ReadOnly Conversions
+**Learning:** In C#, declaring variables as `IDictionary<TKey, TValue>` prevents implicit conversion to `IReadOnlyDictionary<TKey, TValue>` when passed as method arguments, causing CS1503 compilation errors. Furthermore, using `.Capacity` on a `List` or interface when pre-sizing new collections is unsafe and causes errors.
+**Action:** Always declare new collections with `var` or as concrete `Dictionary<TKey, TValue>` to allow implicit `IReadOnlyDictionary` conversions, and strictly use `.Count` instead of `.Capacity` when pre-sizing allocations.

@@ -38,7 +38,14 @@ public sealed class TemporalNetworkSimulationEngine
         network = executionCache.GetStaticContext(network).EffectiveNetwork;
 
         var state = new TemporalSimulationState();
-        var definitionsByTraffic = network.TrafficTypes.ToDictionary(definition => definition.Name, definition => definition, Comparer);
+
+        // Bolt: Replaced LINQ .ToDictionary() with manual foreach to avoid enumerator and delegate allocations
+        var definitionsByTraffic = new Dictionary<string, TrafficTypeDefinition>(network.TrafficTypes.Count, Comparer);
+        foreach (var def in network.TrafficTypes)
+        {
+            definitionsByTraffic[def.Name] = def;
+        }
+
         foreach (var node in network.Nodes)
         {
             foreach (var profile in node.TrafficProfiles)
@@ -1060,6 +1067,25 @@ public sealed class TemporalNetworkSimulationEngine
 
     private static RoutingTrafficContext ToRoutingContext(TemporalTrafficContext context)
     {
+        // Bolt: Replaced LINQ .ToDictionary() with manual foreach to avoid enumerator and delegate allocations
+        var supply = new Dictionary<string, double>(context.Supply.Count, Comparer);
+        foreach (var pair in context.Supply)
+        {
+            supply[pair.Key] = pair.Value;
+        }
+
+        var supplyUnitCosts = new Dictionary<string, double>(context.SupplyUnitCosts.Count, Comparer);
+        foreach (var pair in context.SupplyUnitCosts)
+        {
+            supplyUnitCosts[pair.Key] = pair.Value;
+        }
+
+        var demand = new Dictionary<string, double>(context.Demand.Count, Comparer);
+        foreach (var pair in context.Demand)
+        {
+            demand[pair.Key] = pair.Value;
+        }
+
         return new RoutingTrafficContext
         {
             TrafficType = context.TrafficType,
@@ -1072,9 +1098,9 @@ public sealed class TemporalNetworkSimulationEngine
             Seed = context.Seed,
             NodesById = context.NodesById,
             ProfilesByNodeId = context.ProfilesByNodeId,
-            Supply = context.Supply.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
-            SupplyUnitCosts = context.SupplyUnitCosts.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
-            Demand = context.Demand.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
+            Supply = supply,
+            SupplyUnitCosts = supplyUnitCosts,
+            Demand = demand,
             MeetingDemandEligibleNodeIds = context.MeetingDemandEligibleNodeIds
         };
     }

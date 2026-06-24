@@ -8658,21 +8658,46 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 .Select(pair => pair.Value)
                 .ToList();
 
+            double unusedSupply = 0d;
+            double unmetDemand = 0d;
+            foreach (var state in nodeStates)
+            {
+                unusedSupply += state.AvailableSupply;
+                unmetDemand += state.DemandBacklog;
+            }
+
+            double totalDelivered = 0d;
+            double totalSalesRevenue = 0d;
+            double totalTransportCost = 0d;
+            double totalProductionCost = 0d;
+            double totalTax = 0d;
+            double totalProfit = 0d;
+            foreach (var allocation in allocations)
+            {
+                totalDelivered += allocation.Quantity;
+                totalSalesRevenue += allocation.SaleRevenue;
+                totalTransportCost += allocation.TotalTransportCost;
+                totalProductionCost += allocation.TotalProductionCost;
+                totalTax += allocation.TotalTax;
+                totalProfit += allocation.Profit;
+            }
+
             return new TrafficSimulationOutcome
             {
                 TrafficType = trafficType,
                 RoutingPreference = definition?.RoutingPreference ?? allocations.FirstOrDefault()?.RoutingPreference ?? RoutingPreference.TotalCost,
                 AllocationMode = definition?.AllocationMode ?? allocations.FirstOrDefault()?.AllocationMode ?? AllocationMode.GreedyBestRoute,
-                TotalProduction = nodeStates.Sum(state => state.AvailableSupply) + allocations.Sum(allocation => allocation.Quantity),
-                TotalConsumption = nodeStates.Sum(state => state.DemandBacklog) + allocations.Sum(allocation => allocation.Quantity),
-                TotalDelivered = allocations.Sum(allocation => allocation.Quantity),
-                UnusedSupply = nodeStates.Sum(state => state.AvailableSupply),
-                UnmetDemand = nodeStates.Sum(state => state.DemandBacklog),
-                TotalSalesRevenue = allocations.Sum(allocation => allocation.SaleRevenue),
-                TotalTransportCost = allocations.Sum(allocation => allocation.TotalTransportCost),
-                TotalProductionCost = allocations.Sum(allocation => allocation.TotalProductionCost),
-                TotalTax = allocations.Sum(allocation => allocation.TotalTax),
-                TotalProfit = allocations.Sum(allocation => allocation.Profit),
+                // Bolt: Replaced multiple LINQ Sum allocations with manual foreach loops above
+                TotalProduction = unusedSupply + totalDelivered,
+                TotalConsumption = unmetDemand + totalDelivered,
+                TotalDelivered = totalDelivered,
+                UnusedSupply = unusedSupply,
+                UnmetDemand = unmetDemand,
+                TotalSalesRevenue = totalSalesRevenue,
+                TotalTransportCost = totalTransportCost,
+                TotalProductionCost = totalProductionCost,
+                TotalTax = totalTax,
+                TotalProfit = totalProfit,
                 Allocations = allocations
             };
         }).ToList();
@@ -9130,14 +9155,24 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private static double? WeightedAverage(IEnumerable<RouteAllocation> allocations, Func<RouteAllocation, double> valueSelector)
     {
-        var materialized = allocations.Where(allocation => allocation.Quantity > 0d).ToList();
-        var quantity = materialized.Sum(allocation => allocation.Quantity);
+        double quantity = 0d;
+        double total = 0d;
+
+        foreach (var allocation in allocations)
+        {
+            if (allocation.Quantity > 0d)
+            {
+                quantity += allocation.Quantity;
+                total += valueSelector(allocation) * allocation.Quantity;
+            }
+        }
+
         if (quantity <= 0d)
         {
             return null;
         }
 
-        return materialized.Sum(allocation => valueSelector(allocation) * allocation.Quantity) / quantity;
+        return total / quantity;
     }
 
     private static string FormatPriceList(IReadOnlyList<string> prices) => prices.Count switch

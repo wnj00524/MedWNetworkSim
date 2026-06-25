@@ -8658,21 +8658,47 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 .Select(pair => pair.Value)
                 .ToList();
 
+            // Bolt: Replaced multiple LINQ .Sum() calls with a single pass to eliminate redundant iterations and delegate allocations.
+            var stateAvailableSupply = 0d;
+            var stateDemandBacklog = 0d;
+            foreach (var state in nodeStates)
+            {
+                stateAvailableSupply += state.AvailableSupply;
+                stateDemandBacklog += state.DemandBacklog;
+            }
+
+            var allocQuantity = 0d;
+            var allocSaleRevenue = 0d;
+            var allocTransportCost = 0d;
+            var allocProductionCost = 0d;
+            var allocTax = 0d;
+            var allocProfit = 0d;
+
+            foreach (var allocation in allocations)
+            {
+                allocQuantity += allocation.Quantity;
+                allocSaleRevenue += allocation.SaleRevenue;
+                allocTransportCost += allocation.TotalTransportCost;
+                allocProductionCost += allocation.TotalProductionCost;
+                allocTax += allocation.TotalTax;
+                allocProfit += allocation.Profit;
+            }
+
             return new TrafficSimulationOutcome
             {
                 TrafficType = trafficType,
                 RoutingPreference = definition?.RoutingPreference ?? allocations.FirstOrDefault()?.RoutingPreference ?? RoutingPreference.TotalCost,
                 AllocationMode = definition?.AllocationMode ?? allocations.FirstOrDefault()?.AllocationMode ?? AllocationMode.GreedyBestRoute,
-                TotalProduction = nodeStates.Sum(state => state.AvailableSupply) + allocations.Sum(allocation => allocation.Quantity),
-                TotalConsumption = nodeStates.Sum(state => state.DemandBacklog) + allocations.Sum(allocation => allocation.Quantity),
-                TotalDelivered = allocations.Sum(allocation => allocation.Quantity),
-                UnusedSupply = nodeStates.Sum(state => state.AvailableSupply),
-                UnmetDemand = nodeStates.Sum(state => state.DemandBacklog),
-                TotalSalesRevenue = allocations.Sum(allocation => allocation.SaleRevenue),
-                TotalTransportCost = allocations.Sum(allocation => allocation.TotalTransportCost),
-                TotalProductionCost = allocations.Sum(allocation => allocation.TotalProductionCost),
-                TotalTax = allocations.Sum(allocation => allocation.TotalTax),
-                TotalProfit = allocations.Sum(allocation => allocation.Profit),
+                TotalProduction = stateAvailableSupply + allocQuantity,
+                TotalConsumption = stateDemandBacklog + allocQuantity,
+                TotalDelivered = allocQuantity,
+                UnusedSupply = stateAvailableSupply,
+                UnmetDemand = stateDemandBacklog,
+                TotalSalesRevenue = allocSaleRevenue,
+                TotalTransportCost = allocTransportCost,
+                TotalProductionCost = allocProductionCost,
+                TotalTax = allocTax,
+                TotalProfit = allocProfit,
                 Allocations = allocations
             };
         }).ToList();

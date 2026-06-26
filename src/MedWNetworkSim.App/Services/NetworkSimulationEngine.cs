@@ -71,16 +71,21 @@ public sealed class NetworkSimulationEngine
 
         if (hasRecipeDependencies)
         {
-            var contextsByTraffic = contexts.ToDictionary(context => context.TrafficType, context => context, Comparer);
-            var allocationOrder = BuildStaticRecipeCostOrder(network, contexts.Select(context => context.TrafficType).ToList());
-            var sourceUnitCosts = contexts.ToDictionary(
-                context => context.TrafficType,
-                _ => new Dictionary<string, double>(Comparer),
-                Comparer);
-            var landedUnitCosts = contexts.ToDictionary(
-                context => context.TrafficType,
-                _ => new Dictionary<string, double>(Comparer),
-                Comparer);
+            // Bolt: Replaced multiple LINQ ToDictionary and Select allocations with a single loop and pre-sized collections
+            var contextsByTraffic = new Dictionary<string, RoutingTrafficContext>(contexts.Count, Comparer);
+            var sourceUnitCosts = new Dictionary<string, Dictionary<string, double>>(contexts.Count, Comparer);
+            var landedUnitCosts = new Dictionary<string, Dictionary<string, double>>(contexts.Count, Comparer);
+            var trafficTypes = new List<string>(contexts.Count);
+
+            foreach (var context in contexts)
+            {
+                contextsByTraffic[context.TrafficType] = context;
+                sourceUnitCosts[context.TrafficType] = new Dictionary<string, double>(Comparer);
+                landedUnitCosts[context.TrafficType] = new Dictionary<string, double>(Comparer);
+                trafficTypes.Add(context.TrafficType);
+            }
+
+            var allocationOrder = BuildStaticRecipeCostOrder(network, trafficTypes);
 
             foreach (var trafficType in allocationOrder)
             {

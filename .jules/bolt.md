@@ -85,3 +85,6 @@
 ## 2024-06-15 - Optimize Dictionary allocations in C# hot loops
 **Learning:** In C#, LINQ `.ToDictionary` allocates a new dictionary, delegates, and enumerators. Using `.Any()` afterwards also introduces another O(N) pass.
 **Action:** Replace `.ToDictionary` and subsequent `.Any()` combinations with a manual `Dictionary` pre-allocated by count, populated via a `foreach` loop, and track boolean flags (e.g., `hasFiniteEdges`) inside the same loop to avoid multiple iterations and delegate allocations.
+## $(date +%Y-%m-%d) - Optimize LINQ SelectMany/GroupBy Pipelines in C#
+**Learning:** In C#, mapping complex data structures to aggregated dictionaries using LINQ methods like `.SelectMany().Distinct().GroupBy().ToDictionary()` is extremely memory intensive. It generates multiple intermediate collections, duplicate iterations, and many delegate closures on the heap per execution.
+**Action:** Replace complex LINQ mapping/grouping chains with pre-sized dictionaries, nested `foreach` loops, and a single `.Clear()`able `HashSet` on the outer loop to track distinct values. This completely eliminates intermediate enumerator allocations and collapses operations from $O(P \times C)$ hidden iterations down to a single $O(N)$ linear pass.

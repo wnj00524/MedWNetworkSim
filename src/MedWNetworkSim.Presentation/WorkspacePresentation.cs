@@ -7930,10 +7930,19 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshAgentProfitReport();
     }
 
-    private IReadOnlyDictionary<string, SimulationActorState> BuildSimulationActorMap() => SimulationActors
-        .Where(actor => !string.IsNullOrWhiteSpace(actor.Id))
-        .GroupBy(actor => actor.Id, Comparer)
-        .ToDictionary(group => group.Key, group => group.First(), Comparer);
+    private IReadOnlyDictionary<string, SimulationActorState> BuildSimulationActorMap()
+    {
+        // Bolt: Optimize SimulationActor mapping to avoid LINQ GroupBy and ToDictionary enumerator/delegate overhead
+        var map = new Dictionary<string, SimulationActorState>(SimulationActors.Count, Comparer);
+        foreach (var actor in SimulationActors)
+        {
+            if (!string.IsNullOrWhiteSpace(actor.Id) && !map.ContainsKey(actor.Id))
+            {
+                map.Add(actor.Id, actor);
+            }
+        }
+        return map;
+    }
 
     private void RecordEconomicMetrics(TrafficEconomicSettlementResult settlement)
     {
@@ -7956,35 +7965,126 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private SimulationActorMetrics CreateEconomicMetrics(TrafficEconomicSettlementResult settlement)
     {
-        var allocations = settlement.Outcomes.SelectMany(outcome => outcome.Allocations).ToList();
-        var flowByEdge = allocations
-            .SelectMany(allocation => allocation.PathEdgeIds.Distinct(Comparer).Select(edgeId => (edgeId, allocation.Quantity)))
-            .GroupBy(item => item.edgeId, Comparer)
-            .ToDictionary(group => group.Key, group => group.Sum(item => item.Quantity), Comparer);
-        var utilisation = network.Edges
-            .Where(edge => edge.Capacity.HasValue && edge.Capacity.Value > 0d)
-            .Select(edge => flowByEdge.GetValueOrDefault(edge.Id) / edge.Capacity!.Value)
-            .ToList();
+        // Bolt: Optimized metric calculations to replace multiple O(N) LINQ SelectMany, GroupBy, Sum, and ToDictionary enumerations with single O(N) traversals
+        var totalDelivered = 0d;
+        var totalUnmetDemand = 0d;
+        var totalMovementCost = 0d;
+        var flowByEdge = new Dictionary<string, double>(Comparer);
+        var seenEdges = new HashSet<string>(Comparer);
+
+        foreach (var outcome in settlement.Outcomes)
+        {
+            totalDelivered += outcome.TotalDelivered;
+            totalUnmetDemand += outcome.UnmetDemand;
+
+            foreach (var allocation in outcome.Allocations)
+            {
+                totalMovementCost += allocation.TotalMovementCost;
+                seenEdges.Clear();
+                foreach (var edgeId in allocation.PathEdgeIds)
+                {
+                    if (seenEdges.Add(edgeId))
+                    {
+                        if (flowByEdge.TryGetValue(edgeId, out var currentQty))
+                        {
+                            flowByEdge[edgeId] = currentQty + allocation.Quantity;
+                        }
+                        else
+                        {
+                            flowByEdge.Add(edgeId, allocation.Quantity);
+                        }
+                    }
+                }
+            }
+        }
+
+        var utilisationSum = 0d;
+        var utilisationCount = 0;
+        var bottleneckCount = 0;
+        var policyRestrictionCount = 0;
+        foreach (var edge in network.Edges)
+        {
+            if (edge.Capacity.HasValue && edge.Capacity.Value > 0d)
+            {
+                var currentFlow = flowByEdge.TryGetValue(edge.Id, out var f) ? f : 0d;
+                var util = currentFlow / edge.Capacity.Value;
+                utilisationSum += util;
+                utilisationCount++;
+                if (util >= 0.9d)
+                {
+                    bottleneckCount++;
+                }
+            }
+
+            foreach (var permission in edge.TrafficPermissions)
+            {
+                if (permission.IsActive && permission.Mode == EdgeTrafficPermissionMode.Blocked)
+                {
+                    policyRestrictionCount++;
+                }
+            }
+        }
+
+        var numActors = SimulationActors.Count;
+        var actorCashById = new Dictionary<string, double>(numActors, Comparer);
+        var actorSalesRevenueById = new Dictionary<string, double>(numActors, Comparer);
+        var actorPurchaseCostById = new Dictionary<string, double>(numActors, Comparer);
+        var actorProductionCostById = new Dictionary<string, double>(numActors, Comparer);
+        var actorTransportCostById = new Dictionary<string, double>(numActors, Comparer);
+        var actorTaxesPaidById = new Dictionary<string, double>(numActors, Comparer);
+        var actorTaxesReceivedById = new Dictionary<string, double>(numActors, Comparer);
+        var actorCashDeltaById = new Dictionary<string, double>(numActors, Comparer);
+        var actorProfitById = new Dictionary<string, double>(numActors, Comparer);
+        var cooperationIndexSum = 0d;
+
+        foreach (var actor in SimulationActors)
+        {
+            actorCashById.Add(actor.Id, actor.Cash);
+            cooperationIndexSum += Math.Clamp(actor.CooperationWeight, 0d, 1d);
+
+            if (settlement.Ledgers.TryGetValue(actor.Id, out var ledger))
+            {
+                actorSalesRevenueById.Add(actor.Id, ledger.SalesRevenue);
+                actorPurchaseCostById.Add(actor.Id, ledger.PurchaseCost);
+                actorProductionCostById.Add(actor.Id, ledger.ProductionCost);
+                actorTransportCostById.Add(actor.Id, ledger.TransportCost);
+                actorTaxesPaidById.Add(actor.Id, ledger.TaxesPaid);
+                actorTaxesReceivedById.Add(actor.Id, ledger.TaxesReceived);
+                actorCashDeltaById.Add(actor.Id, ledger.CashDelta);
+                actorProfitById.Add(actor.Id, ledger.Profit);
+            }
+            else
+            {
+                actorSalesRevenueById.Add(actor.Id, 0d);
+                actorPurchaseCostById.Add(actor.Id, 0d);
+                actorProductionCostById.Add(actor.Id, 0d);
+                actorTransportCostById.Add(actor.Id, 0d);
+                actorTaxesPaidById.Add(actor.Id, 0d);
+                actorTaxesReceivedById.Add(actor.Id, 0d);
+                actorCashDeltaById.Add(actor.Id, 0d);
+                actorProfitById.Add(actor.Id, 0d);
+            }
+        }
 
         return new SimulationActorMetrics
         {
             Tick = Math.Max(ActorTick, CurrentPeriod),
-            TotalDelivered = settlement.Outcomes.Sum(outcome => outcome.TotalDelivered),
-            TotalUnmetDemand = settlement.Outcomes.Sum(outcome => outcome.UnmetDemand),
-            TotalMovementCost = allocations.Sum(allocation => allocation.TotalMovementCost),
-            AverageEdgeUtilisation = utilisation.Count == 0 ? 0d : utilisation.Average(),
-            BottleneckEdgeCount = utilisation.Count(value => value >= 0.9d),
-            ActorCashById = SimulationActors.ToDictionary(actor => actor.Id, actor => actor.Cash, Comparer),
-            ActorSalesRevenueById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.SalesRevenue ?? 0d, Comparer),
-            ActorPurchaseCostById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.PurchaseCost ?? 0d, Comparer),
-            ActorProductionCostById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.ProductionCost ?? 0d, Comparer),
-            ActorTransportCostById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.TransportCost ?? 0d, Comparer),
-            ActorTaxesPaidById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.TaxesPaid ?? 0d, Comparer),
-            ActorTaxesReceivedById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.TaxesReceived ?? 0d, Comparer),
-            ActorCashDeltaById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.CashDelta ?? 0d, Comparer),
-            ActorProfitById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.Profit ?? 0d, Comparer),
-            PolicyRestrictionCount = network.Edges.Sum(edge => edge.TrafficPermissions.Count(permission => permission.IsActive && permission.Mode == EdgeTrafficPermissionMode.Blocked)),
-            CooperationIndex = SimulationActors.Count == 0 ? 0d : SimulationActors.Average(actor => Math.Clamp(actor.CooperationWeight, 0d, 1d))
+            TotalDelivered = totalDelivered,
+            TotalUnmetDemand = totalUnmetDemand,
+            TotalMovementCost = totalMovementCost,
+            AverageEdgeUtilisation = utilisationCount == 0 ? 0d : utilisationSum / utilisationCount,
+            BottleneckEdgeCount = bottleneckCount,
+            ActorCashById = actorCashById,
+            ActorSalesRevenueById = actorSalesRevenueById,
+            ActorPurchaseCostById = actorPurchaseCostById,
+            ActorProductionCostById = actorProductionCostById,
+            ActorTransportCostById = actorTransportCostById,
+            ActorTaxesPaidById = actorTaxesPaidById,
+            ActorTaxesReceivedById = actorTaxesReceivedById,
+            ActorCashDeltaById = actorCashDeltaById,
+            ActorProfitById = actorProfitById,
+            PolicyRestrictionCount = policyRestrictionCount,
+            CooperationIndex = numActors == 0 ? 0d : cooperationIndexSum / numActors
         };
     }
 

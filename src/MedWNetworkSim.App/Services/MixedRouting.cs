@@ -941,16 +941,17 @@ public static partial class MixedRoutingAllocator
         AllocationContext allocationContext)
     {
         var transhipmentNodeIds = GetIntermediateNodeIds(route.PathNodeIds);
-        var arcs = new List<GraphArc>(route.PathEdgeIds.Count);
+        var effectiveTime = 0d;
+        var effectiveCost = 0d;
         for (var index = 0; index < route.PathEdgeIds.Count; index++)
         {
             if (TryFindArc(route.PathEdgeIds[index], allocationContext, out var arc))
             {
-                arcs.Add(arc);
+                // Bolt: Accumulated values inline to eliminate list allocation and LINQ .Sum() overhead
+                effectiveTime += GetEffectiveArcTime(context, arc, state);
+                effectiveCost += GetEffectiveArcCost(context, arc, state);
             }
         }
-        var effectiveTime = arcs.Sum(arc => GetEffectiveArcTime(context, arc, state));
-        var effectiveCost = arcs.Sum(arc => GetEffectiveArcCost(context, arc, state));
         var score = Score(effectiveTime, effectiveCost, context.RoutingPreference);
         var pathKey = string.Join(">", route.PathEdgeIds);
         if (!string.IsNullOrEmpty(context.LastPathKey) && Comparer.Equals(pathKey, context.LastPathKey))

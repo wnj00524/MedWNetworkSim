@@ -38,7 +38,14 @@ public sealed class TemporalNetworkSimulationEngine
         network = executionCache.GetStaticContext(network).EffectiveNetwork;
 
         var state = new TemporalSimulationState();
-        var definitionsByTraffic = network.TrafficTypes.ToDictionary(definition => definition.Name, definition => definition, Comparer);
+        var definitionsByTraffic = new Dictionary<string, TrafficTypeDefinition>(network.TrafficTypes.Count, Comparer);
+        foreach (var definition in network.TrafficTypes)
+        {
+            if (!string.IsNullOrWhiteSpace(definition.Name))
+            {
+                definitionsByTraffic[definition.Name] = definition;
+            }
+        }
         foreach (var node in network.Nodes)
         {
             foreach (var profile in node.TrafficProfiles)
@@ -1072,11 +1079,16 @@ public sealed class TemporalNetworkSimulationEngine
             Seed = context.Seed,
             NodesById = context.NodesById,
             ProfilesByNodeId = context.ProfilesByNodeId,
-            Supply = context.Supply.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
-            SupplyUnitCosts = context.SupplyUnitCosts.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
-            Demand = context.Demand.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
+            Supply = CloneDictionary(context.Supply),
+            SupplyUnitCosts = CloneDictionary(context.SupplyUnitCosts),
+            Demand = CloneDictionary(context.Demand),
             MeetingDemandEligibleNodeIds = context.MeetingDemandEligibleNodeIds
         };
+    }
+
+    private static Dictionary<string, double> CloneDictionary(IDictionary<string, double> source)
+    {
+        return new Dictionary<string, double>(source, Comparer);
     }
 
     private static void CopyCommittedQuantities(

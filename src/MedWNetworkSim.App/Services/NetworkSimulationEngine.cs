@@ -39,10 +39,14 @@ public sealed class NetworkSimulationEngine
         }
 
         var hasRecipeDependencies = HasStaticRecipeDependencies(network);
-        var definitionsByTraffic = network.TrafficTypes
-            .Where(definition => !string.IsNullOrWhiteSpace(definition.Name))
-            .GroupBy(definition => definition.Name, Comparer)
-            .ToDictionary(group => group.Key, group => group.First(), Comparer);
+        var definitionsByTraffic = new Dictionary<string, TrafficTypeDefinition>(network.TrafficTypes.Count, Comparer);
+        foreach (var definition in network.TrafficTypes)
+        {
+            if (!string.IsNullOrWhiteSpace(definition.Name) && !definitionsByTraffic.ContainsKey(definition.Name))
+            {
+                definitionsByTraffic[definition.Name] = definition;
+            }
+        }
         var contexts = MixedRoutingAllocator.BuildStaticContexts(network, applyLocalAllocations: !hasRecipeDependencies).ToList();
         // Bolt: Replaced LINQ .ToDictionary() with manual foreach to avoid enumerator and delegate allocations
         var remainingCapacityByEdgeId = new Dictionary<string, double>(network.Edges.Count, Comparer);
@@ -337,9 +341,12 @@ public sealed class NetworkSimulationEngine
 
     private NetworkModel OrderNetworkForLayerProcessing(NetworkModel network)
     {
-        var order = layerResolver.GetSimulationOrder(network)
-            .Select((layer, index) => new { layer.Id, index })
-            .ToDictionary(item => item.Id, item => item.index);
+        var resolvedLayers = layerResolver.GetSimulationOrder(network);
+        var order = new Dictionary<Guid, int>(resolvedLayers.Count);
+        for (var index = 0; index < resolvedLayers.Count; index++)
+        {
+            order[resolvedLayers[index].Id] = index;
+        }
 
         return new NetworkModel
         {
@@ -758,24 +765,24 @@ public sealed class NetworkSimulationEngine
 
     private static Dictionary<string, double> SummarizeLandedUnitCosts(IEnumerable<RouteAllocation> allocations)
     {
-        return allocations
-            .GroupBy(allocation => allocation.ConsumerNodeId, Comparer)
-            .ToDictionary(
-                group => group.Key,
-                group =>
-                {
-                    // Bolt: Accumulate quantity and total cost in a single loop to avoid multiple O(N) LINQ enumerations and delegate allocations
-                    var quantity = 0d;
-                    var totalCost = 0d;
-                    foreach (var allocation in group)
-                    {
-                        quantity += allocation.Quantity;
-                        totalCost += allocation.DeliveredCostPerUnit * allocation.Quantity;
-                    }
+        var dict = new Dictionary<string, (double TotalCost, double Quantity)>(Comparer);
+        foreach (var allocation in allocations)
+        {
+            if (!dict.TryGetValue(allocation.ConsumerNodeId, out var acc))
+            {
+                acc = (0d, 0d);
+            }
+            acc.Quantity += allocation.Quantity;
+            acc.TotalCost += allocation.DeliveredCostPerUnit * allocation.Quantity;
+            dict[allocation.ConsumerNodeId] = acc;
+        }
 
-                    return quantity > Epsilon ? totalCost / quantity : 0d;
-                },
-                Comparer);
+        var result = new Dictionary<string, double>(dict.Count, Comparer);
+        foreach (var pair in dict)
+        {
+            result[pair.Key] = pair.Value.Quantity > Epsilon ? pair.Value.TotalCost / pair.Value.Quantity : 0d;
+        }
+        return result;
     }
 
     private static TrafficContext BuildContext(NetworkModel network, TrafficTypeDefinition definition)

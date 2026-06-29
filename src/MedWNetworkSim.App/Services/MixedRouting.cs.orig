@@ -380,11 +380,7 @@ public static partial class MixedRoutingAllocator
 
     public static IReadOnlyList<RoutingTrafficContext> BuildStaticContexts(NetworkModel network, bool applyLocalAllocations = true)
     {
-        var definitionsByTraffic = new Dictionary<string, TrafficTypeDefinition>(network.TrafficTypes.Count, Comparer);
-        foreach (var def in network.TrafficTypes)
-        {
-            if (def.Name != null) definitionsByTraffic[def.Name] = def;
-        }
+        var definitionsByTraffic = network.TrafficTypes.ToDictionary(definition => definition.Name, definition => definition, Comparer);
         return GetOrderedTrafficNames(network)
             .Select((trafficType, index) =>
             {
@@ -420,36 +416,19 @@ public static partial class MixedRoutingAllocator
         }
 
         var permissionResolver = new EdgeTrafficPermissionResolver();
-        // Bolt: Replaced LINQ ToDictionary calls with pre-sized loops to avoid allocations.
-        var edgesById = new Dictionary<string, EdgeModel>(network.Edges.Count, Comparer);
-        var edgeCapacity = new Dictionary<string, double>(network.Edges.Count, Comparer);
-        foreach (var edge in network.Edges)
-        {
-            edgesById[edge.Id] = edge;
-            edgeCapacity[edge.Id] = edge.Capacity ?? double.PositiveInfinity;
-        }
-        var nodeCapacity = new Dictionary<string, double>(network.Nodes.Count, Comparer);
-        foreach (var node in network.Nodes)
-        {
-            nodeCapacity[node.Id] = node.TranshipmentCapacity ?? double.PositiveInfinity;
-        }
+        IReadOnlyDictionary<string, EdgeModel> edgesById = network.Edges.ToDictionary(edge => edge.Id, edge => edge, Comparer);
         var adjacency = BuildAdjacency(network);
         var allocationContext = new AllocationContext(adjacency, edgesById);
-        var remainingEdgeCap = new Dictionary<string, double>(remainingCapacityByEdgeId.Count, Comparer);
-        foreach (var pair in remainingCapacityByEdgeId) remainingEdgeCap[pair.Key] = pair.Value;
-        var remainingNodeCap = new Dictionary<string, double>(remainingTranshipmentCapacityByNodeId.Count, Comparer);
-        foreach (var pair in remainingTranshipmentCapacityByNodeId) remainingNodeCap[pair.Key] = pair.Value;
-
         var state = new NetworkState
         {
-            RemainingEdgeCapacity = remainingEdgeCap,
-            RemainingNodeCapacity = remainingNodeCap,
+            RemainingEdgeCapacity = remainingCapacityByEdgeId.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
+            RemainingNodeCapacity = remainingTranshipmentCapacityByNodeId.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
             RemainingEdgeTrafficCapacity = permissionResolver.BuildInitialRemainingAllowances(
                 network,
                 contexts.Select(context => context.TrafficType),
                 occupiedEdgeTrafficByKey),
-            EdgeCapacity = edgeCapacity,
-            NodeCapacity = nodeCapacity
+            EdgeCapacity = network.Edges.ToDictionary(edge => edge.Id, edge => edge.Capacity ?? double.PositiveInfinity, Comparer),
+            NodeCapacity = network.Nodes.ToDictionary(node => node.Id, node => node.TranshipmentCapacity ?? double.PositiveInfinity, Comparer)
         };
 
         foreach (var edge in network.Edges)
@@ -562,11 +541,8 @@ public static partial class MixedRoutingAllocator
             return proposals;
         }
 
-        var remainingSupplyByProducer = new Dictionary<string, double>(context.Supply.Count, Comparer);
-        foreach (var pair in context.Supply) remainingSupplyByProducer[pair.Key] = pair.Value;
-
-        var remainingDemandByConsumer = new Dictionary<string, double>(context.Demand.Count, Comparer);
-        foreach (var pair in context.Demand) remainingDemandByConsumer[pair.Key] = pair.Value;
+        var remainingSupplyByProducer = context.Supply.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
+        var remainingDemandByConsumer = context.Demand.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer);
         var maxRoutes = Math.Max(1, context.RouteChoiceSettings.MaxCandidateRoutes);
         foreach (var route in ranked.Take(maxRoutes))
         {
@@ -722,51 +698,34 @@ public static partial class MixedRoutingAllocator
 
     private static RoutingTrafficContext BuildStaticContext(NetworkModel network, TrafficTypeDefinition definition, int seed, bool applyLocalAllocations)
     {
-        var profilesByNodeId = new Dictionary<string, NodeTrafficProfile?>(network.Nodes.Count, Comparer);
-        var nodesById = new Dictionary<string, NodeModel>(network.Nodes.Count, Comparer);
+        var profilesByNodeId = network.Nodes.ToDictionary(
+            node => node.Id,
+            node => node.TrafficProfiles.FirstOrDefault(profile => Comparer.Equals(profile.TrafficType, definition.Name)),
+            Comparer);
+        var nodesById = network.Nodes.ToDictionary(node => node.Id, node => node, Comparer);
         var permittedSellerNodeIds = LocalTrafficPermissionResolver.BuildPermittedSellerNodeSet(network, definition.Name);
         var enforceSellLocal = LocalTrafficPermissionResolver.IsEnforced(network);
         var blockedLocalSupply = 0d;
-        var supply = new Dictionary<string, double>(Comparer);
-        var supplyUnitCosts = new Dictionary<string, double>(Comparer);
-        var demand = new Dictionary<string, double>(Comparer);
-
-        foreach (var node in network.Nodes)
-        {
-            nodesById[node.Id] = node;
-            NodeTrafficProfile? matchedProfile = null;
-            foreach (var profile in node.TrafficProfiles)
+        var supply = profilesByNodeId
+            .Where(pair => pair.Value?.Production > Epsilon)
+            .Where(pair =>
             {
-                if (Comparer.Equals(profile.TrafficType, definition.Name))
+                if (!enforceSellLocal || permittedSellerNodeIds.Contains(pair.Key))
                 {
-                    matchedProfile = profile;
-                    break;
-                }
-            }
-            profilesByNodeId[node.Id] = matchedProfile;
-
-            if (matchedProfile != null)
-            {
-                if (matchedProfile.Production > Epsilon)
-                {
-                    if (!enforceSellLocal || permittedSellerNodeIds.Contains(node.Id))
-                    {
-                        supply[node.Id] = matchedProfile.Production;
-                        supplyUnitCosts[node.Id] = ResolveBaseProductionCost(matchedProfile, definition);
-                    }
-                    else
-                    {
-                        blockedLocalSupply += matchedProfile.Production;
-                    }
+                    return true;
                 }
 
-                if (matchedProfile.Consumption > Epsilon)
-                {
-                    demand[node.Id] = matchedProfile.Consumption;
-                }
-            }
-        }
-
+                blockedLocalSupply += pair.Value!.Production;
+                return false;
+            })
+            .ToDictionary(pair => pair.Key, pair => pair.Value!.Production, Comparer);
+        var supplyUnitCosts = supply.ToDictionary(
+            pair => pair.Key,
+            pair => ResolveBaseProductionCost(profilesByNodeId.GetValueOrDefault(pair.Key), definition),
+            Comparer);
+        var demand = profilesByNodeId
+            .Where(pair => pair.Value?.Consumption > Epsilon)
+            .ToDictionary(pair => pair.Key, pair => pair.Value!.Consumption, Comparer);
         AddImplicitRecipeDemand(network, definition.Name, demand);
 
         var context = new RoutingTrafficContext

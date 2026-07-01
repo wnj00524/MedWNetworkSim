@@ -172,7 +172,15 @@ public sealed class NetworkInsightService : INetworkInsightService
             }
         }
 
-        var highCost = snapshot.ConsumerCosts.OrderByDescending(cost => cost.BlendedUnitCost).FirstOrDefault();
+        ConsumerCostSummary? highCost = null;
+        foreach (var cost in snapshot.ConsumerCosts)
+        {
+            if (highCost is null || cost.BlendedUnitCost > highCost.BlendedUnitCost)
+            {
+                highCost = cost;
+            }
+        }
+
         if (highCost is not null && highCost.BlendedUnitCost > 0d)
         {
             insights.Add(new NetworkInsight

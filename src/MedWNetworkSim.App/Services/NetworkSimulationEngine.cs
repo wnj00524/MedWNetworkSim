@@ -881,7 +881,16 @@ public sealed class NetworkSimulationEngine
 
     private static void ApplyLocalAllocations(TrafficContext context)
     {
-        foreach (var nodeId in context.Supply.Keys.Intersect(context.Demand.Keys, Comparer).ToList())
+        var commonNodes = new List<string>();
+        foreach (var key in context.Supply.Keys)
+        {
+            if (context.Demand.ContainsKey(key))
+            {
+                commonNodes.Add(key);
+            }
+        }
+
+        foreach (var nodeId in commonNodes)
         {
             var quantity = Math.Min(context.Supply[nodeId], context.Demand[nodeId]);
             if (quantity <= Epsilon)

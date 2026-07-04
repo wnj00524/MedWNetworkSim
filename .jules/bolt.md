@@ -85,3 +85,10 @@
 ## 2024-06-15 - Optimize Dictionary allocations in C# hot loops
 **Learning:** In C#, LINQ `.ToDictionary` allocates a new dictionary, delegates, and enumerators. Using `.Any()` afterwards also introduces another O(N) pass.
 **Action:** Replace `.ToDictionary` and subsequent `.Any()` combinations with a manual `Dictionary` pre-allocated by count, populated via a `foreach` loop, and track boolean flags (e.g., `hasFiniteEdges`) inside the same loop to avoid multiple iterations and delegate allocations.
+## 2024-05-31 - Optimize Dictionary Key Intersections
+**Learning:** Using `dictA.Keys.Intersect(dictB.Keys).ToList()` creates a hidden `HashSet<T>` allocation from `Intersect`, multiple enumerator instantiations, and O(N) GC pressure.
+**Action:** Replace LINQ `Intersect` on dictionary keys with a manual `foreach` loop over `dictA.Keys` that evaluates `dictB.ContainsKey(key)` and adds matches to a pre-allocated or dynamically sizing `List<T>`.
+
+## 2024-05-31 - Eliminate Anonymous Object Allocation in SelectMany
+**Learning:** Chained LINQ queries utilizing `.SelectMany` that project into anonymous objects (`Select(req => new { parent.Prop, req })`) create immense memory pressure because an object is allocated on the heap for every element in the sequence during evaluation.
+**Action:** Refactor such chains into standard, nested `foreach` loops using simple local scalar variables instead of intermediate anonymous objects to bypass heap allocation entirely.

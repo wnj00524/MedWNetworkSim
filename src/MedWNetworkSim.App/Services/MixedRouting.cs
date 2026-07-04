@@ -781,7 +781,16 @@ public static partial class MixedRoutingAllocator
 
     public static void ApplyLocalAllocations(RoutingTrafficContext context, NetworkModel network, int period)
     {
-        foreach (var nodeId in context.Supply.Keys.Intersect(context.Demand.Keys, Comparer).ToList())
+        var commonNodes = new List<string>();
+        foreach (var key in context.Supply.Keys)
+        {
+            if (context.Demand.ContainsKey(key))
+            {
+                commonNodes.Add(key);
+            }
+        }
+
+        foreach (var nodeId in commonNodes)
         {
             if (!LocalTrafficPermissionResolver.CanReceiveMeetingNodeDemand(network, nodeId, context.TrafficType))
             {
@@ -1098,21 +1107,26 @@ public static partial class MixedRoutingAllocator
     {
         foreach (var node in network.Nodes)
         {
-            var implicitDemand = node.TrafficProfiles
-                .Where(profile => profile.Production > Epsilon)
-                .SelectMany(profile => profile.InputRequirements.Select(requirement => new { profile.Production, requirement }))
-                .Where(item => Comparer.Equals(item.requirement.TrafficType, trafficType))
-                .Sum(item =>
+            var implicitDemand = 0d;
+            foreach (var profile in node.TrafficProfiles)
+            {
+                if (profile.Production <= Epsilon)
                 {
-                    var requirement = item.requirement;
+                    continue;
+                }
 
-                    var quantityPerOutputUnit =
-                        requirement.OutputQuantity > Epsilon
+                foreach (var requirement in profile.InputRequirements)
+                {
+                    if (Comparer.Equals(requirement.TrafficType, trafficType))
+                    {
+                        var quantityPerOutputUnit = requirement.OutputQuantity > Epsilon
                             ? requirement.InputQuantity / requirement.OutputQuantity
                             : requirement.QuantityPerOutputUnit.GetValueOrDefault();
 
-                    return item.Production * quantityPerOutputUnit;
-                });
+                        implicitDemand += profile.Production * quantityPerOutputUnit;
+                    }
+                }
+            }
 
             if (implicitDemand > Epsilon)
             {

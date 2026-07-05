@@ -881,8 +881,16 @@ public sealed class NetworkSimulationEngine
 
     private static void ApplyLocalAllocations(TrafficContext context)
     {
-        foreach (var nodeId in context.Supply.Keys.Intersect(context.Demand.Keys, Comparer).ToList())
+        // Bolt: Replaced LINQ .Intersect().ToList() with a manual loop that checks .ContainsKey()
+        // to avoid enumerator, delegate, and internal HashSet allocations.
+        // We still use .ToList() on Keys since the dictionary is mutated during the loop.
+        foreach (var nodeId in context.Supply.Keys.ToList())
         {
+            if (!context.Demand.ContainsKey(nodeId))
+            {
+                continue;
+            }
+
             var quantity = Math.Min(context.Supply[nodeId], context.Demand[nodeId]);
             if (quantity <= Epsilon)
             {

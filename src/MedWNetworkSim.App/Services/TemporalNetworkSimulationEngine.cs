@@ -1029,8 +1029,16 @@ public sealed class TemporalNetworkSimulationEngine
         CompiledNetworkSimulationContext compiledContext,
         IDictionary<TemporalNodeTrafficKey, TemporalNodeTrafficState> nodeStates)
     {
-        foreach (var nodeId in context.Supply.Keys.Intersect(context.Demand.Keys, Comparer).ToList())
+        // Bolt: Replaced LINQ .Intersect().ToList() with a manual loop that checks .ContainsKey()
+        // to avoid enumerator, delegate, and internal HashSet allocations.
+        // We still use .ToList() on Keys since the dictionary is mutated during the loop.
+        foreach (var nodeId in context.Supply.Keys.ToList())
         {
+            if (!context.Demand.ContainsKey(nodeId))
+            {
+                continue;
+            }
+
             if (!context.MeetingDemandEligibleNodeIds.Contains(nodeId))
             {
                 continue;

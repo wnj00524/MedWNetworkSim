@@ -7966,6 +7966,32 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             .Select(edge => flowByEdge.GetValueOrDefault(edge.Id) / edge.Capacity!.Value)
             .ToList();
 
+        // Bolt: Replace multiple LINQ ToDictionary calls with a single manual loop to avoid enumerator and delegate allocations
+        var actorCashById = new Dictionary<string, double>(SimulationActors.Count, Comparer);
+        var actorSalesRevenueById = new Dictionary<string, double>(SimulationActors.Count, Comparer);
+        var actorPurchaseCostById = new Dictionary<string, double>(SimulationActors.Count, Comparer);
+        var actorProductionCostById = new Dictionary<string, double>(SimulationActors.Count, Comparer);
+        var actorTransportCostById = new Dictionary<string, double>(SimulationActors.Count, Comparer);
+        var actorTaxesPaidById = new Dictionary<string, double>(SimulationActors.Count, Comparer);
+        var actorTaxesReceivedById = new Dictionary<string, double>(SimulationActors.Count, Comparer);
+        var actorCashDeltaById = new Dictionary<string, double>(SimulationActors.Count, Comparer);
+        var actorProfitById = new Dictionary<string, double>(SimulationActors.Count, Comparer);
+
+        foreach (var actor in SimulationActors)
+        {
+            var id = actor.Id;
+            var ledger = settlement.Ledgers.GetValueOrDefault(id);
+            actorCashById[id] = actor.Cash;
+            actorSalesRevenueById[id] = ledger?.SalesRevenue ?? 0d;
+            actorPurchaseCostById[id] = ledger?.PurchaseCost ?? 0d;
+            actorProductionCostById[id] = ledger?.ProductionCost ?? 0d;
+            actorTransportCostById[id] = ledger?.TransportCost ?? 0d;
+            actorTaxesPaidById[id] = ledger?.TaxesPaid ?? 0d;
+            actorTaxesReceivedById[id] = ledger?.TaxesReceived ?? 0d;
+            actorCashDeltaById[id] = ledger?.CashDelta ?? 0d;
+            actorProfitById[id] = ledger?.Profit ?? 0d;
+        }
+
         return new SimulationActorMetrics
         {
             Tick = Math.Max(ActorTick, CurrentPeriod),
@@ -7974,15 +8000,15 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             TotalMovementCost = allocations.Sum(allocation => allocation.TotalMovementCost),
             AverageEdgeUtilisation = utilisation.Count == 0 ? 0d : utilisation.Average(),
             BottleneckEdgeCount = utilisation.Count(value => value >= 0.9d),
-            ActorCashById = SimulationActors.ToDictionary(actor => actor.Id, actor => actor.Cash, Comparer),
-            ActorSalesRevenueById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.SalesRevenue ?? 0d, Comparer),
-            ActorPurchaseCostById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.PurchaseCost ?? 0d, Comparer),
-            ActorProductionCostById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.ProductionCost ?? 0d, Comparer),
-            ActorTransportCostById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.TransportCost ?? 0d, Comparer),
-            ActorTaxesPaidById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.TaxesPaid ?? 0d, Comparer),
-            ActorTaxesReceivedById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.TaxesReceived ?? 0d, Comparer),
-            ActorCashDeltaById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.CashDelta ?? 0d, Comparer),
-            ActorProfitById = SimulationActors.ToDictionary(actor => actor.Id, actor => settlement.Ledgers.GetValueOrDefault(actor.Id)?.Profit ?? 0d, Comparer),
+            ActorCashById = actorCashById,
+            ActorSalesRevenueById = actorSalesRevenueById,
+            ActorPurchaseCostById = actorPurchaseCostById,
+            ActorProductionCostById = actorProductionCostById,
+            ActorTransportCostById = actorTransportCostById,
+            ActorTaxesPaidById = actorTaxesPaidById,
+            ActorTaxesReceivedById = actorTaxesReceivedById,
+            ActorCashDeltaById = actorCashDeltaById,
+            ActorProfitById = actorProfitById,
             PolicyRestrictionCount = network.Edges.Sum(edge => edge.TrafficPermissions.Count(permission => permission.IsActive && permission.Mode == EdgeTrafficPermissionMode.Blocked)),
             CooperationIndex = SimulationActors.Count == 0 ? 0d : SimulationActors.Average(actor => Math.Clamp(actor.CooperationWeight, 0d, 1d))
         };

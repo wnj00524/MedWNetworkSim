@@ -85,3 +85,6 @@
 ## 2024-06-15 - Optimize Dictionary allocations in C# hot loops
 **Learning:** In C#, LINQ `.ToDictionary` allocates a new dictionary, delegates, and enumerators. Using `.Any()` afterwards also introduces another O(N) pass.
 **Action:** Replace `.ToDictionary` and subsequent `.Any()` combinations with a manual `Dictionary` pre-allocated by count, populated via a `foreach` loop, and track boolean flags (e.g., `hasFiniteEdges`) inside the same loop to avoid multiple iterations and delegate allocations.
+## 2026-06-15 - Optimize Multiple ToDictionary Allocations inside Workspace UI
+**Learning:** In C#, executing multiple LINQ `.ToDictionary()` allocations on the same source collection (like building 9 different actor metrics dictionaries from `SimulationActors`) inside UI metric generation code allocates massive amounts of redundant enumerators, delegates, and intermediate dictionary structures on the UI thread, causing unnecessary memory allocation and garbage collection pauses.
+**Action:** Replace multiple `.ToDictionary()` allocations on identical source collections with a single manual `foreach` loop that populates pre-allocated dictionaries simultaneously. This transforms an O(K*N) allocation into a tight O(N) loop and completely avoids LINQ overhead.

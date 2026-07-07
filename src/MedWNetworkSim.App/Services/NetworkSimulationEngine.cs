@@ -337,9 +337,14 @@ public sealed class NetworkSimulationEngine
 
     private NetworkModel OrderNetworkForLayerProcessing(NetworkModel network)
     {
-        var order = layerResolver.GetSimulationOrder(network)
-            .Select((layer, index) => new { layer.Id, index })
-            .ToDictionary(item => item.Id, item => item.index);
+        var simulationOrder = layerResolver.GetSimulationOrder(network);
+        // Bolt: Replaced LINQ .Select().ToDictionary() with a pre-sized Dictionary and a manual loop
+        // to avoid anonymous object allocation, enumerator, and delegate overhead during simulation startup.
+        var order = new Dictionary<Guid, int>(simulationOrder.Count);
+        for (var index = 0; index < simulationOrder.Count; index++)
+        {
+            order[simulationOrder[index].Id] = index;
+        }
 
         return new NetworkModel
         {

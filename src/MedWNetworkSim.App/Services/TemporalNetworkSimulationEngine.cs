@@ -1072,9 +1072,11 @@ public sealed class TemporalNetworkSimulationEngine
             Seed = context.Seed,
             NodesById = context.NodesById,
             ProfilesByNodeId = context.ProfilesByNodeId,
-            Supply = context.Supply.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
-            SupplyUnitCosts = context.SupplyUnitCosts.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
-            Demand = context.Demand.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
+            // Bolt: Replaced LINQ ToDictionary() with the native Dictionary copy constructor
+            // to avoid delegate and enumerator allocations on the hot routing path.
+            Supply = new Dictionary<string, double>(context.Supply, Comparer),
+            SupplyUnitCosts = new Dictionary<string, double>(context.SupplyUnitCosts, Comparer),
+            Demand = new Dictionary<string, double>(context.Demand, Comparer),
             MeetingDemandEligibleNodeIds = context.MeetingDemandEligibleNodeIds
         };
     }

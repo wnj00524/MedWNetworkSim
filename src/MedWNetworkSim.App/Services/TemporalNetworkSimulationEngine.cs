@@ -2023,7 +2023,16 @@ public sealed class TemporalNetworkSimulationEngine
             return true;
         }
 
-        return windows.Any(window => IsWithinWindow(period, window));
+        // Bolt: Replaced LINQ .Any() with manual for loop to avoid delegate allocations during temporal active-state checks
+        for (int i = 0; i < windows.Count; i++)
+        {
+            if (IsWithinWindow(period, windows[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsProductionActive(NodeTrafficProfile profile, int period)

@@ -568,6 +568,9 @@ public sealed class ScenarioEditorViewModel : ObservableObject
     private ScenarioTargetKind eventTargetKind;
     private string eventTargetIdText = string.Empty;
     private string eventTrafficTypeText = string.Empty;
+    private IReadOnlyList<string>? nodeIdOptions;
+    private IReadOnlyList<string>? edgeIdOptions;
+    private IReadOnlyList<string>? trafficTypeOptions;
     private string eventStartTimeText = "0";
     private string eventEndTimeText = string.Empty;
     private string eventValueText = "1";
@@ -619,15 +622,15 @@ public sealed class ScenarioEditorViewModel : ObservableObject
     /// <summary>
     /// Gets the collection of node id options associated with this entity.
     /// </summary>
-    public IReadOnlyList<string> NodeIdOptions => network.Nodes.Select(node => node.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+    public IReadOnlyList<string> NodeIdOptions => nodeIdOptions ??= network.Nodes.Select(node => node.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
     /// <summary>
     /// Gets the collection of edge id options associated with this entity.
     /// </summary>
-    public IReadOnlyList<string> EdgeIdOptions => network.Edges.Select(edge => edge.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+    public IReadOnlyList<string> EdgeIdOptions => edgeIdOptions ??= network.Edges.Select(edge => edge.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
     /// <summary>
     /// Gets the collection of traffic type options associated with this entity.
     /// </summary>
-    public IReadOnlyList<string> TrafficTypeOptions => network.TrafficTypes.Select(type => type.Name).OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList();
+    public IReadOnlyList<string> TrafficTypeOptions => trafficTypeOptions ??= network.TrafficTypes.Select(type => type.Name).OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList();
     /// <summary>
     /// Gets or sets the create scenario command.
     /// </summary>
@@ -1341,6 +1344,9 @@ public sealed class ScenarioEditorViewModel : ObservableObject
 
     private void RaiseReferenceDataChanged()
     {
+        nodeIdOptions = null;
+        edgeIdOptions = null;
+        trafficTypeOptions = null;
         Raise(nameof(NodeIdOptions));
         Raise(nameof(EdgeIdOptions));
         Raise(nameof(TrafficTypeOptions));

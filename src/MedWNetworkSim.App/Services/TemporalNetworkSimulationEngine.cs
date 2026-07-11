@@ -1060,6 +1060,25 @@ public sealed class TemporalNetworkSimulationEngine
 
     private static RoutingTrafficContext ToRoutingContext(TemporalTrafficContext context)
     {
+        // Bolt: Replaced LINQ ToDictionary() with manual loops to avoid enumerator and delegate allocations on hot path.
+        var supply = new Dictionary<string, double>(context.Supply.Count, Comparer);
+        foreach (var pair in context.Supply)
+        {
+            supply[pair.Key] = pair.Value;
+        }
+
+        var supplyUnitCosts = new Dictionary<string, double>(context.SupplyUnitCosts.Count, Comparer);
+        foreach (var pair in context.SupplyUnitCosts)
+        {
+            supplyUnitCosts[pair.Key] = pair.Value;
+        }
+
+        var demand = new Dictionary<string, double>(context.Demand.Count, Comparer);
+        foreach (var pair in context.Demand)
+        {
+            demand[pair.Key] = pair.Value;
+        }
+
         return new RoutingTrafficContext
         {
             TrafficType = context.TrafficType,
@@ -1072,9 +1091,9 @@ public sealed class TemporalNetworkSimulationEngine
             Seed = context.Seed,
             NodesById = context.NodesById,
             ProfilesByNodeId = context.ProfilesByNodeId,
-            Supply = context.Supply.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
-            SupplyUnitCosts = context.SupplyUnitCosts.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
-            Demand = context.Demand.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
+            Supply = supply,
+            SupplyUnitCosts = supplyUnitCosts,
+            Demand = demand,
             MeetingDemandEligibleNodeIds = context.MeetingDemandEligibleNodeIds
         };
     }

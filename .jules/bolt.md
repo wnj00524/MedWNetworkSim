@@ -43,7 +43,7 @@
 ## 2026-05-27 - [NetworkSimulationEngine Branch Routing Optimization]
 **Learning:** [When resolving capacity iteratively in loops (e.g., in `AllocateAcrossBranchRoutes`), LINQ sorting operations (`.OrderBy().ThenBy()`) on static properties inside the loop cause massive redundant O(N log N) overhead and delegate closure allocations.]
 **Action:** [Hoist static sorting constraints completely outside the capacity resolution `while` loop into a pre-allocated `List<T>`, allowing the inner loop to run as a fast O(N) linear scan.]
-## $(date +%Y-%m-%d) - [Optimize GroupBy Redundant Enumerations]
+## 2026-07-11 - [Optimize GroupBy Redundant Enumerations]
 **Learning:** In C#, applying multiple LINQ `Where()`, `ToList()`, and `Sum()` aggregations inside a `Select` projection on grouped data triggers redundant iterations over the group's elements and creates unnecessary temporary lists and delegate closures.
 **Action:** Replace multiple LINQ aggregations on `IEnumerable` groupings with a single `foreach` loop that accumulates all required metrics at once. This shifts the time complexity per group from O(k*N) to strictly O(N) and drastically cuts heap allocations.
 
@@ -57,7 +57,7 @@
 ## 2025-02-12 - Replacing LINQ in the Temporal Simulation Engine
 **Learning:** In C# hot loops such as those within `NetworkSimulationEngine` or `TemporalNetworkSimulationEngine`, standard LINQ methods like `.Where()`, `.Select()`, `.ToList()`, and `.ToDictionary()` cause significant memory allocations per call due to enumerator, delegate, and closure instances. This leads to garbage collection pressure and measurable slowdowns during the inner simulation loop.
 **Action:** Replace LINQ method chains with manual `for` or `foreach` loops on the hot path (like the `Advance` method or timeline/occupancy calculation functions). This approach avoids closures and enumerator allocations entirely while retaining the identical computational result.
-## $(date +%Y-%m-%d) - Avoiding IDictionary Interfaces for ReadOnly Conversions
+## 2026-07-11 - Avoiding IDictionary Interfaces for ReadOnly Conversions
 **Learning:** In C#, declaring variables as `IDictionary<TKey, TValue>` prevents implicit conversion to `IReadOnlyDictionary<TKey, TValue>` when passed as method arguments, causing CS1503 compilation errors. Furthermore, using `.Capacity` on a `List` or interface when pre-sizing new collections is unsafe and causes errors.
 **Action:** Always declare new collections with `var` or as concrete `Dictionary<TKey, TValue>` to allow implicit `IReadOnlyDictionary` conversions, and strictly use `.Count` instead of `.Capacity` when pre-sizing allocations.
 ## 2024-05-31 - Preserving Sort Order in LINQ to foreach Refactoring
@@ -73,10 +73,10 @@
 ## 2024-06-08 - Hoisting Dictionary Construction to Avoid $O(P \times C \times E)$ Allocation Bottleneck
 **Learning:** In C# graph reachability algorithms, if a `.ToDictionary()` call on the entire graph's edges (like `network.Edges.ToDictionary(...)`) is located inside a nested loop structure (e.g., inside `HasPermittedPath` called repeatedly by `producers.Any()` and `consumers.Any()`), it creates an enormous hidden memory and performance bottleneck, effectively multiplying an $O(E)$ operation by $O(P \times C)$.
 **Action:** When inspecting hot paths or reachability checks in simulation engines, explicitly look for dictionary or collection allocations inside the traversal or checking logic, and hoist them out as parameters to be constructed exactly once per network/batch. Replace LINQ allocations with manual, pre-sized `foreach` loops to eliminate continuous delegate and closure overhead.
-## $(date +%Y-%m-%d) - format.sh FileNotFoundException
+## 2026-07-11 - format.sh FileNotFoundException
 **Learning:** The `format.sh` script in the repository fails with a `FileNotFoundException` because `src/MedWNetworkSim.App/MedWNetworkSim.App.csproj` does not exist.
 **Action:** Use the native `dotnet format` command for linting and formatting instead.
-## $(date +%Y-%m-%d) - Preserve GroupBy Determinism when refactoring to Dictionary
+## 2026-07-11 - Preserve GroupBy Determinism when refactoring to Dictionary
 **Learning:** When refactoring LINQ `GroupBy` calls to manual `Dictionary` iterations to reduce allocation overhead, it is easy to accidentally introduce non-determinism. `Enumerable.GroupBy` yields elements in the exact order their keys first appeared, while `Dictionary` enumeration uses hash buckets (which are randomized per execution in modern .NET). This loss of determinism can be fatal in simulation engines.
 **Action:** When manually replacing `GroupBy` with a `Dictionary`, always track the order of keys explicitly as they are first encountered (e.g., using a `List<TKey> orderedKeys`) and iterate over that list instead of the dictionary keys or values.
 ## 2025-02-17 - Avoid LINQ multiple enumerator allocations during clones and sorting
@@ -88,3 +88,6 @@
 ## 2026-06-15 - Optimize Multiple ToDictionary Allocations inside Workspace UI
 **Learning:** In C#, executing multiple LINQ `.ToDictionary()` allocations on the same source collection (like building 9 different actor metrics dictionaries from `SimulationActors`) inside UI metric generation code allocates massive amounts of redundant enumerators, delegates, and intermediate dictionary structures on the UI thread, causing unnecessary memory allocation and garbage collection pauses.
 **Action:** Replace multiple `.ToDictionary()` allocations on identical source collections with a single manual `foreach` loop that populates pre-allocated dictionaries simultaneously. This transforms an O(K*N) allocation into a tight O(N) loop and completely avoids LINQ overhead.
+## 2026-07-11 - Optimize LINQ ToDictionary in TemporalNetworkSimulationEngine Hot Path
+**Learning:** In C#, repeated LINQ `.ToDictionary()` calls on hot paths, especially inside routing context conversions like `ToRoutingContext` in `TemporalNetworkSimulationEngine.cs`, create significant memory allocation bottlenecks due to enumerator and delegate generation overhead. The problem was exacerbated by doing it for multiple dictionary properties (`Supply`, `SupplyUnitCosts`, `Demand`).
+**Action:** Replace these LINQ `.ToDictionary()` allocations with manual `for` or `foreach` loops on the hot path, and pre-size the target dictionaries with `.Count` to entirely avoid LINQ overhead and unnecessary collection resizing.

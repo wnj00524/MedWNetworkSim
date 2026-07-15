@@ -859,9 +859,25 @@ public static partial class MixedRoutingAllocator
             }
         }
 
-        return routes
-            .GroupBy(route => route.PathKey, Comparer)
-            .Select(group => group.OrderBy(route => route.Score).First())
+        // Bolt: Replaced LINQ GroupBy, Select, and First with a manual dictionary aggregation
+        // to reduce allocations and improve performance in a hot code path.
+        var bestRoutesByPathKey = new Dictionary<string, RouteCandidate>(Comparer);
+        foreach (var route in routes)
+        {
+            if (bestRoutesByPathKey.TryGetValue(route.PathKey, out var existing))
+            {
+                if (route.Score < existing.Score)
+                {
+                    bestRoutesByPathKey[route.PathKey] = route;
+                }
+            }
+            else
+            {
+                bestRoutesByPathKey.Add(route.PathKey, route);
+            }
+        }
+
+        return bestRoutesByPathKey.Values
             .OrderBy(route => route.Score)
             .Take(Math.Max(1, context.RouteChoiceSettings.MaxCandidateRoutes))
             .ToList();

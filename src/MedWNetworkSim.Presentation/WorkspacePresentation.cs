@@ -5622,9 +5622,16 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     public IReadOnlyDictionary<string, (double Latitude, double Longitude)> BuildGeoNodeLookup()
     {
-        return network.Nodes
-            .Where(node => node.Latitude.HasValue && node.Longitude.HasValue)
-            .ToDictionary(node => node.Id, node => (node.Latitude!.Value, node.Longitude!.Value), StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, (double Latitude, double Longitude)>(network.Nodes.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var node in network.Nodes)
+        {
+            if (node.Latitude.HasValue && node.Longitude.HasValue)
+            {
+                result[node.Id] = (node.Latitude.Value, node.Longitude.Value);
+            }
+        }
+
+        return result;
     }
     /// <summary>
     /// Executes the build map projection viewport operation.
@@ -7261,8 +7268,17 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         LayerItems.Clear();
 
         // Bolt: Optimize O(N^2) layer counts lookup to O(1)
-        var nodeCountsByLayer = network.Nodes.GroupBy(node => node.LayerId).ToDictionary(g => g.Key, g => g.Count());
-        var edgeCountsByLayer = network.Edges.GroupBy(edge => edge.LayerId).ToDictionary(g => g.Key, g => g.Count());
+        var nodeCountsByLayer = new Dictionary<Guid, int>(network.Nodes.Count);
+        foreach (var node in network.Nodes)
+        {
+            nodeCountsByLayer[node.LayerId] = nodeCountsByLayer.GetValueOrDefault(node.LayerId) + 1;
+        }
+
+        var edgeCountsByLayer = new Dictionary<Guid, int>(network.Edges.Count);
+        foreach (var edge in network.Edges)
+        {
+            edgeCountsByLayer[edge.LayerId] = edgeCountsByLayer.GetValueOrDefault(edge.LayerId) + 1;
+        }
 
         foreach (var layer in network.Layers.OrderBy(item => item.Order))
         {
@@ -8658,14 +8674,28 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         NetworkModel network,
         TemporalNetworkSimulationEngine.TemporalSimulationStepResult result)
     {
-        var definitionsByName = network.TrafficTypes
-            .Where(definition => !string.IsNullOrWhiteSpace(definition.Name))
-            .ToDictionary(definition => definition.Name, definition => definition, Comparer);
+        var definitionsByName = new Dictionary<string, TrafficTypeDefinition>(network.TrafficTypes.Count, Comparer);
+        foreach (var definition in network.TrafficTypes)
+        {
+            if (!string.IsNullOrWhiteSpace(definition.Name))
+            {
+                definitionsByName[definition.Name] = definition;
+            }
+        }
 
-        var deliveredByTraffic = result.Allocations
-            .Where(allocation => !string.IsNullOrWhiteSpace(allocation.TrafficType))
-            .GroupBy(allocation => allocation.TrafficType, Comparer)
-            .ToDictionary(group => group.Key, group => group.ToList(), Comparer);
+        var deliveredByTraffic = new Dictionary<string, List<RouteAllocation>>(result.Allocations.Count, Comparer);
+        foreach (var allocation in result.Allocations)
+        {
+            if (!string.IsNullOrWhiteSpace(allocation.TrafficType))
+            {
+                if (!deliveredByTraffic.TryGetValue(allocation.TrafficType, out var list))
+                {
+                    list = new List<RouteAllocation>();
+                    deliveredByTraffic[allocation.TrafficType] = list;
+                }
+                list.Add(allocation);
+            }
+        }
 
         var trafficNames = definitionsByName.Keys
             .Concat(deliveredByTraffic.Keys)
@@ -8759,7 +8789,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             edge.HasWarning = false;
         }
 
-        var nodesById = network.Nodes.ToDictionary(node => node.Id, Comparer);
+        var nodesById = new Dictionary<string, NodeModel>(network.Nodes.Count, Comparer);
+        foreach (var node in network.Nodes)
+        {
+            nodesById[node.Id] = node;
+        }
 
         foreach (var node in Scene.Nodes)
         {
@@ -8838,7 +8872,12 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var allocationList = allocations.ToList();
         var edgeLoads = BuildEdgeLoads(allocationList, timeline);
         var maxLoad = Math.Max(1d, edgeLoads.Values.DefaultIfEmpty(0d).Max());
-        var edgesById = network.Edges.ToDictionary(edge => edge.Id, Comparer);
+        var edgesById = new Dictionary<string, EdgeModel>(network.Edges.Count, Comparer);
+        foreach (var edge in network.Edges)
+        {
+            edgesById[edge.Id] = edge;
+        }
+
         foreach (var edge in Scene.Edges)
         {
             if (!edgesById.TryGetValue(edge.Id, out var edgeModel)) continue;
@@ -8853,7 +8892,12 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             edge.ToolTipText = BuildEdgeToolTipText(edgeModel, edgeFlow, edgeOccupancy, edgePressure);
         }
 
-        var nodesById = network.Nodes.ToDictionary(node => node.Id, Comparer);
+        var nodesById = new Dictionary<string, NodeModel>(network.Nodes.Count, Comparer);
+        foreach (var node in network.Nodes)
+        {
+            nodesById[node.Id] = node;
+        }
+
         if (timeline is not null)
         {
             foreach (var node in Scene.Nodes)
@@ -10967,13 +11011,20 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         if (timeline is not null)
         {
-            return Scene.Edges.ToDictionary(
-                edge => edge.Id,
-                edge => timeline.EdgeOccupancy.GetValueOrDefault(edge.Id, 0d),
-                Comparer);
+            var result = new Dictionary<string, double>(Scene.Edges.Count, Comparer);
+            foreach (var edge in Scene.Edges)
+            {
+                result[edge.Id] = timeline.EdgeOccupancy.GetValueOrDefault(edge.Id, 0d);
+            }
+            return result;
         }
 
-        var edgeLoads = Scene.Edges.ToDictionary(edge => edge.Id, _ => 0d, Comparer);
+        var edgeLoads = new Dictionary<string, double>(Scene.Edges.Count, Comparer);
+        foreach (var edge in Scene.Edges)
+        {
+            edgeLoads[edge.Id] = 0d;
+        }
+
         foreach (var allocation in allocations)
         {
             foreach (var edgeId in allocation.PathEdgeIds)
@@ -11951,9 +12002,15 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private void ApplyFacilityPlanningVisuals()
     {
-        var baseNodesById = network.Nodes
-            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
-            .ToDictionary(node => node.Id, node => node, Comparer);
+        var baseNodesById = new Dictionary<string, NodeModel>(network.Nodes.Count, Comparer);
+        foreach (var node in network.Nodes)
+        {
+            if (!string.IsNullOrWhiteSpace(node.Id))
+            {
+                baseNodesById[node.Id] = node;
+            }
+        }
+
         var selectedFacilityIds = SelectedFacilityNodes
             .Where(facility => !string.IsNullOrWhiteSpace(facility.Node.Id))
             .Select(facility => facility.Node.Id)

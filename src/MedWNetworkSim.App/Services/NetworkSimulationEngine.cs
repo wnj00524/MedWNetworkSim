@@ -1186,9 +1186,15 @@ public sealed class NetworkSimulationEngine
             remainingCapacityByEdgeId,
             remainingTranshipmentCapacityByNodeId);
 
-        var orderedConsumers = targetConsumers
-            .OrderBy(nodeId => context.NodesById[nodeId].Name, Comparer)
-            .ThenBy(nodeId => nodeId, Comparer);
+        // Bolt: Replaced LINQ OrderBy/ThenBy with List constructor and in-place Sort.
+        // This eliminates delegate allocations and O(N) intermediate array generation during the sort, reducing GC pressure in hot routing loops.
+        var orderedConsumers = new List<string>(targetConsumers);
+        orderedConsumers.Sort((a, b) =>
+        {
+            var cmp = Comparer.Compare(context.NodesById[a].Name, context.NodesById[b].Name);
+            if (cmp != 0) return cmp;
+            return Comparer.Compare(a, b);
+        });
 
         foreach (var consumerNodeId in orderedConsumers)
         {
@@ -1234,12 +1240,27 @@ public sealed class NetworkSimulationEngine
             branch.FirstHopCapacity = Math.Min(branch.FirstHopCapacity, firstHopCapacity);
         }
 
-        return branchesByKey.Values
-            .Where(branch => branch.DownstreamDemand > Epsilon && branch.FirstHopCapacity > Epsilon)
-            .OrderBy(branch => context.NodesById[branch.ToNodeId].Name, Comparer)
-            .ThenBy(branch => branch.ToNodeId, Comparer)
-            .ThenBy(branch => branch.EdgeId, Comparer)
-            .ToList();
+        // Bolt: Refactored a 4-stage LINQ chain (Where/OrderBy/ThenBy/ToList) into a pre-allocated loop and an in-place sort.
+        // This completely eliminates several enumerators, hidden lambda closures, and intermediate allocations, saving massive GC pressure on large graphs.
+        var resultBranches = new List<BranchDemand>(branchesByKey.Count);
+        foreach (var branch in branchesByKey.Values)
+        {
+            if (branch.DownstreamDemand > Epsilon && branch.FirstHopCapacity > Epsilon)
+            {
+                resultBranches.Add(branch);
+            }
+        }
+
+        resultBranches.Sort((a, b) =>
+        {
+            var cmp = Comparer.Compare(context.NodesById[a.ToNodeId].Name, context.NodesById[b.ToNodeId].Name);
+            if (cmp != 0) return cmp;
+            cmp = Comparer.Compare(a.ToNodeId, b.ToNodeId);
+            if (cmp != 0) return cmp;
+            return Comparer.Compare(a.EdgeId, b.EdgeId);
+        });
+
+        return resultBranches;
     }
 
     private static List<BranchShare> AllocateAcrossBranchRoutes(double availableSupply, IReadOnlyList<BranchDemand> branches)

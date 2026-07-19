@@ -91,3 +91,6 @@
 ## 2024-05-24 - Eliminate LINQ Intersect and ToList allocations on hot paths
 **Learning:** Using `collection.Keys.Intersect(other.Keys).ToList()` inside a highly iterative simulation loop (like `ApplyLocalAllocations`) generates unnecessary `HashSet` allocations for the intersection, along with a `List<T>` enumerator. This significantly increases GC overhead without providing value.
 **Action:** Replace `Intersect().ToList()` with a standard `foreach` loop over `collection.Keys` that conditionally checks `other.ContainsKey(key)`. This O(N) iteration eliminates intermediate allocations and runs significantly faster.
+## 2025-02-12 - Replaced multiple GroupBy + ToDictionary with manual Dictionary iterations
+**Learning:** Replaced `GroupBy(x).ToDictionary(x, ...)` with manual loop implementations. `GroupBy` allocates enumerators and `IGrouping` instances for each key. Replacing them with direct iteration over collections and pre-sized dictionaries avoids intermediate allocations and avoids closure allocations inside `.ToDictionary()`.
+**Action:** Use standard `foreach` and `TryAdd` or dictionary indexer updates rather than LINQ `GroupBy` or `ToDictionary` when accumulating or summarizing data in hot loops, such as when parsing Traffic Types or determining landed unit costs.

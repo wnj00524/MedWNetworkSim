@@ -1,0 +1,81 @@
+--- src/MedWNetworkSim.App/Services/NetworkSimulationEngine.cs
++++ src/MedWNetworkSim.App/Services/NetworkSimulationEngine.cs
+@@ -40,9 +40,14 @@
+
+         var hasRecipeDependencies = HasStaticRecipeDependencies(network);
+-        var definitionsByTraffic = network.TrafficTypes
+-            .Where(definition => !string.IsNullOrWhiteSpace(definition.Name))
+-            .GroupBy(definition => definition.Name, Comparer)
+-            .ToDictionary(group => group.Key, group => group.First(), Comparer);
++        // Bolt: Replaced LINQ Where, GroupBy, and ToDictionary with a manual loop to prevent IGrouping
++        // allocations and excessive delegate overhead, keeping the Dictionary un-sized to avoid memory over-allocation.
++        var definitionsByTraffic = new Dictionary<string, TrafficTypeDefinition>(Comparer);
++        foreach (var definition in network.TrafficTypes)
++        {
++            if (!string.IsNullOrWhiteSpace(definition.Name))
++            {
++                definitionsByTraffic.TryAdd(definition.Name, definition);
++            }
++        }
+         var contexts = MixedRoutingAllocator.BuildStaticContexts(network, applyLocalAllocations: !hasRecipeDependencies).ToList();
+         // Bolt: Replaced LINQ .ToDictionary() with manual foreach to avoid enumerator and delegate allocations
+@@ -338,9 +343,11 @@
+     private NetworkModel OrderNetworkForLayerProcessing(NetworkModel network)
+     {
+-        var order = layerResolver.GetSimulationOrder(network)
+-            .Select((layer, index) => new { layer.Id, index })
+-            .ToDictionary(item => item.Id, item => item.index);
++        var simulationOrder = layerResolver.GetSimulationOrder(network);
++        // Bolt: Replaced LINQ Select and ToDictionary with a manual loop to prevent anonymous object and enumerator allocations.
++        var order = new Dictionary<Guid, int>(simulationOrder.Count);
++        for (int i = 0; i < simulationOrder.Count; i++)
++        {
++            order[simulationOrder[i].Id] = i;
++        }
+
+         return new NetworkModel
+@@ -758,21 +765,22 @@
+     private static Dictionary<string, double> SummarizeLandedUnitCosts(IEnumerable<RouteAllocation> allocations)
+     {
+-        return allocations
+-            .GroupBy(allocation => allocation.ConsumerNodeId, Comparer)
+-            .ToDictionary(
+-                group => group.Key,
+-                group =>
+-                {
+-                    // Bolt: Accumulate quantity and total cost in a single loop to avoid multiple O(N) LINQ enumerations and delegate allocations
+-                    var quantity = 0d;
+-                    var totalCost = 0d;
+-                    foreach (var allocation in group)
+-                    {
+-                        quantity += allocation.Quantity;
+-                        totalCost += allocation.DeliveredCostPerUnit * allocation.Quantity;
+-                    }
+-
+-                    return quantity > Epsilon ? totalCost / quantity : 0d;
+-                },
+-                Comparer);
++        // Bolt: Replaced LINQ GroupBy and ToDictionary with a single-pass Dictionary aggregation
++        // to eliminate IGrouping allocations, enumerator closures, and excessive delegate overhead.
++        var totals = new Dictionary<string, (double Quantity, double TotalCost)>(Comparer);
++        foreach (var allocation in allocations)
++        {
++            var addCost = allocation.DeliveredCostPerUnit * allocation.Quantity;
++            if (totals.TryGetValue(allocation.ConsumerNodeId, out var current))
++            {
++                totals[allocation.ConsumerNodeId] = (current.Quantity + allocation.Quantity, current.TotalCost + addCost);
++            }
++            else
++            {
++                totals[allocation.ConsumerNodeId] = (allocation.Quantity, addCost);
++            }
++        }
++
++        var result = new Dictionary<string, double>(totals.Count, Comparer);
++        foreach (var pair in totals)
++        {
++            result.Add(pair.Key, pair.Value.Quantity > Epsilon ? pair.Value.TotalCost / pair.Value.Quantity : 0d);
++        }
++
++        return result;
+     }

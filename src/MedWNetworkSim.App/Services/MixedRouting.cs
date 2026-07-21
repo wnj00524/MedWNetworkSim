@@ -416,19 +416,44 @@ public static partial class MixedRoutingAllocator
         }
 
         var permissionResolver = new EdgeTrafficPermissionResolver();
-        IReadOnlyDictionary<string, EdgeModel> edgesById = network.Edges.ToDictionary(edge => edge.Id, edge => edge, Comparer);
+        var edgesById = new Dictionary<string, EdgeModel>(network.Edges.Count, Comparer);
+        var edgeCapacity = new Dictionary<string, double>(network.Edges.Count, Comparer);
+        foreach (var edge in network.Edges)
+        {
+            edgesById.TryAdd(edge.Id, edge);
+            edgeCapacity.TryAdd(edge.Id, edge.Capacity ?? double.PositiveInfinity);
+        }
+
+        var nodeCapacity = new Dictionary<string, double>(network.Nodes.Count, Comparer);
+        foreach (var node in network.Nodes)
+        {
+            nodeCapacity.TryAdd(node.Id, node.TranshipmentCapacity ?? double.PositiveInfinity);
+        }
+
+        var remainingEdgeCapacityCopy = new Dictionary<string, double>(remainingCapacityByEdgeId.Count, Comparer);
+        foreach (var pair in remainingCapacityByEdgeId)
+        {
+            remainingEdgeCapacityCopy[pair.Key] = pair.Value;
+        }
+
+        var remainingNodeCapacityCopy = new Dictionary<string, double>(remainingTranshipmentCapacityByNodeId.Count, Comparer);
+        foreach (var pair in remainingTranshipmentCapacityByNodeId)
+        {
+            remainingNodeCapacityCopy[pair.Key] = pair.Value;
+        }
+
         var adjacency = BuildAdjacency(network);
         var allocationContext = new AllocationContext(adjacency, edgesById);
         var state = new NetworkState
         {
-            RemainingEdgeCapacity = remainingCapacityByEdgeId.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
-            RemainingNodeCapacity = remainingTranshipmentCapacityByNodeId.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
+            RemainingEdgeCapacity = remainingEdgeCapacityCopy,
+            RemainingNodeCapacity = remainingNodeCapacityCopy,
             RemainingEdgeTrafficCapacity = permissionResolver.BuildInitialRemainingAllowances(
                 network,
                 contexts.Select(context => context.TrafficType),
                 occupiedEdgeTrafficByKey),
-            EdgeCapacity = network.Edges.ToDictionary(edge => edge.Id, edge => edge.Capacity ?? double.PositiveInfinity, Comparer),
-            NodeCapacity = network.Nodes.ToDictionary(node => node.Id, node => node.TranshipmentCapacity ?? double.PositiveInfinity, Comparer)
+            EdgeCapacity = edgeCapacity,
+            NodeCapacity = nodeCapacity
         };
 
         foreach (var edge in network.Edges)

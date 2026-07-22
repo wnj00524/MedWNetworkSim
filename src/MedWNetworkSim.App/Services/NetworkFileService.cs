@@ -473,7 +473,9 @@ public sealed class NetworkFileService
                 throw new InvalidOperationException("Nested subnetworks are limited to one level in this version.");
             }
 
-            var nextAncestry = ancestry.Concat([subnetworkId]).ToHashSet(Comparer);
+            // Bolt: Replaced LINQ Concat() and ToHashSet() with manual HashSet cloning and Add to prevent enumerator and delegate allocations
+            var nextAncestry = new HashSet<string>(ancestry, Comparer);
+            nextAncestry.Add(subnetworkId);
             var childNetwork = NormalizeAndValidate(subnetwork.Network, forceLayoutAllNodes, trafficTypesWithExplicitFlowSplitPolicy: null, depth + 1, nextAncestry);
             if (childNetwork.Subnetworks is { Count: > 0 })
             {

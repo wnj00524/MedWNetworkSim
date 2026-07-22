@@ -943,10 +943,19 @@ public static partial class MixedRoutingAllocator
                 var effectiveTime = GetEffectiveArcTime(context, arc, state);
                 var effectiveCost = GetEffectiveArcCost(context, arc, state);
                 var score = current.Score + Score(effectiveTime, effectiveCost, context.RoutingPreference);
+                // Bolt: Replaced LINQ Concat() and ToList() with manual pre-sized Lists and loops to prevent enumerator and delegate allocations
+                var nextPathNodeIds = new List<string>(current.PathNodeIds.Count + 1);
+                for (int i = 0; i < current.PathNodeIds.Count; i++) nextPathNodeIds.Add(current.PathNodeIds[i]);
+                nextPathNodeIds.Add(arc.ToNodeId);
+
+                var nextPathEdgeIds = new List<string>(current.PathEdgeIds.Count + 1);
+                for (int i = 0; i < current.PathEdgeIds.Count; i++) nextPathEdgeIds.Add(current.PathEdgeIds[i]);
+                nextPathEdgeIds.Add(arc.EdgeId);
+
                 var next = new RouteSearchState(
                     arc.ToNodeId,
-                    current.PathNodeIds.Concat([arc.ToNodeId]).ToList(),
-                    current.PathEdgeIds.Concat([arc.EdgeId]).ToList(),
+                    nextPathNodeIds,
+                    nextPathEdgeIds,
                     current.BaseTime + arc.Time,
                     current.BaseCost + arc.Cost,
                     score);

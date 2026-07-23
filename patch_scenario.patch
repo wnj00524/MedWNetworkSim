@@ -1,0 +1,52 @@
+--- src/MedWNetworkSim.Presentation/WorkspacePresentation.cs
++++ src/MedWNetworkSim.Presentation/WorkspacePresentation.cs
+@@ -585,6 +585,10 @@
+     private string eventValueError = string.Empty;
+     private string validationSummary = "Open or create a scenario to begin.";
+
++    private IReadOnlyList<string>? cachedNodeIdOptions;
++    private IReadOnlyList<string>? cachedEdgeIdOptions;
++    private IReadOnlyList<string>? cachedTrafficTypeOptions;
++
+     public ScenarioEditorViewModel(NetworkModel network, Action markDirty)
+     {
+         this.network = network;
+@@ -619,15 +623,15 @@
+     /// <summary>
+     /// Gets the collection of node id options associated with this entity.
+     /// </summary>
+-    public IReadOnlyList<string> NodeIdOptions => network.Nodes.Select(node => node.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
++    public IReadOnlyList<string> NodeIdOptions => cachedNodeIdOptions ??= network.Nodes.Select(node => node.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+     /// <summary>
+     /// Gets the collection of edge id options associated with this entity.
+     /// </summary>
+-    public IReadOnlyList<string> EdgeIdOptions => network.Edges.Select(edge => edge.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
++    public IReadOnlyList<string> EdgeIdOptions => cachedEdgeIdOptions ??= network.Edges.Select(edge => edge.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+     /// <summary>
+     /// Gets the collection of traffic type options associated with this entity.
+     /// </summary>
+-    public IReadOnlyList<string> TrafficTypeOptions => network.TrafficTypes.Select(type => type.Name).OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList();
++    public IReadOnlyList<string> TrafficTypeOptions => cachedTrafficTypeOptions ??= network.TrafficTypes.Select(type => type.Name).OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList();
+     /// <summary>
+     /// Gets or sets the create scenario command.
+     /// </summary>
+@@ -871,6 +875,9 @@
+     public void Reset(NetworkModel model)
+     {
+         network = model;
++        cachedNodeIdOptions = null;
++        cachedEdgeIdOptions = null;
++        cachedTrafficTypeOptions = null;
+         Open();
+         RaiseReferenceDataChanged();
+     }
+@@ -1341,6 +1348,9 @@
+
+     private void RaiseReferenceDataChanged()
+     {
++        cachedNodeIdOptions = null;
++        cachedEdgeIdOptions = null;
++        cachedTrafficTypeOptions = null;
+         Raise(nameof(NodeIdOptions));
+         Raise(nameof(EdgeIdOptions));
+         Raise(nameof(TrafficTypeOptions));

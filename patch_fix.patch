@@ -1,0 +1,12 @@
+--- src/MedWNetworkSim.Presentation/WorkspacePresentation.cs
++++ src/MedWNetworkSim.Presentation/WorkspacePresentation.cs
+@@ -888,6 +888,9 @@
+
+     public void Open()
+     {
++        cachedNodeIdOptions = null;
++        cachedEdgeIdOptions = null;
++        cachedTrafficTypeOptions = null;
+         snapshot = CloneScenarios(network.ScenarioDefinitions);
+         SelectedScenarioDefinition = network.ScenarioDefinitions.FirstOrDefault();
+         if (SelectedScenarioDefinition is null)

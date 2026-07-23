@@ -585,10 +585,6 @@ public sealed class ScenarioEditorViewModel : ObservableObject
     private string eventValueError = string.Empty;
     private string validationSummary = "Open or create a scenario to begin.";
 
-    private IReadOnlyList<string>? cachedNodeIdOptions;
-    private IReadOnlyList<string>? cachedEdgeIdOptions;
-    private IReadOnlyList<string>? cachedTrafficTypeOptions;
-
     public ScenarioEditorViewModel(NetworkModel network, Action markDirty)
     {
         this.network = network;
@@ -623,18 +619,15 @@ public sealed class ScenarioEditorViewModel : ObservableObject
     /// <summary>
     /// Gets the collection of node id options associated with this entity.
     /// </summary>
-    // Bolt ⚡: Cache dropdown options to avoid expensive O(N log N) sorting and list allocations on every property evaluation during Avalonia bindings.
-    public IReadOnlyList<string> NodeIdOptions => cachedNodeIdOptions ??= network.Nodes.Select(node => node.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+    public IReadOnlyList<string> NodeIdOptions => network.Nodes.Select(node => node.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
     /// <summary>
     /// Gets the collection of edge id options associated with this entity.
     /// </summary>
-    // Bolt ⚡: Cache dropdown options to avoid expensive O(N log N) sorting and list allocations on every property evaluation during Avalonia bindings.
-    public IReadOnlyList<string> EdgeIdOptions => cachedEdgeIdOptions ??= network.Edges.Select(edge => edge.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+    public IReadOnlyList<string> EdgeIdOptions => network.Edges.Select(edge => edge.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
     /// <summary>
     /// Gets the collection of traffic type options associated with this entity.
     /// </summary>
-    // Bolt ⚡: Cache dropdown options to avoid expensive O(N log N) sorting and list allocations on every property evaluation during Avalonia bindings.
-    public IReadOnlyList<string> TrafficTypeOptions => cachedTrafficTypeOptions ??= network.TrafficTypes.Select(type => type.Name).OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList();
+    public IReadOnlyList<string> TrafficTypeOptions => network.TrafficTypes.Select(type => type.Name).OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList();
     /// <summary>
     /// Gets or sets the create scenario command.
     /// </summary>
@@ -876,9 +869,6 @@ public sealed class ScenarioEditorViewModel : ObservableObject
     public void AttachNetwork(NetworkModel model)
     {
         network = model;
-        cachedNodeIdOptions = null;
-        cachedEdgeIdOptions = null;
-        cachedTrafficTypeOptions = null;
         Open();
         RaiseReferenceDataChanged();
     }
@@ -888,9 +878,6 @@ public sealed class ScenarioEditorViewModel : ObservableObject
 
     public void Open()
     {
-        cachedNodeIdOptions = null;
-        cachedEdgeIdOptions = null;
-        cachedTrafficTypeOptions = null;
         snapshot = CloneScenarios(network.ScenarioDefinitions);
         SelectedScenarioDefinition = network.ScenarioDefinitions.FirstOrDefault();
         if (SelectedScenarioDefinition is null)
@@ -1354,9 +1341,6 @@ public sealed class ScenarioEditorViewModel : ObservableObject
 
     private void RaiseReferenceDataChanged()
     {
-        cachedNodeIdOptions = null;
-        cachedEdgeIdOptions = null;
-        cachedTrafficTypeOptions = null;
         Raise(nameof(NodeIdOptions));
         Raise(nameof(EdgeIdOptions));
         Raise(nameof(TrafficTypeOptions));

@@ -1,0 +1,20 @@
+--- src/MedWNetworkSim.Presentation/WorkspacePresentation.cs
++++ src/MedWNetworkSim.Presentation/WorkspacePresentation.cs
+@@ -623,14 +623,17 @@
+     /// <summary>
+     /// Gets the collection of node id options associated with this entity.
+     /// </summary>
++    // Bolt ⚡: Cache dropdown options to avoid expensive O(N log N) sorting and list allocations on every property evaluation during Avalonia bindings.
+     public IReadOnlyList<string> NodeIdOptions => cachedNodeIdOptions ??= network.Nodes.Select(node => node.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+     /// <summary>
+     /// Gets the collection of edge id options associated with this entity.
+     /// </summary>
++    // Bolt ⚡: Cache dropdown options to avoid expensive O(N log N) sorting and list allocations on every property evaluation during Avalonia bindings.
+     public IReadOnlyList<string> EdgeIdOptions => cachedEdgeIdOptions ??= network.Edges.Select(edge => edge.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+     /// <summary>
+     /// Gets the collection of traffic type options associated with this entity.
+     /// </summary>
++    // Bolt ⚡: Cache dropdown options to avoid expensive O(N log N) sorting and list allocations on every property evaluation during Avalonia bindings.
+     public IReadOnlyList<string> TrafficTypeOptions => cachedTrafficTypeOptions ??= network.TrafficTypes.Select(type => type.Name).OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList();
+     /// <summary>
+     /// Gets or sets the create scenario command.

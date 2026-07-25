@@ -1068,6 +1068,9 @@ public sealed class TemporalNetworkSimulationEngine
 
     private static RoutingTrafficContext ToRoutingContext(TemporalTrafficContext context)
     {
+        // Bolt: Replaced LINQ .ToDictionary() with the Dictionary copy constructor using the existing IDictionary.
+        // This avoids allocating multiple enumerators, closures, and delegates during context conversion
+        // in the hot simulation timeline loop.
         return new RoutingTrafficContext
         {
             TrafficType = context.TrafficType,
@@ -1080,9 +1083,9 @@ public sealed class TemporalNetworkSimulationEngine
             Seed = context.Seed,
             NodesById = context.NodesById,
             ProfilesByNodeId = context.ProfilesByNodeId,
-            Supply = context.Supply.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
-            SupplyUnitCosts = context.SupplyUnitCosts.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
-            Demand = context.Demand.ToDictionary(pair => pair.Key, pair => pair.Value, Comparer),
+            Supply = new Dictionary<string, double>(context.Supply, Comparer),
+            SupplyUnitCosts = new Dictionary<string, double>(context.SupplyUnitCosts, Comparer),
+            Demand = new Dictionary<string, double>(context.Demand, Comparer),
             MeetingDemandEligibleNodeIds = context.MeetingDemandEligibleNodeIds
         };
     }

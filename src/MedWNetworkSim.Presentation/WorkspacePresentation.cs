@@ -7260,9 +7260,20 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         networkLayerService.EnsureLayerIntegrity(network);
         LayerItems.Clear();
 
-        // Bolt: Optimize O(N^2) layer counts lookup to O(1)
-        var nodeCountsByLayer = network.Nodes.GroupBy(node => node.LayerId).ToDictionary(g => g.Key, g => g.Count());
-        var edgeCountsByLayer = network.Edges.GroupBy(edge => edge.LayerId).ToDictionary(g => g.Key, g => g.Count());
+        // Bolt: Optimize O(N^2) layer counts lookup to O(1) and avoid LINQ allocations
+        var nodeCountsByLayer = new Dictionary<Guid, int>(network.Layers.Count);
+        foreach (var node in network.Nodes)
+        {
+            if (node.LayerId == Guid.Empty) continue;
+            nodeCountsByLayer[node.LayerId] = nodeCountsByLayer.GetValueOrDefault(node.LayerId) + 1;
+        }
+
+        var edgeCountsByLayer = new Dictionary<Guid, int>(network.Layers.Count);
+        foreach (var edge in network.Edges)
+        {
+            if (edge.LayerId == Guid.Empty) continue;
+            edgeCountsByLayer[edge.LayerId] = edgeCountsByLayer.GetValueOrDefault(edge.LayerId) + 1;
+        }
 
         foreach (var layer in network.Layers.OrderBy(item => item.Order))
         {
@@ -7957,10 +7968,16 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private SimulationActorMetrics CreateEconomicMetrics(TrafficEconomicSettlementResult settlement)
     {
         var allocations = settlement.Outcomes.SelectMany(outcome => outcome.Allocations).ToList();
-        var flowByEdge = allocations
-            .SelectMany(allocation => allocation.PathEdgeIds.Distinct(Comparer).Select(edgeId => (edgeId, allocation.Quantity)))
-            .GroupBy(item => item.edgeId, Comparer)
-            .ToDictionary(group => group.Key, group => group.Sum(item => item.Quantity), Comparer);
+        var flowByEdge = new Dictionary<string, double>(Comparer);
+        foreach (var allocation in allocations)
+        {
+            var uniqueEdges = allocation.PathEdgeIds.Distinct(Comparer);
+            foreach (var edgeId in uniqueEdges)
+            {
+                flowByEdge[edgeId] = flowByEdge.GetValueOrDefault(edgeId) + allocation.Quantity;
+            }
+        }
+
         var utilisation = network.Edges
             .Where(edge => edge.Capacity.HasValue && edge.Capacity.Value > 0d)
             .Select(edge => flowByEdge.GetValueOrDefault(edge.Id) / edge.Capacity!.Value)
@@ -8838,7 +8855,12 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var allocationList = allocations.ToList();
         var edgeLoads = BuildEdgeLoads(allocationList, timeline);
         var maxLoad = Math.Max(1d, edgeLoads.Values.DefaultIfEmpty(0d).Max());
-        var edgesById = network.Edges.ToDictionary(edge => edge.Id, Comparer);
+        var edgesById = new Dictionary<string, EdgeModel>(network.Edges.Count, Comparer);
+        foreach (var edge in network.Edges)
+        {
+            edgesById[edge.Id] = edge;
+        }
+
         foreach (var edge in Scene.Edges)
         {
             if (!edgesById.TryGetValue(edge.Id, out var edgeModel)) continue;
@@ -8853,7 +8875,12 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             edge.ToolTipText = BuildEdgeToolTipText(edgeModel, edgeFlow, edgeOccupancy, edgePressure);
         }
 
-        var nodesById = network.Nodes.ToDictionary(node => node.Id, Comparer);
+        var nodesById = new Dictionary<string, NodeModel>(network.Nodes.Count, Comparer);
+        foreach (var node in network.Nodes)
+        {
+            nodesById[node.Id] = node;
+        }
+
         if (timeline is not null)
         {
             foreach (var node in Scene.Nodes)

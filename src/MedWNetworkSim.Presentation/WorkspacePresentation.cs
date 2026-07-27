@@ -7957,10 +7957,23 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private SimulationActorMetrics CreateEconomicMetrics(TrafficEconomicSettlementResult settlement)
     {
         var allocations = settlement.Outcomes.SelectMany(outcome => outcome.Allocations).ToList();
-        var flowByEdge = allocations
-            .SelectMany(allocation => allocation.PathEdgeIds.Distinct(Comparer).Select(edgeId => (edgeId, allocation.Quantity)))
-            .GroupBy(item => item.edgeId, Comparer)
-            .ToDictionary(group => group.Key, group => group.Sum(item => item.Quantity), Comparer);
+
+        // Bolt: Replace LINQ SelectMany, GroupBy, and ToDictionary with manual loops and a reusable HashSet to eliminate massive enumerator, closure, grouping and tuple allocations on hot path UI refreshes.
+        var flowByEdge = new Dictionary<string, double>(Comparer);
+        var seenEdges = new HashSet<string>(Comparer);
+        foreach (var allocation in allocations)
+        {
+            seenEdges.Clear();
+            foreach (var edgeId in allocation.PathEdgeIds)
+            {
+                if (seenEdges.Add(edgeId))
+                {
+                    flowByEdge.TryGetValue(edgeId, out var current);
+                    flowByEdge[edgeId] = current + allocation.Quantity;
+                }
+            }
+        }
+
         var utilisation = network.Edges
             .Where(edge => edge.Capacity.HasValue && edge.Capacity.Value > 0d)
             .Select(edge => flowByEdge.GetValueOrDefault(edge.Id) / edge.Capacity!.Value)

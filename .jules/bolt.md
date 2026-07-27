@@ -97,3 +97,6 @@
 ## 2024-05-18 - Replacing Multiple ToDictionary Allocations with Pre-sized Dictionary and foreach in MixedRouting.cs
 **Learning:** Chained initialization of `NetworkState` in `MixedRoutingAllocator.Allocate` using multiple `.ToDictionary()` calls causes unnecessary delegate allocations and garbage generation. This is especially true for large networks where edge/node collections have significant element counts.
 **Action:** Replace `Enumerable.ToDictionary` with standard `foreach` loops on pre-sized `Dictionary` instances (using `Edges.Count`, `Nodes.Count`, etc.). This optimizes dictionary allocations in C# hot loops and completely avoids intermediate enumerator, closure, and delegate allocations.
+## 2024-07-27 - Optimize LINQ SelectMany and GroupBy on UI updates
+**Learning:** In C#, replacing `SelectMany` and `GroupBy` LINQ chains with manual `foreach` loops using a reusable `HashSet` completely eliminates intermediate enumerators, delegates, and `IGrouping` allocations on hot paths.
+**Action:** Identify expensive multi-pass LINQ operations in hot paths and replace them with single-pass or manual nested loops and mutable state like `Dictionary` and `HashSet` cleared between iterations.

@@ -1138,9 +1138,29 @@ public sealed class NetworkSimulationEngine
             foreach (var share in branchShares)
             {
                 var branch = share.Branch;
-                var nextPathNodeIds = pathNodeIds.Concat([branch.ToNodeId]).ToList();
-                var nextPathEdgeIds = pathEdgeIds.Concat([branch.EdgeId]).ToList();
-                var nextPathTranshipmentNodeIds = pathTranshipmentNodeIds.ToList();
+
+                // Bolt: Replaced LINQ Concat().ToList() with pre-sized lists and loops to avoid
+                // allocating enumerators, delegate closures, and single-item arrays on the hot path.
+                var nextPathNodeIds = new List<string>(pathNodeIds.Count + 1);
+                for (int i = 0; i < pathNodeIds.Count; i++)
+                {
+                    nextPathNodeIds.Add(pathNodeIds[i]);
+                }
+                nextPathNodeIds.Add(branch.ToNodeId);
+
+                var nextPathEdgeIds = new List<string>(pathEdgeIds.Count + 1);
+                for (int i = 0; i < pathEdgeIds.Count; i++)
+                {
+                    nextPathEdgeIds.Add(pathEdgeIds[i]);
+                }
+                nextPathEdgeIds.Add(branch.EdgeId);
+
+                var nextPathTranshipmentNodeIds = new List<string>(pathTranshipmentNodeIds.Count + 1);
+                for (int i = 0; i < pathTranshipmentNodeIds.Count; i++)
+                {
+                    nextPathTranshipmentNodeIds.Add(pathTranshipmentNodeIds[i]);
+                }
+
                 if (!Comparer.Equals(currentNodeId, producerNodeId))
                 {
                     nextPathTranshipmentNodeIds.Add(currentNodeId);

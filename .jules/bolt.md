@@ -97,3 +97,6 @@
 ## 2024-05-18 - Replacing Multiple ToDictionary Allocations with Pre-sized Dictionary and foreach in MixedRouting.cs
 **Learning:** Chained initialization of `NetworkState` in `MixedRoutingAllocator.Allocate` using multiple `.ToDictionary()` calls causes unnecessary delegate allocations and garbage generation. This is especially true for large networks where edge/node collections have significant element counts.
 **Action:** Replace `Enumerable.ToDictionary` with standard `foreach` loops on pre-sized `Dictionary` instances (using `Edges.Count`, `Nodes.Count`, etc.). This optimizes dictionary allocations in C# hot loops and completely avoids intermediate enumerator, closure, and delegate allocations.
+## 2025-02-17 - Avoid Duplicate Compile Includes in SDK Projects
+**Learning:** When creating temporary benchmark projects using the .NET SDK (`<Project Sdk="Microsoft.NET.Sdk">`), manually adding `<Compile Include="perf_test.cs" />` causes a `NETSDK1022` build error because the SDK includes all `.cs` files in the directory by default.
+**Action:** Do not manually specify `<Compile>` items for C# source files in the `.csproj` file of simple benchmark or test projects unless explicitly disabling the default includes.

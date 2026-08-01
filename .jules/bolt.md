@@ -97,3 +97,7 @@
 ## 2024-05-18 - Replacing Multiple ToDictionary Allocations with Pre-sized Dictionary and foreach in MixedRouting.cs
 **Learning:** Chained initialization of `NetworkState` in `MixedRoutingAllocator.Allocate` using multiple `.ToDictionary()` calls causes unnecessary delegate allocations and garbage generation. This is especially true for large networks where edge/node collections have significant element counts.
 **Action:** Replace `Enumerable.ToDictionary` with standard `foreach` loops on pre-sized `Dictionary` instances (using `Edges.Count`, `Nodes.Count`, etc.). This optimizes dictionary allocations in C# hot loops and completely avoids intermediate enumerator, closure, and delegate allocations.
+
+## 2024-08-01 - Avoid LINQ Concat().ToList() on hot path collections
+**Learning:** Using `pathNodeIds.Concat([branch.ToNodeId]).ToList()` on high-frequency paths like recursive graph allocations creates significant memory pressure by instantiating new arrays (from the collection literals), new enumerators, and internal `List` resizing buffers on every iteration.
+**Action:** Replace these calls with a manual initialization `new List<T>(list.Count + 1)` and a standard `for` loop to directly `Add` elements, which completely eliminates intermediate allocations and enumerator overhead.

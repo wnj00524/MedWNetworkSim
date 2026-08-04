@@ -97,3 +97,6 @@
 ## 2024-05-18 - Replacing Multiple ToDictionary Allocations with Pre-sized Dictionary and foreach in MixedRouting.cs
 **Learning:** Chained initialization of `NetworkState` in `MixedRoutingAllocator.Allocate` using multiple `.ToDictionary()` calls causes unnecessary delegate allocations and garbage generation. This is especially true for large networks where edge/node collections have significant element counts.
 **Action:** Replace `Enumerable.ToDictionary` with standard `foreach` loops on pre-sized `Dictionary` instances (using `Edges.Count`, `Nodes.Count`, etc.). This optimizes dictionary allocations in C# hot loops and completely avoids intermediate enumerator, closure, and delegate allocations.
+## 2024-05-18 - Replacing Multiple ToDictionary Allocations with Pre-sized Dictionary and foreach in TemporalNetworkSimulationEngine.cs
+**Learning:** Replacing multiple `.ToDictionary()` allocations on identical source collections with a single manual `foreach` loop that populates pre-allocated dictionaries simultaneously completely avoids LINQ overhead.
+**Action:** Replace multiple `.ToDictionary()` allocations with pre-allocated dictionaries and manual copy loops to save enumerator overhead.

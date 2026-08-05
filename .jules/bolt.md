@@ -100,3 +100,6 @@
 ## 2024-05-18 - Replacing Multiple ToDictionary Allocations with Pre-sized Dictionary and foreach in TemporalNetworkSimulationEngine.cs
 **Learning:** Replacing multiple `.ToDictionary()` allocations on identical source collections with a single manual `foreach` loop that populates pre-allocated dictionaries simultaneously completely avoids LINQ overhead.
 **Action:** Replace multiple `.ToDictionary()` allocations with pre-allocated dictionaries and manual copy loops to save enumerator overhead.
+## 2024-08-05 - Avoid .Concat().ToList() in recursive hot paths
+**Learning:** In highly recursive routing allocation methods like `AllocateProportionallyFromNode`, creating new path lists using `IEnumerable.Concat([newItem]).ToList()` causes significant memory pressure. It creates numerous small array allocations for the single item array, delegate allocations for the LINQ methods, and enumerator allocations for traversing the result before it reaches `ToList()`. In C# hot paths, this is a major source of GC overhead.
+**Action:** Replace `.Concat([newItem]).ToList()` with a pre-sized `List<T>` initialized with `Count + 1`, populated via a `for` loop, followed by a final `.Add(newItem)`. This avoids all enumerator, array, and delegate allocations.

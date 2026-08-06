@@ -393,18 +393,44 @@ public sealed class FacilityModeSimulationEngine
         return profile;
     }
 
-    private static double GetDemand(NodeModel node, string trafficType) =>
-        node.TrafficProfiles
-            .Where(profile => Comparer.Equals(profile.TrafficType, trafficType))
-            .Sum(profile => Math.Max(0d, profile.Consumption));
+    private static double GetDemand(NodeModel node, string trafficType)
+    {
+        var total = 0d;
+        foreach (var profile in node.TrafficProfiles)
+        {
+            if (Comparer.Equals(profile.TrafficType, trafficType))
+            {
+                total += Math.Max(0d, profile.Consumption);
+            }
+        }
+        return total;
+    }
 
-    private static double GetTotalDemand(NetworkModel network, string trafficType) =>
-        network.Nodes.Sum(node => GetDemand(node, trafficType));
+    private static double GetTotalDemand(NetworkModel network, string trafficType)
+    {
+        var total = 0d;
+        foreach (var node in network.Nodes)
+        {
+            total += GetDemand(node, trafficType);
+        }
+        return total;
+    }
 
-    private static double GetTotalProduction(NetworkModel network, string trafficType) =>
-        network.Nodes.Sum(node => node.TrafficProfiles
-            .Where(profile => Comparer.Equals(profile.TrafficType, trafficType))
-            .Sum(profile => Math.Max(0d, profile.Production)));
+    private static double GetTotalProduction(NetworkModel network, string trafficType)
+    {
+        var total = 0d;
+        foreach (var node in network.Nodes)
+        {
+            foreach (var profile in node.TrafficProfiles)
+            {
+                if (Comparer.Equals(profile.TrafficType, trafficType))
+                {
+                    total += Math.Max(0d, profile.Production);
+                }
+            }
+        }
+        return total;
+    }
 
     private static string GetNodeName(NetworkModel network, string nodeId) =>
         network.Nodes.FirstOrDefault(node => Comparer.Equals(node.Id, nodeId))?.Name ?? nodeId;

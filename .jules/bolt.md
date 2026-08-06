@@ -100,3 +100,6 @@
 ## 2024-05-18 - Replacing Multiple ToDictionary Allocations with Pre-sized Dictionary and foreach in TemporalNetworkSimulationEngine.cs
 **Learning:** Replacing multiple `.ToDictionary()` allocations on identical source collections with a single manual `foreach` loop that populates pre-allocated dictionaries simultaneously completely avoids LINQ overhead.
 **Action:** Replace multiple `.ToDictionary()` allocations with pre-allocated dictionaries and manual copy loops to save enumerator overhead.
+## 2025-03-09 - Replaced LINQ Sum and Where with explicit loops in FacilityModeSimulationEngine
+**Learning:** Replaced `node.TrafficProfiles.Where(...).Sum(...)` with an explicit `foreach` loop inside `FacilityModeSimulationEngine.cs`. Because this logic executes inside loops within loops, LINQ introduces excessive delegate allocation and garbage collection overhead.
+**Action:** When finding properties or methods computing sums or logic by chaining `Where` and `Sum` via LINQ inside network evaluations, replace them with standard `foreach` loops to save GC overhead.

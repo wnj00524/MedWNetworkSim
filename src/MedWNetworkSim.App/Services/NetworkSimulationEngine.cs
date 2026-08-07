@@ -123,8 +123,19 @@ public sealed class NetworkSimulationEngine
         foreach (var context in contexts)
         {
             AddReachabilityWarnings(network, context);
-            var unusedSupply = context.Supply.Values.Sum(value => Math.Max(0d, value));
-            var unmetDemand = context.Demand.Values.Sum(value => Math.Max(0d, value));
+
+            // Bolt: Replaced LINQ .Sum() with manual loops to prevent delegate and enumerator allocations
+            double unusedSupply = 0d;
+            foreach (var value in context.Supply.Values)
+            {
+                if (value > 0) unusedSupply += value;
+            }
+
+            double unmetDemand = 0d;
+            foreach (var value in context.Demand.Values)
+            {
+                if (value > 0) unmetDemand += value;
+            }
 
             if (unusedSupply > Epsilon)
             {
@@ -156,7 +167,13 @@ public sealed class NetworkSimulationEngine
                 context.Notes.Add("Shared edge or node transhipment capacity limits may have prevented additional routing.");
             }
 
-            var totalBidCost = context.Allocations.Sum(allocation => allocation.BidCostPerUnit * allocation.Quantity);
+            // Bolt: Eliminated LINQ .Sum() allocation and delegate overhead by using a standard foreach loop
+            double totalBidCost = 0d;
+            foreach (var allocation in context.Allocations)
+            {
+                totalBidCost += allocation.BidCostPerUnit * allocation.Quantity;
+            }
+
             if (totalBidCost > Epsilon)
             {
                 context.Notes.Add($"Capacity bidding added {totalBidCost:0.##} in extra movement cost.");
@@ -1389,6 +1406,13 @@ public sealed class NetworkSimulationEngine
             routeCapacity);
         var deliveredCostPerUnit = transitCostPerUnit + bidCostPerUnit;
 
+        // Bolt: Eliminated LINQ .Select() overhead and enumerator allocations for PathNodeNames by using a pre-sized manual loop
+        var pathNodeNames = new List<string>(pathNodeIds.Count);
+        foreach (var nodeId in pathNodeIds)
+        {
+            pathNodeNames.Add(context.NodesById[nodeId].Name);
+        }
+
         context.Allocations.Add(new RouteAllocation
         {
             TrafficType = context.TrafficType,
@@ -1406,7 +1430,7 @@ public sealed class NetworkSimulationEngine
             DeliveredCostPerUnit = deliveredCostPerUnit,
             TotalMovementCost = deliveredCostPerUnit * quantity,
             TotalScore = totalScore,
-            PathNodeNames = pathNodeIds.Select(nodeId => context.NodesById[nodeId].Name).ToList(),
+            PathNodeNames = pathNodeNames,
             PathNodeIds = pathNodeIds.ToList(),
             PathEdgeIds = pathEdgeIds.ToList()
         });

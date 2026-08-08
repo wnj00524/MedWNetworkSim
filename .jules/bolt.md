@@ -103,3 +103,6 @@
 ## 2025-03-09 - Replaced LINQ Sum and Where with explicit loops in FacilityModeSimulationEngine
 **Learning:** Replaced `node.TrafficProfiles.Where(...).Sum(...)` with an explicit `foreach` loop inside `FacilityModeSimulationEngine.cs`. Because this logic executes inside loops within loops, LINQ introduces excessive delegate allocation and garbage collection overhead.
 **Action:** When finding properties or methods computing sums or logic by chaining `Where` and `Sum` via LINQ inside network evaluations, replace them with standard `foreach` loops to save GC overhead.
+## 2024-05-18 - Optimize LINQ Where().ToDictionary() to eliminate enumerator overhead
+**Learning:** Replaced `network.Nodes.Where(...).ToDictionary(...)` with a standard `foreach` loop and pre-sized dictionary. The indexer method `lookup[node.Id] = ...` gracefully overwrites duplicate keys, whereas `.ToDictionary()` throws an `ArgumentException`.
+**Action:** When refactoring `.ToDictionary()`, document the slight change in duplicate key behavior and use `.Add()` if exception-throwing on duplicates is strictly required by the domain logic.

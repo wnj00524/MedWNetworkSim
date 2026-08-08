@@ -5622,9 +5622,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     public IReadOnlyDictionary<string, (double Latitude, double Longitude)> BuildGeoNodeLookup()
     {
-        return network.Nodes
-            .Where(node => node.Latitude.HasValue && node.Longitude.HasValue)
-            .ToDictionary(node => node.Id, node => (node.Latitude!.Value, node.Longitude!.Value), StringComparer.OrdinalIgnoreCase);
+        // Bolt: Optimized LINQ Where().ToDictionary() with manual foreach loop and pre-sized dictionary.
+        // This avoids delegate allocations, enumerator allocation, and intermediate resizing overhead.
+        var lookup = new Dictionary<string, (double Latitude, double Longitude)>(network.Nodes.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var node in network.Nodes)
+        {
+            if (node.Latitude.HasValue && node.Longitude.HasValue)
+            {
+                // Note: Indexer gracefully overwrites duplicate keys, whereas .ToDictionary threw ArgumentException.
+                lookup[node.Id] = (node.Latitude.Value, node.Longitude.Value);
+            }
+        }
+        return lookup;
     }
     /// <summary>
     /// Executes the build map projection viewport operation.

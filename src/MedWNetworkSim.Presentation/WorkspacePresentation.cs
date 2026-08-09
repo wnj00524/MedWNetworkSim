@@ -5622,9 +5622,16 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     public IReadOnlyDictionary<string, (double Latitude, double Longitude)> BuildGeoNodeLookup()
     {
-        return network.Nodes
-            .Where(node => node.Latitude.HasValue && node.Longitude.HasValue)
-            .ToDictionary(node => node.Id, node => (node.Latitude!.Value, node.Longitude!.Value), StringComparer.OrdinalIgnoreCase);
+        // Bolt: Optimize LINQ ToDictionary allocations with a manual loop to save enumerators on hot path
+        var result = new Dictionary<string, (double Latitude, double Longitude)>(network.Nodes.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var node in network.Nodes)
+        {
+            if (node.Latitude.HasValue && node.Longitude.HasValue)
+            {
+                result[node.Id] = (node.Latitude.Value, node.Longitude.Value);
+            }
+        }
+        return result;
     }
     /// <summary>
     /// Executes the build map projection viewport operation.
@@ -8838,7 +8845,14 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var allocationList = allocations.ToList();
         var edgeLoads = BuildEdgeLoads(allocationList, timeline);
         var maxLoad = Math.Max(1d, edgeLoads.Values.DefaultIfEmpty(0d).Max());
-        var edgesById = network.Edges.ToDictionary(edge => edge.Id, Comparer);
+
+        // Bolt: Optimize LINQ ToDictionary allocations with a manual loop to save enumerators on UI thread
+        var edgesById = new Dictionary<string, EdgeModel>(network.Edges.Count, Comparer);
+        foreach (var edge in network.Edges)
+        {
+            edgesById[edge.Id] = edge;
+        }
+
         foreach (var edge in Scene.Edges)
         {
             if (!edgesById.TryGetValue(edge.Id, out var edgeModel)) continue;
@@ -8853,7 +8867,13 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             edge.ToolTipText = BuildEdgeToolTipText(edgeModel, edgeFlow, edgeOccupancy, edgePressure);
         }
 
-        var nodesById = network.Nodes.ToDictionary(node => node.Id, Comparer);
+        // Bolt: Optimize LINQ ToDictionary allocations with a manual loop to save enumerators on UI thread
+        var nodesById = new Dictionary<string, NodeModel>(network.Nodes.Count, Comparer);
+        foreach (var node in network.Nodes)
+        {
+            nodesById[node.Id] = node;
+        }
+
         if (timeline is not null)
         {
             foreach (var node in Scene.Nodes)
@@ -10967,13 +10987,22 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         if (timeline is not null)
         {
-            return Scene.Edges.ToDictionary(
-                edge => edge.Id,
-                edge => timeline.EdgeOccupancy.GetValueOrDefault(edge.Id, 0d),
-                Comparer);
+            // Bolt: Optimize LINQ ToDictionary allocations with a manual loop to save enumerators on UI thread
+            var result = new Dictionary<string, double>(Scene.Edges.Count, Comparer);
+            foreach (var edge in Scene.Edges)
+            {
+                result[edge.Id] = timeline.EdgeOccupancy.GetValueOrDefault(edge.Id, 0d);
+            }
+            return result;
         }
 
-        var edgeLoads = Scene.Edges.ToDictionary(edge => edge.Id, _ => 0d, Comparer);
+        // Bolt: Optimize LINQ ToDictionary allocations with a manual loop to save enumerators on UI thread
+        var edgeLoads = new Dictionary<string, double>(Scene.Edges.Count, Comparer);
+        foreach (var edge in Scene.Edges)
+        {
+            edgeLoads[edge.Id] = 0d;
+        }
+
         foreach (var allocation in allocations)
         {
             foreach (var edgeId in allocation.PathEdgeIds)

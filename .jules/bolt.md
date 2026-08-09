@@ -103,3 +103,6 @@
 ## 2025-03-09 - Replaced LINQ Sum and Where with explicit loops in FacilityModeSimulationEngine
 **Learning:** Replaced `node.TrafficProfiles.Where(...).Sum(...)` with an explicit `foreach` loop inside `FacilityModeSimulationEngine.cs`. Because this logic executes inside loops within loops, LINQ introduces excessive delegate allocation and garbage collection overhead.
 **Action:** When finding properties or methods computing sums or logic by chaining `Where` and `Sum` via LINQ inside network evaluations, replace them with standard `foreach` loops to save GC overhead.
+## 2026-06-15 - Optimize LINQ ToDictionary allocations inside Workspace UI
+**Learning:** In C#, applying multiple LINQ `ToDictionary` calls inside loops that update the UI triggers heavy enumerator and delegate allocation. These allocations generate significant garbage on the UI thread, causing jank during frequent operations like animated simulation outcomes or panning.
+**Action:** Replace `Enumerable.ToDictionary` with standard `foreach` loops on pre-sized `Dictionary` instances inside UI code to save allocations.

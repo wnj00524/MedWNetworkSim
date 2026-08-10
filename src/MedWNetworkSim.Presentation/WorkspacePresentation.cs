@@ -5562,18 +5562,44 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            // Bolt: Optimize GroupBy redundant enumerations into O(N) pass to avoid massive GC allocation on UI thread
+            var aggregated = new Dictionary<string, (double Supply, double Backlog, double Delivered)>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                var key = pair.Key.TrafficType;
+                if (!aggregated.TryGetValue(key, out var current))
+                {
+                    current = (0d, 0d, 0d);
+                }
+                current.Supply += pair.Value.AvailableSupply;
+                current.Backlog += pair.Value.DemandBacklog;
+                aggregated[key] = current;
+            }
+
+            foreach (var allocation in lastTimelineStepResult.Allocations)
+            {
+                var key = allocation.TrafficType;
+                if (key != null && aggregated.TryGetValue(key, out var current))
+                {
+                    current.Delivered += allocation.Quantity;
+                    aggregated[key] = current;
+                }
+            }
+
+            var result = new List<FlowDataPoint>(aggregated.Count);
+            foreach (var pair in aggregated)
+            {
+                result.Add(new FlowDataPoint(
+                    pair.Key,
+                    pair.Value.Supply + pair.Value.Backlog,
+                    pair.Value.Delivered,
+                    pair.Value.Backlog,
+                    pair.Value.Supply));
+            }
+
+            result.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return result;
         }
 
         return lastOutcomes

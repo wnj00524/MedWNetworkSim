@@ -106,3 +106,6 @@
 ## 2026-06-15 - Optimize LINQ ToDictionary allocations inside Workspace UI
 **Learning:** In C#, applying multiple LINQ `ToDictionary` calls inside loops that update the UI triggers heavy enumerator and delegate allocation. These allocations generate significant garbage on the UI thread, causing jank during frequent operations like animated simulation outcomes or panning.
 **Action:** Replace `Enumerable.ToDictionary` with standard `foreach` loops on pre-sized `Dictionary` instances inside UI code to save allocations.
+## 2026-06-25 - Optimize FlowDataPoint generation in Workspace UI
+**Learning:** In C#, generating metrics using `.GroupBy().Select(x => sum)` constructs multiple collections and enumerators per group, compounding GC allocations on the UI thread during simulation updates.
+**Action:** Replace `GroupBy` aggregation inside UI metrics generation (like `GetFlowSeries` in `WorkspacePresentation.cs`) with a single-pass `foreach` loop that accumulates multiple variables simultaneously using a `Dictionary<K, (T1, T2)>`, achieving O(N) evaluation instead of O(K*N) logic.

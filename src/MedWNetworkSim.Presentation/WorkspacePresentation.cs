@@ -7268,8 +7268,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         LayerItems.Clear();
 
         // Bolt: Optimize O(N^2) layer counts lookup to O(1)
-        var nodeCountsByLayer = network.Nodes.GroupBy(node => node.LayerId).ToDictionary(g => g.Key, g => g.Count());
-        var edgeCountsByLayer = network.Edges.GroupBy(edge => edge.LayerId).ToDictionary(g => g.Key, g => g.Count());
+        var nodeCountsByLayer = new Dictionary<Guid, int>();
+        foreach (var node in network.Nodes)
+        {
+            ref var count = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(nodeCountsByLayer, node.LayerId, out _);
+            count++;
+        }
+        var edgeCountsByLayer = new Dictionary<Guid, int>();
+        foreach (var edge in network.Edges)
+        {
+            ref var count = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(edgeCountsByLayer, edge.LayerId, out _);
+            count++;
+        }
 
         foreach (var layer in network.Layers.OrderBy(item => item.Order))
         {
@@ -7964,10 +7974,20 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private SimulationActorMetrics CreateEconomicMetrics(TrafficEconomicSettlementResult settlement)
     {
         var allocations = settlement.Outcomes.SelectMany(outcome => outcome.Allocations).ToList();
-        var flowByEdge = allocations
-            .SelectMany(allocation => allocation.PathEdgeIds.Distinct(Comparer).Select(edgeId => (edgeId, allocation.Quantity)))
-            .GroupBy(item => item.edgeId, Comparer)
-            .ToDictionary(group => group.Key, group => group.Sum(item => item.Quantity), Comparer);
+        var flowByEdge = new Dictionary<string, double>(Comparer);
+        var edgeSet = new HashSet<string>(Comparer);
+        foreach (var allocation in allocations)
+        {
+            edgeSet.Clear();
+            foreach (var edgeId in allocation.PathEdgeIds)
+            {
+                if (edgeSet.Add(edgeId))
+                {
+                    ref var val = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(flowByEdge, edgeId, out _);
+                    val += allocation.Quantity;
+                }
+            }
+        }
         var utilisation = network.Edges
             .Where(edge => edge.Capacity.HasValue && edge.Capacity.Value > 0d)
             .Select(edge => flowByEdge.GetValueOrDefault(edge.Id) / edge.Capacity!.Value)

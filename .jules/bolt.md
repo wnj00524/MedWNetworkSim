@@ -106,3 +106,7 @@
 ## 2026-06-15 - Optimize LINQ ToDictionary allocations inside Workspace UI
 **Learning:** In C#, applying multiple LINQ `ToDictionary` calls inside loops that update the UI triggers heavy enumerator and delegate allocation. These allocations generate significant garbage on the UI thread, causing jank during frequent operations like animated simulation outcomes or panning.
 **Action:** Replace `Enumerable.ToDictionary` with standard `foreach` loops on pre-sized `Dictionary` instances inside UI code to save allocations.
+
+## 2024-05-18 - CollectionsMarshal for C# Hot Paths
+**Learning:** In highly allocated UI layers (like Avalonia ViewModels generating metrics on ticks), chained LINQ expressions like `.SelectMany().Distinct().Select().GroupBy().ToDictionary()` cause severe GC pressure and thread jank due to closure overhead and intermediate collections (like `IGrouping`). Additionally, standard `TryGetValue` followed by reassignment causes redundant hash lookups.
+**Action:** Replace these LINQ chains with pre-sized generic dictionaries and single-pass loops utilizing `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault` to eliminate double hash lookups and completely bypass enumerator/closure allocations.

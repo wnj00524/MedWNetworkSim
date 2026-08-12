@@ -8665,14 +8665,29 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         NetworkModel network,
         TemporalNetworkSimulationEngine.TemporalSimulationStepResult result)
     {
-        var definitionsByName = network.TrafficTypes
-            .Where(definition => !string.IsNullOrWhiteSpace(definition.Name))
-            .ToDictionary(definition => definition.Name, definition => definition, Comparer);
+        // Bolt: Replace multiple LINQ ToDictionary calls with a single manual loop to avoid enumerator and delegate allocations
+        var definitionsByName = new Dictionary<string, TrafficTypeDefinition>(network.TrafficTypes.Count, Comparer);
+        foreach (var definition in network.TrafficTypes)
+        {
+            if (!string.IsNullOrWhiteSpace(definition.Name))
+            {
+                definitionsByName[definition.Name] = definition;
+            }
+        }
 
-        var deliveredByTraffic = result.Allocations
-            .Where(allocation => !string.IsNullOrWhiteSpace(allocation.TrafficType))
-            .GroupBy(allocation => allocation.TrafficType, Comparer)
-            .ToDictionary(group => group.Key, group => group.ToList(), Comparer);
+        var deliveredByTraffic = new Dictionary<string, List<RouteAllocation>>(Comparer);
+        foreach (var allocation in result.Allocations)
+        {
+            if (!string.IsNullOrWhiteSpace(allocation.TrafficType))
+            {
+                if (!deliveredByTraffic.TryGetValue(allocation.TrafficType, out var list))
+                {
+                    list = new List<RouteAllocation>();
+                    deliveredByTraffic[allocation.TrafficType] = list;
+                }
+                list.Add(allocation);
+            }
+        }
 
         var trafficNames = definitionsByName.Keys
             .Concat(deliveredByTraffic.Keys)

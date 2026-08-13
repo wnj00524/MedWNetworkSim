@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows.Input;
 using MedWNetworkSim.App.Agents;
@@ -7268,8 +7269,19 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         LayerItems.Clear();
 
         // Bolt: Optimize O(N^2) layer counts lookup to O(1)
-        var nodeCountsByLayer = network.Nodes.GroupBy(node => node.LayerId).ToDictionary(g => g.Key, g => g.Count());
-        var edgeCountsByLayer = network.Edges.GroupBy(edge => edge.LayerId).ToDictionary(g => g.Key, g => g.Count());
+        var nodeCountsByLayer = new Dictionary<Guid, int>();
+        foreach (var node in network.Nodes)
+        {
+            ref int count = ref CollectionsMarshal.GetValueRefOrAddDefault(nodeCountsByLayer, node.LayerId, out bool _);
+            count++;
+        }
+
+        var edgeCountsByLayer = new Dictionary<Guid, int>();
+        foreach (var edge in network.Edges)
+        {
+            ref int count = ref CollectionsMarshal.GetValueRefOrAddDefault(edgeCountsByLayer, edge.LayerId, out bool _);
+            count++;
+        }
 
         foreach (var layer in network.Layers.OrderBy(item => item.Order))
         {

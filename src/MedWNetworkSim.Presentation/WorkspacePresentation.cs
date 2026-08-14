@@ -616,18 +616,70 @@ public sealed class ScenarioEditorViewModel : ObservableObject
     /// Gets the collection of scenario definitions associated with this entity.
     /// </summary>
     public IReadOnlyList<ScenarioDefinitionModel> ScenarioDefinitions => network.ScenarioDefinitions;
+    private IReadOnlyList<string>? cachedNodeIdOptions;
+    private IReadOnlyList<string>? cachedEdgeIdOptions;
+    private IReadOnlyList<string>? cachedTrafficTypeOptions;
+
     /// <summary>
     /// Gets the collection of node id options associated with this entity.
     /// </summary>
-    public IReadOnlyList<string> NodeIdOptions => network.Nodes.Select(node => node.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+    public IReadOnlyList<string> NodeIdOptions
+    {
+        get
+        {
+            if (cachedNodeIdOptions is null)
+            {
+                var list = new List<string>(network.Nodes.Count);
+                foreach (var node in network.Nodes)
+                {
+                    list.Add(node.Id);
+                }
+                list.Sort(StringComparer.OrdinalIgnoreCase);
+                cachedNodeIdOptions = list;
+            }
+            return cachedNodeIdOptions;
+        }
+    }
     /// <summary>
     /// Gets the collection of edge id options associated with this entity.
     /// </summary>
-    public IReadOnlyList<string> EdgeIdOptions => network.Edges.Select(edge => edge.Id).OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+    public IReadOnlyList<string> EdgeIdOptions
+    {
+        get
+        {
+            if (cachedEdgeIdOptions is null)
+            {
+                var list = new List<string>(network.Edges.Count);
+                foreach (var edge in network.Edges)
+                {
+                    list.Add(edge.Id);
+                }
+                list.Sort(StringComparer.OrdinalIgnoreCase);
+                cachedEdgeIdOptions = list;
+            }
+            return cachedEdgeIdOptions;
+        }
+    }
     /// <summary>
     /// Gets the collection of traffic type options associated with this entity.
     /// </summary>
-    public IReadOnlyList<string> TrafficTypeOptions => network.TrafficTypes.Select(type => type.Name).OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToList();
+    public IReadOnlyList<string> TrafficTypeOptions
+    {
+        get
+        {
+            if (cachedTrafficTypeOptions is null)
+            {
+                var list = new List<string>(network.TrafficTypes.Count);
+                foreach (var type in network.TrafficTypes)
+                {
+                    list.Add(type.Name);
+                }
+                list.Sort(StringComparer.OrdinalIgnoreCase);
+                cachedTrafficTypeOptions = list;
+            }
+            return cachedTrafficTypeOptions;
+        }
+    }
     /// <summary>
     /// Gets or sets the create scenario command.
     /// </summary>
@@ -1341,6 +1393,9 @@ public sealed class ScenarioEditorViewModel : ObservableObject
 
     private void RaiseReferenceDataChanged()
     {
+        cachedNodeIdOptions = null;
+        cachedEdgeIdOptions = null;
+        cachedTrafficTypeOptions = null;
         Raise(nameof(NodeIdOptions));
         Raise(nameof(EdgeIdOptions));
         Raise(nameof(TrafficTypeOptions));

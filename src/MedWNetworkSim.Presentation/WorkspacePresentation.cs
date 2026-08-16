@@ -7268,8 +7268,16 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         LayerItems.Clear();
 
         // Bolt: Optimize O(N^2) layer counts lookup to O(1)
-        var nodeCountsByLayer = network.Nodes.GroupBy(node => node.LayerId).ToDictionary(g => g.Key, g => g.Count());
-        var edgeCountsByLayer = network.Edges.GroupBy(edge => edge.LayerId).ToDictionary(g => g.Key, g => g.Count());
+        var nodeCountsByLayer = new Dictionary<Guid, int>();
+        foreach (var node in network.Nodes)
+        {
+            System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(nodeCountsByLayer, node.LayerId, out _)++;
+        }
+        var edgeCountsByLayer = new Dictionary<Guid, int>();
+        foreach (var edge in network.Edges)
+        {
+            System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(edgeCountsByLayer, edge.LayerId, out _)++;
+        }
 
         foreach (var layer in network.Layers.OrderBy(item => item.Order))
         {

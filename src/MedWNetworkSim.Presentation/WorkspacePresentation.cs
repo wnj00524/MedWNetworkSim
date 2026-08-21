@@ -7945,10 +7945,21 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshAgentProfitReport();
     }
 
-    private IReadOnlyDictionary<string, SimulationActorState> BuildSimulationActorMap() => SimulationActors
-        .Where(actor => !string.IsNullOrWhiteSpace(actor.Id))
-        .GroupBy(actor => actor.Id, Comparer)
-        .ToDictionary(group => group.Key, group => group.First(), Comparer);
+    private IReadOnlyDictionary<string, SimulationActorState> BuildSimulationActorMap()
+    {
+        // Bolt: Replace LINQ chain with a manual loop to eliminate enumerator allocations,
+        // IGrouping object creations, and delegate allocations.
+        var map = new Dictionary<string, SimulationActorState>(Comparer);
+        foreach (var actor in SimulationActors)
+        {
+            if (!string.IsNullOrWhiteSpace(actor.Id))
+            {
+                map.TryAdd(actor.Id, actor);
+            }
+        }
+
+        return map;
+    }
 
     private void RecordEconomicMetrics(TrafficEconomicSettlementResult settlement)
     {
@@ -7972,10 +7983,16 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private SimulationActorMetrics CreateEconomicMetrics(TrafficEconomicSettlementResult settlement)
     {
         var allocations = settlement.Outcomes.SelectMany(outcome => outcome.Allocations).ToList();
-        var flowByEdge = allocations
-            .SelectMany(allocation => allocation.PathEdgeIds.Distinct(Comparer).Select(edgeId => (edgeId, allocation.Quantity)))
-            .GroupBy(item => item.edgeId, Comparer)
-            .ToDictionary(group => group.Key, group => group.Sum(item => item.Quantity), Comparer);
+        var flowByEdge = new Dictionary<string, double>(Comparer);
+        foreach (var allocation in allocations)
+        {
+            foreach (var edgeId in allocation.PathEdgeIds.Distinct(Comparer))
+            {
+                ref var flow = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(flowByEdge, edgeId, out _);
+                flow += allocation.Quantity;
+            }
+        }
+
         var utilisation = network.Edges
             .Where(edge => edge.Capacity.HasValue && edge.Capacity.Value > 0d)
             .Select(edge => flowByEdge.GetValueOrDefault(edge.Id) / edge.Capacity!.Value)

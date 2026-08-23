@@ -7945,10 +7945,20 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshAgentProfitReport();
     }
 
-    private IReadOnlyDictionary<string, SimulationActorState> BuildSimulationActorMap() => SimulationActors
-        .Where(actor => !string.IsNullOrWhiteSpace(actor.Id))
-        .GroupBy(actor => actor.Id, Comparer)
-        .ToDictionary(group => group.Key, group => group.First(), Comparer);
+    private IReadOnlyDictionary<string, SimulationActorState> BuildSimulationActorMap()
+    {
+        // Bolt: Replace LINQ Where, GroupBy and ToDictionary with manual loops to eliminate enumerator and delegate allocations
+        var map = new Dictionary<string, SimulationActorState>(Comparer);
+        foreach (var actor in SimulationActors)
+        {
+            if (string.IsNullOrWhiteSpace(actor.Id))
+                continue;
+
+            map.TryAdd(actor.Id, actor);
+        }
+
+        return map;
+    }
 
     private void RecordEconomicMetrics(TrafficEconomicSettlementResult settlement)
     {

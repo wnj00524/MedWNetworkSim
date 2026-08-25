@@ -7972,10 +7972,17 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     private SimulationActorMetrics CreateEconomicMetrics(TrafficEconomicSettlementResult settlement)
     {
         var allocations = settlement.Outcomes.SelectMany(outcome => outcome.Allocations).ToList();
-        var flowByEdge = allocations
-            .SelectMany(allocation => allocation.PathEdgeIds.Distinct(Comparer).Select(edgeId => (edgeId, allocation.Quantity)))
-            .GroupBy(item => item.edgeId, Comparer)
-            .ToDictionary(group => group.Key, group => group.Sum(item => item.Quantity), Comparer);
+
+        // Bolt: Optimized LINQ ToDictionary allocations with a manual loop to save enumerator overhead on the UI thread
+        var flowByEdge = new Dictionary<string, double>(Comparer);
+        foreach (var allocation in allocations)
+        {
+            foreach (var edgeId in allocation.PathEdgeIds.Distinct(Comparer))
+            {
+                System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(flowByEdge, edgeId, out _) += allocation.Quantity;
+            }
+        }
+
         var utilisation = network.Edges
             .Where(edge => edge.Capacity.HasValue && edge.Capacity.Value > 0d)
             .Select(edge => flowByEdge.GetValueOrDefault(edge.Id) / edge.Capacity!.Value)

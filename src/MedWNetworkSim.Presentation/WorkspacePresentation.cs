@@ -8906,18 +8906,49 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (timeline is not null)
         {
+            // Bolt: Replaced nested O(N) LINQ lookups per node with a single O(S) pass over timeline.NodeStates
+            // This eliminates O(N^2) complexity and massive enumerator/delegate allocations on the UI thread
+            var nodeStateMap = new Dictionary<string, TemporalNetworkSimulationEngine.TemporalNodeStateSnapshot>(StringComparer.OrdinalIgnoreCase);
+            var backlogMap = new Dictionary<string, List<KeyValuePair<string, double>>>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var pair in timeline.NodeStates)
+            {
+                if (!nodeStateMap.ContainsKey(pair.Key.NodeId))
+                {
+                    nodeStateMap[pair.Key.NodeId] = pair.Value;
+                }
+                if (pair.Value.DemandBacklog > 0d)
+                {
+                    if (!backlogMap.TryGetValue(pair.Key.NodeId, out var backlogList))
+                    {
+                        backlogList = [];
+                        backlogMap[pair.Key.NodeId] = backlogList;
+                    }
+
+                    bool updated = false;
+                    for (int i = 0; i < backlogList.Count; i++)
+                    {
+                        if (Comparer.Equals(backlogList[i].Key, pair.Key.TrafficType))
+                        {
+                            backlogList[i] = new KeyValuePair<string, double>(backlogList[i].Key, backlogList[i].Value + pair.Value.DemandBacklog);
+                            updated = true;
+                            break;
+                        }
+                    }
+                    if (!updated)
+                    {
+                        backlogList.Add(new KeyValuePair<string, double>(pair.Key.TrafficType, pair.Value.DemandBacklog));
+                    }
+                }
+            }
+
             foreach (var node in Scene.Nodes)
             {
                 if (!nodesById.TryGetValue(node.Id, out var nodeModel)) continue;
-                var state = timeline.NodeStates
-                    .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id))
-                    .Select(pair => pair.Value)
-                    .FirstOrDefault();
-                var backlogByTraffic = timeline.NodeStates
-                    .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id) && pair.Value.DemandBacklog > 0d)
-                    .GroupBy(pair => pair.Key.TrafficType, pair => pair.Value.DemandBacklog, Comparer)
-                    .Select(group => new KeyValuePair<string, double>(group.Key, group.Sum()))
-                    .ToList();
+
+                nodeStateMap.TryGetValue(node.Id, out var state);
+                var backlogByTraffic = backlogMap.GetValueOrDefault(node.Id) ?? [];
+
                 var pressure = timeline.NodePressureById.GetValueOrDefault(node.Id);
                 node.MetricsLabel = string.Empty;
                 node.DetailLines = BuildNodeDetailLines(nodeModel, backlogByTraffic, pressure.Score > 0d ? pressure : null);

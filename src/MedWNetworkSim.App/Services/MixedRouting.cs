@@ -935,12 +935,31 @@ public static partial class MixedRoutingAllocator
             }
         }
 
-        return routes
-            .GroupBy(route => route.PathKey, Comparer)
-            .Select(group => group.OrderBy(route => route.Score).First())
-            .OrderBy(route => route.Score)
-            .Take(Math.Max(1, context.RouteChoiceSettings.MaxCandidateRoutes))
-            .ToList();
+        // Bolt: Replaced .GroupBy().Select(First) with dictionary to avoid IGrouping allocs and O(N log N) sorting
+        var bestCandidates = new Dictionary<string, RouteCandidate>(Comparer);
+        foreach (var route in routes)
+        {
+            if (!bestCandidates.TryGetValue(route.PathKey, out var best) || route.Score < best.Score)
+            {
+                bestCandidates[route.PathKey] = route;
+            }
+        }
+
+        var results = new List<RouteCandidate>(bestCandidates.Count);
+        foreach (var candidate in bestCandidates.Values)
+        {
+            results.Add(candidate);
+        }
+
+        results.Sort((a, b) => a.Score.CompareTo(b.Score));
+        var maxTake = Math.Max(1, context.RouteChoiceSettings.MaxCandidateRoutes);
+
+        if (results.Count > maxTake)
+        {
+            return results.GetRange(0, maxTake);
+        }
+
+        return results;
     }
 
     private static List<RouteCandidate> FindCandidateRoutes(

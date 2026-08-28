@@ -118,3 +118,7 @@
 ## 2024-05-25 - Avoid GroupBy and ToDictionary on path edge allocations in Economic Metrics
 **Learning:** In C# UI presentation classes, chained LINQ aggregations like `.SelectMany(..).GroupBy(..).ToDictionary(..)` can cause substantial garbage on the UI thread due to enumerator, group, and delegate allocations.
 **Action:** Replace `GroupBy` + `ToDictionary` with a manual, pre-sized dictionary populated via `foreach` loops using `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, key, out _) += val;`. This operates much faster by avoiding group allocation and multi-pass traversal.
+
+## 2024-05-24 - Avoiding GroupBy and OrderBy allocations in Route Selection
+**Learning:** In C#, chained LINQ operations like `.GroupBy(x => x.Key).Select(g => g.OrderBy(x => x.Score).First())` generate significant garbage due to `IGrouping` enumerators, delegates, and intermediate sorting arrays. This is extremely detrimental in hot loops like routing algorithms, leading to excessive GC pressure.
+**Action:** Replace this pattern by iterating into a `Dictionary<K, V>`. If deduplicating and grabbing the 'best' candidate per key, check `TryGetValue` and replace the existing item if the new item has a better score. Finally, dump `Dictionary.Values` into a pre-sized `List<V>`, use `.Sort()` with a custom comparison, and extract the top items using `GetRange()` or taking a slice, completely eliminating enumerator and closure allocations.

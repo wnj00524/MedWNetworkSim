@@ -8906,18 +8906,37 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (timeline is not null)
         {
+            // Bolt: Pre-compute state and backlog dictionaries in O(S) instead of doing O(N*S) LINQ enumerations
+            var backlogLookup = new Dictionary<string, Dictionary<string, double>>(Comparer);
+            var nodeStateLookup = new Dictionary<string, TemporalNetworkSimulationEngine.TemporalNodeStateSnapshot>(Comparer);
+
+            foreach (var pair in timeline.NodeStates)
+            {
+                var nodeId = pair.Key.NodeId;
+
+                // Track overall node state (to replace FirstOrDefault)
+                nodeStateLookup.TryAdd(nodeId, pair.Value);
+
+                if (pair.Value.DemandBacklog > 0d)
+                {
+                    ref Dictionary<string, double>? dict = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(backlogLookup, nodeId, out bool exists);
+                    if (!exists || dict == null) dict = new Dictionary<string, double>(Comparer);
+
+                    ref double sum = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, pair.Key.TrafficType, out _);
+                    sum += pair.Value.DemandBacklog;
+                }
+            }
+
             foreach (var node in Scene.Nodes)
             {
                 if (!nodesById.TryGetValue(node.Id, out var nodeModel)) continue;
-                var state = timeline.NodeStates
-                    .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id))
-                    .Select(pair => pair.Value)
-                    .FirstOrDefault();
-                var backlogByTraffic = timeline.NodeStates
-                    .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id) && pair.Value.DemandBacklog > 0d)
-                    .GroupBy(pair => pair.Key.TrafficType, pair => pair.Value.DemandBacklog, Comparer)
-                    .Select(group => new KeyValuePair<string, double>(group.Key, group.Sum()))
-                    .ToList();
+
+                nodeStateLookup.TryGetValue(node.Id, out var state);
+
+                var backlogByTraffic = backlogLookup.TryGetValue(node.Id, out var dict)
+                    ? dict.ToList()
+                    : [];
+
                 var pressure = timeline.NodePressureById.GetValueOrDefault(node.Id);
                 node.MetricsLabel = string.Empty;
                 node.DetailLines = BuildNodeDetailLines(nodeModel, backlogByTraffic, pressure.Score > 0d ? pressure : null);

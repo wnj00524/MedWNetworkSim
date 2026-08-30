@@ -8906,18 +8906,34 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (timeline is not null)
         {
+            var nodeFirstState = new Dictionary<string, TemporalNetworkSimulationEngine.TemporalNodeStateSnapshot>(Comparer);
+            var nodeBacklogByTraffic = new Dictionary<string, Dictionary<string, double>>(Comparer);
+            foreach (var pair in timeline.NodeStates)
+            {
+                ref var firstState = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(nodeFirstState, pair.Key.NodeId, out var firstStateExists);
+                if (!firstStateExists)
+                {
+                    firstState = pair.Value;
+                }
+
+                if (pair.Value.DemandBacklog > 0d)
+                {
+                    ref var dict = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(nodeBacklogByTraffic, pair.Key.NodeId, out var exists);
+                    if (!exists || dict == null) dict = new Dictionary<string, double>(Comparer);
+                    System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, pair.Key.TrafficType, out _) += pair.Value.DemandBacklog;
+                }
+            }
+
             foreach (var node in Scene.Nodes)
             {
                 if (!nodesById.TryGetValue(node.Id, out var nodeModel)) continue;
-                var state = timeline.NodeStates
-                    .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id))
-                    .Select(pair => pair.Value)
-                    .FirstOrDefault();
-                var backlogByTraffic = timeline.NodeStates
-                    .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id) && pair.Value.DemandBacklog > 0d)
-                    .GroupBy(pair => pair.Key.TrafficType, pair => pair.Value.DemandBacklog, Comparer)
-                    .Select(group => new KeyValuePair<string, double>(group.Key, group.Sum()))
-                    .ToList();
+
+                var state = nodeFirstState.GetValueOrDefault(node.Id);
+                var backlogDict = nodeBacklogByTraffic.GetValueOrDefault(node.Id);
+                var backlogByTraffic = backlogDict is not null
+                    ? backlogDict.ToList()
+                    : [];
+
                 var pressure = timeline.NodePressureById.GetValueOrDefault(node.Id);
                 node.MetricsLabel = string.Empty;
                 node.DetailLines = BuildNodeDetailLines(nodeModel, backlogByTraffic, pressure.Score > 0d ? pressure : null);

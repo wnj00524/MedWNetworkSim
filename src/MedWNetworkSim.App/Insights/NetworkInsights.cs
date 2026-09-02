@@ -225,7 +225,13 @@ public sealed class NetworkInsightService : INetworkInsightService
 
     private static int CountConnectedComponents(NetworkModel network)
     {
-        var map = network.Nodes.ToDictionary(node => node.Id, _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
+        // Bolt: Replaced LINQ ToDictionary with a pre-sized manual dictionary and foreach loop to avoid enumerator and delegate allocations
+        var map = new Dictionary<string, HashSet<string>>(network.Nodes.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var node in network.Nodes)
+        {
+            map[node.Id] = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+
         foreach (var edge in network.Edges)
         {
             if (map.TryGetValue(edge.FromNodeId, out var from))
@@ -269,22 +275,25 @@ public sealed class NetworkInsightService : INetworkInsightService
     private static Dictionary<string, double> BuildRoutedQuantityByEdge(VisualAnalytics.VisualAnalyticsSnapshot snapshot)
     {
         var routedByEdgeId = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-        foreach (var allocation in snapshot.TrafficOutcomes.SelectMany(outcome => outcome.Allocations))
+        // Bolt: Replaced LINQ SelectMany with nested foreach loops and CollectionsMarshal to avoid enumerator overhead and double dictionary lookups
+        foreach (var outcome in snapshot.TrafficOutcomes)
         {
-            if (allocation.Quantity <= 0d || allocation.PathEdgeIds is null)
+            foreach (var allocation in outcome.Allocations)
             {
-                continue;
-            }
-
-            foreach (var edgeId in allocation.PathEdgeIds)
-            {
-                if (string.IsNullOrWhiteSpace(edgeId))
+                if (allocation.Quantity <= 0d || allocation.PathEdgeIds is null)
                 {
                     continue;
                 }
 
-                routedByEdgeId.TryGetValue(edgeId, out var current);
-                routedByEdgeId[edgeId] = current + allocation.Quantity;
+                foreach (var edgeId in allocation.PathEdgeIds)
+                {
+                    if (string.IsNullOrWhiteSpace(edgeId))
+                    {
+                        continue;
+                    }
+
+                    System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(routedByEdgeId, edgeId, out _) += allocation.Quantity;
+                }
             }
         }
 

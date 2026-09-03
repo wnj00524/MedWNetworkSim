@@ -1,10 +1,11 @@
-1.  **Refactor `ToRoutingContext` in `TemporalNetworkSimulationEngine.cs`:**
-    *   Currently, `ToRoutingContext` creates three new dictionaries using LINQ `.ToDictionary()` per `TemporalTrafficContext` conversion.
-    *   I will replace these LINQ `.ToDictionary()` calls with manual copy loops using `Dictionary` constructors and `foreach` loops to eliminate the hidden O(N) allocation of enumerators, closures, and delegates during simulation step updates (hot loop).
-
-2.  **Run formatting and tests:**
-    *   Run `dotnet format MedWNetworkSim.slnx` or use the format commands.
-    *   Run `dotnet test tests/MedWNetworkSim.Tests/MedWNetworkSim.Tests.csproj` to verify no logic regressions exist.
-
-3.  **Create pre-commit steps:**
-    *   Complete pre-commit steps to ensure proper testing, verification, review, and reflection are done.
+1.  **Refactor NodeState aggregations in `WorkspacePresentation.cs`**
+    -   In the `WorkspacePresentation.ApplySimulationOutcomes` and `WorkspacePresentation.BuildReportMetrics` methods, there are multiple LINQ aggregations filtering and summarizing `DemandBacklog` from `timeline.NodeStates`.
+    -   These run on the UI thread when simulation outcomes are applied, causing allocations for iterators, lambda closures, grouping, and lists.
+    -   Replace the redundant LINQ operations `timeline.NodeStates.Where(..).GroupBy(..).Select(..)` with a single-pass manual loop over `timeline.NodeStates` that aggregates `DemandBacklog` per `NodeId` and per `TrafficType`.
+    -   Pre-calculate these dictionaries `backlogByNode` and `backlogByTrafficType` before updating the `Scene.Nodes`, then access them via `TryGetValue` during the `Scene.Nodes` loop.
+2.  **Verify UI behavior**
+    -   Run tests in `tests/MedWNetworkSim.Tests/MedWNetworkSim.Tests.csproj` and `dotnet build`.
+3.  **Complete pre-commit steps**
+    -   Complete pre-commit steps to ensure proper testing, verification, review, and reflection are done.
+4.  **Submit PR**
+    -   Submit with "⚡ Bolt: [performance improvement]" title.

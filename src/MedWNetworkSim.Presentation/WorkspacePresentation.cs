@@ -9360,38 +9360,64 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 });
             }
 
-            var topUnmetNode = timeline.NodeStates
-                .Where(pair => pair.Value.DemandBacklog > 0d)
-                .GroupBy(pair => pair.Key.NodeId, pair => pair.Value.DemandBacklog, Comparer)
-                .Select(group => new { NodeId = group.Key, Backlog = group.Sum() })
-                .OrderByDescending(item => item.Backlog)
-                .FirstOrDefault();
-            if (topUnmetNode is not null)
+            // Bolt: Optimize LINQ ToDictionary allocations with a manual loop to save enumerators on UI thread
+            var nodeBacklogs = new Dictionary<string, double>(Comparer);
+            var trafficBacklogs = new Dictionary<string, double>(Comparer);
+
+            foreach (var pair in timeline.NodeStates)
+            {
+                if (pair.Value.DemandBacklog > 0d)
+                {
+                    ref var nodeBacklog = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(nodeBacklogs, pair.Key.NodeId, out _);
+                    nodeBacklog += pair.Value.DemandBacklog;
+
+                    ref var trafficBacklog = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(trafficBacklogs, pair.Key.TrafficType, out _);
+                    trafficBacklog += pair.Value.DemandBacklog;
+                }
+            }
+
+            string? topUnmetNodeId = null;
+            double maxNodeBacklog = 0d;
+            foreach (var pair in nodeBacklogs)
+            {
+                if (pair.Value > maxNodeBacklog || topUnmetNodeId == null)
+                {
+                    topUnmetNodeId = pair.Key;
+                    maxNodeBacklog = pair.Value;
+                }
+            }
+
+            if (topUnmetNodeId is not null)
             {
                 metrics.Add(new ReportMetricViewModel
                 {
                     Label = "Top unmet-need node",
-                    Value = $"{ResolveNodeName(topUnmetNode.NodeId)} {ReportExportService.FormatNumber(topUnmetNode.Backlog)}",
-                    Activate = () => SelectNodeForEdit(topUnmetNode.NodeId)
+                    Value = $"{ResolveNodeName(topUnmetNodeId)} {ReportExportService.FormatNumber(maxNodeBacklog)}",
+                    Activate = () => SelectNodeForEdit(topUnmetNodeId)
                 });
             }
 
-            var topTrafficBacklog = timeline.NodeStates
-                .Where(pair => pair.Value.DemandBacklog > 0d)
-                .GroupBy(pair => pair.Key.TrafficType, pair => pair.Value.DemandBacklog, Comparer)
-                .Select(group => new { TrafficType = group.Key, Backlog = group.Sum() })
-                .OrderByDescending(item => item.Backlog)
-                .FirstOrDefault();
-            if (topTrafficBacklog is not null)
+            string? topTrafficBacklogType = null;
+            double maxTrafficBacklog = 0d;
+            foreach (var pair in trafficBacklogs)
+            {
+                if (pair.Value > maxTrafficBacklog || topTrafficBacklogType == null)
+                {
+                    topTrafficBacklogType = pair.Key;
+                    maxTrafficBacklog = pair.Value;
+                }
+            }
+
+            if (topTrafficBacklogType is not null)
             {
                 metrics.Add(new ReportMetricViewModel
                 {
                     Label = "Top traffic backlog",
-                    Value = $"{topTrafficBacklog.TrafficType} {ReportExportService.FormatNumber(topTrafficBacklog.Backlog)}",
+                    Value = $"{topTrafficBacklogType} {ReportExportService.FormatNumber(maxTrafficBacklog)}",
                     Activate = () =>
                     {
                         SelectedInspectorTab = InspectorTabTarget.TrafficTypes;
-                        SelectedTrafficDefinitionItem = TrafficDefinitions.FirstOrDefault(item => Comparer.Equals(item.Name, topTrafficBacklog.TrafficType));
+                        SelectedTrafficDefinitionItem = TrafficDefinitions.FirstOrDefault(item => Comparer.Equals(item.Name, topTrafficBacklogType));
                         NotifyVisualChanged();
                     }
                 });

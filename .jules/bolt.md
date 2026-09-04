@@ -118,3 +118,7 @@
 ## 2024-05-25 - Avoid GroupBy and ToDictionary on path edge allocations in Economic Metrics
 **Learning:** In C# UI presentation classes, chained LINQ aggregations like `.SelectMany(..).GroupBy(..).ToDictionary(..)` can cause substantial garbage on the UI thread due to enumerator, group, and delegate allocations.
 **Action:** Replace `GroupBy` + `ToDictionary` with a manual, pre-sized dictionary populated via `foreach` loops using `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, key, out _) += val;`. This operates much faster by avoiding group allocation and multi-pass traversal.
+
+## 2024-09-04 - Zero-Allocation Dictionary Aggregation
+**Learning:** In C# 8+, `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault` is incredibly effective for avoiding double-lookups in dictionaries when performing aggregations (like summing backlogs or counting items). When combining this with manual loops, we can eliminate the heavy overhead of LINQ `GroupBy` which allocates both `IGrouping` enumerators and closure delegates on the UI thread.
+**Action:** When identifying hot-path LINQ chains involving `.GroupBy(k).Select(g => new { Key = k, Sum = g.Sum(x) })` or similar, replace them with a single loop and `CollectionsMarshal` to build the aggregation dictionary directly, drastically reducing memory allocations and execution time.

@@ -118,3 +118,6 @@
 ## 2024-05-25 - Avoid GroupBy and ToDictionary on path edge allocations in Economic Metrics
 **Learning:** In C# UI presentation classes, chained LINQ aggregations like `.SelectMany(..).GroupBy(..).ToDictionary(..)` can cause substantial garbage on the UI thread due to enumerator, group, and delegate allocations.
 **Action:** Replace `GroupBy` + `ToDictionary` with a manual, pre-sized dictionary populated via `foreach` loops using `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, key, out _) += val;`. This operates much faster by avoiding group allocation and multi-pass traversal.
+## 2026-06-15 - Replace Multiple LINQ GroupBy over NodeStates in BuildTimelineOutcomes
+**Learning:** In C# UI presentation classes, using multiple LINQ `.GroupBy()` calls on collections like `timeline.NodeStates` to find top metrics (like top unmet node and top traffic backlog) causes significant garbage collection overhead, particularly if evaluated often (like on the UI thread updating timelines).
+**Action:** Replace `Enumerable.GroupBy` chains with manual, pre-sized `Dictionary` structures and populate them via `foreach` loops using `CollectionsMarshal.GetValueRefOrAddDefault` to eliminate delegate and enumerator allocations.

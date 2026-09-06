@@ -5562,18 +5562,34 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            var supplyBacklogMap = new Dictionary<string, (double AvailableSupply, double DemandBacklog)>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                ref var entry = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(supplyBacklogMap, pair.Key.TrafficType, out _);
+                entry.AvailableSupply += pair.Value.AvailableSupply;
+                entry.DemandBacklog += pair.Value.DemandBacklog;
+            }
+
+            var allocationMap = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (var allocation in lastTimelineStepResult.Allocations)
+            {
+                ref var qty = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(allocationMap, allocation.TrafficType, out _);
+                qty += allocation.Quantity;
+            }
+
+            var result = new List<FlowDataPoint>(supplyBacklogMap.Count);
+            foreach (var pair in supplyBacklogMap)
+            {
+                var allocQty = allocationMap.GetValueOrDefault(pair.Key, 0d);
+                result.Add(new FlowDataPoint(
+                    pair.Key,
+                    pair.Value.AvailableSupply + pair.Value.DemandBacklog,
+                    allocQty,
+                    pair.Value.DemandBacklog,
+                    pair.Value.AvailableSupply));
+            }
+            result.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return result;
         }
 
         return lastOutcomes
@@ -7945,10 +7961,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshAgentProfitReport();
     }
 
-    private IReadOnlyDictionary<string, SimulationActorState> BuildSimulationActorMap() => SimulationActors
-        .Where(actor => !string.IsNullOrWhiteSpace(actor.Id))
-        .GroupBy(actor => actor.Id, Comparer)
-        .ToDictionary(group => group.Key, group => group.First(), Comparer);
+    private IReadOnlyDictionary<string, SimulationActorState> BuildSimulationActorMap()
+    {
+        var map = new Dictionary<string, SimulationActorState>(Comparer);
+        foreach (var actor in SimulationActors)
+        {
+            if (!string.IsNullOrWhiteSpace(actor.Id))
+            {
+                map.TryAdd(actor.Id, actor);
+            }
+        }
+        return map;
+    }
 
     private void RecordEconomicMetrics(TrafficEconomicSettlementResult settlement)
     {
@@ -8906,18 +8930,43 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (timeline is not null)
         {
+            var nodeStateLookup = new Dictionary<string, TemporalNetworkSimulationEngine.TemporalNodeStateSnapshot>(Comparer);
+            var nodeBacklogByTrafficLookup = new Dictionary<string, Dictionary<string, double>>(Comparer);
+
+            foreach (var pair in timeline.NodeStates)
+            {
+                if (!nodeStateLookup.ContainsKey(pair.Key.NodeId))
+                {
+                    nodeStateLookup[pair.Key.NodeId] = pair.Value;
+                }
+
+                if (pair.Value.DemandBacklog > 0d)
+                {
+                    if (!nodeBacklogByTrafficLookup.TryGetValue(pair.Key.NodeId, out var dict))
+                    {
+                        dict = new Dictionary<string, double>(Comparer);
+                        nodeBacklogByTrafficLookup[pair.Key.NodeId] = dict;
+                    }
+                    ref var backlog = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, pair.Key.TrafficType, out _);
+                    backlog += pair.Value.DemandBacklog;
+                }
+            }
+
             foreach (var node in Scene.Nodes)
             {
                 if (!nodesById.TryGetValue(node.Id, out var nodeModel)) continue;
-                var state = timeline.NodeStates
-                    .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id))
-                    .Select(pair => pair.Value)
-                    .FirstOrDefault();
-                var backlogByTraffic = timeline.NodeStates
-                    .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id) && pair.Value.DemandBacklog > 0d)
-                    .GroupBy(pair => pair.Key.TrafficType, pair => pair.Value.DemandBacklog, Comparer)
-                    .Select(group => new KeyValuePair<string, double>(group.Key, group.Sum()))
-                    .ToList();
+
+                var state = nodeStateLookup.GetValueOrDefault(node.Id);
+
+                var backlogByTraffic = new List<KeyValuePair<string, double>>();
+                if (nodeBacklogByTrafficLookup.TryGetValue(node.Id, out var trafficDict))
+                {
+                    foreach (var pair in trafficDict)
+                    {
+                        backlogByTraffic.Add(new KeyValuePair<string, double>(pair.Key, pair.Value));
+                    }
+                }
+
                 var pressure = timeline.NodePressureById.GetValueOrDefault(node.Id);
                 node.MetricsLabel = string.Empty;
                 node.DetailLines = BuildNodeDetailLines(nodeModel, backlogByTraffic, pressure.Score > 0d ? pressure : null);
@@ -9149,47 +9198,108 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private string BuildTrafficPriceSummary(string trafficType)
     {
-        var allocations = GetCurrentAllocations()
-            .Where(allocation => Comparer.Equals(allocation.TrafficType, trafficType))
-            .ToList();
-        var productionPrices = allocations.Count > 0
-            ? allocations
-                .Where(allocation => allocation.Quantity > 0d)
-                .GroupBy(allocation => allocation.ProducerNodeId, Comparer)
-                .Select(group => WeightedAverage(group, allocation => allocation.SourceUnitCostPerUnit))
-                .Where(value => value.HasValue)
-                .Select(value => value!.Value)
-                .Distinct()
-                .OrderBy(value => value)
-                .Select(value => ReportExportService.FormatNumber(value))
-                .ToList()
-            : network.Nodes
-            .SelectMany(node => node.TrafficProfiles)
-            .Where(profile => profile.Production > 0d && Comparer.Equals(profile.TrafficType, trafficType))
-            .Select(profile => Math.Max(0d, profile.UnitPrice))
-            .Distinct()
-            .OrderBy(value => value)
-            .Select(value => ReportExportService.FormatNumber(value))
-            .ToList();
-        var consumptionPrices = allocations.Count > 0
-            ? allocations
-                .Where(allocation => allocation.Quantity > 0d)
-                .GroupBy(allocation => allocation.ConsumerNodeId, Comparer)
-                .Select(group => WeightedAverage(group, allocation => allocation.DeliveredCostPerUnit))
-                .Where(value => value.HasValue)
-                .Select(value => value!.Value)
-                .Distinct()
-                .OrderBy(value => value)
-                .Select(value => ReportExportService.FormatNumber(value))
-                .ToList()
-            : network.Nodes
-            .SelectMany(node => node.TrafficProfiles)
-            .Where(profile => profile.Consumption > 0d && Comparer.Equals(profile.TrafficType, trafficType))
-            .Select(profile => Math.Max(0d, profile.UnitPrice))
-            .Distinct()
-            .OrderBy(value => value)
-            .Select(value => ReportExportService.FormatNumber(value))
-            .ToList();
+        var allocations = new List<RouteAllocation>();
+        foreach (var allocation in GetCurrentAllocations())
+        {
+            if (Comparer.Equals(allocation.TrafficType, trafficType))
+            {
+                allocations.Add(allocation);
+            }
+        }
+
+        List<string> productionPrices;
+        List<string> consumptionPrices;
+
+        if (allocations.Count > 0)
+        {
+            var prodMap = new Dictionary<string, (double TotalValue, double TotalQuantity)>(Comparer);
+            var consMap = new Dictionary<string, (double TotalValue, double TotalQuantity)>(Comparer);
+
+            foreach (var allocation in allocations)
+            {
+                if (allocation.Quantity > 0d)
+                {
+                    ref var prodEntry = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(prodMap, allocation.ProducerNodeId, out _);
+                    prodEntry.TotalValue += allocation.Quantity * allocation.SourceUnitCostPerUnit;
+                    prodEntry.TotalQuantity += allocation.Quantity;
+
+                    ref var consEntry = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(consMap, allocation.ConsumerNodeId, out _);
+                    consEntry.TotalValue += allocation.Quantity * allocation.DeliveredCostPerUnit;
+                    consEntry.TotalQuantity += allocation.Quantity;
+                }
+            }
+
+            var prodUniquePrices = new HashSet<double>();
+            foreach (var pair in prodMap)
+            {
+                if (pair.Value.TotalQuantity > 0d)
+                {
+                    prodUniquePrices.Add(pair.Value.TotalValue / pair.Value.TotalQuantity);
+                }
+            }
+            var prodPriceList = prodUniquePrices.ToList();
+            prodPriceList.Sort();
+            productionPrices = new List<string>(prodPriceList.Count);
+            foreach (var val in prodPriceList)
+            {
+                productionPrices.Add(ReportExportService.FormatNumber(val));
+            }
+
+            var consUniquePrices = new HashSet<double>();
+            foreach (var pair in consMap)
+            {
+                if (pair.Value.TotalQuantity > 0d)
+                {
+                    consUniquePrices.Add(pair.Value.TotalValue / pair.Value.TotalQuantity);
+                }
+            }
+            var consPriceList = consUniquePrices.ToList();
+            consPriceList.Sort();
+            consumptionPrices = new List<string>(consPriceList.Count);
+            foreach (var val in consPriceList)
+            {
+                consumptionPrices.Add(ReportExportService.FormatNumber(val));
+            }
+        }
+        else
+        {
+            var prodUniquePrices = new HashSet<double>();
+            var consUniquePrices = new HashSet<double>();
+
+            foreach (var node in network.Nodes)
+            {
+                foreach (var profile in node.TrafficProfiles)
+                {
+                    if (Comparer.Equals(profile.TrafficType, trafficType))
+                    {
+                        if (profile.Production > 0d)
+                        {
+                            prodUniquePrices.Add(Math.Max(0d, profile.UnitPrice));
+                        }
+                        if (profile.Consumption > 0d)
+                        {
+                            consUniquePrices.Add(Math.Max(0d, profile.UnitPrice));
+                        }
+                    }
+                }
+            }
+
+            var prodPriceList = prodUniquePrices.ToList();
+            prodPriceList.Sort();
+            productionPrices = new List<string>(prodPriceList.Count);
+            foreach (var val in prodPriceList)
+            {
+                productionPrices.Add(ReportExportService.FormatNumber(val));
+            }
+
+            var consPriceList = consUniquePrices.ToList();
+            consPriceList.Sort();
+            consumptionPrices = new List<string>(consPriceList.Count);
+            foreach (var val in consPriceList)
+            {
+                consumptionPrices.Add(ReportExportService.FormatNumber(val));
+            }
+        }
 
         return $"{FormatPriceList(productionPrices)}:{FormatPriceList(consumptionPrices)}";
     }
@@ -9360,38 +9470,65 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 });
             }
 
-            var topUnmetNode = timeline.NodeStates
-                .Where(pair => pair.Value.DemandBacklog > 0d)
-                .GroupBy(pair => pair.Key.NodeId, pair => pair.Value.DemandBacklog, Comparer)
-                .Select(group => new { NodeId = group.Key, Backlog = group.Sum() })
-                .OrderByDescending(item => item.Backlog)
-                .FirstOrDefault();
-            if (topUnmetNode is not null)
+            var nodeBacklogMap = new Dictionary<string, double>(Comparer);
+            var trafficBacklogMap = new Dictionary<string, double>(Comparer);
+
+            foreach (var pair in timeline.NodeStates)
             {
+                if (pair.Value.DemandBacklog > 0d)
+                {
+                    ref var nodeBacklog = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(nodeBacklogMap, pair.Key.NodeId, out _);
+                    nodeBacklog += pair.Value.DemandBacklog;
+
+                    ref var trafficBacklog = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(trafficBacklogMap, pair.Key.TrafficType, out _);
+                    trafficBacklog += pair.Value.DemandBacklog;
+                }
+            }
+
+            string? topUnmetNodeId = null;
+            double topUnmetNodeBacklog = 0d;
+            foreach (var pair in nodeBacklogMap)
+            {
+                if (topUnmetNodeId is null || pair.Value > topUnmetNodeBacklog)
+                {
+                    topUnmetNodeId = pair.Key;
+                    topUnmetNodeBacklog = pair.Value;
+                }
+            }
+
+            if (topUnmetNodeId is not null)
+            {
+                var nodeIdCapture = topUnmetNodeId;
                 metrics.Add(new ReportMetricViewModel
                 {
                     Label = "Top unmet-need node",
-                    Value = $"{ResolveNodeName(topUnmetNode.NodeId)} {ReportExportService.FormatNumber(topUnmetNode.Backlog)}",
-                    Activate = () => SelectNodeForEdit(topUnmetNode.NodeId)
+                    Value = $"{ResolveNodeName(topUnmetNodeId)} {ReportExportService.FormatNumber(topUnmetNodeBacklog)}",
+                    Activate = () => SelectNodeForEdit(nodeIdCapture)
                 });
             }
 
-            var topTrafficBacklog = timeline.NodeStates
-                .Where(pair => pair.Value.DemandBacklog > 0d)
-                .GroupBy(pair => pair.Key.TrafficType, pair => pair.Value.DemandBacklog, Comparer)
-                .Select(group => new { TrafficType = group.Key, Backlog = group.Sum() })
-                .OrderByDescending(item => item.Backlog)
-                .FirstOrDefault();
-            if (topTrafficBacklog is not null)
+            string? topTrafficBacklogType = null;
+            double topTrafficBacklogValue = 0d;
+            foreach (var pair in trafficBacklogMap)
             {
+                if (topTrafficBacklogType is null || pair.Value > topTrafficBacklogValue)
+                {
+                    topTrafficBacklogType = pair.Key;
+                    topTrafficBacklogValue = pair.Value;
+                }
+            }
+
+            if (topTrafficBacklogType is not null)
+            {
+                var trafficTypeCapture = topTrafficBacklogType;
                 metrics.Add(new ReportMetricViewModel
                 {
                     Label = "Top traffic backlog",
-                    Value = $"{topTrafficBacklog.TrafficType} {ReportExportService.FormatNumber(topTrafficBacklog.Backlog)}",
+                    Value = $"{topTrafficBacklogType} {ReportExportService.FormatNumber(topTrafficBacklogValue)}",
                     Activate = () =>
                     {
                         SelectedInspectorTab = InspectorTabTarget.TrafficTypes;
-                        SelectedTrafficDefinitionItem = TrafficDefinitions.FirstOrDefault(item => Comparer.Equals(item.Name, topTrafficBacklog.TrafficType));
+                        SelectedTrafficDefinitionItem = TrafficDefinitions.FirstOrDefault(item => Comparer.Equals(item.Name, trafficTypeCapture));
                         NotifyVisualChanged();
                     }
                 });

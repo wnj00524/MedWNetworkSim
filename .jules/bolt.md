@@ -118,3 +118,8 @@
 ## 2024-05-25 - Avoid GroupBy and ToDictionary on path edge allocations in Economic Metrics
 **Learning:** In C# UI presentation classes, chained LINQ aggregations like `.SelectMany(..).GroupBy(..).ToDictionary(..)` can cause substantial garbage on the UI thread due to enumerator, group, and delegate allocations.
 **Action:** Replace `GroupBy` + `ToDictionary` with a manual, pre-sized dictionary populated via `foreach` loops using `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, key, out _) += val;`. This operates much faster by avoiding group allocation and multi-pass traversal.
+## 2024-11-20 - Replace LINQ GroupBy.ToDictionary/Select with manual loops and CollectionsMarshal in WorkspacePresentation
+
+**Learning:** WorkspacePresentation.cs contained several performance bottlenecks involving complex LINQ expressions (`.Where`, `.GroupBy`, `.Select`) that generated excessive heap allocations when updating Avalonia UI components from the simulation state. The most critical problem was iterating through `timeline.NodeStates` per scene node in `ApplySimulationOutcomes`, yielding an O(N^2) complexity with high allocations on the UI thread due to repeated `GroupBy` operations for metric aggregation.
+
+**Action:** Replace nested LINQ `GroupBy` and `.Select` chaining used for aggregations (like finding the "most pressured node" or aggregating traffic types) with O(N) pre-computed lookup dictionaries powered by `CollectionsMarshal.GetValueRefOrAddDefault`. In hot UI rendering paths (such as `GetFlowSeries` or `PopulateTrafficReports`), always construct these lookup dictionaries in a single pass outside the rendering loops to drastically decrease time complexity and GC overhead.

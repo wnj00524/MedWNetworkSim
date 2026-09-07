@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Windows.Input;
@@ -5562,18 +5563,40 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            // Bolt Performance Optimization: Replaced O(N^2) LINQ grouping and nested enumeration
+            // with manual O(N) dictionary aggregation using CollectionsMarshal to eliminate
+            // delegate closures, enumerator allocations, and inner loop scanning.
+            var groups = new Dictionary<string, (double AvailableSupply, double DemandBacklog, double Delivered)>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var allocation in lastTimelineStepResult.Allocations)
+            {
+                ref var current = ref CollectionsMarshal.GetValueRefOrAddDefault(groups, allocation.TrafficType, out _);
+                current.Delivered += allocation.Quantity;
+            }
+
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                var key = pair.Key.TrafficType;
+                ref var current = ref CollectionsMarshal.GetValueRefOrAddDefault(groups, key, out _);
+                current.AvailableSupply += pair.Value.AvailableSupply;
+                current.DemandBacklog += pair.Value.DemandBacklog;
+            }
+
+            var result = new List<FlowDataPoint>(groups.Count);
+            foreach (var group in groups)
+            {
+                var label = group.Key;
+                var vals = group.Value;
+                result.Add(new FlowDataPoint(
+                    label,
+                    vals.AvailableSupply + vals.DemandBacklog,
+                    vals.Delivered,
+                    vals.DemandBacklog,
+                    vals.AvailableSupply));
+            }
+
+            result.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return result;
         }
 
         return lastOutcomes

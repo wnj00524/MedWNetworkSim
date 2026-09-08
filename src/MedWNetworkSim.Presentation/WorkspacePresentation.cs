@@ -2423,11 +2423,25 @@ public sealed class AgentLogViewModel : ObservableObject
         var selectedId = SelectedAgentId;
         availableAgents.Clear();
         availableAgents.Add(new AgentLogAgentFilterItem(null, "All agents"));
-        foreach (var agent in allEntries
-            .GroupBy(e => e.AgentId)
-            .Select(group => new AgentLogAgentFilterItem(group.Key, resolveAgentName(group.First())))
-            .OrderBy(agent => agent.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(agent => agent.AgentId))
+
+        // Bolt: Prevent GroupBy allocations on UI thread
+        var uniqueAgents = new Dictionary<Guid, AgentLogAgentFilterItem>();
+        foreach (var entry in allEntries)
+        {
+            if (!uniqueAgents.ContainsKey(entry.AgentId))
+            {
+                uniqueAgents.Add(entry.AgentId, new AgentLogAgentFilterItem(entry.AgentId, resolveAgentName(entry)));
+            }
+        }
+        var agentList = new List<AgentLogAgentFilterItem>(uniqueAgents.Values);
+        agentList.Sort((a, b) =>
+        {
+            int cmp = StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name);
+            if (cmp == 0) return a.AgentId.GetValueOrDefault().CompareTo(b.AgentId.GetValueOrDefault());
+            return cmp;
+        });
+
+        foreach (var agent in agentList)
         {
             availableAgents.Add(agent);
         }
@@ -5562,29 +5576,52 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            // Bolt: Optimize UI thread by replacing GroupBy/Sum/Where with manual loops and dictionaries
+            var statsByTraffic = new Dictionary<string, (double Supply, double Backlog, double Allocation)>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                var trafficType = pair.Key.TrafficType;
+                ref var stats = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(statsByTraffic, trafficType, out bool exists);
+                stats.Supply += pair.Value.AvailableSupply;
+                stats.Backlog += pair.Value.DemandBacklog;
+            }
+
+            foreach (var allocation in lastTimelineStepResult.Allocations)
+            {
+                var trafficType = allocation.TrafficType;
+                ref var stats = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(statsByTraffic, trafficType, out bool exists);
+                stats.Allocation += allocation.Quantity;
+            }
+
+            var result = new List<FlowDataPoint>(statsByTraffic.Count);
+            foreach (var kvp in statsByTraffic)
+            {
+                result.Add(new FlowDataPoint(
+                    kvp.Key,
+                    kvp.Value.Supply + kvp.Value.Backlog,
+                    kvp.Value.Allocation,
+                    kvp.Value.Backlog,
+                    kvp.Value.Supply
+                ));
+            }
+            result.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return result;
         }
 
-        return lastOutcomes
-            .OrderBy(outcome => outcome.TrafficType, Comparer)
-            .Select(outcome => new FlowDataPoint(
+        var outcomesResult = new List<FlowDataPoint>(lastOutcomes.Count);
+        foreach (var outcome in lastOutcomes)
+        {
+            outcomesResult.Add(new FlowDataPoint(
                 outcome.TrafficType,
                 outcome.TotalConsumption,
                 outcome.TotalDelivered,
                 outcome.UnmetDemand,
-                0d))
-            .ToList();
+                0d
+            ));
+        }
+        outcomesResult.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+        return outcomesResult;
     }
     /// <summary>
     /// Retrieves the node pressure based on the provided parameters.
@@ -7945,10 +7982,16 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshAgentProfitReport();
     }
 
-    private IReadOnlyDictionary<string, SimulationActorState> BuildSimulationActorMap() => SimulationActors
-        .Where(actor => !string.IsNullOrWhiteSpace(actor.Id))
-        .GroupBy(actor => actor.Id, Comparer)
-        .ToDictionary(group => group.Key, group => group.First(), Comparer);
+    private IReadOnlyDictionary<string, SimulationActorState> BuildSimulationActorMap()
+    {
+        var dict = new Dictionary<string, SimulationActorState>(Comparer);
+        foreach (var actor in SimulationActors)
+        {
+            if (string.IsNullOrWhiteSpace(actor.Id)) continue;
+            dict.TryAdd(actor.Id, actor);
+        }
+        return dict;
+    }
 
     private void RecordEconomicMetrics(TrafficEconomicSettlementResult settlement)
     {

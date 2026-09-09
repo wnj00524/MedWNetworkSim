@@ -93,11 +93,15 @@ public sealed class NetworkLayerResolver : INetworkLayerResolver, INetworkLayerS
             layer.Id = Guid.NewGuid();
         }
 
-        var unique = network.Layers
-            .Where(layer => layer is not null)
-            .GroupBy(layer => layer.Id)
-            .Select(group => group.First())
-            .ToList();
+        var unique = new List<NetworkLayerModel>();
+        var seen = new HashSet<Guid>();
+        foreach (var layer in network.Layers)
+        {
+            if (layer != null && seen.Add(layer.Id))
+            {
+                unique.Add(layer);
+            }
+        }
 
         network.Layers = unique;
 
@@ -292,10 +296,20 @@ public sealed class EconomicCalculator : IEconomicCalculator
     /// </summary>
     public EconomicSummary Calculate(NetworkModel network, SimulationResult result)
     {
-        var shortagePenaltyByTraffic = network.Nodes
-            .SelectMany(node => node.TrafficProfiles.Select(profile => new { profile.TrafficType, Penalty = Math.Max(0d, profile.ShortagePenalty) }))
-            .GroupBy(item => item.TrafficType, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.Max(item => item.Penalty), StringComparer.OrdinalIgnoreCase);
+        var shortagePenaltyByTraffic = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var node in network.Nodes)
+        {
+            foreach (var profile in node.TrafficProfiles)
+            {
+                if (profile.TrafficType is null) continue;
+                var penalty = Math.Max(0d, profile.ShortagePenalty);
+                ref var currentMax = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(shortagePenaltyByTraffic, profile.TrafficType, out var exists);
+                if (!exists || penalty > currentMax)
+                {
+                    currentMax = penalty;
+                }
+            }
+        }
 
         var settled = new TrafficEconomicSettlementService().Settle(network, result.Outcomes).Outcomes;
         var salesRevenue = 0d;

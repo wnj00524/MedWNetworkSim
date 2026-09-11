@@ -6800,9 +6800,14 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private bool TryRebuildFacilityCoverageState()
     {
-        var nodesById = network.Nodes
-            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
-            .ToDictionary(node => node.Id, node => node, Comparer);
+        var nodesById = new Dictionary<string, NodeModel>(network.Nodes.Count, Comparer);
+        foreach (var node in network.Nodes)
+        {
+            if (!string.IsNullOrWhiteSpace(node.Id))
+            {
+                nodesById.TryAdd(node.Id, node);
+            }
+        }
 
         var refreshedDistances = new Dictionary<string, Dictionary<string, double>>(Comparer);
         foreach (var facility in SelectedFacilityNodes)
@@ -7945,10 +7950,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshAgentProfitReport();
     }
 
-    private IReadOnlyDictionary<string, SimulationActorState> BuildSimulationActorMap() => SimulationActors
-        .Where(actor => !string.IsNullOrWhiteSpace(actor.Id))
-        .GroupBy(actor => actor.Id, Comparer)
-        .ToDictionary(group => group.Key, group => group.First(), Comparer);
+    private IReadOnlyDictionary<string, SimulationActorState> BuildSimulationActorMap()
+    {
+        var map = new Dictionary<string, SimulationActorState>(SimulationActors.Count, Comparer);
+        foreach (var actor in SimulationActors)
+        {
+            if (!string.IsNullOrWhiteSpace(actor.Id))
+            {
+                map.TryAdd(actor.Id, actor);
+            }
+        }
+        return map;
+    }
 
     private void RecordEconomicMetrics(TrafficEconomicSettlementResult settlement)
     {
@@ -12010,9 +12023,14 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private void ApplyFacilityPlanningVisuals()
     {
-        var baseNodesById = network.Nodes
-            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
-            .ToDictionary(node => node.Id, node => node, Comparer);
+        var baseNodesById = new Dictionary<string, NodeModel>(network.Nodes.Count, Comparer);
+        foreach (var node in network.Nodes)
+        {
+            if (!string.IsNullOrWhiteSpace(node.Id))
+            {
+                baseNodesById.TryAdd(node.Id, node);
+            }
+        }
         var selectedFacilityIds = SelectedFacilityNodes
             .Where(facility => !string.IsNullOrWhiteSpace(facility.Node.Id))
             .Select(facility => facility.Node.Id)

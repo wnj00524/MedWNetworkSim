@@ -33,10 +33,15 @@ public sealed class TrafficEconomicSettlementService
         ArgumentNullException.ThrowIfNull(outcomes);
 
         var nodesById = network.Nodes.ToDictionary(node => node.Id, node => node, Comparer);
-        var definitionsByTraffic = network.TrafficTypes
-            .Where(definition => !string.IsNullOrWhiteSpace(definition.Name))
-            .GroupBy(definition => definition.Name, Comparer)
-            .ToDictionary(group => group.Key, group => group.First(), Comparer);
+
+        var definitionsByTraffic = new Dictionary<string, TrafficTypeDefinition>(Comparer);
+        foreach (var definition in network.TrafficTypes)
+        {
+            if (!string.IsNullOrWhiteSpace(definition.Name))
+            {
+                definitionsByTraffic.TryAdd(definition.Name, definition);
+            }
+        }
 
         var enrichedOutcomes = outcomes
             .Select(outcome =>

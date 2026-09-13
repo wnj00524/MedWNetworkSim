@@ -935,10 +935,25 @@ public static partial class MixedRoutingAllocator
             }
         }
 
-        return routes
-            .GroupBy(route => route.PathKey, Comparer)
-            .Select(group => group.OrderBy(route => route.Score).First())
-            .OrderBy(route => route.Score)
+        var bestRoutesByPath = new Dictionary<string, RouteCandidate>(Comparer);
+        foreach (var route in routes)
+        {
+            ref var best = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(bestRoutesByPath, route.PathKey, out var exists);
+            if (!exists || best == null || route.Score < best.Score)
+            {
+                best = route;
+            }
+        }
+
+        var bestCandidates = new List<RouteCandidate>(bestRoutesByPath.Count);
+        foreach (var candidate in bestRoutesByPath.Values)
+        {
+            bestCandidates.Add(candidate);
+        }
+
+        bestCandidates.Sort((a, b) => a.Score.CompareTo(b.Score));
+
+        return bestCandidates
             .Take(Math.Max(1, context.RouteChoiceSettings.MaxCandidateRoutes))
             .ToList();
     }

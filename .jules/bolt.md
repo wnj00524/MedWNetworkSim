@@ -118,3 +118,7 @@
 ## 2024-05-25 - Avoid GroupBy and ToDictionary on path edge allocations in Economic Metrics
 **Learning:** In C# UI presentation classes, chained LINQ aggregations like `.SelectMany(..).GroupBy(..).ToDictionary(..)` can cause substantial garbage on the UI thread due to enumerator, group, and delegate allocations.
 **Action:** Replace `GroupBy` + `ToDictionary` with a manual, pre-sized dictionary populated via `foreach` loops using `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, key, out _) += val;`. This operates much faster by avoiding group allocation and multi-pass traversal.
+
+## 2024-05-25 - C# Avalonia UI Rendering Bottlenecks
+**Learning:** LINQ queries like `.GroupBy()` and `.Select()` over large simulation state collections (e.g. `NodeStates`, `Allocations`) during UI property getters or change notifications cause massive garbage collection pauses on the UI thread due to the allocation of `IGrouping` instances, enumerators, and closures. Nested LINQ queries create $O(N \times M)$ bottlenecks that severely lag playback.
+**Action:** Replace LINQ queries in presentation logic (like mapping state backlogs or flow metrics) with single-pass manual aggregations using `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault`. This allows zero-allocation frequency maps and reduces algorithmic complexity to $O(N + M)$.

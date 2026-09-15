@@ -5562,18 +5562,37 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            // Bolt: O(N) allocation sums to eliminate nested LINQ Where on UI thread
+            var allocSums = new Dictionary<string, double>(Comparer);
+            foreach (var alloc in lastTimelineStepResult.Allocations)
+            {
+                System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(allocSums, alloc.TrafficType, out _) += alloc.Quantity;
+            }
+
+            // Bolt: O(N) node state sums to eliminate LINQ GroupBy and anonymous objects on UI thread
+            var groupSums = new Dictionary<string, (double Total, double Backlog, double Supply)>(Comparer);
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                var key = pair.Key.TrafficType;
+                var val = pair.Value;
+                ref var sums = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(groupSums, key, out _);
+                sums.Total += val.AvailableSupply + val.DemandBacklog;
+                sums.Backlog += val.DemandBacklog;
+                sums.Supply += val.AvailableSupply;
+            }
+
+            var list = new List<FlowDataPoint>(groupSums.Count);
+            foreach (var kvp in groupSums)
+            {
+                list.Add(new FlowDataPoint(
+                    kvp.Key,
+                    kvp.Value.Total,
+                    allocSums.GetValueOrDefault(kvp.Key),
+                    kvp.Value.Backlog,
+                    kvp.Value.Supply));
+            }
+            list.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return list;
         }
 
         return lastOutcomes
@@ -9360,38 +9379,60 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 });
             }
 
-            var topUnmetNode = timeline.NodeStates
-                .Where(pair => pair.Value.DemandBacklog > 0d)
-                .GroupBy(pair => pair.Key.NodeId, pair => pair.Value.DemandBacklog, Comparer)
-                .Select(group => new { NodeId = group.Key, Backlog = group.Sum() })
-                .OrderByDescending(item => item.Backlog)
-                .FirstOrDefault();
-            if (topUnmetNode is not null)
+            // Bolt: Optimize top unmet node and top traffic backlog to single-pass manual aggregations to avoid GroupBy/OrderBy allocations
+            var nodeBacklogs = new Dictionary<string, double>(Comparer);
+            var trafficBacklogs = new Dictionary<string, double>(Comparer);
+            foreach (var pair in timeline.NodeStates)
+            {
+                if (pair.Value.DemandBacklog > 0d)
+                {
+                    System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(nodeBacklogs, pair.Key.NodeId, out _) += pair.Value.DemandBacklog;
+                    System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(trafficBacklogs, pair.Key.TrafficType, out _) += pair.Value.DemandBacklog;
+                }
+            }
+
+            string? topUnmetNodeId = null;
+            double topUnmetNodeBacklog = double.MinValue;
+            foreach (var kvp in nodeBacklogs)
+            {
+                if (kvp.Value > topUnmetNodeBacklog)
+                {
+                    topUnmetNodeBacklog = kvp.Value;
+                    topUnmetNodeId = kvp.Key;
+                }
+            }
+
+            if (topUnmetNodeId is not null)
             {
                 metrics.Add(new ReportMetricViewModel
                 {
                     Label = "Top unmet-need node",
-                    Value = $"{ResolveNodeName(topUnmetNode.NodeId)} {ReportExportService.FormatNumber(topUnmetNode.Backlog)}",
-                    Activate = () => SelectNodeForEdit(topUnmetNode.NodeId)
+                    Value = $"{ResolveNodeName(topUnmetNodeId)} {ReportExportService.FormatNumber(topUnmetNodeBacklog)}",
+                    Activate = () => SelectNodeForEdit(topUnmetNodeId)
                 });
             }
 
-            var topTrafficBacklog = timeline.NodeStates
-                .Where(pair => pair.Value.DemandBacklog > 0d)
-                .GroupBy(pair => pair.Key.TrafficType, pair => pair.Value.DemandBacklog, Comparer)
-                .Select(group => new { TrafficType = group.Key, Backlog = group.Sum() })
-                .OrderByDescending(item => item.Backlog)
-                .FirstOrDefault();
-            if (topTrafficBacklog is not null)
+            string? topTrafficBacklogType = null;
+            double topTrafficBacklogValue = double.MinValue;
+            foreach (var kvp in trafficBacklogs)
+            {
+                if (kvp.Value > topTrafficBacklogValue)
+                {
+                    topTrafficBacklogValue = kvp.Value;
+                    topTrafficBacklogType = kvp.Key;
+                }
+            }
+
+            if (topTrafficBacklogType is not null)
             {
                 metrics.Add(new ReportMetricViewModel
                 {
                     Label = "Top traffic backlog",
-                    Value = $"{topTrafficBacklog.TrafficType} {ReportExportService.FormatNumber(topTrafficBacklog.Backlog)}",
+                    Value = $"{topTrafficBacklogType} {ReportExportService.FormatNumber(topTrafficBacklogValue)}",
                     Activate = () =>
                     {
                         SelectedInspectorTab = InspectorTabTarget.TrafficTypes;
-                        SelectedTrafficDefinitionItem = TrafficDefinitions.FirstOrDefault(item => Comparer.Equals(item.Name, topTrafficBacklog.TrafficType));
+                        SelectedTrafficDefinitionItem = TrafficDefinitions.FirstOrDefault(item => Comparer.Equals(item.Name, topTrafficBacklogType));
                         NotifyVisualChanged();
                     }
                 });

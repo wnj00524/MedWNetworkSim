@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows.Input;
 using MedWNetworkSim.App.Agents;
@@ -5562,29 +5563,59 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            // Bolt: Replaced LINQ GroupBy and multiple Sums with a manual single-pass dictionary aggregation to prevent enumerator allocations and repeated iterations on hot UI path
+            var stateTotals = new Dictionary<string, (double Supply, double Backlog)>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                var trafficType = pair.Key.TrafficType;
+                if (string.IsNullOrEmpty(trafficType)) continue;
+
+                ref var val = ref CollectionsMarshal.GetValueRefOrAddDefault(stateTotals, trafficType, out _);
+                val.Supply += pair.Value.AvailableSupply;
+                val.Backlog += pair.Value.DemandBacklog;
+            }
+
+            var allocTotals = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (var allocation in lastTimelineStepResult.Allocations)
+            {
+                var trafficType = allocation.TrafficType;
+                if (string.IsNullOrEmpty(trafficType)) continue;
+
+                ref var val = ref CollectionsMarshal.GetValueRefOrAddDefault(allocTotals, trafficType, out _);
+                val += allocation.Quantity;
+            }
+
+            var result = new List<FlowDataPoint>(stateTotals.Count);
+            foreach (var pair in stateTotals)
+            {
+                allocTotals.TryGetValue(pair.Key, out var allocTotal);
+                result.Add(new FlowDataPoint(
+                    pair.Key,
+                    pair.Value.Supply + pair.Value.Backlog,
+                    allocTotal,
+                    pair.Value.Backlog,
+                    pair.Value.Supply
+                ));
+            }
+            result.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return result;
         }
 
-        return lastOutcomes
-            .OrderBy(outcome => outcome.TrafficType, Comparer)
-            .Select(outcome => new FlowDataPoint(
+        var sortedOutcomes = new List<TrafficSimulationOutcome>(lastOutcomes);
+        sortedOutcomes.Sort((a, b) => Comparer.Compare(a.TrafficType, b.TrafficType));
+
+        var outcomeResult = new List<FlowDataPoint>(sortedOutcomes.Count);
+        foreach (var outcome in sortedOutcomes)
+        {
+            outcomeResult.Add(new FlowDataPoint(
                 outcome.TrafficType,
                 outcome.TotalConsumption,
                 outcome.TotalDelivered,
                 outcome.UnmetDemand,
-                0d))
-            .ToList();
+                0d));
+        }
+
+        return outcomeResult;
     }
     /// <summary>
     /// Retrieves the node pressure based on the provided parameters.

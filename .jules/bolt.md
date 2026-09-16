@@ -118,3 +118,6 @@
 ## 2024-05-25 - Avoid GroupBy and ToDictionary on path edge allocations in Economic Metrics
 **Learning:** In C# UI presentation classes, chained LINQ aggregations like `.SelectMany(..).GroupBy(..).ToDictionary(..)` can cause substantial garbage on the UI thread due to enumerator, group, and delegate allocations.
 **Action:** Replace `GroupBy` + `ToDictionary` with a manual, pre-sized dictionary populated via `foreach` loops using `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, key, out _) += val;`. This operates much faster by avoiding group allocation and multi-pass traversal.
+## 2024-05-24 - Optimizing Flow Series Aggregation
+**Learning:** In Avalonia UI hot paths, using LINQ `GroupBy` combined with multiple `Sum` aggregations creates significant garbage and requires iterating over the dataset multiple times. `CollectionsMarshal.GetValueRefOrAddDefault` provides a highly efficient way to do multi-variable aggregations (like Supply and Backlog) in a single pass.
+**Action:** Use manual single-pass loops with `Dictionary<string, (double Supply, double Backlog)>` and `CollectionsMarshal` to replace complex LINQ `GroupBy().Select()` pipelines when mapping simulation state to UI view models.

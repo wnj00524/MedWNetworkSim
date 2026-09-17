@@ -118,3 +118,6 @@
 ## 2024-05-25 - Avoid GroupBy and ToDictionary on path edge allocations in Economic Metrics
 **Learning:** In C# UI presentation classes, chained LINQ aggregations like `.SelectMany(..).GroupBy(..).ToDictionary(..)` can cause substantial garbage on the UI thread due to enumerator, group, and delegate allocations.
 **Action:** Replace `GroupBy` + `ToDictionary` with a manual, pre-sized dictionary populated via `foreach` loops using `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, key, out _) += val;`. This operates much faster by avoiding group allocation and multi-pass traversal.
+## 2024-05-15 - Fast UI Rendering by hoisting aggregations
+**Learning:** Performing per-node LINQ evaluations over identical parent collections (like finding backlog values in NodeStates) causes extreme N^2 CPU overhead on the Avalonia UI rendering loop and generates massive garbage.
+**Action:** Always pre-aggregate metric lookups into a Dictionary keyed by NodeId in a single $O(N)$ pass *before* looping through UI structural models for state updates, replacing N^2 sub-searches with O(1) dictionary lookups.

@@ -8906,18 +8906,57 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (timeline is not null)
         {
+            // Bolt: Pre-compute state and backlog to eliminate O(N^2) LINQ allocations on UI thread
+            var stateByNodeId = new Dictionary<string, TemporalNetworkSimulationEngine.TemporalNodeStateSnapshot>(Comparer);
+            var backlogByNodeIdAndTraffic = new Dictionary<string, Dictionary<string, double>>(Comparer);
+
+            foreach (var pair in timeline.NodeStates)
+            {
+                var nodeId = pair.Key.NodeId;
+                if (!string.IsNullOrWhiteSpace(nodeId))
+                {
+                    stateByNodeId.TryAdd(nodeId, pair.Value);
+
+                    if (pair.Value.DemandBacklog > 0d)
+                    {
+                        if (!backlogByNodeIdAndTraffic.TryGetValue(nodeId, out var trafficDict))
+                        {
+                            trafficDict = new Dictionary<string, double>(Comparer);
+                            backlogByNodeIdAndTraffic[nodeId] = trafficDict;
+                        }
+
+                        var trafficType = pair.Key.TrafficType;
+                        if (!string.IsNullOrWhiteSpace(trafficType))
+                        {
+                            trafficDict.TryGetValue(trafficType, out var currentBacklog);
+                            trafficDict[trafficType] = currentBacklog + pair.Value.DemandBacklog;
+                        }
+                    }
+                }
+            }
+
+            var precomputedBacklogs = new Dictionary<string, List<KeyValuePair<string, double>>>(Comparer);
+            foreach (var pair in backlogByNodeIdAndTraffic)
+            {
+                var list = new List<KeyValuePair<string, double>>(pair.Value.Count);
+                foreach (var innerPair in pair.Value)
+                {
+                    list.Add(new KeyValuePair<string, double>(innerPair.Key, innerPair.Value));
+                }
+                precomputedBacklogs[pair.Key] = list;
+            }
+
             foreach (var node in Scene.Nodes)
             {
                 if (!nodesById.TryGetValue(node.Id, out var nodeModel)) continue;
-                var state = timeline.NodeStates
-                    .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id))
-                    .Select(pair => pair.Value)
-                    .FirstOrDefault();
-                var backlogByTraffic = timeline.NodeStates
-                    .Where(pair => Comparer.Equals(pair.Key.NodeId, node.Id) && pair.Value.DemandBacklog > 0d)
-                    .GroupBy(pair => pair.Key.TrafficType, pair => pair.Value.DemandBacklog, Comparer)
-                    .Select(group => new KeyValuePair<string, double>(group.Key, group.Sum()))
-                    .ToList();
+                stateByNodeId.TryGetValue(node.Id, out var state);
+
+                var backlogByTraffic = precomputedBacklogs.GetValueOrDefault(node.Id);
+                if (backlogByTraffic is null)
+                {
+                    backlogByTraffic = [];
+                }
+
                 var pressure = timeline.NodePressureById.GetValueOrDefault(node.Id);
                 node.MetricsLabel = string.Empty;
                 node.DetailLines = BuildNodeDetailLines(nodeModel, backlogByTraffic, pressure.Score > 0d ? pressure : null);

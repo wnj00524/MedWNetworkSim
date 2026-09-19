@@ -121,3 +121,6 @@
 ## 2024-05-25 - Avoid per-node LINQ filtering on Temporal Node States inside UI updates
 **Learning:** When updating UI components from simulation state (e.g., matching `Scene.Nodes` to `timeline.NodeStates`), performing per-node LINQ queries (`.Where`, `.GroupBy`) inside the rendering loop creates O(N^2) complexity and excessive enumerator allocations on the Avalonia UI thread, causing jank.
 **Action:** Hoist the aggregation outside the rendering loop by pre-computing lookup dictionaries indexed by `NodeId` in a single pass to eliminate O(N^2) complexity and Avalonia UI thread allocations.
+## 2025-02-12 - Replaced multiple GroupBy + ToDictionary with manual Dictionary iterations
+**Learning:** Replaced `GroupBy(x).ToDictionary(x, ...)` with manual loop implementations. `GroupBy` allocates enumerators and `IGrouping` instances for each key. Replacing them with direct iteration over collections and pre-sized dictionaries avoids intermediate allocations and avoids closure allocations inside `.ToDictionary()`.
+**Action:** Use standard `foreach` and `TryAdd` or dictionary indexer updates rather than LINQ `GroupBy` or `ToDictionary` when accumulating or summarizing data in hot loops, such as when parsing Traffic Types or determining landed unit costs.

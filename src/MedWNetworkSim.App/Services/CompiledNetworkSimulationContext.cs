@@ -445,12 +445,16 @@ public sealed class CompiledNetworkSimulationContext
             baseEdgeCapacity[index] = edge.Capacity ?? double.PositiveInfinity;
         }
 
-        var trafficDefinitionsByName = effectiveNetwork.TrafficTypes
-            .Where(definition => !string.IsNullOrWhiteSpace(definition.Name))
-            .GroupBy(definition => definition.Name, Comparer)
-            .Select(group => group.First())
-            .ToDictionary(definition => definition.Name, definition => definition, Comparer)
-            .ToFrozenDictionary(Comparer);
+        // Bolt: Replaced LINQ GroupBy and ToDictionary with manual TryAdd to eliminate enumerators and IGrouping objects
+        var tempDefinitions = new Dictionary<string, TrafficTypeDefinition>(Comparer);
+        foreach (var definition in effectiveNetwork.TrafficTypes)
+        {
+            if (!string.IsNullOrWhiteSpace(definition.Name))
+            {
+                tempDefinitions.TryAdd(definition.Name, definition);
+            }
+        }
+        var trafficDefinitionsByName = tempDefinitions.ToFrozenDictionary(Comparer);
         var orderedTrafficNames = GetOrderedTrafficNames(effectiveNetwork).ToArray();
         var trafficTypeIndexByName = orderedTrafficNames
             .Select((name, index) => new KeyValuePair<string, int>(name, index))

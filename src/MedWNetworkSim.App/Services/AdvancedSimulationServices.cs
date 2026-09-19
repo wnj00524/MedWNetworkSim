@@ -292,10 +292,19 @@ public sealed class EconomicCalculator : IEconomicCalculator
     /// </summary>
     public EconomicSummary Calculate(NetworkModel network, SimulationResult result)
     {
-        var shortagePenaltyByTraffic = network.Nodes
-            .SelectMany(node => node.TrafficProfiles.Select(profile => new { profile.TrafficType, Penalty = Math.Max(0d, profile.ShortagePenalty) }))
-            .GroupBy(item => item.TrafficType, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.Max(item => item.Penalty), StringComparer.OrdinalIgnoreCase);
+        // Bolt: Replaced LINQ SelectMany, GroupBy, and ToDictionary with manual loops and TryGetValue to avoid enumerators and IGrouping allocations
+        var shortagePenaltyByTraffic = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var node in network.Nodes)
+        {
+            foreach (var profile in node.TrafficProfiles)
+            {
+                var penalty = Math.Max(0d, profile.ShortagePenalty);
+                if (!shortagePenaltyByTraffic.TryGetValue(profile.TrafficType, out var currentMax) || penalty > currentMax)
+                {
+                    shortagePenaltyByTraffic[profile.TrafficType] = penalty;
+                }
+            }
+        }
 
         var settled = new TrafficEconomicSettlementService().Settle(network, result.Outcomes).Outcomes;
         var salesRevenue = 0d;

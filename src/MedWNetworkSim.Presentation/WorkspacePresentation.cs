@@ -6800,9 +6800,14 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private bool TryRebuildFacilityCoverageState()
     {
-        var nodesById = network.Nodes
-            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
-            .ToDictionary(node => node.Id, node => node, Comparer);
+        var nodesById = new Dictionary<string, NodeModel>(network.Nodes.Count, Comparer);
+        foreach (var node in network.Nodes)
+        {
+            if (!string.IsNullOrWhiteSpace(node.Id))
+            {
+                nodesById[node.Id] = node;
+            }
+        }
 
         var refreshedDistances = new Dictionary<string, Dictionary<string, double>>(Comparer);
         foreach (var facility in SelectedFacilityNodes)
@@ -7235,7 +7240,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         }
 
         // Bolt: Optimize O(N^2) layer lookup to O(1)
-        var layersById = network.Layers.ToDictionary(layer => layer.Id);
+        var layersById = new Dictionary<Guid, NetworkLayerModel>(network.Layers.Count);
+        foreach (var layer in network.Layers)
+        {
+            layersById[layer.Id] = layer;
+        }
 
         foreach (var edge in network.Edges.Where(edge => visibleLayers.Contains(edge.LayerId)))
         {
@@ -7945,10 +7954,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         RefreshAgentProfitReport();
     }
 
-    private IReadOnlyDictionary<string, SimulationActorState> BuildSimulationActorMap() => SimulationActors
-        .Where(actor => !string.IsNullOrWhiteSpace(actor.Id))
-        .GroupBy(actor => actor.Id, Comparer)
-        .ToDictionary(group => group.Key, group => group.First(), Comparer);
+    private IReadOnlyDictionary<string, SimulationActorState> BuildSimulationActorMap()
+    {
+        var dict = new Dictionary<string, SimulationActorState>(Comparer);
+        foreach (var actor in SimulationActors)
+        {
+            if (!string.IsNullOrWhiteSpace(actor.Id))
+            {
+                dict.TryAdd(actor.Id, actor);
+            }
+        }
+        return dict;
+    }
 
     private void RecordEconomicMetrics(TrafficEconomicSettlementResult settlement)
     {
@@ -8796,7 +8813,11 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             edge.HasWarning = false;
         }
 
-        var nodesById = network.Nodes.ToDictionary(node => node.Id, Comparer);
+        var nodesById = new Dictionary<string, NodeModel>(network.Nodes.Count, Comparer);
+        foreach (var node in network.Nodes)
+        {
+            nodesById[node.Id] = node;
+        }
 
         foreach (var node in Scene.Nodes)
         {
@@ -12049,18 +12070,34 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private void ApplyFacilityPlanningVisuals()
     {
-        var baseNodesById = network.Nodes
-            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
-            .ToDictionary(node => node.Id, node => node, Comparer);
-        var selectedFacilityIds = SelectedFacilityNodes
-            .Where(facility => !string.IsNullOrWhiteSpace(facility.Node.Id))
-            .Select(facility => facility.Node.Id)
-            .ToHashSet(Comparer);
-        var reachableIds = facilityCoverageByNodeId.Keys.ToHashSet(Comparer);
-        var overlapIds = facilityCoverageByNodeId
-            .Where(pair => pair.Value.Count > 1)
-            .Select(pair => pair.Key)
-            .ToHashSet(Comparer);
+        var baseNodesById = new Dictionary<string, NodeModel>(network.Nodes.Count, Comparer);
+        foreach (var node in network.Nodes)
+        {
+            if (!string.IsNullOrWhiteSpace(node.Id))
+            {
+                baseNodesById[node.Id] = node;
+            }
+        }
+
+        var selectedFacilityIds = new HashSet<string>(Comparer);
+        foreach (var facility in SelectedFacilityNodes)
+        {
+            if (!string.IsNullOrWhiteSpace(facility.Node.Id))
+            {
+                selectedFacilityIds.Add(facility.Node.Id);
+            }
+        }
+
+        var reachableIds = new HashSet<string>(facilityCoverageByNodeId.Keys, Comparer);
+
+        var overlapIds = new HashSet<string>(Comparer);
+        foreach (var pair in facilityCoverageByNodeId)
+        {
+            if (pair.Value.Count > 1)
+            {
+                overlapIds.Add(pair.Key);
+            }
+        }
 
         foreach (var sceneNode in Scene.Nodes)
         {

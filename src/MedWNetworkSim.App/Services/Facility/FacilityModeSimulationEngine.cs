@@ -59,9 +59,13 @@ public sealed class FacilityModeSimulationEngine
             var inboundDemandByFacility = BuildInboundDemandByFacility(network, traffic.Name, assignment);
             var inboundNetwork = BuildInboundNetwork(network, traffic, inboundDemandByFacility);
             var inboundOutcome = baseEngine.Simulate(inboundNetwork).FirstOrDefault();
-            var deliveredToFacility = (inboundOutcome?.Allocations ?? [])
-                .GroupBy(allocation => allocation.ConsumerNodeId, Comparer)
-                .ToDictionary(group => group.Key, group => group.Sum(allocation => allocation.Quantity), Comparer);
+            // Bolt: Replaced LINQ GroupBy and ToDictionary with manual foreach and CollectionsMarshal to avoid enumerator and delegate allocations on hot path.
+            var deliveredToFacility = new Dictionary<string, double>(Comparer);
+            foreach (var allocation in inboundOutcome?.Allocations ?? [])
+            {
+                ref var sum = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(deliveredToFacility, allocation.ConsumerNodeId, out _);
+                sum += allocation.Quantity;
+            }
 
             var outboundNetwork = BuildOutboundNetwork(network, traffic, assignment, deliveredToFacility);
             var outboundOutcome = baseEngine.Simulate(outboundNetwork).FirstOrDefault();
@@ -132,7 +136,12 @@ public sealed class FacilityModeSimulationEngine
         IReadOnlyDictionary<string, double> deliveredToFacility)
     {
         var clone = CloneNetwork(network, facilityModeEnabled: false, traffic.Name);
-        var demandByNode = network.Nodes.ToDictionary(node => node.Id, node => GetDemand(node, traffic.Name), Comparer);
+        // Bolt: Replaced LINQ ToDictionary with a manual loop and pre-sized dictionary to avoid enumerator allocations.
+        var demandByNode = new Dictionary<string, double>(network.Nodes.Count, Comparer);
+        foreach (var node in network.Nodes)
+        {
+            demandByNode[node.Id] = GetDemand(node, traffic.Name);
+        }
 
         foreach (var node in clone.Nodes)
         {

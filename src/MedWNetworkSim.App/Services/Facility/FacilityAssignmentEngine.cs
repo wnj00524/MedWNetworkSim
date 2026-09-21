@@ -44,14 +44,17 @@ public sealed class FacilityAssignmentEngine
         }
 
         var adjacency = BuildAdjacency(network.Edges);
-        var facilityDistances = facilities.ToDictionary(
-            facility => facility.Id,
-            facility => ComputeCostMap(facility.Id, adjacency, maxCost),
-            Comparer);
+        // Bolt: Replaced multiple LINQ ToDictionary calls with a single manual foreach loop over pre-sized dictionaries to save allocations.
+        var facilityDistances = new Dictionary<string, IReadOnlyDictionary<string, double>>(facilities.Count, Comparer);
+        var demandByFacility = new Dictionary<string, double>(facilities.Count, Comparer);
+        foreach (var facility in facilities)
+        {
+            facilityDistances[facility.Id] = ComputeCostMap(facility.Id, adjacency, maxCost);
+            demandByFacility[facility.Id] = 0d;
+        }
 
         var assignments = new Dictionary<string, string>(Comparer);
         var assignmentCosts = new Dictionary<string, double>(Comparer);
-        var demandByFacility = facilities.ToDictionary(facility => facility.Id, _ => 0d, Comparer);
         var unassignedNodeIds = new List<string>();
 
         foreach (var node in network.Nodes

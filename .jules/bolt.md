@@ -121,3 +121,6 @@
 ## 2024-05-25 - Avoid per-node LINQ filtering on Temporal Node States inside UI updates
 **Learning:** When updating UI components from simulation state (e.g., matching `Scene.Nodes` to `timeline.NodeStates`), performing per-node LINQ queries (`.Where`, `.GroupBy`) inside the rendering loop creates O(N^2) complexity and excessive enumerator allocations on the Avalonia UI thread, causing jank.
 **Action:** Hoist the aggregation outside the rendering loop by pre-computing lookup dictionaries indexed by `NodeId` in a single pass to eliminate O(N^2) complexity and Avalonia UI thread allocations.
+## 2024-05-26 - Eliminate GroupBy and ToDictionary on hot path allocations in FacilityModeSimulationEngine
+**Learning:** Using chained LINQ `.GroupBy().ToDictionary()` for aggregating quantities creates significant garbage collection pressure due to `IGrouping` enumerator and delegate allocations on simulation hot paths.
+**Action:** Replace `.GroupBy().ToDictionary()` with a pre-sized `Dictionary` populated via a single-pass `foreach` loop, using `CollectionsMarshal.GetValueRefOrAddDefault` to update sums efficiently.

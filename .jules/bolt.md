@@ -121,3 +121,7 @@
 ## 2024-05-25 - Avoid per-node LINQ filtering on Temporal Node States inside UI updates
 **Learning:** When updating UI components from simulation state (e.g., matching `Scene.Nodes` to `timeline.NodeStates`), performing per-node LINQ queries (`.Where`, `.GroupBy`) inside the rendering loop creates O(N^2) complexity and excessive enumerator allocations on the Avalonia UI thread, causing jank.
 **Action:** Hoist the aggregation outside the rendering loop by pre-computing lookup dictionaries indexed by `NodeId` in a single pass to eliminate O(N^2) complexity and Avalonia UI thread allocations.
+
+## 2024-05-24 - Merging multiple LINQ grouping metrics into single pass
+**Learning:** Computing multiple top metrics (like most pressured node and most demanded traffic) from the same source dictionary using separate LINQ `.GroupBy().Select().OrderBy().FirstOrDefault()` chains results in O(N log N) time complexity multiplied by the number of metrics, plus massive enumerator and closure allocations per frame on the UI thread.
+**Action:** Replace multiple LINQ grouping aggregations over the same source data with a single manual `foreach` loop that populates multiple pre-allocated tracking dictionaries via `CollectionsMarshal.GetValueRefOrAddDefault`, followed by O(M) linear scans to find the max items. This reduces time complexity to O(N + M) and eliminates allocations on hot paths.

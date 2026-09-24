@@ -10530,6 +10530,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             edge.TrafficPermissions.RemoveAll(rule => Comparer.Equals(rule.TrafficType, selected.Name));
         }
 
+        RemoveTrafficTypeReferences(selected.Name);
+        InvalidateTrafficReports();
+
         EnsureDefaultTrafficType();
         PopulateTrafficDefinitionList();
         PopulateDefaultPermissionRows();
@@ -10576,6 +10579,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             if (!Comparer.Equals(oldName, requestedName))
             {
                 RenameTrafficReferences(oldName, requestedName);
+                InvalidateTrafficReports();
             }
 
             PopulateTrafficDefinitionList();
@@ -10615,6 +10619,55 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
                 rule.TrafficType = newName;
             }
         }
+
+        foreach (var rule in network.RouteTaxRules.Where(rule => Comparer.Equals(rule.TrafficType, oldName)))
+        {
+            rule.TrafficType = newName;
+        }
+
+        foreach (var rule in network.PolicyRules.Where(rule => Comparer.Equals(rule.TrafficTypeIdOrName, oldName)))
+        {
+            rule.TrafficTypeIdOrName = newName;
+        }
+
+        foreach (var evt in network.ScenarioDefinitions.SelectMany(scenario => scenario.Events).Where(evt => Comparer.Equals(evt.TrafficTypeIdOrName, oldName)))
+        {
+            evt.TrafficTypeIdOrName = newName;
+        }
+
+        foreach (var evt in network.TimelineEvents.SelectMany(evt => evt.Effects).Where(effect => Comparer.Equals(effect.TrafficType, oldName)))
+        {
+            evt.TrafficType = newName;
+        }
+    }
+
+    private void RemoveTrafficTypeReferences(string trafficType)
+    {
+        network.RouteTaxRules.RemoveAll(rule => Comparer.Equals(rule.TrafficType, trafficType));
+        network.PolicyRules.RemoveAll(rule => Comparer.Equals(rule.TrafficTypeIdOrName, trafficType));
+        foreach (var scenario in network.ScenarioDefinitions)
+        {
+            scenario.Events.RemoveAll(evt => Comparer.Equals(evt.TrafficTypeIdOrName, trafficType));
+        }
+
+        foreach (var timelineEvent in network.TimelineEvents)
+        {
+            timelineEvent.Effects.RemoveAll(effect => Comparer.Equals(effect.TrafficType, trafficType));
+        }
+    }
+
+    private void InvalidateTrafficReports()
+    {
+        temporalState = null;
+        lastTimelineStepResult = null;
+        lastOutcomes = [];
+        lastConsumerCosts = [];
+        visualAnalyticsSnapshot = null;
+        lastDetectedIssues = [];
+        TrafficReports.Clear();
+        NetworkInsights.Clear();
+        RefreshDashboardSummaries();
+        Raise(nameof(TrafficDeliveredColumnLabel));
     }
 
     private void CommitDefaultPermissionRows()
@@ -11846,9 +11899,6 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
     {
         return network.TrafficTypes
             .Select(definition => definition.Name)
-            .Concat(network.Nodes.SelectMany(node => node.TrafficProfiles).Select(profile => profile.TrafficType))
-            .Concat(lastOutcomes.Select(outcome => outcome.TrafficType))
-            .Concat(lastOutcomes.SelectMany(outcome => outcome.Allocations).Select(allocation => allocation.TrafficType))
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Select(name => name.Trim())
             .Distinct(Comparer)

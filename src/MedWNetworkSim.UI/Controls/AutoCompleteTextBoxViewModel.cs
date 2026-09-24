@@ -57,9 +57,27 @@ public sealed class AutoCompleteTextBoxViewModel : ObservableObject
     /// Gets a value indicating whether has active suggestion is enabled or active.
     /// </summary>
 
-    public bool HasActiveSuggestion =>
-        !string.IsNullOrWhiteSpace(SelectedSuggestion) &&
-        FilteredSuggestions.Any(item => Comparer.Equals(item, SelectedSuggestion));
+    public bool HasActiveSuggestion
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(SelectedSuggestion))
+            {
+                return false;
+            }
+
+            // Bolt: Replaced LINQ .Any() with manual for-loop to eliminate enumerator allocations
+            for (var i = 0; i < FilteredSuggestions.Count; i++)
+            {
+                if (Comparer.Equals(FilteredSuggestions[i], SelectedSuggestion))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
     /// <summary>
     /// Assigns or updates the suggestions.
     /// </summary>
@@ -108,12 +126,19 @@ public sealed class AutoCompleteTextBoxViewModel : ObservableObject
             return;
         }
 
-        var currentIndex = SelectedSuggestion is null
-            ? -1
-            : FilteredSuggestions
-                .Select((item, index) => (item, index))
-                .FirstOrDefault(pair => Comparer.Equals(pair.item, SelectedSuggestion))
-                .index;
+        var currentIndex = -1;
+        if (SelectedSuggestion is not null)
+        {
+            // Bolt: Replaced LINQ .Select().FirstOrDefault() with manual loop to prevent closure/tuple allocation
+            for (var i = 0; i < FilteredSuggestions.Count; i++)
+            {
+                if (Comparer.Equals(FilteredSuggestions[i], SelectedSuggestion))
+                {
+                    currentIndex = i;
+                    break;
+                }
+            }
+        }
 
         var nextIndex = currentIndex < 0
             ? (offset >= 0 ? 0 : FilteredSuggestions.Count - 1)

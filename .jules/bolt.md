@@ -124,3 +124,6 @@
 ## 2024-09-24 - Avoid LINQ on UI thread for collection search
 **Learning:** Using LINQ like `.Select().FirstOrDefault()` or `.Any()` in UI presentation layers causes excessive enumerator allocations and GC pressure, which can cause UI jank. Standard `for` or `foreach` loops provide significant improvements (up to 65% faster).
 **Action:** Use manual loops instead of LINQ for UI hot paths and when searching or filtering elements in ViewModels.
+## 2024-05-18 - Replacing Multiple ToDictionary Allocations with Pre-sized Dictionary and foreach
+**Learning:** In C#, executing multiple LINQ `.ToDictionary()` allocations on collections inside hot paths like simulation services (e.g. MultiOriginIsochroneService) allocates massive amounts of redundant enumerators, delegates, and intermediate dictionary structures, causing unnecessary memory allocation and garbage collection pauses.
+**Action:** Replace multiple `.ToDictionary()` allocations with a single manual `foreach` loop that populates pre-allocated dictionaries to avoid LINQ overhead entirely.

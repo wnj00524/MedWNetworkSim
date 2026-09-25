@@ -51,13 +51,24 @@ public sealed class MultiOriginIsochroneService
         IReadOnlyCollection<EdgeModel> edges,
         IReadOnlyCollection<MultiOriginIsochroneOrigin> origins)
     {
-        var nodesById = allNodes
-            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
-            .ToDictionary(node => node.Id, node => node, Comparer);
-        var validOrigins = origins
-            .Where(origin => !string.IsNullOrWhiteSpace(origin.Origin.Id) && nodesById.ContainsKey(origin.Origin.Id))
-            .DistinctBy(origin => origin.Origin.Id, Comparer)
-            .ToList();
+        var nodesById = new Dictionary<string, NodeModel>(allNodes.Count, Comparer);
+        foreach (var node in allNodes)
+        {
+            if (!string.IsNullOrWhiteSpace(node.Id))
+            {
+                nodesById[node.Id] = node;
+            }
+        }
+
+        var validOrigins = new List<MultiOriginIsochroneOrigin>(origins.Count);
+        var validOriginsSeen = new HashSet<string>(Comparer);
+        foreach (var origin in origins)
+        {
+            if (!string.IsNullOrWhiteSpace(origin.Origin.Id) && nodesById.ContainsKey(origin.Origin.Id) && validOriginsSeen.Add(origin.Origin.Id))
+            {
+                validOrigins.Add(origin);
+            }
+        }
 
         if (validOrigins.Count == 0)
         {
@@ -99,20 +110,39 @@ public sealed class MultiOriginIsochroneService
             }
         }
 
-        var bestCostByNode = bestCostById
-            .Where(pair => nodesById.ContainsKey(pair.Key))
-            .ToDictionary(pair => nodesById[pair.Key], pair => pair.Value);
-        var bestOriginByNode = bestOriginById
-            .Where(pair => nodesById.ContainsKey(pair.Key) && nodesById.ContainsKey(pair.Value))
-            .ToDictionary(pair => nodesById[pair.Key], pair => nodesById[pair.Value]);
-        var coveringOriginsByNode = coveringOriginsById
-            .Where(pair => nodesById.ContainsKey(pair.Key))
-            .ToDictionary(
-                pair => nodesById[pair.Key],
-                pair => (IReadOnlyList<NodeModel>)pair.Value
-                    .Where(nodesById.ContainsKey)
-                    .Select(originId => nodesById[originId])
-                    .ToList());
+        var bestCostByNode = new Dictionary<NodeModel, double>(bestCostById.Count);
+        foreach (var pair in bestCostById)
+        {
+            if (nodesById.TryGetValue(pair.Key, out var node))
+            {
+                bestCostByNode[node] = pair.Value;
+            }
+        }
+
+        var bestOriginByNode = new Dictionary<NodeModel, NodeModel>(bestOriginById.Count);
+        foreach (var pair in bestOriginById)
+        {
+            if (nodesById.TryGetValue(pair.Key, out var node) && nodesById.TryGetValue(pair.Value, out var originNode))
+            {
+                bestOriginByNode[node] = originNode;
+            }
+        }
+        var coveringOriginsByNode = new Dictionary<NodeModel, IReadOnlyList<NodeModel>>(coveringOriginsById.Count);
+        foreach (var pair in coveringOriginsById)
+        {
+            if (nodesById.TryGetValue(pair.Key, out var node))
+            {
+                var originsForNode = new List<NodeModel>(pair.Value.Count);
+                foreach (var originId in pair.Value)
+                {
+                    if (nodesById.TryGetValue(originId, out var originNode))
+                    {
+                        originsForNode.Add(originNode);
+                    }
+                }
+                coveringOriginsByNode[node] = originsForNode;
+            }
+        }
 
         var reachableNodes = bestCostByNode.Keys.ToHashSet();
         var uncoveredNodes = allNodes
@@ -144,18 +174,30 @@ public sealed class MultiOriginIsochroneService
         IReadOnlyCollection<EdgeModel> edges,
         double maxCost)
     {
-        var nodesById = allNodes
-            .Where(node => !string.IsNullOrWhiteSpace(node.Id))
-            .ToDictionary(node => node.Id, node => node, Comparer);
+        var nodesById = new Dictionary<string, NodeModel>(allNodes.Count, Comparer);
+        foreach (var node in allNodes)
+        {
+            if (!string.IsNullOrWhiteSpace(node.Id))
+            {
+                nodesById[node.Id] = node;
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(origin.Id) || !nodesById.ContainsKey(origin.Id))
         {
             return new Dictionary<NodeModel, double>();
         }
 
         var costMap = ComputeCostMap(origin.Id, BuildAdjacency(edges), Math.Max(0d, maxCost));
-        return costMap
-            .Where(pair => nodesById.ContainsKey(pair.Key))
-            .ToDictionary(pair => nodesById[pair.Key], pair => pair.Value);
+        var result = new Dictionary<NodeModel, double>(costMap.Count);
+        foreach (var pair in costMap)
+        {
+            if (nodesById.TryGetValue(pair.Key, out var node))
+            {
+                result[node] = pair.Value;
+            }
+        }
+        return result;
     }
 
     private static Dictionary<string, List<Segment>> BuildAdjacency(IReadOnlyCollection<EdgeModel> edges)

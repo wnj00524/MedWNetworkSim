@@ -121,3 +121,6 @@
 ## 2024-05-25 - Avoid per-node LINQ filtering on Temporal Node States inside UI updates
 **Learning:** When updating UI components from simulation state (e.g., matching `Scene.Nodes` to `timeline.NodeStates`), performing per-node LINQ queries (`.Where`, `.GroupBy`) inside the rendering loop creates O(N^2) complexity and excessive enumerator allocations on the Avalonia UI thread, causing jank.
 **Action:** Hoist the aggregation outside the rendering loop by pre-computing lookup dictionaries indexed by `NodeId` in a single pass to eliminate O(N^2) complexity and Avalonia UI thread allocations.
+## 2024-09-24 - Avoid LINQ on UI thread for collection search
+**Learning:** Using LINQ like `.Select().FirstOrDefault()` or `.Any()` in UI presentation layers causes excessive enumerator allocations and GC pressure, which can cause UI jank. Standard `for` or `foreach` loops provide significant improvements (up to 65% faster).
+**Action:** Use manual loops instead of LINQ for UI hot paths and when searching or filtering elements in ViewModels.

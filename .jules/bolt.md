@@ -124,3 +124,6 @@
 ## 2024-09-24 - Avoid LINQ on UI thread for collection search
 **Learning:** Using LINQ like `.Select().FirstOrDefault()` or `.Any()` in UI presentation layers causes excessive enumerator allocations and GC pressure, which can cause UI jank. Standard `for` or `foreach` loops provide significant improvements (up to 65% faster).
 **Action:** Use manual loops instead of LINQ for UI hot paths and when searching or filtering elements in ViewModels.
+## 2024-05-24 - Replace LINQ SelectMany with manual loops
+**Learning:** The use of .SelectMany().ToList() in TemporalNetworkSimulationEngine caused significant enumerator and delegate allocations on a performance-critical hot path.
+**Action:** Replace .SelectMany().ToList() with manually pre-sized Lists and standard foreach loops in frequently executed routing allocations.

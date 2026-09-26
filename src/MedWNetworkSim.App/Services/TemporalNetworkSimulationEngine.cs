@@ -902,7 +902,20 @@ public sealed class TemporalNetworkSimulationEngine
             ApplyCommittedState(context, nodeStates);
         }
 
-        return contexts.SelectMany(context => context.Allocations).ToList();
+        // Bolt: Eliminated LINQ SelectMany() allocation and delegate overhead by using a manual loop and pre-sized list
+        var totalAllocations = 0;
+        foreach (var context in contexts)
+        {
+            totalAllocations += context.Allocations.Count;
+        }
+
+        var allAllocations = new List<RouteAllocation>(totalAllocations);
+        foreach (var context in contexts)
+        {
+            allAllocations.AddRange(context.Allocations);
+        }
+
+        return allAllocations;
     }
 
     private static TemporalTrafficContext BuildTemporalContext(

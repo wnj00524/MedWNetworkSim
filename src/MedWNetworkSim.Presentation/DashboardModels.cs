@@ -61,33 +61,76 @@ public static class DashboardSummaryCalculator
     {
         outcomes ??= [];
         issues ??= [];
-        var demand = outcomes.Sum(o => Math.Max(0d, o.TotalConsumption));
-        var served = outcomes.Sum(o => Math.Max(0d, o.TotalDelivered));
-        var unmet = outcomes.Sum(o => Math.Max(0d, o.UnmetDemand));
+
+        double demand = 0d;
+        double served = 0d;
+        double unmet = 0d;
+
+        foreach (var outcome in outcomes)
+        {
+            demand += Math.Max(0d, outcome.TotalConsumption);
+            served += Math.Max(0d, outcome.TotalDelivered);
+            unmet += Math.Max(0d, outcome.UnmetDemand);
+        }
+
         var score = demand <= 0d ? 0d : Math.Clamp((served / demand) * 100d, 0d, 100d);
+
+        int critical = 0;
+        int warning = 0;
+
+        foreach (var issue in issues)
+        {
+            if (issue.Severity == NetworkIssueSeverity.Critical)
+            {
+                critical++;
+            }
+            else if (issue.Severity == NetworkIssueSeverity.Warning)
+            {
+                warning++;
+            }
+        }
+
         return new NetworkHealthSummary
         {
             HealthScore = score,
             TotalDemand = demand,
             TotalServed = served,
             TotalUnmet = unmet,
-            CriticalIssueCount = issues.Count(i => i.Severity == NetworkIssueSeverity.Critical),
-            WarningIssueCount = issues.Count(i => i.Severity == NetworkIssueSeverity.Warning)
+            CriticalIssueCount = critical,
+            WarningIssueCount = warning
         };
     }
 
     public static FlowKpiSummary ComputeFlowKpiSummary(IReadOnlyList<TrafficSimulationOutcome>? outcomes)
     {
         outcomes ??= [];
-        var allocations = outcomes.SelectMany(o => o.Allocations ?? []).ToList();
-        var totalDemand = outcomes.Sum(o => Math.Max(0d, o.TotalConsumption));
-        var totalServed = outcomes.Sum(o => Math.Max(0d, o.TotalDelivered));
+
+        double totalDemand = 0d;
+        double totalServed = 0d;
+        double totalCost = 0d;
+        double totalTime = 0d;
+
+        foreach (var outcome in outcomes)
+        {
+            totalDemand += Math.Max(0d, outcome.TotalConsumption);
+            totalServed += Math.Max(0d, outcome.TotalDelivered);
+
+            if (outcome.Allocations != null)
+            {
+                foreach (var allocation in outcome.Allocations)
+                {
+                    totalCost += allocation.DeliveredCostPerUnit * allocation.Quantity;
+                    totalTime += allocation.TotalTime * allocation.Quantity;
+                }
+            }
+        }
+
         return new FlowKpiSummary
         {
             ServedDemandRatio = totalDemand <= 0d ? 0d : totalServed / totalDemand,
             UnmetDemandRatio = totalDemand <= 0d ? 0d : Math.Max(0d, totalDemand - totalServed) / totalDemand,
-            AverageRouteCost = totalServed <= 0d ? 0d : allocations.Sum(a => a.DeliveredCostPerUnit * a.Quantity) / totalServed,
-            AverageRouteTime = totalServed <= 0d ? 0d : allocations.Sum(a => a.TotalTime * a.Quantity) / totalServed
+            AverageRouteCost = totalServed <= 0d ? 0d : totalCost / totalServed,
+            AverageRouteTime = totalServed <= 0d ? 0d : totalTime / totalServed
         };
     }
 }

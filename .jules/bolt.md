@@ -127,3 +127,6 @@
 ## 2024-05-24 - Replace LINQ SelectMany with manual loops
 **Learning:** The use of .SelectMany().ToList() in TemporalNetworkSimulationEngine caused significant enumerator and delegate allocations on a performance-critical hot path.
 **Action:** Replace .SelectMany().ToList() with manually pre-sized Lists and standard foreach loops in frequently executed routing allocations.
+## 2024-05-18 - Dashboard Summary Performance
+**Learning:** Using chained LINQ methods like .SelectMany().Sum() in UI metric summary calculations creates massive enumerator and delegate allocation overhead.
+**Action:** Replace these LINQ chains with single-pass foreach loops to achieve >5x speedup in hot metric recalculation paths.

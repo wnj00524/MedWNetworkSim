@@ -127,3 +127,6 @@
 ## 2024-05-24 - Replace LINQ SelectMany with manual loops
 **Learning:** The use of .SelectMany().ToList() in TemporalNetworkSimulationEngine caused significant enumerator and delegate allocations on a performance-critical hot path.
 **Action:** Replace .SelectMany().ToList() with manually pre-sized Lists and standard foreach loops in frequently executed routing allocations.
+## 2024-05-18 - Avoid GroupBy and ToDictionary on path edge allocations in Economic Metrics
+**Learning:** In C# UI presentation classes, chained LINQ aggregations like `.SelectMany(..).GroupBy(..).ToDictionary(..)` can cause substantial garbage on the UI thread due to enumerator, group, and delegate allocations.
+**Action:** Replace `GroupBy` + `ToDictionary` with a manual, pre-sized dictionary populated via `foreach` loops using `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, key, out _) += val;`. This operates much faster by avoiding group allocation and multi-pass traversal.

@@ -59,9 +59,17 @@ public sealed class FacilityModeSimulationEngine
             var inboundDemandByFacility = BuildInboundDemandByFacility(network, traffic.Name, assignment);
             var inboundNetwork = BuildInboundNetwork(network, traffic, inboundDemandByFacility);
             var inboundOutcome = baseEngine.Simulate(inboundNetwork).FirstOrDefault();
-            var deliveredToFacility = (inboundOutcome?.Allocations ?? [])
-                .GroupBy(allocation => allocation.ConsumerNodeId, Comparer)
-                .ToDictionary(group => group.Key, group => group.Sum(allocation => allocation.Quantity), Comparer);
+
+            // Bolt: Replaced LINQ .GroupBy().ToDictionary() with a manual foreach loop to avoid intermediate enumerator and delegate allocations
+            var allocations = inboundOutcome?.Allocations ?? [];
+            var deliveredToFacility = new Dictionary<string, double>(Comparer);
+            foreach (var allocation in allocations)
+            {
+                if (allocation.ConsumerNodeId is not null)
+                {
+                    System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(deliveredToFacility, allocation.ConsumerNodeId, out _) += allocation.Quantity;
+                }
+            }
 
             var outboundNetwork = BuildOutboundNetwork(network, traffic, assignment, deliveredToFacility);
             var outboundOutcome = baseEngine.Simulate(outboundNetwork).FirstOrDefault();
@@ -132,7 +140,16 @@ public sealed class FacilityModeSimulationEngine
         IReadOnlyDictionary<string, double> deliveredToFacility)
     {
         var clone = CloneNetwork(network, facilityModeEnabled: false, traffic.Name);
-        var demandByNode = network.Nodes.ToDictionary(node => node.Id, node => GetDemand(node, traffic.Name), Comparer);
+
+        // Bolt: Replaced LINQ .ToDictionary() with manual foreach loop to avoid intermediate enumerator and delegate allocations
+        var demandByNode = new Dictionary<string, double>(network.Nodes.Count, Comparer);
+        foreach (var node in network.Nodes)
+        {
+            if (node.Id is not null)
+            {
+                demandByNode[node.Id] = GetDemand(node, traffic.Name);
+            }
+        }
 
         foreach (var node in clone.Nodes)
         {

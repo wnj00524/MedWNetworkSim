@@ -79,7 +79,12 @@ public static class DashboardSummaryCalculator
     public static FlowKpiSummary ComputeFlowKpiSummary(IReadOnlyList<TrafficSimulationOutcome>? outcomes)
     {
         outcomes ??= [];
-        var allocations = outcomes.SelectMany(o => o.Allocations ?? []).ToList();
+        // Bolt: Optimized LINQ SelectMany.ToList() with a pre-sized list and AddRange to reduce allocations in a hot path
+        var allocations = new List<RouteAllocation>(outcomes.Sum(o => o.Allocations?.Count ?? 0));
+        foreach (var outcome in outcomes)
+        {
+            if (outcome.Allocations != null) allocations.AddRange(outcome.Allocations);
+        }
         var totalDemand = outcomes.Sum(o => Math.Max(0d, o.TotalConsumption));
         var totalServed = outcomes.Sum(o => Math.Max(0d, o.TotalDelivered));
         return new FlowKpiSummary

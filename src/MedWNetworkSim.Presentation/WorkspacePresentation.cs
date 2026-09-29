@@ -7988,7 +7988,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private SimulationActorMetrics CreateEconomicMetrics(TrafficEconomicSettlementResult settlement)
     {
-        var allocations = settlement.Outcomes.SelectMany(outcome => outcome.Allocations).ToList();
+        // Bolt: Optimized LINQ SelectMany.ToList() with a pre-sized list and AddRange to reduce allocations in a hot path
+        var allocations = new List<RouteAllocation>(settlement.Outcomes.Sum(o => o.Allocations.Count));
+        foreach (var outcome in settlement.Outcomes) allocations.AddRange(outcome.Allocations);
 
         // Bolt: Optimized LINQ ToDictionary allocations with a manual loop to save enumerator overhead on the UI thread
         var flowByEdge = new Dictionary<string, double>(Comparer);
@@ -9261,7 +9263,10 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return lastTimelineStepResult.Allocations;
         }
 
-        return lastOutcomes.SelectMany(outcome => outcome.Allocations).ToList();
+        // Bolt: Optimized LINQ SelectMany.ToList() with a pre-sized list and AddRange to reduce allocations in a hot path
+        var allocations = new List<RouteAllocation>(lastOutcomes.Sum(o => o.Allocations.Count));
+        foreach (var outcome in lastOutcomes) allocations.AddRange(outcome.Allocations);
+        return allocations;
     }
 
     private static double? WeightedAverage(IEnumerable<RouteAllocation> allocations, Func<RouteAllocation, double> valueSelector)

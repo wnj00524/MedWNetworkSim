@@ -130,3 +130,6 @@
 ## 2024-05-18 - Avoid GroupBy and ToDictionary on path edge allocations in Economic Metrics
 **Learning:** In C# UI presentation classes, chained LINQ aggregations like `.SelectMany(..).GroupBy(..).ToDictionary(..)` can cause substantial garbage on the UI thread due to enumerator, group, and delegate allocations.
 **Action:** Replace `GroupBy` + `ToDictionary` with a manual, pre-sized dictionary populated via `foreach` loops using `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, key, out _) += val;`. This operates much faster by avoiding group allocation and multi-pass traversal.
+## 2023-10-25 - Avoid SelectMany with ToList in C# Hot Paths
+**Learning:** Using LINQ's `.SelectMany(x => x.Collection).ToList()` incurs significant allocation overhead due to enumerator and delegate allocations, as well as the intermediate state required to flatten collections. It allocated 10.28 KB per run in a microbenchmark, compared to 4 KB for a manual approach.
+**Action:** Replace `.SelectMany(x => x.Collection).ToList()` with a manually pre-sized `List<T>` (calculated by summing `x.Collection.Count`) populated via a `foreach` loop using `.AddRange()`. This prevents enumerator/delegate allocations and dynamic array resizing.

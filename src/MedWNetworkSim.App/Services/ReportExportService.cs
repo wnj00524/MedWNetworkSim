@@ -159,7 +159,9 @@ public sealed class ReportExportService
         IReadOnlyList<TrafficSimulationOutcome> outcomes,
         IReadOnlyList<ConsumerCostSummary> consumerCosts)
     {
-        var allocations = outcomes.SelectMany(outcome => outcome.Allocations).ToList();
+        // Bolt: Optimized LINQ SelectMany.ToList() with a pre-sized list and AddRange to reduce allocations
+        var allocations = new List<RouteAllocation>(outcomes.Sum(o => o.Allocations.Count));
+        foreach (var outcome in outcomes) allocations.AddRange(outcome.Allocations);
         var builder = CreateHtmlReportHeader("Current Network Report", network);
 
         AppendHtmlTable(
@@ -224,7 +226,9 @@ public sealed class ReportExportService
     {
         var periods = periodResults.Count;
         var builder = CreateHtmlReportHeader($"Timeline Report ({periods} periods)", network);
-        var allAllocations = periodResults.SelectMany(result => result.Allocations).ToList();
+        // Bolt: Optimized LINQ SelectMany.ToList() with a pre-sized list and AddRange to reduce allocations
+        var allAllocations = new List<RouteAllocation>(periodResults.Sum(r => r.Allocations.Count));
+        foreach (var result in periodResults) allAllocations.AddRange(result.Allocations);
         var finalPeriodResult = periodResults[^1];
 
         AppendHtmlTable(
@@ -290,7 +294,9 @@ public sealed class ReportExportService
         IReadOnlyList<TrafficSimulationOutcome> outcomes,
         IReadOnlyList<ConsumerCostSummary> consumerCosts)
     {
-        var allocations = outcomes.SelectMany(outcome => outcome.Allocations).ToList();
+        // Bolt: Optimized LINQ SelectMany.ToList() with a pre-sized list and AddRange to reduce allocations
+        var allocations = new List<RouteAllocation>(outcomes.Sum(o => o.Allocations.Count));
+        foreach (var outcome in outcomes) allocations.AddRange(outcome.Allocations);
         var builder = new StringBuilder();
         AppendCsvBranding(builder);
         AppendCsvTitleBlock(builder, "Current Network Report", network);

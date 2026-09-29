@@ -535,7 +535,13 @@ public static partial class MixedRoutingAllocator
         CopyRemainingCapacity(state.RemainingEdgeCapacity, remainingCapacityByEdgeId);
         CopyRemainingCapacity(state.RemainingNodeCapacity, remainingTranshipmentCapacityByNodeId);
 
-        return contexts.SelectMany(context => context.Allocations).ToList();
+        // Bolt: Optimized LINQ SelectMany.ToList() with a pre-sized list and AddRange to reduce allocations in a hot path
+        var allocations = new List<RouteAllocation>(contexts.Sum(c => c.Allocations.Count));
+        foreach (var context in contexts)
+        {
+            allocations.AddRange(context.Allocations);
+        }
+        return allocations;
     }
 
     private static void CopyRemainingCapacity(

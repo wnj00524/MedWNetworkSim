@@ -5562,29 +5562,50 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            var aggregated = new Dictionary<string, (double SupplyPlusBacklog, double Allocated, double Backlog, double Supply)>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                ref var values = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(aggregated, pair.Key.TrafficType, out _);
+                values.SupplyPlusBacklog += pair.Value.AvailableSupply + pair.Value.DemandBacklog;
+                values.Backlog += pair.Value.DemandBacklog;
+                values.Supply += pair.Value.AvailableSupply;
+            }
+
+            foreach (var allocation in lastTimelineStepResult.Allocations)
+            {
+                ref var values = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(aggregated, allocation.TrafficType, out _);
+                values.Allocated += allocation.Quantity;
+            }
+
+            var timelinePoints = new List<FlowDataPoint>(aggregated.Count);
+            foreach (var pair in aggregated)
+            {
+                timelinePoints.Add(new FlowDataPoint(
+                    pair.Key,
+                    pair.Value.SupplyPlusBacklog,
+                    pair.Value.Allocated,
+                    pair.Value.Backlog,
+                    pair.Value.Supply));
+            }
+
+            timelinePoints.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return timelinePoints;
         }
 
-        return lastOutcomes
-            .OrderBy(outcome => outcome.TrafficType, Comparer)
-            .Select(outcome => new FlowDataPoint(
+        var outcomePoints = new List<FlowDataPoint>(lastOutcomes.Count);
+        foreach (var outcome in lastOutcomes)
+        {
+            outcomePoints.Add(new FlowDataPoint(
                 outcome.TrafficType,
                 outcome.TotalConsumption,
                 outcome.TotalDelivered,
                 outcome.UnmetDemand,
-                0d))
-            .ToList();
+                0d));
+        }
+
+        outcomePoints.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+        return outcomePoints;
     }
     /// <summary>
     /// Retrieves the node pressure based on the provided parameters.

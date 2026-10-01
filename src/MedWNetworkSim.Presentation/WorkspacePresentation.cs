@@ -5560,31 +5560,68 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             return [];
         }
 
+        // Bolt: Replaced nested LINQ GroupBy and Sum queries with a manual dictionary aggregation using ValueTuples
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            var summaryByTrafficType = new Dictionary<string, (double planned, double delivered, double unmetDemand, double backlog)>(Comparer);
+
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                var trafficType = pair.Key.TrafficType;
+                var supply = pair.Value.AvailableSupply;
+                var backlog = pair.Value.DemandBacklog;
+
+                summaryByTrafficType.TryGetValue(trafficType, out var current);
+                summaryByTrafficType[trafficType] = (
+                    current.planned + supply + backlog,
+                    current.delivered,
+                    current.unmetDemand + backlog,
+                    current.backlog + supply
+                );
+            }
+
+            foreach (var allocation in lastTimelineStepResult.Allocations)
+            {
+                if (summaryByTrafficType.TryGetValue(allocation.TrafficType, out var current))
+                {
+                    summaryByTrafficType[allocation.TrafficType] = (
+                        current.planned,
+                        current.delivered + allocation.Quantity,
+                        current.unmetDemand,
+                        current.backlog
+                    );
+                }
+            }
+
+            var timelineResult = new List<FlowDataPoint>(summaryByTrafficType.Count);
+            foreach (var pair in summaryByTrafficType)
+            {
+                timelineResult.Add(new FlowDataPoint(
+                    pair.Key,
+                    pair.Value.planned,
+                    pair.Value.delivered,
+                    pair.Value.unmetDemand,
+                    pair.Value.backlog
+                ));
+            }
+
+            timelineResult.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return timelineResult;
         }
 
-        return lastOutcomes
-            .OrderBy(outcome => outcome.TrafficType, Comparer)
-            .Select(outcome => new FlowDataPoint(
+        var result = new List<FlowDataPoint>(lastOutcomes.Count);
+        foreach (var outcome in lastOutcomes)
+        {
+            result.Add(new FlowDataPoint(
                 outcome.TrafficType,
                 outcome.TotalConsumption,
                 outcome.TotalDelivered,
                 outcome.UnmetDemand,
-                0d))
-            .ToList();
+                0d
+            ));
+        }
+        result.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+        return result;
     }
     /// <summary>
     /// Retrieves the node pressure based on the provided parameters.

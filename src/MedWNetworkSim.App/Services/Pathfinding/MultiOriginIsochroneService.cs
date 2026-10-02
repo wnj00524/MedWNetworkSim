@@ -99,20 +99,41 @@ public sealed class MultiOriginIsochroneService
             }
         }
 
-        var bestCostByNode = bestCostById
-            .Where(pair => nodesById.ContainsKey(pair.Key))
-            .ToDictionary(pair => nodesById[pair.Key], pair => pair.Value);
-        var bestOriginByNode = bestOriginById
-            .Where(pair => nodesById.ContainsKey(pair.Key) && nodesById.ContainsKey(pair.Value))
-            .ToDictionary(pair => nodesById[pair.Key], pair => nodesById[pair.Value]);
-        var coveringOriginsByNode = coveringOriginsById
-            .Where(pair => nodesById.ContainsKey(pair.Key))
-            .ToDictionary(
-                pair => nodesById[pair.Key],
-                pair => (IReadOnlyList<NodeModel>)pair.Value
-                    .Where(nodesById.ContainsKey)
-                    .Select(originId => nodesById[originId])
-                    .ToList());
+        // Bolt: Replaced LINQ .ToDictionary() with manual foreach loops over pre-sized dictionaries.
+        var bestCostByNode = new Dictionary<NodeModel, double>(bestCostById.Count);
+        foreach (var pair in bestCostById)
+        {
+            if (nodesById.TryGetValue(pair.Key, out var node))
+            {
+                bestCostByNode[node] = pair.Value;
+            }
+        }
+
+        var bestOriginByNode = new Dictionary<NodeModel, NodeModel>(bestOriginById.Count);
+        foreach (var pair in bestOriginById)
+        {
+            if (nodesById.TryGetValue(pair.Key, out var node) && nodesById.TryGetValue(pair.Value, out var originNode))
+            {
+                bestOriginByNode[node] = originNode;
+            }
+        }
+
+        var coveringOriginsByNode = new Dictionary<NodeModel, IReadOnlyList<NodeModel>>(coveringOriginsById.Count);
+        foreach (var pair in coveringOriginsById)
+        {
+            if (nodesById.TryGetValue(pair.Key, out var node))
+            {
+                var originsList = new List<NodeModel>(pair.Value.Count);
+                foreach (var originId in pair.Value)
+                {
+                    if (nodesById.TryGetValue(originId, out var originNode))
+                    {
+                        originsList.Add(originNode);
+                    }
+                }
+                coveringOriginsByNode[node] = originsList;
+            }
+        }
 
         var reachableNodes = bestCostByNode.Keys.ToHashSet();
         var uncoveredNodes = allNodes

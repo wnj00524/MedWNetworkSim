@@ -5562,18 +5562,69 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            var flowDataPoints = new Dictionary<string, (double supply, double backlog, double allocated)>(StringComparer.OrdinalIgnoreCase);
+            var nullKeyTuple = default((double supply, double backlog, double allocated));
+            bool hasNullKey = false;
+
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                var trafficType = pair.Key.TrafficType;
+                if (trafficType is null)
+                {
+                    hasNullKey = true;
+                    nullKeyTuple.supply += pair.Value.AvailableSupply;
+                    nullKeyTuple.backlog += pair.Value.DemandBacklog;
+                }
+                else
+                {
+                    ref var tuple = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(flowDataPoints, trafficType, out _);
+                    tuple.supply += pair.Value.AvailableSupply;
+                    tuple.backlog += pair.Value.DemandBacklog;
+                }
+            }
+
+            foreach (var allocation in lastTimelineStepResult.Allocations)
+            {
+                var trafficType = allocation.TrafficType;
+                if (trafficType is null)
+                {
+                    if (hasNullKey)
+                    {
+                        nullKeyTuple.allocated += allocation.Quantity;
+                    }
+                }
+                else if (flowDataPoints.ContainsKey(trafficType))
+                {
+                    ref var tuple = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(flowDataPoints, trafficType, out _);
+                    tuple.allocated += allocation.Quantity;
+                }
+            }
+
+            var result = new List<FlowDataPoint>(flowDataPoints.Count + (hasNullKey ? 1 : 0));
+            if (hasNullKey)
+            {
+                result.Add(new FlowDataPoint(
+                    null!,
+                    nullKeyTuple.supply + nullKeyTuple.backlog,
+                    nullKeyTuple.allocated,
+                    nullKeyTuple.backlog,
+                    nullKeyTuple.supply
+                ));
+            }
+
+            foreach (var kvp in flowDataPoints)
+            {
+                result.Add(new FlowDataPoint(
+                    kvp.Key,
+                    kvp.Value.supply + kvp.Value.backlog,
+                    kvp.Value.allocated,
+                    kvp.Value.backlog,
+                    kvp.Value.supply
+                ));
+            }
+
+            result.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return result;
         }
 
         return lastOutcomes

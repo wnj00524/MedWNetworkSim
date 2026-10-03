@@ -130,3 +130,6 @@
 ## 2024-05-18 - Avoid GroupBy and ToDictionary on path edge allocations in Economic Metrics
 **Learning:** In C# UI presentation classes, chained LINQ aggregations like `.SelectMany(..).GroupBy(..).ToDictionary(..)` can cause substantial garbage on the UI thread due to enumerator, group, and delegate allocations.
 **Action:** Replace `GroupBy` + `ToDictionary` with a manual, pre-sized dictionary populated via `foreach` loops using `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, key, out _) += val;`. This operates much faster by avoiding group allocation and multi-pass traversal.
+## 2024-05-18 - Replacing LINQ GroupBy with manual loops requires handling null keys
+**Learning:** In C#, replacing LINQ `.GroupBy(key)` into a manual `Dictionary<TKey, TValue>` to eliminate enumerator/group allocations introduces a strict behavior change: `Dictionary` throws an `ArgumentNullException` for `null` keys, whereas `GroupBy` allows and groups them perfectly fine.
+**Action:** When manually refactoring `GroupBy` that can potentially encounter `null` keys, handle the `null` keys explicitly using a separate fallback variable or skipping logic, rather than blindly inserting them into the dictionary.

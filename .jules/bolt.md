@@ -130,3 +130,7 @@
 ## 2024-05-18 - Avoid GroupBy and ToDictionary on path edge allocations in Economic Metrics
 **Learning:** In C# UI presentation classes, chained LINQ aggregations like `.SelectMany(..).GroupBy(..).ToDictionary(..)` can cause substantial garbage on the UI thread due to enumerator, group, and delegate allocations.
 **Action:** Replace `GroupBy` + `ToDictionary` with a manual, pre-sized dictionary populated via `foreach` loops using `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, key, out _) += val;`. This operates much faster by avoiding group allocation and multi-pass traversal.
+
+## 2024-10-04 - Optimize LINQ GroupBy and Max in UI Agent Status
+**Learning:** Using LINQ `.GroupBy().Select(g => g.OrderByDescending().First())` to find the latest log entry per agent causes O(N log N) sorting inside O(N) grouping, generating significant garbage on the UI thread.
+**Action:** Replace it with a single-pass `Dictionary` aggregation that manually checks timestamps to maintain the most recent item per key. Also, compute dependent metrics in a unified loop rather than multiple `.Count()` passes.

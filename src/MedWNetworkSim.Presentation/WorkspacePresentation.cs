@@ -9573,15 +9573,36 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private IReadOnlyList<PieChartSegmentViewModel> BuildAgentStatusDistributionData()
     {
-        var latestActions = agentActionLogger
-            .GetAll()
-            .GroupBy(entry => entry.AgentId)
-            .Select(group => group.OrderByDescending(entry => entry.Timestamp).First())
-            .ToList();
-        var moving = latestActions.Count(entry => entry.ActionType.Contains("move", StringComparison.OrdinalIgnoreCase));
-        var processing = latestActions.Count(entry => entry.ActionType.Contains("process", StringComparison.OrdinalIgnoreCase)
-            || entry.ActionType.Contains("load", StringComparison.OrdinalIgnoreCase)
-            || entry.ActionType.Contains("unload", StringComparison.OrdinalIgnoreCase));
+        var allActions = agentActionLogger.GetAll();
+        var latestActions = new Dictionary<Guid, AgentActionLogEntry>();
+
+        // Bolt: Replaced LINQ .GroupBy().Select(OrderByDescending().First()) with single pass Dictionary aggregation
+        foreach (var entry in allActions)
+        {
+            if (!latestActions.TryGetValue(entry.AgentId, out var existing) || entry.Timestamp > existing.Timestamp)
+            {
+                latestActions[entry.AgentId] = entry;
+            }
+        }
+
+        int moving = 0;
+        int processing = 0;
+
+        // Bolt: Combined multiple .Count() iterations into one pass
+        foreach (var entry in latestActions.Values)
+        {
+            if (entry.ActionType.Contains("move", StringComparison.OrdinalIgnoreCase))
+            {
+                moving++;
+            }
+            else if (entry.ActionType.Contains("process", StringComparison.OrdinalIgnoreCase)
+                || entry.ActionType.Contains("load", StringComparison.OrdinalIgnoreCase)
+                || entry.ActionType.Contains("unload", StringComparison.OrdinalIgnoreCase))
+            {
+                processing++;
+            }
+        }
+
         var knownAgentCount = Math.Max(SimulationActors.Count, latestActions.Count);
         var idle = Math.Max(0, knownAgentCount - moving - processing);
         if (knownAgentCount == 0)

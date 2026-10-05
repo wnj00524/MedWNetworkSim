@@ -5562,29 +5562,55 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            // Bolt: Replaced nested LINQ GroupBy, Where, and Sum with a single-pass O(N) loop to eliminate UI thread blocking
+            var dict = new Dictionary<string, (double planned, double delivered, double unmet, double backlog)>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                var tt = pair.Key.TrafficType;
+                ref var val = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, tt, out _);
+                var supply = pair.Value.AvailableSupply;
+                var demand = pair.Value.DemandBacklog;
+                val.planned += supply + demand;
+                val.unmet += demand;
+                val.backlog += supply;
+            }
+
+            foreach (var allocation in lastTimelineStepResult.Allocations)
+            {
+                var tt = allocation.TrafficType;
+                ref var val = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, tt, out _);
+                val.delivered += allocation.Quantity;
+            }
+
+            var result = new List<FlowDataPoint>(dict.Count);
+            foreach (var pair in dict)
+            {
+                result.Add(new FlowDataPoint(
+                    pair.Key,
+                    pair.Value.planned,
+                    pair.Value.delivered,
+                    pair.Value.unmet,
+                    pair.Value.backlog
+                ));
+            }
+
+            result.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return result;
         }
 
-        return lastOutcomes
-            .OrderBy(outcome => outcome.TrafficType, Comparer)
-            .Select(outcome => new FlowDataPoint(
+        var outcomeResult = new List<FlowDataPoint>(lastOutcomes.Count);
+        foreach (var outcome in lastOutcomes)
+        {
+            outcomeResult.Add(new FlowDataPoint(
                 outcome.TrafficType,
                 outcome.TotalConsumption,
                 outcome.TotalDelivered,
                 outcome.UnmetDemand,
-                0d))
-            .ToList();
+                0d));
+        }
+        outcomeResult.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+        return outcomeResult;
     }
     /// <summary>
     /// Retrieves the node pressure based on the provided parameters.

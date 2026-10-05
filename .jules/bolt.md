@@ -130,3 +130,6 @@
 ## 2024-05-18 - Avoid GroupBy and ToDictionary on path edge allocations in Economic Metrics
 **Learning:** In C# UI presentation classes, chained LINQ aggregations like `.SelectMany(..).GroupBy(..).ToDictionary(..)` can cause substantial garbage on the UI thread due to enumerator, group, and delegate allocations.
 **Action:** Replace `GroupBy` + `ToDictionary` with a manual, pre-sized dictionary populated via `foreach` loops using `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, key, out _) += val;`. This operates much faster by avoiding group allocation and multi-pass traversal.
+## 2024-05-25 - Eliminate O(N x M) nested LINQ queries in Flow Series aggregation
+**Learning:** In C# UI presentation classes, using LINQ to group `NodeStates` and then summing across a large `Allocations` collection for each group creates an $O(N \times M)$ algorithmic bottleneck, causing severe UI jank and enumerator allocation.
+**Action:** Replace nested `GroupBy` + `Where` + `Sum` LINQ calls with a single-pass manual iteration into a `Dictionary<string, (double planned, double delivered, double unmet, double backlog)>` using `CollectionsMarshal.GetValueRefOrAddDefault`.

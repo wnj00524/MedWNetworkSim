@@ -292,10 +292,20 @@ public sealed class EconomicCalculator : IEconomicCalculator
     /// </summary>
     public EconomicSummary Calculate(NetworkModel network, SimulationResult result)
     {
-        var shortagePenaltyByTraffic = network.Nodes
-            .SelectMany(node => node.TrafficProfiles.Select(profile => new { profile.TrafficType, Penalty = Math.Max(0d, profile.ShortagePenalty) }))
-            .GroupBy(item => item.TrafficType, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.Max(item => item.Penalty), StringComparer.OrdinalIgnoreCase);
+        var shortagePenaltyByTraffic = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var node in network.Nodes)
+        {
+            foreach (var profile in node.TrafficProfiles)
+            {
+                if (profile.TrafficType is null) continue;
+                var penalty = Math.Max(0d, profile.ShortagePenalty);
+                ref var maxPenalty = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(shortagePenaltyByTraffic, profile.TrafficType, out var exists);
+                if (!exists || penalty > maxPenalty)
+                {
+                    maxPenalty = penalty;
+                }
+            }
+        }
 
         var settled = new TrafficEconomicSettlementService().Settle(network, result.Outcomes).Outcomes;
         var salesRevenue = 0d;

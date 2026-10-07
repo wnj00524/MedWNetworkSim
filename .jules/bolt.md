@@ -130,3 +130,6 @@
 ## 2024-05-18 - Avoid GroupBy and ToDictionary on path edge allocations in Economic Metrics
 **Learning:** In C# UI presentation classes, chained LINQ aggregations like `.SelectMany(..).GroupBy(..).ToDictionary(..)` can cause substantial garbage on the UI thread due to enumerator, group, and delegate allocations.
 **Action:** Replace `GroupBy` + `ToDictionary` with a manual, pre-sized dictionary populated via `foreach` loops using `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, key, out _) += val;`. This operates much faster by avoiding group allocation and multi-pass traversal.
+## 2024-10-07 - Optimize WorkspacePresentation LINQ UI Hot Paths
+**Learning:** Multiple LINQ `.GroupBy().Select().ToList()` queries within Avalonia UI update hot loops (such as agent logs, flow series charting, and economic summaries) generate excessive amounts of enumerator and delegate allocations on the UI thread, causing jank during simulation updates.
+**Action:** Replace `GroupBy()` and chained `.Select()` allocations in UI viewmodels with manual, single-pass `Dictionary` aggregations using `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault` to eliminate enumerator GC pressure on the Avalonia UI thread.

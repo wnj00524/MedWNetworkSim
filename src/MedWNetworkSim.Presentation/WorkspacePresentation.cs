@@ -2423,11 +2423,31 @@ public sealed class AgentLogViewModel : ObservableObject
         var selectedId = SelectedAgentId;
         availableAgents.Clear();
         availableAgents.Add(new AgentLogAgentFilterItem(null, "All agents"));
-        foreach (var agent in allEntries
-            .GroupBy(e => e.AgentId)
-            .Select(group => new AgentLogAgentFilterItem(group.Key, resolveAgentName(group.First())))
-            .OrderBy(agent => agent.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(agent => agent.AgentId))
+
+        // Bolt: Replace LINQ GroupBy with manual Dictionary mapping to eliminate delegate allocations
+        var agentMap = new Dictionary<Guid, string>();
+        foreach (var entry in allEntries)
+        {
+            if (!agentMap.ContainsKey(entry.AgentId))
+            {
+                agentMap.Add(entry.AgentId, resolveAgentName(entry));
+            }
+        }
+
+        var parsedAgents = new List<AgentLogAgentFilterItem>(agentMap.Count);
+        foreach (var pair in agentMap)
+        {
+            parsedAgents.Add(new AgentLogAgentFilterItem(pair.Key, pair.Value));
+        }
+
+        parsedAgents.Sort((a, b) =>
+        {
+            var cmp = StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name);
+            if (cmp != 0) return cmp;
+            return a.AgentId.GetValueOrDefault().CompareTo(b.AgentId.GetValueOrDefault());
+        });
+
+        foreach (var agent in parsedAgents)
         {
             availableAgents.Add(agent);
         }
@@ -5562,18 +5582,49 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            // Bolt: Replaced LINQ GroupBy and chained Select with manual Dictionary loop to eliminate UI thread GC overhead
+            var totals = new Dictionary<string, (double SupplyPlusBacklog, double AllocatedQuantity, double DemandBacklog, double AvailableSupply)>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                var trafficType = pair.Key.TrafficType;
+                if (!string.IsNullOrWhiteSpace(trafficType))
+                {
+                    var supply = pair.Value.AvailableSupply;
+                    var backlog = pair.Value.DemandBacklog;
+                    ref var current = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(totals, trafficType, out _);
+                    current.SupplyPlusBacklog += supply + backlog;
+                    current.DemandBacklog += backlog;
+                    current.AvailableSupply += supply;
+                }
+            }
+
+            foreach (var allocation in lastTimelineStepResult.Allocations)
+            {
+                var trafficType = allocation.TrafficType;
+                if (!string.IsNullOrWhiteSpace(trafficType))
+                {
+                    ref var current = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrNullRef(totals, trafficType);
+                    if (!System.Runtime.CompilerServices.Unsafe.IsNullRef(ref current))
+                    {
+                        current.AllocatedQuantity += allocation.Quantity;
+                    }
+                }
+            }
+
+            var points = new List<FlowDataPoint>(totals.Count);
+            foreach (var pair in totals)
+            {
+                points.Add(new FlowDataPoint(
+                    pair.Key,
+                    pair.Value.SupplyPlusBacklog,
+                    pair.Value.AllocatedQuantity,
+                    pair.Value.DemandBacklog,
+                    pair.Value.AvailableSupply));
+            }
+
+            points.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return points;
         }
 
         return lastOutcomes
@@ -9212,44 +9263,82 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var allocations = GetCurrentAllocations()
             .Where(allocation => Comparer.Equals(allocation.TrafficType, trafficType))
             .ToList();
-        var productionPrices = allocations.Count > 0
-            ? allocations
-                .Where(allocation => allocation.Quantity > 0d)
-                .GroupBy(allocation => allocation.ProducerNodeId, Comparer)
-                .Select(group => WeightedAverage(group, allocation => allocation.SourceUnitCostPerUnit))
-                .Where(value => value.HasValue)
-                .Select(value => value!.Value)
-                .Distinct()
-                .OrderBy(value => value)
-                .Select(value => ReportExportService.FormatNumber(value))
-                .ToList()
-            : network.Nodes
-            .SelectMany(node => node.TrafficProfiles)
-            .Where(profile => profile.Production > 0d && Comparer.Equals(profile.TrafficType, trafficType))
-            .Select(profile => Math.Max(0d, profile.UnitPrice))
-            .Distinct()
-            .OrderBy(value => value)
-            .Select(value => ReportExportService.FormatNumber(value))
-            .ToList();
-        var consumptionPrices = allocations.Count > 0
-            ? allocations
-                .Where(allocation => allocation.Quantity > 0d)
-                .GroupBy(allocation => allocation.ConsumerNodeId, Comparer)
-                .Select(group => WeightedAverage(group, allocation => allocation.DeliveredCostPerUnit))
-                .Where(value => value.HasValue)
-                .Select(value => value!.Value)
-                .Distinct()
-                .OrderBy(value => value)
-                .Select(value => ReportExportService.FormatNumber(value))
-                .ToList()
-            : network.Nodes
-            .SelectMany(node => node.TrafficProfiles)
-            .Where(profile => profile.Consumption > 0d && Comparer.Equals(profile.TrafficType, trafficType))
-            .Select(profile => Math.Max(0d, profile.UnitPrice))
-            .Distinct()
-            .OrderBy(value => value)
-            .Select(value => ReportExportService.FormatNumber(value))
-            .ToList();
+
+        List<string> productionPrices;
+        List<string> consumptionPrices;
+
+        if (allocations.Count > 0)
+        {
+            // Bolt: Replaced multiple LINQ GroupBy chains with a single-pass manual Dictionary aggregation
+            var pGroups = new Dictionary<string, (double sumProduct, double sumWeight)>(Comparer);
+            var cGroups = new Dictionary<string, (double sumProduct, double sumWeight)>(Comparer);
+
+            foreach (var allocation in allocations)
+            {
+                if (allocation.Quantity > 0d)
+                {
+                    if (allocation.ProducerNodeId != null)
+                    {
+                        ref var pCurrent = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(pGroups, allocation.ProducerNodeId, out _);
+                        pCurrent.sumProduct += allocation.Quantity * allocation.SourceUnitCostPerUnit;
+                        pCurrent.sumWeight += allocation.Quantity;
+                    }
+                    if (allocation.ConsumerNodeId != null)
+                    {
+                        ref var cCurrent = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(cGroups, allocation.ConsumerNodeId, out _);
+                        cCurrent.sumProduct += allocation.Quantity * allocation.DeliveredCostPerUnit;
+                        cCurrent.sumWeight += allocation.Quantity;
+                    }
+                }
+            }
+
+            var pPrices = new HashSet<double>();
+            foreach (var pair in pGroups)
+            {
+                if (pair.Value.sumWeight > 0) pPrices.Add(pair.Value.sumProduct / pair.Value.sumWeight);
+            }
+            var pList = pPrices.ToList();
+            pList.Sort();
+            productionPrices = new List<string>(pList.Count);
+            foreach (var p in pList) productionPrices.Add(ReportExportService.FormatNumber(p));
+
+            var cPrices = new HashSet<double>();
+            foreach (var pair in cGroups)
+            {
+                if (pair.Value.sumWeight > 0) cPrices.Add(pair.Value.sumProduct / pair.Value.sumWeight);
+            }
+            var cList = cPrices.ToList();
+            cList.Sort();
+            consumptionPrices = new List<string>(cList.Count);
+            foreach (var c in cList) consumptionPrices.Add(ReportExportService.FormatNumber(c));
+        }
+        else
+        {
+            var pPrices = new HashSet<double>();
+            var cPrices = new HashSet<double>();
+
+            foreach (var node in network.Nodes)
+            {
+                foreach (var profile in node.TrafficProfiles)
+                {
+                    if (Comparer.Equals(profile.TrafficType, trafficType))
+                    {
+                        if (profile.Production > 0d) pPrices.Add(Math.Max(0d, profile.UnitPrice));
+                        if (profile.Consumption > 0d) cPrices.Add(Math.Max(0d, profile.UnitPrice));
+                    }
+                }
+            }
+
+            var pList = pPrices.ToList();
+            pList.Sort();
+            productionPrices = new List<string>(pList.Count);
+            foreach (var p in pList) productionPrices.Add(ReportExportService.FormatNumber(p));
+
+            var cList = cPrices.ToList();
+            cList.Sort();
+            consumptionPrices = new List<string>(cList.Count);
+            foreach (var c in cList) consumptionPrices.Add(ReportExportService.FormatNumber(c));
+        }
 
         return $"{FormatPriceList(productionPrices)}:{FormatPriceList(consumptionPrices)}";
     }
@@ -9573,11 +9662,16 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private IReadOnlyList<PieChartSegmentViewModel> BuildAgentStatusDistributionData()
     {
-        var latestActions = agentActionLogger
-            .GetAll()
-            .GroupBy(entry => entry.AgentId)
-            .Select(group => group.OrderByDescending(entry => entry.Timestamp).First())
-            .ToList();
+        // Bolt: Replaced LINQ GroupBy and chained Select with manual Dictionary loop to eliminate UI thread GC overhead
+        var latestByAgent = new Dictionary<Guid, AgentActionLogEntry>();
+        foreach (var entry in agentActionLogger.GetAll())
+        {
+            if (!latestByAgent.TryGetValue(entry.AgentId, out var existing) || entry.Timestamp > existing.Timestamp)
+            {
+                latestByAgent[entry.AgentId] = entry;
+            }
+        }
+        var latestActions = latestByAgent.Values.ToList();
         var moving = latestActions.Count(entry => entry.ActionType.Contains("move", StringComparison.OrdinalIgnoreCase));
         var processing = latestActions.Count(entry => entry.ActionType.Contains("process", StringComparison.OrdinalIgnoreCase)
             || entry.ActionType.Contains("load", StringComparison.OrdinalIgnoreCase)
@@ -11667,13 +11761,26 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
             EdgeCapacityValidationText = hasEdgeContext ? capacityParse.ValidationMessage : string.Empty;
 
             var knownTrafficTypes = GetKnownTrafficTypeNames();
-            var duplicateTrafficTypes = SelectedEdgePermissionRows
-                .Select(row => string.IsNullOrWhiteSpace(row.TrafficType) ? string.Empty : row.TrafficType.Trim())
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .GroupBy(name => name, Comparer)
-                .Where(group => group.Count() > 1)
-                .Select(group => group.Key)
-                .ToHashSet(Comparer);
+
+            // Bolt: Replace LINQ GroupBy with manual Dictionary mapping to eliminate delegate allocations on UI thread
+            var counts = new Dictionary<string, int>(Comparer);
+            foreach (var row in SelectedEdgePermissionRows)
+            {
+                var name = string.IsNullOrWhiteSpace(row.TrafficType) ? string.Empty : row.TrafficType.Trim();
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(counts, name, out _)++;
+                }
+            }
+            var duplicateTrafficTypes = new HashSet<string>(Comparer);
+            foreach (var pair in counts)
+            {
+                if (pair.Value > 1)
+                {
+                    duplicateTrafficTypes.Add(pair.Key);
+                }
+            }
+
             var edgeCapacity = string.IsNullOrWhiteSpace(capacityParse.ValidationMessage) ? capacityParse.Value : null;
             foreach (var row in SelectedEdgePermissionRows)
             {

@@ -1710,30 +1710,65 @@ public sealed class TemporalNetworkSimulationEngine
     private static void AddResourceQuantity<TKey>(IDictionary<TKey, double> occupiedCapacity, TKey resourceId, double quantity)
         where TKey : notnull
     {
-        occupiedCapacity[resourceId] = (occupiedCapacity.TryGetValue(resourceId, out var existing) ? existing : 0d) + quantity;
+        // Bolt: Optimized dictionary value updates in hot path using CollectionsMarshal.GetValueRefOrAddDefault to avoid double lookups
+        if (occupiedCapacity is Dictionary<TKey, double> dict)
+        {
+            ref var val = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, resourceId, out _);
+            val += quantity;
+        }
+        else
+        {
+            occupiedCapacity[resourceId] = (occupiedCapacity.TryGetValue(resourceId, out var existing) ? existing : 0d) + quantity;
+        }
     }
 
     private static void ReleaseResourceQuantity<TKey>(IDictionary<TKey, double> occupiedCapacity, TKey resourceId, double quantity)
         where TKey : notnull
     {
-        if (!occupiedCapacity.TryGetValue(resourceId, out var existing))
+        // Bolt: Optimized dictionary value updates in hot path using CollectionsMarshal.GetValueRefOrNullRef to avoid double lookups
+        if (occupiedCapacity is Dictionary<TKey, double> dict)
         {
-            throw new InvalidOperationException($"Cannot release unclaimed resource '{resourceId}'.");
-        }
+            ref var existingRef = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrNullRef(dict, resourceId);
+            if (System.Runtime.CompilerServices.Unsafe.IsNullRef(ref existingRef))
+            {
+                throw new InvalidOperationException($"Cannot release unclaimed resource '{resourceId}'.");
+            }
 
-        var remaining = existing - quantity;
-        if (remaining < -Epsilon)
+            var remaining = existingRef - quantity;
+            if (remaining < -Epsilon)
+            {
+                throw new InvalidOperationException($"Resource '{resourceId}' occupancy would become negative.");
+            }
+
+            if (remaining <= Epsilon)
+            {
+                dict.Remove(resourceId);
+                return;
+            }
+
+            existingRef = remaining;
+        }
+        else
         {
-            throw new InvalidOperationException($"Resource '{resourceId}' occupancy would become negative.");
-        }
+            if (!occupiedCapacity.TryGetValue(resourceId, out var existing))
+            {
+                throw new InvalidOperationException($"Cannot release unclaimed resource '{resourceId}'.");
+            }
 
-        if (remaining <= Epsilon)
-        {
-            occupiedCapacity.Remove(resourceId);
-            return;
-        }
+            var remaining = existing - quantity;
+            if (remaining < -Epsilon)
+            {
+                throw new InvalidOperationException($"Resource '{resourceId}' occupancy would become negative.");
+            }
 
-        occupiedCapacity[resourceId] = remaining;
+            if (remaining <= Epsilon)
+            {
+                occupiedCapacity.Remove(resourceId);
+                return;
+            }
+
+            occupiedCapacity[resourceId] = remaining;
+        }
     }
 
     private static double? GetEdgeTrafficCapacity(NetworkModel network, EdgeModel edge, string trafficType)

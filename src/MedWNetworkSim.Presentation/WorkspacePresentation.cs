@@ -9573,11 +9573,19 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
     private IReadOnlyList<PieChartSegmentViewModel> BuildAgentStatusDistributionData()
     {
-        var latestActions = agentActionLogger
-            .GetAll()
-            .GroupBy(entry => entry.AgentId)
-            .Select(group => group.OrderByDescending(entry => entry.Timestamp).First())
-            .ToList();
+        // Bolt: Optimize LINQ GroupBy and OrderByDescending allocations by using a manual single-pass dictionary
+        // aggregation to find the latest action per agent. This avoids IGrouping allocations and redundant sorting overhead.
+        var allActions = agentActionLogger.GetAll();
+        var latestByAgent = new Dictionary<Guid, AgentActionLogEntry>();
+        foreach (var action in allActions)
+        {
+            if (!latestByAgent.TryGetValue(action.AgentId, out var existing) || action.Timestamp > existing.Timestamp)
+            {
+                latestByAgent[action.AgentId] = action;
+            }
+        }
+        var latestActions = latestByAgent.Values;
+
         var moving = latestActions.Count(entry => entry.ActionType.Contains("move", StringComparison.OrdinalIgnoreCase));
         var processing = latestActions.Count(entry => entry.ActionType.Contains("process", StringComparison.OrdinalIgnoreCase)
             || entry.ActionType.Contains("load", StringComparison.OrdinalIgnoreCase)

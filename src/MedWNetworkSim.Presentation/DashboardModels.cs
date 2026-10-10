@@ -79,15 +79,33 @@ public static class DashboardSummaryCalculator
     public static FlowKpiSummary ComputeFlowKpiSummary(IReadOnlyList<TrafficSimulationOutcome>? outcomes)
     {
         outcomes ??= [];
-        var allocations = outcomes.SelectMany(o => o.Allocations ?? []).ToList();
-        var totalDemand = outcomes.Sum(o => Math.Max(0d, o.TotalConsumption));
-        var totalServed = outcomes.Sum(o => Math.Max(0d, o.TotalDelivered));
+
+        var totalDemand = 0d;
+        var totalServed = 0d;
+        var totalRouteCost = 0d;
+        var totalRouteTime = 0d;
+
+        foreach (var outcome in outcomes)
+        {
+            totalDemand += Math.Max(0d, outcome.TotalConsumption);
+            totalServed += Math.Max(0d, outcome.TotalDelivered);
+
+            if (outcome.Allocations != null)
+            {
+                foreach (var allocation in outcome.Allocations)
+                {
+                    totalRouteCost += allocation.DeliveredCostPerUnit * allocation.Quantity;
+                    totalRouteTime += allocation.TotalTime * allocation.Quantity;
+                }
+            }
+        }
+
         return new FlowKpiSummary
         {
             ServedDemandRatio = totalDemand <= 0d ? 0d : totalServed / totalDemand,
             UnmetDemandRatio = totalDemand <= 0d ? 0d : Math.Max(0d, totalDemand - totalServed) / totalDemand,
-            AverageRouteCost = totalServed <= 0d ? 0d : allocations.Sum(a => a.DeliveredCostPerUnit * a.Quantity) / totalServed,
-            AverageRouteTime = totalServed <= 0d ? 0d : allocations.Sum(a => a.TotalTime * a.Quantity) / totalServed
+            AverageRouteCost = totalServed <= 0d ? 0d : totalRouteCost / totalServed,
+            AverageRouteTime = totalServed <= 0d ? 0d : totalRouteTime / totalServed
         };
     }
 }

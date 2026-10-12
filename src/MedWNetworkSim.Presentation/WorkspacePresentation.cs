@@ -9212,44 +9212,79 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
         var allocations = GetCurrentAllocations()
             .Where(allocation => Comparer.Equals(allocation.TrafficType, trafficType))
             .ToList();
-        var productionPrices = allocations.Count > 0
-            ? allocations
-                .Where(allocation => allocation.Quantity > 0d)
-                .GroupBy(allocation => allocation.ProducerNodeId, Comparer)
-                .Select(group => WeightedAverage(group, allocation => allocation.SourceUnitCostPerUnit))
-                .Where(value => value.HasValue)
-                .Select(value => value!.Value)
-                .Distinct()
-                .OrderBy(value => value)
-                .Select(value => ReportExportService.FormatNumber(value))
-                .ToList()
-            : network.Nodes
-            .SelectMany(node => node.TrafficProfiles)
-            .Where(profile => profile.Production > 0d && Comparer.Equals(profile.TrafficType, trafficType))
-            .Select(profile => Math.Max(0d, profile.UnitPrice))
-            .Distinct()
-            .OrderBy(value => value)
-            .Select(value => ReportExportService.FormatNumber(value))
-            .ToList();
-        var consumptionPrices = allocations.Count > 0
-            ? allocations
-                .Where(allocation => allocation.Quantity > 0d)
-                .GroupBy(allocation => allocation.ConsumerNodeId, Comparer)
-                .Select(group => WeightedAverage(group, allocation => allocation.DeliveredCostPerUnit))
-                .Where(value => value.HasValue)
-                .Select(value => value!.Value)
-                .Distinct()
-                .OrderBy(value => value)
-                .Select(value => ReportExportService.FormatNumber(value))
-                .ToList()
-            : network.Nodes
-            .SelectMany(node => node.TrafficProfiles)
-            .Where(profile => profile.Consumption > 0d && Comparer.Equals(profile.TrafficType, trafficType))
-            .Select(profile => Math.Max(0d, profile.UnitPrice))
-            .Distinct()
-            .OrderBy(value => value)
-            .Select(value => ReportExportService.FormatNumber(value))
-            .ToList();
+
+        var productionPrices = new List<string>();
+        var consumptionPrices = new List<string>();
+
+        if (allocations.Count > 0)
+        {
+            var producerAggregates = new Dictionary<string, (double TotalCost, double TotalQuantity)>(Comparer);
+            var consumerAggregates = new Dictionary<string, (double TotalCost, double TotalQuantity)>(Comparer);
+
+            foreach (var allocation in allocations)
+            {
+                if (allocation.Quantity <= 0d) continue;
+
+                // Producer aggregate
+                ref var pAgg = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(producerAggregates, allocation.ProducerNodeId, out _);
+                pAgg.TotalCost += allocation.SourceUnitCostPerUnit * allocation.Quantity;
+                pAgg.TotalQuantity += allocation.Quantity;
+
+                // Consumer aggregate
+                ref var cAgg = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(consumerAggregates, allocation.ConsumerNodeId, out _);
+                cAgg.TotalCost += allocation.DeliveredCostPerUnit * allocation.Quantity;
+                cAgg.TotalQuantity += allocation.Quantity;
+            }
+
+            var uniqueProducerPrices = new HashSet<double>();
+            foreach (var agg in producerAggregates.Values)
+            {
+                if (agg.TotalQuantity > 0d)
+                {
+                    uniqueProducerPrices.Add(agg.TotalCost / agg.TotalQuantity);
+                }
+            }
+            var sortedProdPrices = new List<double>(uniqueProducerPrices);
+            sortedProdPrices.Sort();
+            foreach (var p in sortedProdPrices) productionPrices.Add(ReportExportService.FormatNumber(p));
+
+            var uniqueConsumerPrices = new HashSet<double>();
+            foreach (var agg in consumerAggregates.Values)
+            {
+                if (agg.TotalQuantity > 0d)
+                {
+                    uniqueConsumerPrices.Add(agg.TotalCost / agg.TotalQuantity);
+                }
+            }
+            var sortedConsPrices = new List<double>(uniqueConsumerPrices);
+            sortedConsPrices.Sort();
+            foreach (var p in sortedConsPrices) consumptionPrices.Add(ReportExportService.FormatNumber(p));
+        }
+        else
+        {
+            var uniqueProducerPrices = new HashSet<double>();
+            var uniqueConsumerPrices = new HashSet<double>();
+
+            foreach (var node in network.Nodes)
+            {
+                foreach (var profile in node.TrafficProfiles)
+                {
+                    if (Comparer.Equals(profile.TrafficType, trafficType))
+                    {
+                        if (profile.Production > 0d) uniqueProducerPrices.Add(Math.Max(0d, profile.UnitPrice));
+                        if (profile.Consumption > 0d) uniqueConsumerPrices.Add(Math.Max(0d, profile.UnitPrice));
+                    }
+                }
+            }
+
+            var sortedProdPrices = new List<double>(uniqueProducerPrices);
+            sortedProdPrices.Sort();
+            foreach (var p in sortedProdPrices) productionPrices.Add(ReportExportService.FormatNumber(p));
+
+            var sortedConsPrices = new List<double>(uniqueConsumerPrices);
+            sortedConsPrices.Sort();
+            foreach (var p in sortedConsPrices) consumptionPrices.Add(ReportExportService.FormatNumber(p));
+        }
 
         return $"{FormatPriceList(productionPrices)}:{FormatPriceList(consumptionPrices)}";
     }

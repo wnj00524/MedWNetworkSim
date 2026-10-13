@@ -5562,18 +5562,41 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            var metrics = new Dictionary<string, (double AvailableSupply, double DemandBacklog, double AllocationQuantity)>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                var trafficType = pair.Key.TrafficType;
+                ref var stats = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(metrics, trafficType, out _);
+                stats.AvailableSupply += pair.Value.AvailableSupply;
+                stats.DemandBacklog += pair.Value.DemandBacklog;
+            }
+
+            foreach (var allocation in lastTimelineStepResult.Allocations)
+            {
+                if (allocation.TrafficType != null)
+                {
+                    ref var stats = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrNullRef(metrics, allocation.TrafficType);
+                    if (!System.Runtime.CompilerServices.Unsafe.IsNullRef(ref stats))
+                    {
+                        stats.AllocationQuantity += allocation.Quantity;
+                    }
+                }
+            }
+
+            var result = new List<FlowDataPoint>(metrics.Count);
+            foreach (var pair in metrics)
+            {
+                var stats = pair.Value;
+                result.Add(new FlowDataPoint(
+                    pair.Key,
+                    stats.AvailableSupply + stats.DemandBacklog,
+                    stats.AllocationQuantity,
+                    stats.DemandBacklog,
+                    stats.AvailableSupply));
+            }
+
+            result.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return result;
         }
 
         return lastOutcomes

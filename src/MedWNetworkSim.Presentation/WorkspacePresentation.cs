@@ -5562,18 +5562,47 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            var aggregatedData = new Dictionary<string, (double AvailableSupply, double DemandBacklog, double AllocatedQuantity)>(Comparer);
+
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                if (pair.Key.TrafficType is null)
+                {
+                    continue;
+                }
+                ref var data = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(aggregatedData, pair.Key.TrafficType, out _);
+                data.AvailableSupply += pair.Value.AvailableSupply;
+                data.DemandBacklog += pair.Value.DemandBacklog;
+            }
+
+            foreach (var allocation in lastTimelineStepResult.Allocations)
+            {
+                if (allocation.TrafficType is null)
+                {
+                    continue;
+                }
+                if (aggregatedData.TryGetValue(allocation.TrafficType, out var existing))
+                {
+                    existing.AllocatedQuantity += allocation.Quantity;
+                    aggregatedData[allocation.TrafficType] = existing;
+                }
+            }
+
+            var result = new List<FlowDataPoint>(aggregatedData.Count);
+            foreach (var kvp in aggregatedData)
+            {
+                var data = kvp.Value;
+                result.Add(new FlowDataPoint(
+                    kvp.Key,
+                    data.AvailableSupply + data.DemandBacklog,
+                    data.AllocatedQuantity,
+                    data.DemandBacklog,
+                    data.AvailableSupply
+                ));
+            }
+
+            result.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return result;
         }
 
         return lastOutcomes

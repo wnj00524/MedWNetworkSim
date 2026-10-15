@@ -5562,29 +5562,47 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            // Bolt: Replaced LINQ .GroupBy().Select(g => g.Sum()) and nested .Where().Sum() with manual
+            // Dictionary aggregations using CollectionsMarshal to eliminate massive O(N*M) delegate
+            // and enumerator allocations on the Avalonia UI thread.
+            var stats = new Dictionary<string, (double TotalSupplyAndDemand, double TotalDemandBacklog, double TotalAvailableSupply)>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                ref var current = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(stats, pair.Key.TrafficType, out _);
+                current.TotalSupplyAndDemand += pair.Value.AvailableSupply + pair.Value.DemandBacklog;
+                current.TotalDemandBacklog += pair.Value.DemandBacklog;
+                current.TotalAvailableSupply += pair.Value.AvailableSupply;
+            }
+
+            var allocStats = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (var allocation in lastTimelineStepResult.Allocations)
+            {
+                ref var current = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(allocStats, allocation.TrafficType, out _);
+                current += allocation.Quantity;
+            }
+
+            var list = new List<FlowDataPoint>(stats.Count);
+            foreach (var kvp in stats)
+            {
+                allocStats.TryGetValue(kvp.Key, out var allocQuant);
+                list.Add(new FlowDataPoint(kvp.Key, kvp.Value.TotalSupplyAndDemand, allocQuant, kvp.Value.TotalDemandBacklog, kvp.Value.TotalAvailableSupply));
+            }
+            list.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return list;
         }
 
-        return lastOutcomes
-            .OrderBy(outcome => outcome.TrafficType, Comparer)
-            .Select(outcome => new FlowDataPoint(
+        var outcomesList = new List<FlowDataPoint>(lastOutcomes.Count);
+        foreach (var outcome in lastOutcomes)
+        {
+            outcomesList.Add(new FlowDataPoint(
                 outcome.TrafficType,
                 outcome.TotalConsumption,
                 outcome.TotalDelivered,
                 outcome.UnmetDemand,
-                0d))
-            .ToList();
+                0d));
+        }
+        outcomesList.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+        return outcomesList;
     }
     /// <summary>
     /// Retrieves the node pressure based on the provided parameters.

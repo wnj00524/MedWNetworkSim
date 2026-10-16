@@ -5562,18 +5562,35 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            // Bolt: Optimize LINQ ToDictionary allocations with a manual loop to save enumerators on UI thread
+            var allocSum = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (var alloc in lastTimelineStepResult.Allocations)
+            {
+                System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(allocSum, alloc.TrafficType, out _) += alloc.Quantity;
+            }
+
+            var groupSum = new Dictionary<string, (double AvailableSupply, double DemandBacklog)>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                ref var sum = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(groupSum, pair.Key.TrafficType, out _);
+                sum.AvailableSupply += pair.Value.AvailableSupply;
+                sum.DemandBacklog += pair.Value.DemandBacklog;
+            }
+
+            var result = new List<FlowDataPoint>(groupSum.Count);
+            foreach (var pair in groupSum)
+            {
+                allocSum.TryGetValue(pair.Key, out var del);
+                result.Add(new FlowDataPoint(
+                    pair.Key,
+                    pair.Value.AvailableSupply + pair.Value.DemandBacklog,
+                    del,
+                    pair.Value.DemandBacklog,
+                    pair.Value.AvailableSupply
+                ));
+            }
+            result.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return result;
         }
 
         return lastOutcomes

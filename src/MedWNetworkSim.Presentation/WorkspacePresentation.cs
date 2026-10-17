@@ -5562,18 +5562,31 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            var summaryDict = new Dictionary<string, (double Planned, double UnmetDemand, double Backlog)>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                ref var summary = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(summaryDict, pair.Key.TrafficType, out var _);
+                summary.Planned += pair.Value.AvailableSupply + pair.Value.DemandBacklog;
+                summary.UnmetDemand += pair.Value.DemandBacklog;
+                summary.Backlog += pair.Value.AvailableSupply;
+            }
+
+            var allocationsDict = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (var allocation in lastTimelineStepResult.Allocations)
+            {
+                ref var qty = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(allocationsDict, allocation.TrafficType, out var _);
+                qty += allocation.Quantity;
+            }
+
+            var resultList = new List<FlowDataPoint>(summaryDict.Count);
+            foreach (var pair in summaryDict)
+            {
+                allocationsDict.TryGetValue(pair.Key, out var delivered);
+                resultList.Add(new FlowDataPoint(pair.Key, pair.Value.Planned, delivered, pair.Value.UnmetDemand, pair.Value.Backlog));
+            }
+
+            resultList.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return resultList;
         }
 
         return lastOutcomes

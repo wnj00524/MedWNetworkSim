@@ -159,7 +159,15 @@ public sealed class ReportExportService
         IReadOnlyList<TrafficSimulationOutcome> outcomes,
         IReadOnlyList<ConsumerCostSummary> consumerCosts)
     {
-        var allocations = outcomes.SelectMany(outcome => outcome.Allocations).ToList();
+        var allocations = new List<RouteAllocation>(outcomes.Sum(outcome => outcome.Allocations?.Count ?? 0));
+        foreach (var outcome in outcomes)
+        {
+            if (outcome.Allocations != null)
+            {
+                allocations.AddRange(outcome.Allocations);
+            }
+        }
+
         var builder = CreateHtmlReportHeader("Current Network Report", network);
 
         AppendHtmlTable(
@@ -224,7 +232,16 @@ public sealed class ReportExportService
     {
         var periods = periodResults.Count;
         var builder = CreateHtmlReportHeader($"Timeline Report ({periods} periods)", network);
-        var allAllocations = periodResults.SelectMany(result => result.Allocations).ToList();
+
+        var allAllocations = new List<RouteAllocation>(periodResults.Sum(result => result.Allocations?.Count ?? 0));
+        foreach (var result in periodResults)
+        {
+            if (result.Allocations != null)
+            {
+                allAllocations.AddRange(result.Allocations);
+            }
+        }
+
         var finalPeriodResult = periodResults[^1];
 
         AppendHtmlTable(
@@ -290,7 +307,15 @@ public sealed class ReportExportService
         IReadOnlyList<TrafficSimulationOutcome> outcomes,
         IReadOnlyList<ConsumerCostSummary> consumerCosts)
     {
-        var allocations = outcomes.SelectMany(outcome => outcome.Allocations).ToList();
+        var allocations = new List<RouteAllocation>(outcomes.Sum(outcome => outcome.Allocations?.Count ?? 0));
+        foreach (var outcome in outcomes)
+        {
+            if (outcome.Allocations != null)
+            {
+                allocations.AddRange(outcome.Allocations);
+            }
+        }
+
         var builder = new StringBuilder();
         AppendCsvBranding(builder);
         AppendCsvTitleBlock(builder, "Current Network Report", network);
@@ -354,6 +379,30 @@ public sealed class ReportExportService
         IReadOnlyList<TrafficSimulationOutcome> outcomes,
         IReadOnlyList<ConsumerCostSummary> consumerCosts)
     {
+        IEnumerable<object> BuildAllocations()
+        {
+            foreach (var outcome in outcomes)
+            {
+                if (outcome.Allocations != null)
+                {
+                    foreach (var allocation in outcome.Allocations)
+                    {
+                        yield return new
+                        {
+                            allocation.TrafficType,
+                            allocation.ProducerNodeId,
+                            allocation.ConsumerNodeId,
+                            allocation.Quantity,
+                            allocation.TotalTime,
+                            allocation.DeliveredCostPerUnit,
+                            allocation.PathNodeIds,
+                            allocation.PathEdgeIds
+                        };
+                    }
+                }
+            }
+        }
+
         return JsonSerializer.Serialize(new
         {
             network = new
@@ -375,17 +424,7 @@ public sealed class ReportExportService
                 outcome.UnmetDemand
             }),
             consumerCosts,
-            allocations = outcomes.SelectMany(outcome => outcome.Allocations).Select(allocation => new
-            {
-                allocation.TrafficType,
-                allocation.ProducerNodeId,
-                allocation.ConsumerNodeId,
-                allocation.Quantity,
-                allocation.TotalTime,
-                allocation.DeliveredCostPerUnit,
-                allocation.PathNodeIds,
-                allocation.PathEdgeIds
-            })
+            allocations = BuildAllocations()
         }, new JsonSerializerOptions { WriteIndented = true });
     }
 

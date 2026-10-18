@@ -130,3 +130,6 @@
 ## 2024-05-18 - Avoid GroupBy and ToDictionary on path edge allocations in Economic Metrics
 **Learning:** In C# UI presentation classes, chained LINQ aggregations like `.SelectMany(..).GroupBy(..).ToDictionary(..)` can cause substantial garbage on the UI thread due to enumerator, group, and delegate allocations.
 **Action:** Replace `GroupBy` + `ToDictionary` with a manual, pre-sized dictionary populated via `foreach` loops using `System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(dict, key, out _) += val;`. This operates much faster by avoiding group allocation and multi-pass traversal.
+## 2024-05-18 - Use yield return instead of List materialization for JSON Serialization
+**Learning:** When removing LINQ `.SelectMany(...).Select(...)` overhead in scenarios where the output is directly serialized to JSON (or similarly lazily consumed), materializing the results into a `List<object>` can trigger large object heap (LOH) allocations for big data sets.
+**Action:** Use a local function with `yield return` to iterate through the collections. This avoids the LINQ enumerator/delegate allocations while preserving the lazy evaluation characteristics, keeping peak memory usage low.

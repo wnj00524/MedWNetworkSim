@@ -5562,18 +5562,40 @@ public sealed class WorkspaceViewModel : ObservableObject, IUiExceptionSink, ICa
 
         if (lastTimelineStepResult is not null)
         {
-            return lastTimelineStepResult.NodeStates
-                .GroupBy(pair => pair.Key.TrafficType, StringComparer.OrdinalIgnoreCase)
-                .Select(group => new FlowDataPoint(
-                    group.Key,
-                    group.Sum(pair => pair.Value.AvailableSupply + pair.Value.DemandBacklog),
-                    lastTimelineStepResult.Allocations
-                        .Where(allocation => string.Equals(allocation.TrafficType, group.Key, StringComparison.OrdinalIgnoreCase))
-                        .Sum(allocation => allocation.Quantity),
-                    group.Sum(pair => pair.Value.DemandBacklog),
-                    group.Sum(pair => pair.Value.AvailableSupply)))
-                .OrderBy(point => point.Label, Comparer)
-                .ToList();
+            // Bolt: Replace LINQ nested GroupBy/Where.Sum iterations with a fast manual single-pass dictionary aggregation
+            // to avoid O(N*M) algorithmic overhead and garbage collections on UI threads
+            var aggregates = new Dictionary<string, (double Supply, double Backlog)>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in lastTimelineStepResult.NodeStates)
+            {
+                ref var aggregate = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(aggregates, pair.Key.TrafficType, out _);
+                aggregate.Supply += pair.Value.AvailableSupply;
+                aggregate.Backlog += pair.Value.DemandBacklog;
+            }
+
+            var allocationTotals = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (var allocation in lastTimelineStepResult.Allocations)
+            {
+                if (aggregates.ContainsKey(allocation.TrafficType))
+                {
+                    ref var total = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(allocationTotals, allocation.TrafficType, out _);
+                    total += allocation.Quantity;
+                }
+            }
+
+            var results = new List<FlowDataPoint>(aggregates.Count);
+            foreach (var pair in aggregates)
+            {
+                allocationTotals.TryGetValue(pair.Key, out double delivered);
+                results.Add(new FlowDataPoint(
+                    pair.Key,
+                    pair.Value.Supply + pair.Value.Backlog,
+                    delivered,
+                    pair.Value.Backlog,
+                    pair.Value.Supply));
+            }
+
+            results.Sort((a, b) => Comparer.Compare(a.Label, b.Label));
+            return results;
         }
 
         return lastOutcomes
